@@ -2155,7 +2155,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2275,7 +2275,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -2415,7 +2415,8 @@
         "Sources changed on this branch: the Browser pane contracts, server, toolbar and the module map (BrowserSessionService page-tools paragraph). Its index descriptions of the Browser guide, glossary and module map remain accurate. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Index descriptions remain accurate. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Index descriptions remain accurate. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Index descriptions remain accurate. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
@@ -2834,7 +2835,7 @@
     {
       "path": "docs/adr/0017-browser-preview-host.md",
       "documentDigest": "9be14f3fe1a2cd87746feb09a90699767a0957a984a914dacbb21038f2319a85",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; keep original desktop choices/platform gaps and dated body. Added current Browser guide link in existing banner.",
@@ -2934,7 +2935,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -3063,12 +3064,13 @@
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3185,7 +3187,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -3322,13 +3324,14 @@
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
       "documentDigest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated planned/unverified statements. Current implementation uses per-Project/principal profiles, bound tool grants, shared Device producer. CEF and multiplex plans are not current implementations. Added current guide link only.",
@@ -3428,7 +3431,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -3557,7 +3560,8 @@
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
@@ -4046,7 +4050,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "2bbd01d616d0940dcd8942d98f92a14e7d07210df742e7589e387f966ae659c4",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4754,7 +4758,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -5801,7 +5805,8 @@
         "Edited on this branch: the BrowserSessionService section gained the page-tools paragraph (person-held dialogs, the answer route that refuses Agents, dialog-open refusal, browser-console-log.ts, captureScreenshot) and its new test files; this changed the document's digest. Re-read against the quiet toolbar change, which is presentational. Other sections not re-reviewed. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Shared live surface section now names LiveSurfaceInputRefusal / page-dialog-open; BrowserSessionService paragraph names the control-end dismissal, console generation and agent gate, and one screenshot in flight. Other sections not re-reviewed.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Shared live surface section now describes the keep-alive request and its cap. Other sections not re-reviewed."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Shared live surface section now describes the keep-alive request and its cap. Other sections not re-reviewed.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
@@ -6627,7 +6632,7 @@
     {
       "path": "docs/design/browser-preview-host-spike.md",
       "documentDigest": "054668c44ea7e835f73044ed1f004a832f5412d2da133d11f7958f8ba3211510",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated upstream/platform experiment and go/no-go rationale; source/current guide link added, no experiment rerun or current-upstream claim.",
@@ -6727,7 +6732,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -6856,13 +6861,14 @@
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
       "path": "docs/design/browser-preview-pane-mvp.md",
       "documentDigest": "e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
@@ -6962,7 +6968,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -7091,7 +7097,8 @@
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
@@ -10465,7 +10472,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "177502197316103ec3d1800a2f286c1ef5cb743275bb7fade9cfce0923c3781c",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10601,7 +10608,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -10751,7 +10758,8 @@
         "Edited on this branch: the control-lease entry says a holder can release control explicitly, through the Browser pane's driver chip (checked against releaseHumanControl and useLiveSurface.releaseControl). Other Browser entries re-read against the page-tools and toolbar changes; still accurate. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The control-lease entry (explicit release via the driver chip) remains accurate; no glossary term changes. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. The control-lease entry now says a keep-alive is not input and is capped from the last real input (checked against keepHumanAlive)."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. The control-lease entry now says a keep-alive is not input and is capped from the last real input (checked against keepHumanAlive).",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
@@ -11419,7 +11427,7 @@
     {
       "path": "docs/guides/browser-workspace.md",
       "documentDigest": "f07a9ff1a9b60c086377613548d2fce75f0e360c299468ba8546b578852816ea",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
@@ -11519,7 +11527,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -11649,7 +11657,8 @@
         "Edited on this branch: the page-tools section (person-held dialogs, bounded console, screenshots, one-tab popup folding) and the quiet one-row chrome (driver chip hand-back, Console count, ⋯ menu, 44px touch targets), each traced to the producer, live surfaces, routes, automation and pane code and exercised by the route, real-Chrome, pane tests and an isolated-Station run at 1280px and 390px. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Guide updated for each: held-dialog lifetime and the float's card, page-dialog-open, answer outcomes, console agent gate, one screenshot in flight. Traced to chromium-screencast-producer.ts, browser-live-surfaces.ts, routes/browser.ts, browser-session-registry.ts and FloatOverChatHost.tsx; exercised by browser-pane-page.routes.test.ts, browser-automation.test.ts, FloatOverChat.test.tsx and BrowserPane.pageTools.test.tsx.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Guide updated: keep-alive semantics and its cap, and the 504/502/409 answer outcomes. Traced to control-lease.ts keepHumanAlive, routes/live-surface.ts, chromium-screencast-producer.ts answerDialog and BrowserPageDialog.tsx; exercised by control-lease.test.ts, browser-pane-page.routes.test.ts, chromium-screencast-producer.test.ts, BrowserPageDialog.test.tsx and LiveSurfaceCanvas.test.tsx."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. Guide updated: keep-alive semantics and its cap, and the 504/502/409 answer outcomes. Traced to control-lease.ts keepHumanAlive, routes/live-surface.ts, chromium-screencast-producer.ts answerDialog and BrowserPageDialog.tsx; exercised by control-lease.test.ts, browser-pane-page.routes.test.ts, chromium-screencast-producer.test.ts, BrowserPageDialog.test.tsx and LiveSurfaceCanvas.test.tsx.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
@@ -15652,7 +15661,7 @@
     {
       "path": "docs/guides/mobile-device-workspace.md",
       "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
-      "sourceRevision": "e5d9b68a5a99edfb53c307ebc86f2890a3200d00",
+      "sourceRevision": "ed2458ff0aa051db6d73e16e6fe7a3af4bfe042d",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
@@ -15752,7 +15761,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "2bd3f0b2f0b17c386fb01d37b59249cad8b5fcadd4a6121ae60f38fd1abeb470"
+          "digest": "f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -15882,7 +15891,8 @@
         "Sources changed on this branch: the shared live-surface hook and canvas gained an optional releaseControl used only by the Browser pane, and the Browser pane itself changed. This guide's Device lease, input and screenshot-poll claims are unaffected. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
         "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The new refusal is optional for producers and the Device producer does not use it; this guide's Device input and lease claims are unaffected. No prose change.",
         "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change.",
-        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. The Device pane does not send keep-alives, and its lease, input and screenshot-poll claims are unaffected. No prose change."
+        "Round e5d9b68a5: a `keep-alive` lease request (not input) that extends only the person's own current hold at the current epoch, never claims or preempts, capped by maxHumanHoldMs from the last real input; the held-dialog card sends it only while in view on a visible tab; answerDialog restores with a fresh hold timer and never after the page closed the dialog; only Chromium's 'No dialog is showing' is 409 no-dialog, a channel failure is 502 and keeps the dialog. The Device pane does not send keep-alives, and its lease, input and screenshot-poll claims are unaffected. No prose change.",
+        "chromium-screencast-producer.ts: a held dialog whose person's control ends while their answer is in flight is now dismissed rather than restored when the answer fails. This makes the code match what the Browser guide already states (a held dialog is dismissed when the person's control ends); no claim here changes. No prose change."
       ]
     },
     {
