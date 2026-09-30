@@ -9,7 +9,7 @@
 
   "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
 
-  "document": {"digest":"fd825be83ac6a870822dadbc2b15d919f3a98fbce7859fdf6207fb9dced03bca","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+  "document": {"digest":"36cb779553533194ab6c35d1998e8cf4e57bed871d5aa1da9ab7f4ea50517476","revision":"693d3c2389b988f5d65373a769a45c5d63094aaa"},
 
   "sources": [],
 
