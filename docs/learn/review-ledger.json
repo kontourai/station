@@ -8751,8 +8751,8 @@
     },
     {
       "path": "docs/design/placement.md",
-      "documentDigest": "955badd869d31256e3cc3af92164dd5cff51e8250e83c681347926707bba6412",
-      "sourceRevision": "f46e41b3dcea8c44dc6eb1cfcc092e4e21d6fa4c",
+      "documentDigest": "dc8e1155b3021a6132143bc548f75384dde94c0549bdc452d6478810a9114c8b",
+      "sourceRevision": "1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -9057,7 +9057,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "activity-nav: added the place-row rule (sidebar/palette/Home View Activity open Activity in main via useShowSurfacePage = showSurface with region main; aria-current derived from main occupant at /; contextual producers and chord unchanged; defaultRegion stays right; no history entry for a Home/Activity swap at /) and corrected the leaving-main note (sidebar row makes it the page again). Traced ProjectSidebarNav, CommandPalette, HomeSurface, RegionModelContext.showSurface/openSurfaceInRegion target branch and phone overChat guard.",
         "activity-nav round 2: place-row rule now covers Project 'All activity', the phone un-maximize on a main landing (RegionModelContext commit, bottomOnly or isMobile, also Home), ending a phone layer that shows the same pane via its restore, the transient remembered dock region for the chord return (cleared by explicit placement, lost on reload), and the no-history-entry accepted gap with its phone Back consequence. Traced commit, openSurfaceInRegion target branch, toggleSurface, restorePhoneLayer.",
-        "activity-nav round 3: main-landing dock restore now applies on every device (desktop side maximize hides .main-content, bottom takes its row), lastDockMaximized memory preserved via pendingDockMemoryRef, remembered dock region also used by the first unplaced reveal after Home, layer-open Back consequence (pre-layer entry, Chat re-maximized over the page) and the guard-skip rationale. Traced commit, openSurfaceInRegion no-target branch, mirror effect memory write."
+        "activity-nav round 3: main-landing dock restore now applies on every device (desktop side maximize hides .main-content, bottom takes its row), lastDockMaximized memory preserved via pendingDockMemoryRef, remembered dock region also used by the first unplaced reveal after Home, layer-open Back consequence (pre-layer entry, Chat re-maximized over the page) and the guard-skip rationale. Traced commit, openSurfaceInRegion no-target branch, mirror effect memory write.",
+        "Narrowed the page-open un-maximize claim to the paths that actually go through commit (showSurface / the model's open); placeSurface (Move to Main, Layout picker) does not restore a maximized region — stated as an existing gap. Verified against RegionModelContext commit and RegionPaneHost Move to Main."
       ]
     },
     {

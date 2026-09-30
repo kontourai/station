@@ -113,14 +113,17 @@ every other route. These rules make it a region rather than a special case
   notifications and evidence mint, a session intent, the chord — keeps
   `showSurface`'s reveal, which is why Activity's `defaultRegion` is still
   `right`.
-  - **The page is seen, not covered.** A landing in `main` restores any
-    maximized dock region on every device (`commit` in
-    `RegionModelContext`): a maximized dock owns the whole phone viewport,
+  - **The page is seen, not covered.** A page open — a landing in `main`
+    through `showSurface` or the model's open, which both go through `commit`
+    in `RegionModelContext` — restores any maximized dock region on every
+    device: a maximized dock owns the whole phone viewport,
     and on a desktop a maximized side region hides `.main-content` while a
     maximized bottom region takes its row. The dock stays open beside or
     below the page, and the reader's maximize memory (`lastDockMaximized`,
     what `focusSession` reopens Chat with) is kept. This holds for Home's row
-    as well, which shares the path. On a phone the page is not a layer over
+    as well, which shares the path. `placeSurface` (a tab's Move to Main, the
+    Layout picker) does not go through `commit` and does not restore a
+    maximized region yet. On a phone the page is not a layer over
     Chat; when the layer is showing the very pane being opened as the page,
     the layer is ended through its own restore first (without asking its
     guards — only a guard-free surface can be both), and its history entry
