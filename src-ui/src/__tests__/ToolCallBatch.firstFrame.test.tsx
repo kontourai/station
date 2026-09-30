@@ -5,10 +5,16 @@
  * chunk is lazy; a lazy boundary suspends on every NEW mount, so before this
  * each batch that formed (a second call arriving, the streaming shell handing
  * the turn to the transcript) first painted its calls as standalone rows and
- * then snapped into the collapsed line. The rendering below is read
- * synchronously after `render`, i.e. the first committed frame.
+ * then snapped into the collapsed line.
+ *
+ * The first frame is read with a synchronous static render: whatever a
+ * component draws before anything can resolve. It is also a guard — a
+ * regression back to the suspending path shows its pending rows here and
+ * FAILS, where a mounted render of the same regression never settled.
  */
 import { act, cleanup, render } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessageView } from '../components/chat/StreamingMessage';
@@ -40,9 +46,16 @@ function shape(container: HTMLElement) {
   };
 }
 
+/** The first frame of `element`, as DOM. */
+function firstFrame(element: ReactElement): HTMLElement {
+  const container = document.createElement('div');
+  container.innerHTML = renderToStaticMarkup(element);
+  return container;
+}
+
 describe('tool-call batches in their first frame', () => {
   test('a settled run mounts collapsed, never as standalone rows first', () => {
-    const { container } = render(
+    const container = firstFrame(
       <MessageContent
         contentParts={[call('a', 'git status'), call('b', 'git log -3')]}
         textContent=""
@@ -68,18 +81,18 @@ describe('tool-call batches in their first frame', () => {
       hasContent: true,
       renderToolCall,
     };
-    const view = render(
+    const solo = firstFrame(
       <StreamingMessageView
         {...props}
         contentParts={[call('a', 'git status')] as ChatContentPart[]}
         contentRevision={1}
       />,
     );
-    expect(shape(view.container)).toEqual({ standalone: 1, batches: 0 });
-    const soloGlyph = view.container
+    expect(shape(solo)).toEqual({ standalone: 1, batches: 0 });
+    const soloGlyph = solo
       .querySelector('.tool-call__glyph path')
       ?.getAttribute('d');
-    view.rerender(
+    const grown = firstFrame(
       <StreamingMessageView
         {...props}
         contentParts={
@@ -88,10 +101,10 @@ describe('tool-call batches in their first frame', () => {
         contentRevision={2}
       />,
     );
-    expect(shape(view.container)).toEqual({ standalone: 0, batches: 1 });
+    expect(shape(grown)).toEqual({ standalone: 0, batches: 1 });
     // Same anatomy: the batch line keeps the solo row's kind glyph.
     expect(
-      view.container
+      grown
         .querySelector('.tool-call-batch__summary .tool-call__glyph path')
         ?.getAttribute('d'),
     ).toBe(soloGlyph);
@@ -120,13 +133,17 @@ describe('tool-call batches in their first frame', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    view.rerender(
-      <FreshMessageContent
-        {...props}
-        contentParts={[call('a', 'git status'), call('b', 'git log -3')]}
-      />,
-    );
-    expect(shape(view.container)).toEqual({ standalone: 0, batches: 1 });
+    view.unmount();
+    expect(
+      shape(
+        firstFrame(
+          <FreshMessageContent
+            {...props}
+            contentParts={[call('a', 'git status'), call('b', 'git log -3')]}
+          />,
+        ),
+      ),
+    ).toEqual({ standalone: 0, batches: 1 });
   });
 
   test('a batch chunk that cannot load leaves the calls as standalone rows', async () => {
