@@ -18,6 +18,7 @@ export interface NativeApplicationConnectorConfiguration {
 
 export interface NativeDeviceProofRuntime {
   readonly authority: NativeDeviceRequestAuthority;
+  readonly bindings: NativeDeviceProofBindingService;
   readonly configuration: NativeDeviceRequestAuthorityDeps;
   close(): void;
 }
@@ -63,11 +64,12 @@ export function createNativeDeviceProofRuntime(input: {
     input.stationId,
   );
   try {
+    const bindings = new NativeDeviceProofBindingService({
+      homeDir: input.homeDir,
+      pairing: input.pairing,
+    });
     const configuration: NativeDeviceRequestAuthorityDeps = {
-      binding: new NativeDeviceProofBindingService({
-        homeDir: input.homeDir,
-        pairing: input.pairing,
-      }),
+      binding: bindings,
       pairing: {
         activeDevice: (deviceId) =>
           input.pairing
@@ -84,6 +86,7 @@ export function createNativeDeviceProofRuntime(input: {
     const authority = new NativeDeviceRequestAuthority(configuration);
     return {
       authority,
+      bindings,
       configuration,
       close() {
         authority.close();

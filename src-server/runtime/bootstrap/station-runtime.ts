@@ -4120,6 +4120,7 @@ export class StationRuntime {
       projectSharedTasks: this.projectMembership?.sharedTasks,
       ...(this.nativeDeviceProofPilot
         ? {
+            nativeDeviceProofBindings: this.nativeDeviceProofPilot.bindings,
             nativeDeviceProofPilot: {
               ...this.nativeDeviceProofPilot.configuration,
               authority: this.nativeDeviceProofPilot.authority,

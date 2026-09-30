@@ -344,6 +344,7 @@ import {
 } from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native-device-proof-binding-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
@@ -553,6 +554,10 @@ import {
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  type NativeDeviceProofBindingService,
+  NativeDeviceProofOperatorAuthority,
+} from '../../services/ssh/native-device-proof-binding-service.js';
 import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
@@ -710,6 +715,7 @@ export async function pullRequestSessionForReader<
 
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
+  nativeDeviceProofBindings?: NativeDeviceProofBindingService;
   /**
    * #2893 opt-in native Device request-proof pilot. Composed only behind an
    * explicit opt-in with a supported provider/session capability; absent
@@ -2242,6 +2248,17 @@ export function configureRuntimeRoutes(
   // that carries no stored values is not tiered with the route that reads
   // and writes them.
   context.app.route('/api/settings', createSettingsRegistryRoutes());
+
+  if (context.nativeDeviceProofBindings) {
+    context.app.route(
+      '/api/pairing/native-device-bindings',
+      createNativeDeviceProofBindingRoutes({
+        bindings: context.nativeDeviceProofBindings,
+        operatorAuthority: new NativeDeviceProofOperatorAuthority(),
+        security: context.environmentSecurityService,
+      }),
+    );
+  }
 
   configureDevicePairingHostRoutes(
     context.app,

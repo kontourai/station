@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import type {
   NativeDeviceBindingCandidateV1,
   NativeDeviceProofBindingReadbackV1,
-  NativeDeviceProofPublicKey,
 } from '@kontourai/station-contracts/native-device-proof';
 import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
@@ -79,7 +78,10 @@ function parseCandidate(value: unknown): NativeDeviceBindingCandidateV1 {
     !exactKeys(value.surface, SURFACE_KEYS) ||
     value.surface.kind !== 'station-native' ||
     typeof value.surface.appIdentifier !== 'string' ||
-    typeof value.surface.channel !== 'string' ||
+    (value.surface.channel !== 'dev' &&
+      value.surface.channel !== 'nightly' &&
+      value.surface.channel !== 'beta' &&
+      value.surface.channel !== 'stable') ||
     typeof value.surface.clientInstanceId !== 'string' ||
     typeof value.surface.keyThumbprint !== 'string' ||
     !record(value.deviceProofJwk) ||
@@ -91,12 +93,31 @@ function parseCandidate(value: unknown): NativeDeviceBindingCandidateV1 {
   ) {
     throw new InvalidRequest();
   }
-  const jwk = value.deviceProofJwk as unknown as NativeDeviceProofPublicKey;
+  const jwk: NativeDeviceBindingCandidateV1['deviceProofJwk'] = {
+    kty: value.deviceProofJwk.kty,
+    crv: value.deviceProofJwk.crv,
+    x: value.deviceProofJwk.x,
+    y: value.deviceProofJwk.y,
+  };
   const recomputed = createHash('sha256')
     .update(JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y }))
     .digest('base64url');
   if (recomputed !== value.deviceProofKeyThumbprint) throw new InvalidRequest();
-  return value as unknown as NativeDeviceBindingCandidateV1;
+  return {
+    version: value.version,
+    stationId: value.stationId,
+    deviceId: value.deviceId,
+    bindingId: value.bindingId,
+    surface: {
+      kind: value.surface.kind,
+      appIdentifier: value.surface.appIdentifier,
+      channel: value.surface.channel,
+      clientInstanceId: value.surface.clientInstanceId,
+      keyThumbprint: value.surface.keyThumbprint,
+    },
+    deviceProofJwk: jwk,
+    deviceProofKeyThumbprint: value.deviceProofKeyThumbprint,
+  };
 }
 
 function parseBody(value: unknown): {

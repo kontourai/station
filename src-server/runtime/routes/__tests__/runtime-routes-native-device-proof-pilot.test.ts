@@ -365,6 +365,7 @@ describe('native Device request-proof pilot over the production composition', ()
       eventBus,
       taskGraphService: { listTasks: () => [] },
       nativeDeviceProofPilot: { ...pilot, authority: nativeAuthority },
+      nativeDeviceProofBindings: bindingService,
     });
     const result = configureRuntimeRoutesProduction(
       context as unknown as Parameters<
@@ -959,6 +960,69 @@ describe('native Device request-proof pilot over the production composition', ()
       lastNativeRequest: () => lastNativeRequest,
     };
   }
+
+  test('mounted binding management requires operator authority and preserves Origin admission', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'binding-management',
+      'Binding management',
+    );
+    const paired = await h.pairNativeDevice(
+      'binding-management-device',
+      guest.login,
+    );
+    const path = `/api/pairing/native-device-bindings/${paired.binding.bindingId}`;
+    const owner = await h.request(path, h.ownerHeaders());
+    expect(owner.status).toBe(200);
+    expect(owner.headers.get('Cache-Control')).toBe('no-store');
+    const readback = await owner.json();
+    expect(readback).toMatchObject({
+      data: {
+        binding: { bindingId: paired.binding.bindingId },
+        currentDeviceBinding: true,
+      },
+    });
+    const deviceOnly = await h.request(path, {
+      headers: { Authorization: `Bearer ${paired.credential}` },
+    });
+    expect(deviceOnly.status).toBeGreaterThanOrEqual(400);
+    const body = JSON.stringify({
+      operation: 'create',
+      candidate: {
+        version: 'station-native-device-binding-candidate/v1',
+        stationId: paired.binding.stationId,
+        deviceId: paired.device.id,
+        bindingId: paired.binding.bindingId,
+        surface: paired.surface,
+        deviceProofJwk: paired.deviceKey.publicJwk,
+        deviceProofKeyThumbprint: paired.binding.deviceProof.thumbprint,
+      },
+    });
+    const refusedOrigin = await h.request(
+      `${path}/approve`,
+      h.ownerHeaders({
+        method: 'POST',
+        headers: {
+          Origin: 'https://untrusted.example',
+          'Content-Type': 'application/json',
+        },
+        body,
+      }),
+    );
+    expect(refusedOrigin.status).toBe(403);
+    const approved = await h.request(
+      `${path}/approve`,
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body,
+      }),
+    );
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      data: { binding: { bindingId: paired.binding.bindingId } },
+    });
+  });
 
   test('bearer-free native challenge, exchange and permitted Project read over one admitted peer', async () => {
     const h = await setup();
