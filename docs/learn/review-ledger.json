@@ -30040,7 +30040,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "fe2da6beb94c16aa250c7207cbd814b4f4d4fb08",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -30069,7 +30069,7 @@
         },
         {
           "path": "scripts/vitest-resource-manifest.mjs",
-          "digest": "9e5ec42efb02239ca3f1f122935882909c0a662c2c766d8b081800bbcf6536ee"
+          "digest": "2eba27a9850dc7a456b5a852c0f1570892ff2460de7f58c55470e8ca3972dfb4"
         }
       ],
       "checks": [
@@ -30090,7 +30090,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) removes the deleted longrunning-fixture-child.abnormal-exit test entry from PROCESS_HEAVY_VITEST_FILES in scripts/vitest-resource-manifest.mjs; prose accurate: the rule that new child-process tests must be classified in that manifest still holds, and the file still exists. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881), 8b48e2b35 (#2914) and a290454b4 (#2919) add process-heavy entries to vitest-resource-manifest.mjs: service-launcher, tauri-context, bounded-fixture-process and the Chromium geometry tests. That is consistent with the rule that new child-process tests must be classified there; prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the vitest-resource-manifest delta (documentation-freshness.test.ts classified as a bounded child-process file) and code-quality.md freshness wording; the routed rules here are unchanged.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "activity-list fix round: removed the deleted SessionsView.projectPill.overflow test's entry from vitest-resource-manifest.mjs (the file no longer exists). scripts/AGENTS.md describes the manifest's classification rule, not individual entries; still accurate."
       ]
     },
     {
