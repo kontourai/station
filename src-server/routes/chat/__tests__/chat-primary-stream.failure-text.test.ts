@@ -5,12 +5,11 @@
  * message, so a model provider's error body reached the chat after a reload.
  * Driven through the REAL `streamPrimaryAgentChat` and `finalizeChatRequest`.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { APICallError } from '@ai-sdk/provider';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { ChatTurnDedupStore } from '../chat-turn-dedup.js';
@@ -28,7 +27,7 @@ function providerError(statusCode: number | undefined) {
 }
 
 describe('streamPrimaryAgentChat failed-turn marker text', () => {
-  let dir: string;
+  const makeTempDir = trackTempDirs();
   let dedupStore: ChatTurnDedupStore;
   let memoryAdapter: Record<string, ReturnType<typeof vi.fn>>;
   let logged: unknown[];
@@ -105,8 +104,9 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
   };
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'chat-primary-stream-failure-'));
-    dedupStore = new ChatTurnDedupStore(join(dir, 'chat-turn-dedup.json'));
+    dedupStore = new ChatTurnDedupStore(
+      join(makeTempDir('chat-primary-stream-failure-'), 'chat-turn-dedup.json'),
+    );
     logged = [];
     const conversations = new Map<string, { id: string }>();
     memoryAdapter = {
@@ -120,10 +120,6 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
       getMessages: vi.fn(async () => []),
       getConversations: vi.fn(async () => []),
     };
-  });
-
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
   });
 
   test.each([
