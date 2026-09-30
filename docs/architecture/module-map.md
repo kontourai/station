@@ -35,7 +35,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while Desktop is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
-| [NativeApplicationSignaling](#nativeapplicationsignaling) | Exchange a native offer and answer through host-owned routing credentials, without claiming an application data transport. | `src-desktop/src/native_relay_redemption.rs` |
+| [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
@@ -108,17 +108,22 @@ native application peer, an approved account-bound Device and provider session
 verification. Missing browser `Origin` alone never selects native authority.
 The [native Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
 and [SDK client](../../packages/sdk/src/client/application-session-native.ts)
-consume host-supplied trust and signaling/signing interfaces; their existence
-does not wire ordinary Desktop sign-in or the Rust key vault below.
+consume host-supplied trust and structured peer/account operations. Their source
+composition does not enable ordinary Desktop sign-in or a default native route.
 
 The desktop [native account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker
 routing keys. Its owner tuple names the app, channel, client instance, Station
 and approved Device; validating that tuple's shape does not establish actual
-Device approval. `lib.rs` includes the module on desktop, but registers no
-renderer IPC for it and has no production sign-in or request caller. It does
-not establish mobile custody or hardware-backed non-exportability. Follow
+Device approval. The separate [account operation owner](../../src-desktop/src/native_account_operations.rs)
+registers three bounded main-window commands for public-key/challenge preparation,
+local username/password exchange-body preparation and GET/HEAD Project account
+headers. It derives identity/hashes/JTI/time from the reconciled host owner,
+fences handles/replay/expiry/key identity and exposes no raw signing input.
+The SDK's typed proof-provider path validates and retains the ordered body before
+the Device transport signs its complete bytes. This does not establish mobile
+custody, default sign-in or hardware-backed non-exportability. Follow
 [native capability boundaries](../design/native-capabilities.md) before wiring
 this owner into an application flow.
 
@@ -152,10 +157,13 @@ admits only the owning current ordinary Device bearer. The Desktop
 candidate and reads that fixed endpoint through the native HTTP owner. It
 rechecks owners under the profile/authority locks before recording an
 observation, distinguishes cached history from fresh readback, and retains the
-key on unknown outcomes. No renderer or request-signing caller consumes it.
+key on unknown outcomes. The [peer owner](../../src-desktop/src/native_application_peer.rs)
+and account operation owner require a positive observation scoped to the current
+owner/epoch; cached history is not returned as fresh reconciliation.
 Native proofs authorize only the pilot account and Project-read
-surface, with independent account and membership checks. Rust signing IPC and
-ordinary native client composition remain unmounted; the
+surface, with independent account and membership checks. Host peer/Device and
+account proof commands are registered, while ordinary native route selection,
+actual IPC/packaged acceptance and fresh relay-only enrollment remain unqualified; the
 [broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
 owns their integration and acceptance requirements.
 
@@ -164,7 +172,7 @@ captures authenticated pairing identity in an app/channel-bound keyring
 companion and resolves it under current profile authority. Its retirement
 journal permits cleanup retries without restoring credential authority.
 See [native capability boundaries](../design/native-capabilities.md#desktop-paired-device-identity-custody)
-for legacy, crash-recovery and unmounted signing limits.
+for legacy, crash-recovery and platform qualification limits.
 
 **Intent and Interface.** The public `deployment-authentication` contract lets an
 operator supply a versioned authentication module at startup. Its factory receives the
@@ -779,29 +787,37 @@ separate.
 
 Desktop clients need to exchange connection offers and answers through a broker
 without exposing routing credentials to their renderer. The native shell's
-[owner](../../src-desktop/src/native_relay_redemption.rs) exposes
-`station_native_relay_application_binding`, `station_native_relay_application_open`
-and `station_native_relay_application_read`. [lib.rs](../../src-desktop/src/lib.rs)
-registers these desktop Tauri commands; the main-window guard restricts their
-caller. They reuse the service behind the existing diagnostic signaling commands.
+[peer owner](../../src-desktop/src/native_application_peer.rs) uses the existing
+[relay custody](../../src-desktop/src/native_relay_redemption.rs) and registers
+prepare/open/read/sign/close commands in [lib.rs](../../src-desktop/src/lib.rs).
+The existing binding command supplies public profile, surface and approved-trust
+metadata. The retained diagnostic signaling path cannot mint peer proof authority.
 
-**Interface and custody.** Each command names a saved profile and its exact
-revision. Opening adds a nonce and bounded offer SDP (the connection's session
-description); reading names an existing
-offer nonce. The host loads the approved Station trust and keyring-held routing
-grant, then rechecks that custody after broker I/O. Callers cannot supply a
-bearer, private key, broker URL or Project authority in these envelopes.
+**Interface and custody.** Prepare names a saved profile and exact revision;
+the host derives current Device/binding/receipt, trust and grant and mints an
+opaque handle and nonce. Open adds only the exact bounded offer SDP; read names
+the handle. Rust verifies Station's signed nonce, connection identity, both SDP
+digests and DTLS fingerprints before accepting the transcript. A verified
+transcript does not establish browser DTLS connectivity or account authority.
+Sign constructs one Device proof for an allowlisted method/path/query and bounded
+body, using current host owners. No caller supplies claims, hashes, signing bytes,
+keys, bearer or a fabricated connected assertion.
 
-**Results and recovery.** Binding returns public host-derived metadata. Opening
-returns expiry; reading can return answer SDP and opaque Station proof. An
-uncertain open may already have created the offer, so retain its nonce and read
-that offer within its window before considering another open.
+**Results and recovery.** The handle exists before network opening, so an
+uncertain open is recovered by reading the same handle. Each peer admits one
+proof; owner/epoch changes, stale transcripts, replay and expiry refuse. The
+client may shorten a read deadline but cannot extend a prior one. Bounded handle
+tracking retires failures, late completions, cancellation, close and expiry.
 
-**Integration boundary.** No ordinary renderer or SDK caller currently invokes
-these commands. They do not create a DataChannel, verify the returned Station
-proof, carry application requests, select a route, sign in or enroll a Device.
-The account proof-key vault remains separate. The browser/Node diagnostic lab
-does not exercise this Tauri interface. Source and service tests do not establish
+**Integration boundary.** The [native adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
+and [Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
+consume the host lifecycle. Browser RTC remains client-owned; Connect verifies
+the Station proof before applying the answer, then adds the exact Device proof
+through the post-open request hook. Independent structured account operations
+prepare the complete account exchange body before that hook freezes/signs it.
+These opt-in libraries do not select a default route, enroll a Device or bypass
+server account/Project checks. The browser/Node diagnostic lab does not exercise
+this Tauri interface. Source and service tests do not establish
 executed IPC, native keyring behavior or a packaged/device journey. See the
 [native command contract](../design/native-capabilities.md#desktop-application-signaling-commands).
 

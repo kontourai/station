@@ -499,10 +499,14 @@ audience, Station and Device IDs, binding ID, native surface, unique Pion peer
 nonce, uppercase method, path **including query**, SHA-256 digest of the exact
 transmitted body bytes, JTI and expiry. The WebView may carry this one-request
 proof through the encrypted application channel but never receives the Device
-bearer or private key. The remaining host signing integration must check the
-current saved-profile revision, approved Station trust and Device binding before
-signing, and refuse a generic signing request or a foreign Station/profile.
-Station verifies the signature
+bearer or private key. The [host peer owner](../../src-desktop/src/native_application_peer.rs)
+now constructs this Device proof after verifying Station's exact signed nonce,
+connection identity, both SDP digests and DTLS fingerprints. It checks current
+profile/epoch, trust, grant and positively reconciled Device binding, then permits
+one proof per opaque handle for the pilot's bounded method/path/query/body.
+The renderer supplies no claims, hashes, signing bytes or connected assertion.
+Browser RTC remains renderer-owned; a verified transcript is not proof that
+DTLS is connected. Station verifies the signature
 against the *current* Device grant, independently hashes the received body,
 consumes the JTI before dispatch, and compares the proof's peer nonce/surface
 to private Pion provenance. Only then do ordinary Device scope, account,
@@ -569,8 +573,9 @@ host-signing IPC, physical devices or a production identity provider. The
 approval-context factory still does not authenticate an operator. The opt-in
 runtime mounts an operator-credential-only approval/readback route that checks
 current authority and the exact binding tuple. Native Device proofs, account
-membership and home possession cannot approve a binding. Host signing IPC and
-ordinary native client composition remain unbuilt.
+membership and home possession cannot approve a binding. Host Device and account
+proof commands are now registered; ordinary route/sign-in UI, actual native IPC,
+packaged/physical acceptance and fresh relay-only enrollment remain unqualified.
 
 The opt-in runtime also mounts a [protected Device self-receipt](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
 at `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`. Only a current
@@ -598,8 +603,9 @@ Fresh matching receipts return `current` or `not-current`; a closed versioned
 may return an earlier `cached-observation` with its original timestamp, labeling
 a prior positive state `previously-confirmed-current`. Malformed or unrelated
 errors remain unavailable, and every refusal retains the provisional key.
-This command has no renderer consumer and grants no signing, peer, account or
-Project authority. Actual native IPC, packaged use and fresh relay enrollment
+Its positive owner/epoch-bound observation is required by the peer and account
+owners, but ordinary route-selection UI does not invoke it automatically. It
+grants no account or Project authority. Actual native IPC, packaged use and fresh relay enrollment
 remain unverified.
 
 The [application Fetch adapter](../../packages/connect/src/core/applicationChannel.ts)
@@ -607,7 +613,20 @@ now supports a channel-owned `prepareRequest` hook after peer admission. It
 passes copied request bytes and headers while retaining the original target,
 query and body for dispatch. Added headers cannot replace existing headers;
 cancellation or failed preparation closes without dispatch. This public hook
-does not install a native signer or activate ordinary client transport.
+does not activate ordinary client transport. The native bridge now consumes the
+host handle lifecycle and adds the host Device proof through this hook. A lost
+open reply is read through the same handle; read expiry can shorten but cannot
+extend a prior deadline. Cancellation, late replies and expiry retire handles.
+
+The independent [account operations](../../src-desktop/src/native_account_operations.rs)
+and SDK typed proof provider prepare the local username/password exchange body
+before the Device hook freezes/signs it. Account claims/hashes/JTI/time come from
+the host, with a separate key and bounded owner-fenced context. One exchange,
+full host challenge-consumption retention and post-sign expiry/key checks prevent
+replay or expiry-hint laundering. Native challenge/exchange still need an already
+account-bound approved Device and real supported provider login; no principal,
+cookie or Device bearer is manufactured. This composes source boundaries, not
+completed native/packaged acceptance or default transport enablement.
 
 ### Transport qualification
 

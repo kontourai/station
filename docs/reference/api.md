@@ -2572,9 +2572,25 @@ reads the fixed endpoint using the current host-authorized Device bearer and
 compares the complete candidate tuple. Results distinguish fresh Station
 receipts from cached observations; cached positive history is
 `previously-confirmed-current` with its original observation timestamp.
-The command preserves the key on missing or unknown outcomes and has no
-renderer, peer-session or signing consumer. Source registration is not an
+The command preserves the key on missing or unknown outcomes. The host peer and
+account owners require its positive current-owner observation, while ordinary
+route selection does not invoke it automatically. Source registration is not an
 executed native IPC or packaged acceptance receipt.
+
+The [peer owner](../../src-desktop/src/native_application_peer.rs) registers
+prepare/open/read/sign/close commands. The host mints the nonce and handle,
+verifies the exact Station-signed transcript and permits one bounded Device
+request proof. The renderer supplies no identity claims, hashes, signing input
+or connected assertion. Browser RTC remains renderer-owned.
+
+The separate [account owner](../../src-desktop/src/native_account_operations.rs)
+registers challenge/key preparation, complete local username/password exchange
+body preparation, and canonical GET/HEAD Project account headers. It constructs
+account claims using independent key custody and current host owners, with
+bounded one-exchange handles, replay/expiry and post-sign key fencing. These
+structured commands do not mint a principal or replace the server's current
+provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
+for the typed provider and account-body-before-Device-signing ordering.
 
 ## Bind a paired device to its verified person
 

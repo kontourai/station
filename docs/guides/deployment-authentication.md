@@ -613,8 +613,21 @@ proof-bearing request can never read as the local operator.
 Limits: this is not packaged-Tauri, physical-device or production-identity
 evidence. The opt-in runtime mounts operator-only binding approval and public
 readback under `/api/pairing/native-device-bindings`; native proof authority
-cannot enter that operator path. Host signing IPC, ordinary native client
-composition and fresh relay-only native enrollment remain unbuilt.
+cannot enter that operator path. Host peer/Device and separate structured account
+proof commands are registered, while default native route/sign-in UI and fresh
+relay-only native enrollment remain unsupported. Source commands and fixtures
+are not an executed native IPC, packaged or physical acceptance receipt.
+
+The [account operation owner](../../src-desktop/src/native_account_operations.rs)
+derives audience, Station, Device, surface, hashes, JTI and time through the
+current reconciled host owner. Its independent account key prepares a complete
+username/password exchange body before the application transport freezes and
+Device-signs that body. It does not expose `sign(bytes)` or accept principal,
+cookie or Device-bearer authority from the renderer. One exchange consumes an
+opaque context; untrusted expiry hints cannot reset replay or extend lifetimes,
+and effective expiry/key identity are checked after signing waits. Server
+native challenges still require an already account-bound approved Device and
+supported provider-native login; unsupported/OIDC relay login fails closed.
 
 A separate protected `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`
 accepts only the owning current ordinary Device bearer with `orchestration:read`.

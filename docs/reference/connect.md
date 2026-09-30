@@ -62,6 +62,13 @@ Authorization, Cookie and Device-proof headers are refused. Abort, failed
 preparation or retired trust closes owned work. There is no direct HTTP
 fallback, grant-bearer exposure or signing-key exposure.
 
+Host transcripts and browser RTC connectivity are separate observations. The
+host permits one Device proof per handle; account proofs come from the separate
+structured provider and their complete exchange body is prepared before this
+transport freezes it. Host read expiry may shorten a prior deadline, while an
+extension or expired read is refused. The adapter retains bounded peer leases
+and retires cancellation, failed/late preparation and expired handles.
+
 This is an opt-in library surface, separate from ordinary saved-route selection.
 It does not enable a default UI route, enroll or activate a Device, authenticate
 an account or grant Project access. Account continuation proof remains a

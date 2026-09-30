@@ -93,7 +93,7 @@ The Desktop registers main-window-only commands for public binding metadata and
 the separate host-owned native application peer. The existing
 `station_native_relay_application_binding` command remains the source of the
 saved profile's public scope, client surface and approved Station trust view.
-The new peer commands in the [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+The peer commands in the [native peer owner](../../src-desktop/src/native_application_peer.rs)
 are:
 
 | Command | Caller input | Result |
@@ -114,6 +114,12 @@ host signer for bounded per-request Device proof. Neither the saved route nor
 this opt-in library surface is enabled by default. Account continuation remains
 separate, so this is not account proof or a complete authenticated Project flow.
 
+Rust verifies the exact Station-signed nonce, connection identity, offer/answer
+digests and both DTLS fingerprints. It owns transcript state and one proof per
+handle, not browser RTC connectivity. The handle/nonce exist before network open;
+owner/epoch changes, replay and expiry refuse. Read deadlines can shorten but
+cannot extend prior polling deadlines, and the adapter retires expired handles.
+
 The source adapter and focused tests do not establish executed Tauri IPC,
 packaged-platform behavior, physical-device qualification or a completed
 authenticated Project journey. The account proof-key vault below also remains
@@ -122,10 +128,10 @@ separate from account sign-in and enrollment.
 ### Desktop account proof-key foundation
 
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
-is included only for non-mobile builds. It is Rust-internal: no Tauri command,
-capability-report field, renderer adapter or production account-sign-in caller
-currently reaches it. It does not change the available connection or recovery
-actions.
+is included only for non-mobile builds. The vault remains Rust-internal; the
+[account operation owner](../../src-desktop/src/native_account_operations.rs)
+reaches it through three main-window commands, with no raw signing IPC. This
+does not select a native transport or enable ordinary sign-in/recovery actions.
 
 The vault uses a separate OS-keyring service and account namespace from the
 broker routing proof key. Its owner binds the app identifier, channel, client
@@ -137,6 +143,26 @@ Create, restore, replace, revoke and ES256 signing remain explicit Rust methods.
 This is software-key custody: Rust holds decoded private bytes while signing.
 Owner construction validates identifiers; it does not establish Device approval
 or account authority, and the signer itself does not validate a request protocol.
+
+`station_native_account_challenge_prepare` restores or creates the independent
+account key for the reconciled host Device owner and returns its public key,
+fixed challenge body and opaque handle. `station_native_account_exchange_prepare`
+accepts closed opaque challenge data and local username/password credentials;
+Rust derives identity, hashes, JTI and time and returns the complete exchange
+body and matching proof header. `station_native_account_request_headers` accepts
+opaque native continuation data and only canonical GET/HEAD Project targets.
+No caller-supplied audience, Device, surface, hash or signing bytes reach these
+operations.
+
+Sixteen process-local contexts are bounded to fifteen minutes and the current
+grant lifetime. One exchange consumes a context before signing; challenge IDs
+remain consumed for the full host challenge window independently of shorter
+untrusted expiry hints. Current profile, Device/epoch, trust, grant and binding
+are checked through the shared live-owner callback. Effective challenge or
+continuation expiry and the actual account key are checked again after key/sign
+waits before a result returns. Refusal preserves the key. An existing account-bound
+paired Device and approved native Device binding are server prerequisites;
+this does not bootstrap fresh relay-only enrollment or an unsupported provider.
 
 The source includes memory-backend tests and an opt-in macOS Keychain test.
 Unit checks do not establish IPC, account continuation, mobile custody or
@@ -188,8 +214,9 @@ matching receipt reports `current` or `not-current`; only the closed versioned
 response may return a prior observation with `source: cached-observation` and
 its original timestamp. A prior positive observation is labeled
 `previously-confirmed-current`, never fresh `current`. Missing, malformed,
-mismatched or unavailable readback preserves the candidate and key. No renderer
-caller, peer-session owner or request-signing path consumes this command yet.
+mismatched or unavailable readback preserves the candidate and key. The peer and
+account operation owners require a positive observation bound to the current
+owner/epoch; ordinary route-selection UI does not automatically invoke this command.
 Source and Rust/HTTP fixtures do not establish an executed native IPC or packaged journey.
 
 ### Desktop paired-Device identity custody
