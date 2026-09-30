@@ -2541,6 +2541,25 @@ readback does not establish cancellation of an ambiguous approval request.
 See [deployment authentication](../guides/deployment-authentication.md)
 for the pilot's scope and remaining native-client limitations.
 
+The same opt-in composition mounts a separate protected Device self-read:
+
+```http
+GET /api/auth/native-device-bindings/:bindingId/receipt
+HEAD /api/auth/native-device-bindings/:bindingId/receipt
+```
+
+It requires the owning, currently paired ordinary Device's bearer and
+`orchestration:read`; an account-bound Device can read before account sign-in.
+Operator credentials, cookies, delegation grants and native request proofs do
+not substitute for that bearer. The `NativeDeviceProofSelfReceiptV1` response
+contains only the public binding tuple, historical approval/revocation state
+and current Device-binding status. A missing ID and another Device's ID both
+return `404 not_found`; corrupt storage returns `503 unavailable`. Responses
+are not cached. Revoking the Device bearer removes self-read access, while
+binding revocation or replacement remains observable by its active owner.
+This read grants no account, Project or runtime authority and does not activate
+a native client or authorize provisional-key deletion after an unknown outcome.
+
 ## Bind a paired device to its verified person
 
 ```http

@@ -17,6 +17,7 @@ import {
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
 } from '@kontourai/station-contracts/environment-security';
+import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-contracts/native-device-proof';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import {
@@ -166,8 +167,25 @@ export function installAccountBoundDeviceGate(
   deps: AccountBoundDeviceGateDeps,
 ): void {
   app.use('*', async (c, next) => {
-    const account = deps.deploymentAuthentication?.service.current(c.req.raw);
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    // This exact protected Device self-read bootstraps binding observation
+    // before an account session exists. Its handler rechecks Device custody;
+    // it supplies no account principal or Project authority.
+    if (
+      runtimePrincipal?.kind === 'credential' &&
+      runtimePrincipal.authority === 'device-credential' &&
+      runtimePrincipal.source === 'bearer' &&
+      runtimePrincipal.deviceKind === 'device' &&
+      (c.req.method === 'GET' || c.req.method === 'HEAD') &&
+      c.req.path.startsWith(`${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/`) &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/receipt$/.test(
+        c.req.path.slice(NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH.length + 1),
+      )
+    ) {
+      await next();
+      return;
+    }
+    const account = deps.deploymentAuthentication?.service.current(c.req.raw);
     const nativeDevice = deps.resolveNativeDevice?.(c.req.raw);
     if (getRuntimeNativeDeviceProofPrincipal(c.req.raw) && !nativeDevice)
       return c.json(

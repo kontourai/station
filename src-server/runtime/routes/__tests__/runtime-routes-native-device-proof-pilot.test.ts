@@ -25,7 +25,7 @@
  * continuation bodies or credentials.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
@@ -44,7 +44,11 @@ import type {
   ApprovedStationConnectionTrust,
   StationConnectionSigningKey,
 } from '@kontourai/station-contracts/connection-proof';
-import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
+import {
+  NATIVE_DEVICE_PROOF_HEADER,
+  NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH,
+  type NativeDeviceProofSelfReceiptV1,
+} from '@kontourai/station-contracts/native-device-proof';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import {
   createNativeApplicationSessionProof,
@@ -457,10 +461,14 @@ describe('native Device request-proof pilot over the production composition', ()
     /** Pair an account-bound device bound to the REAL logged-in account. */
     const pairNativeDevice = async (
       name: string,
-      login: Extract<
-        Awaited<ReturnType<typeof localAccounts.service.loginVirtualSession>>,
-        { kind: 'authenticated' }
-      >,
+      login:
+        | Extract<
+            Awaited<
+              ReturnType<typeof localAccounts.service.loginVirtualSession>
+            >,
+            { kind: 'authenticated' }
+          >
+        | undefined,
       scope = GUEST_GRANT,
     ) => {
       const pairing = security.devicePairing;
@@ -474,25 +482,31 @@ describe('native Device request-proof pilot over the production composition', ()
         deviceName: name,
         requesterPosition: 'unproven',
         source: 'same-origin',
-        accountCandidate: {
-          issuer: login.issuer,
-          subject: login.session.subject,
-          displayName: GUEST_DISPLAY,
-        },
-        accountCandidateSessionId: login.session.sessionId,
-        requireAccountBinding: true,
+        ...(login
+          ? {
+              accountCandidate: {
+                issuer: login.issuer,
+                subject: login.session.subject,
+                displayName: GUEST_DISPLAY,
+              },
+              accountCandidateSessionId: login.session.sessionId,
+              requireAccountBinding: true as const,
+            }
+          : {}),
       });
       pairing.confirmRequest(
         pending.requestId,
         { ...operatorApproval },
-        {
-          principalId: deploymentAccountPrincipal(
-            login.issuer,
-            login.session.subject,
-            GUEST_DISPLAY,
-          ).id,
-          kind: 'account',
-        },
+        login
+          ? {
+              principalId: deploymentAccountPrincipal(
+                login.issuer,
+                login.session.subject,
+                GUEST_DISPLAY,
+              ).id,
+              kind: 'account',
+            }
+          : undefined,
       );
       const exchange = pairing.exchange({
         offerId: offer.offerId,
@@ -945,6 +959,7 @@ describe('native Device request-proof pilot over the production composition', ()
 
     return {
       app,
+      homeDir,
       request,
       security,
       localAccounts,
@@ -1022,6 +1037,320 @@ describe('native Device request-proof pilot over the production composition', ()
     expect(await approved.json()).toMatchObject({
       data: { binding: { bindingId: paired.binding.bindingId } },
     });
+  });
+
+  test('mounted self-receipt admits only its owning Device bearer before account sign-in', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest('self-receipt', 'Self receipt');
+    const paired = await h.pairNativeDevice('self-receipt-device', guest.login);
+    const other = await h.pairNativeDevice('other-receipt-device', guest.login);
+    const path = `${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/${paired.binding.bindingId}/receipt`;
+    const bearer = { Authorization: `Bearer ${paired.credential}` };
+    const response = await h.request(path, { headers: bearer });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(
+      await readJson<{ data: NativeDeviceProofSelfReceiptV1 }>(response),
+    ).toEqual({
+      data: {
+        version: 'station-native-device-proof-self-receipt/v1',
+        binding: {
+          stationId: paired.binding.stationId,
+          deviceId: paired.device.id,
+          bindingId: paired.binding.bindingId,
+          surface: paired.surface,
+          deviceProofJwk: paired.deviceKey.publicJwk,
+          deviceProofKeyThumbprint: paired.binding.deviceProof.thumbprint,
+          state: 'active',
+          createdAt: paired.binding.createdAt,
+          approvedAt: paired.binding.approvedAt,
+        },
+        currentDeviceBinding: true,
+      },
+    });
+    const head = await h.request(path, { method: 'HEAD', headers: bearer });
+    expect(head.status).toBe(200);
+    expect(head.headers.get('Cache-Control')).toBe('no-store');
+    expect(await head.text()).toBe('');
+    const foreign = await h.request(path, {
+      headers: { Authorization: `Bearer ${other.credential}` },
+    });
+    const absent = await h.request(
+      `${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/${randomUUID()}/receipt`,
+      { headers: bearer },
+    );
+    expect(foreign.status).toBe(404);
+    expect(absent.status).toBe(404);
+    expect(await foreign.json()).toEqual({ error: { code: 'not_found' } });
+    expect(await absent.json()).toEqual({ error: { code: 'not_found' } });
+
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const refused = await h.request(path, { method, headers: bearer });
+      expect(refused.status).toBe(401);
+      await refused.body?.cancel();
+    }
+    for (const suffix of ['', '/extra', '/approve']) {
+      const refused = await h.request(
+        suffix === '' ? path.replace('/receipt', '') : `${path}${suffix}`,
+        { headers: bearer },
+      );
+      expect(refused.status).toBe(401);
+      await refused.body?.cancel();
+    }
+    const operator = await h.request(path, h.ownerHeaders());
+    expect(operator.status).toBe(403);
+    expect(await operator.json()).toEqual({
+      error: { code: 'device_required' },
+    });
+    const cookie = await h.request(path, {
+      headers: { Cookie: `__Host-station-device=${paired.credential}` },
+    });
+    expect(cookie.status).toBe(401);
+    await cookie.body?.cancel();
+    const login = await h.request('/api/account-auth/sign-in/username', {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      }),
+    });
+    expect(login.status).toBe(200);
+    const accountCookie = login.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ');
+    expect(accountCookie).not.toBe('');
+    await login.body?.cancel();
+    const accountOnly = await h.request(path, {
+      headers: { Cookie: accountCookie },
+    });
+    expect(accountOnly.status).toBe(401);
+    await accountOnly.body?.cancel();
+    const proof = await h.request(path, {
+      headers: { ...bearer, [NATIVE_DEVICE_PROOF_HEADER]: 'forged' },
+    });
+    expect(proof.status).toBe(403);
+    await proof.body?.cancel();
+    const plain = await h.pairNativeDevice('plain-self-receipt', undefined);
+    const plainPath = `${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/${plain.binding.bindingId}/receipt`;
+    const plainBearer = await h.request(plainPath, {
+      headers: { Authorization: `Bearer ${plain.credential}` },
+    });
+    expect(plainBearer.status).toBe(200);
+    await plainBearer.body?.cancel();
+    const plainCookie = await h.request(plainPath, {
+      headers: { Cookie: `__Host-station-device=${plain.credential}` },
+    });
+    expect(plainCookie.status).toBe(403);
+    expect(await plainCookie.json()).toEqual({
+      error: { code: 'device_required' },
+    });
+    const offer = h.security.devicePairing.createOffer({
+      endpoint: ORIGIN,
+      kind: 'delegation',
+    });
+    const pending = h.security.devicePairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'delegation-receipt',
+      requesterPosition: 'unproven',
+    });
+    h.security.devicePairing.confirmRequest(
+      pending.requestId,
+      operatorApproval,
+    );
+    const delegated = h.security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const delegation = await h.request(path, {
+      headers: { Authorization: `Bearer ${delegated.credential}` },
+    });
+    expect(delegation.status).toBe(403);
+    expect(await delegation.json()).toEqual({
+      error: { code: 'device_required' },
+    });
+    const approval = await h.request(
+      `/api/pairing/native-device-bindings/${paired.binding.bindingId}/approve`,
+      { method: 'POST', headers: bearer, body: '{}' },
+    );
+    expect(approval.status).toBe(403);
+    await approval.body?.cancel();
+  });
+
+  test('self-receipt preserves exact historical revocation and derives currentness from current scope', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest('self-history', 'Self history');
+    const paired = await h.pairNativeDevice('self-history-device', guest.login);
+    const read = (bindingId = paired.binding.bindingId) =>
+      h.request(
+        `${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/${bindingId}/receipt`,
+        { headers: { Authorization: `Bearer ${paired.credential}` } },
+      );
+    h.security.devicePairing.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read'],
+      operatorApproval,
+    );
+    const reduced = await read();
+    expect(reduced.status).toBe(200);
+    expect(await reduced.json()).toMatchObject({
+      data: {
+        binding: { bindingId: paired.binding.bindingId, state: 'active' },
+        currentDeviceBinding: false,
+      },
+    });
+    h.security.devicePairing.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', 'orchestration:operate'],
+      operatorApproval,
+    );
+    const bindingId = randomUUID();
+    const key = await p256Key();
+    h.bindingService.createBinding({
+      bindingId,
+      deviceId: paired.device.id,
+      surface: paired.surface,
+      jwk: key.publicJwk,
+      approval: h.operatorAuthority.approve({
+        operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        tuple: {
+          operation: 'create',
+          stationId: paired.binding.stationId,
+          deviceId: paired.device.id,
+          bindingId,
+          surface: paired.surface,
+          jwk: key.publicJwk,
+        },
+      }),
+    });
+    const replaced = await read();
+    expect(replaced.status).toBe(200);
+    expect(await replaced.json()).toMatchObject({
+      data: {
+        binding: {
+          bindingId: paired.binding.bindingId,
+          state: 'revoked',
+          revocationReason: 'replaced',
+        },
+        currentDeviceBinding: false,
+      },
+    });
+    const replacement = await read(bindingId);
+    expect(replacement.status).toBe(200);
+    expect(await replacement.json()).toMatchObject({
+      data: {
+        binding: { bindingId, state: 'active', deviceProofJwk: key.publicJwk },
+        currentDeviceBinding: true,
+      },
+    });
+    h.bindingService.revokeBinding({
+      bindingId,
+      deviceId: paired.device.id,
+      surface: paired.surface,
+      jwk: key.publicJwk,
+      approval: h.operatorAuthority.approve({
+        operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        tuple: {
+          operation: 'revoke',
+          stationId: paired.binding.stationId,
+          deviceId: paired.device.id,
+          bindingId,
+          surface: paired.surface,
+          jwk: key.publicJwk,
+        },
+      }),
+    });
+    const revoked = await read(bindingId);
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toMatchObject({
+      data: {
+        binding: {
+          bindingId,
+          state: 'revoked',
+          revocationReason: 'operator-revoked',
+        },
+        currentDeviceBinding: false,
+      },
+    });
+    h.security.devicePairing.revokeDevice(
+      paired.device.id,
+      'operator-credential',
+    );
+    const deviceRevoked = await read(bindingId);
+    expect(deviceRevoked.status).toBe(401);
+    await deviceRevoked.body?.cancel();
+  });
+
+  test.each(['revoke', 'scope', 'binding-scope', 'identity'] as const)(
+    'self-receipt rechecks Device %s before publication',
+    async (change) => {
+      const h = await setup();
+      const guest = await h.shareAndCreateGuest('self-race', 'Self race');
+      const paired = await h.pairNativeDevice('self-race-device', guest.login);
+      const other =
+        change === 'identity'
+          ? await h.pairNativeDevice('self-race-other', guest.login)
+          : undefined;
+      const original = h.bindingService.bindingReceiptForDevice.bind(
+        h.bindingService,
+      );
+      vi.spyOn(h.bindingService, 'bindingReceiptForDevice').mockImplementation(
+        (input) => {
+          const result = original(input);
+          if (change === 'revoke')
+            h.security.devicePairing.revokeDevice(
+              paired.device.id,
+              'operator-credential',
+            );
+          else if (other)
+            vi.spyOn(h.security, 'identifyDevice').mockReturnValue(
+              other.device,
+            );
+          else if (change === 'binding-scope')
+            h.security.devicePairing.setDeviceScope(
+              paired.device.id,
+              ['orchestration:read'],
+              operatorApproval,
+            );
+          else
+            h.security.devicePairing.setDeviceScope(
+              paired.device.id,
+              ['orchestration:operate'],
+              operatorApproval,
+            );
+          return result;
+        },
+      );
+      const response = await h.request(
+        `${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/${paired.binding.bindingId}/receipt`,
+        { headers: { Authorization: `Bearer ${paired.credential}` } },
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        error: { code: 'device_required' },
+      });
+    },
+  );
+
+  test('self-receipt refuses corrupt binding state as unavailable', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest('self-corrupt', 'Self corrupt');
+    const paired = await h.pairNativeDevice('self-corrupt-device', guest.login);
+    writeFileSync(
+      join(h.homeDir, 'security', 'native-device-proof-bindings.json'),
+      '{',
+      { mode: 0o600 },
+    );
+    const response = await h.request(
+      `${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/${paired.binding.bindingId}/receipt`,
+      { headers: { Authorization: `Bearer ${paired.credential}` } },
+    );
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({ error: { code: 'unavailable' } });
   });
 
   test('bearer-free native challenge, exchange and permitted Project read over one admitted peer', async () => {

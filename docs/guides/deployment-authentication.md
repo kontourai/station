@@ -615,6 +615,16 @@ evidence. The opt-in runtime mounts operator-only binding approval and public
 readback under `/api/pairing/native-device-bindings`; native proof authority
 cannot enter that operator path. Host signing IPC, ordinary native client
 composition and fresh relay-only native enrollment remain unbuilt.
+
+A separate protected `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`
+accepts only the owning current ordinary Device bearer with `orchestration:read`.
+Its exact account-bound Device bootstrap exception allows this public binding
+observation before account sign-in; it creates no account principal or Project
+authority. Historical revocation/replacement remains readable by the active
+Device owner, while revoking its bearer removes access. The response and
+`currentDeviceBinding` are observations, not permission to activate a native
+client or delete a provisional key after an unknown approval outcome. Native
+proofs, cookies and operator credentials cannot substitute for the Device bearer.
 See [the broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
 for the protocol and the production-composition test for the exercised
 boundary.

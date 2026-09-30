@@ -571,6 +571,19 @@ current authority and the exact binding tuple. Native Device proofs, account
 membership and home possession cannot approve a binding. Host signing IPC and
 ordinary native client composition remain unbuilt.
 
+The opt-in runtime also mounts a [protected Device self-receipt](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
+at `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`. Only a current
+ordinary Device bearer with `orchestration:read` can observe its own exact
+public binding record. This exact self-read precedes the account-bound Device
+gate's account-session requirement; it supplies no account principal or Project
+authority. One sidecar snapshot supplies historical state and currentness,
+and the route rechecks the current bearer before publication. Missing and
+foreign records have the same refusal. The mounted runtime tests cover the
+account-free read, ownership, revocation, scope withdrawal and corrupt storage;
+they do not establish a native host consumer or relay-only retrieval. A future
+host must compare the full receipt tuple with its prepared candidate and keep
+the provisional key when readback is missing or the outcome is unknown.
+
 ### Transport qualification
 
 The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)

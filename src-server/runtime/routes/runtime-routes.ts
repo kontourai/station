@@ -345,6 +345,7 @@ import {
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
 import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native-device-proof-binding-routes.js';
+import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
@@ -2250,6 +2251,13 @@ export function configureRuntimeRoutes(
   context.app.route('/api/settings', createSettingsRegistryRoutes());
 
   if (context.nativeDeviceProofBindings) {
+    context.app.route(
+      '/api/auth/native-device-bindings',
+      createNativeDeviceProofSelfReceiptRoutes({
+        bindings: context.nativeDeviceProofBindings,
+        security: context.environmentSecurityService,
+      }),
+    );
     context.app.route(
       '/api/pairing/native-device-bindings',
       createNativeDeviceProofBindingRoutes({

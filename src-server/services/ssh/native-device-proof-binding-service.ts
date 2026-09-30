@@ -676,7 +676,7 @@ export class NativeDeviceProofBindingService {
    * Exact readback of one stored binding record by its binding ID, for future
    * host-side reconciliation. Distinguishes active, revoked and absent
    * without mutating anything; revoked records are historical state, never a
-   * current answer. No HTTP endpoint exposes this.
+   * current answer. HTTP callers return only explicit public projections.
    */
   bindingById(input: { bindingId: string }): NativeDeviceProofBinding | null {
     if (
@@ -689,6 +689,33 @@ export class NativeDeviceProofBindingService {
       .load()
       .find((candidate) => candidate.bindingId === input.bindingId);
     return binding ? cloneBinding(binding) : null;
+  }
+
+  /** Historical state and currentness from one sidecar read, confined to one Device. */
+  bindingReceiptForDevice(input: { deviceId: string; bindingId: string }): {
+    binding: NativeDeviceProofBinding;
+    currentDeviceBinding: boolean;
+  } | null {
+    if (!CANONICAL_UUIDV4_PATTERN.test(input.bindingId))
+      throw new NativeDeviceProofBindingError('invalid_binding_id');
+    const stationId = this.#pairing.environmentId();
+    const binding = this.#store
+      .load()
+      .find(
+        (candidate) =>
+          candidate.bindingId === input.bindingId &&
+          candidate.deviceId === input.deviceId &&
+          candidate.stationId === stationId,
+      );
+    if (!binding) return null;
+    const device = this.#activeDeviceOrNull(input.deviceId);
+    return {
+      binding: cloneBinding(binding),
+      currentDeviceBinding:
+        binding.state === 'active' &&
+        device?.kind === 'device' &&
+        isPairingScopeSubset(binding.deviceScopeAtApproval, device.scope),
+    };
   }
 
   /**

@@ -103,6 +103,23 @@ export interface NativeDeviceProofBindingReadbackV1 {
   readonly currentDeviceBinding: boolean;
 }
 
+export const NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH =
+  '/api/auth/native-device-bindings' as const;
+export const NATIVE_DEVICE_PROOF_SELF_RECEIPT_VERSION =
+  'station-native-device-proof-self-receipt/v1' as const;
+
+/**
+ * One historical binding observed by its owning, currently paired Device.
+ * The immutable public tuple identifies the approval; state and currentness
+ * are observations, never account, Project or request authority. An absent
+ * or failed read does not establish that a provisional key can be deleted.
+ */
+export interface NativeDeviceProofSelfReceiptV1 {
+  readonly version: typeof NATIVE_DEVICE_PROOF_SELF_RECEIPT_VERSION;
+  readonly binding: NativeDeviceProofBindingReadbackV1['binding'];
+  readonly currentDeviceBinding: boolean;
+}
+
 /**
  * Exact claims signed by the native Device proof key for one request. The
  * proof key and purpose are distinct from account continuation, Station
