@@ -12092,7 +12092,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12100,7 +12100,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12615,7 +12615,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its captures (connections tour and models) show no channel text or approval card, and its approval mentions are signing-key approval. Prose accurate.",
         "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -14986,7 +14987,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14994,7 +14995,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -15156,7 +15157,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its Knowledge Library captures involve no channel text or approval card. Prose accurate.",
         "Re-read 'Knowledge: stores and the retrieval index' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Knowledge Library claims involve neither change. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -19249,7 +19251,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19257,7 +19259,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19505,7 +19507,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its inspect-approval flow uses the request inspector, whose captures were re-recorded unchanged in content. Prose accurate.",
         "Re-read 'How Starter Work connects first steps to real work' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its inspect-approval flow opens a request without deciding it. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -21105,7 +21108,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -21113,7 +21116,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21337,7 +21340,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The request-inspection scene inspects and closes without a decision; neither change appears in its captures. Prose accurate.",
         "Rechecked the knowledge walkthrough: the only knowledge.ts change is the body-read deadline guard in its unwrap, which changes no step or screen the walkthrough describes.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. The request-inspection scene inspects without deciding; the knowledge walkthrough's only change is main's deadline guard. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -22011,7 +22015,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -22019,7 +22023,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -22117,7 +22121,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its evidence cites only the connections-models capture, which neither change touches. Prose accurate.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its evidence cites only the connections-models capture. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -24515,7 +24520,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24523,7 +24528,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24615,7 +24620,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its evidence cites only the shared-task-document capture; the channel text colour change does not alter the claims it records. Prose accurate.",
         "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its evidence cites only the shared-task-document capture. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -27407,7 +27413,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27428,7 +27434,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27617,7 +27623,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Approve once and Deny behave as before; its captures are unchanged. Prose accurate.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Its upgrade and port guidance holds with the recorded-port fix; Approve once and Deny behave as before. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
@@ -28508,7 +28515,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28516,7 +28523,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "395b98587de3588e66af6e9d7c491ac29e73393cfa1a14f938b9e8f2e3ce305c"
+          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28632,7 +28639,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Its Knowledge Library captures involve no channel text or approval card. Prose accurate.",
         "Re-read 'Knowledge Library' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Knowledge Library claims involve neither change. Prose accurate.",
-        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour."
+        "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
       ]
     },
     {
