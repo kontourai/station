@@ -23,7 +23,7 @@ async function* emptyStream() {
   /* no chunks */
 }
 
-describe('streamPrimaryAgentChat trace id on the agent-complete span', () => {
+describe('streamPrimaryAgentChat outward stream and completion', () => {
   let dir: string;
   let dedupStore: ChatTurnDedupStore;
   let observed: MonitoringEvent[];
@@ -90,12 +90,16 @@ describe('streamPrimaryAgentChat trace id on the agent-complete span', () => {
       }),
     );
     const response = await app.request('/chat', { method: 'POST' });
-    await response.text();
+    const wire = await response.text();
     await ctx.monitoringEmitter.flush();
-    return observed.find(
-      (event) =>
-        event[K.OP_NAME] === OP.INVOKE_AGENT && event[K.SPAN_KIND] === SPAN.END,
-    );
+    return {
+      wire,
+      complete: observed.find(
+        (event) =>
+          event[K.OP_NAME] === OP.INVOKE_AGENT &&
+          event[K.SPAN_KIND] === SPAN.END,
+      ),
+    };
   };
 
   beforeEach(() => {
@@ -120,8 +124,46 @@ describe('streamPrimaryAgentChat trace id on the agent-complete span', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('step frames exclude provider requests, responses and nested errors while text still streams', async () => {
+    const canary = 'private-model-request-canary';
+    const { wire } = await run(
+      vi.fn(async () => ({
+        fullStream: (async function* () {
+          yield {
+            type: 'start-step',
+            request: { body: canary },
+            providerMetadata: { error: { message: canary } },
+          };
+          yield { type: 'text-delta', text: 'Visible answer' };
+          yield {
+            type: 'finish-step',
+            response: { body: canary, headers: { authorization: canary } },
+            error: { message: canary },
+          };
+          yield { type: 'finish', finishReason: 'stop' };
+        })(),
+        text: Promise.resolve('Visible answer'),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      })),
+    );
+    expect(wire).not.toContain(canary);
+    expect(
+      wire
+        .split('\n')
+        .filter((line) => line.startsWith('data: {'))
+        .map((line) => JSON.parse(line.slice(6)))
+        .filter((frame) => frame.type === 'text-delta')
+        .map((frame) => frame.text)
+        .join(''),
+    ).toBe('Visible answer');
+    expect(wire).toContain('data: {"type":"start-step"}');
+    expect(wire).toContain('data: {"type":"finish-step"}');
+    expect(wire).toContain('[DONE]');
+  });
+
   test('a turn whose engine call throws still reports its real trace id', async () => {
-    const complete = await run(
+    const { complete } = await run(
       vi.fn(async () => {
         throw new Error('model auth failed');
       }),
@@ -139,7 +181,7 @@ describe('streamPrimaryAgentChat trace id on the agent-complete span', () => {
   });
 
   test('a turn that succeeds reports the same trace id shape', async () => {
-    const complete = await run(
+    const { complete } = await run(
       vi.fn(async () => ({
         fullStream: emptyStream(),
         text: Promise.resolve(''),
