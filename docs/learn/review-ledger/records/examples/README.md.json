@@ -18,7 +18,7 @@
 
     {"path":"package.json#/scripts/examples:conformance","digest":"2424d0e55a2ccff023d5369220c5233c3dee7defedacee9dc2ba5f94fb202c6d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
-    {"path":"package.json#/scripts/typecheck:examples","digest":"faba62416714a4e921624f94654885d68cc649a6270f3cb80a522d5068e36868","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
+    {"path":"package.json#/scripts/typecheck:examples","digest":"f5d00fc07890fa4d8f20d16a4cbdc0bb8b5721d1158645375769f973f10e0d57","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"}
   ],
 
   "checks": [
