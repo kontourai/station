@@ -1,0 +1,171 @@
+{
+  "path": "docs/reference/config.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
+
+  "limits": "Source trace plus actual schema/template checks and existing focused fixtures. No live model, MCP server, AWS account, native/Windows ACL, external engine bounded loop, deployment or provider/network outcome was exercised. Strands configured step caps, guardrails.maxSteps admission, retained quick prompts and template-format admission are documented limitations/draft recommendations, not repaired runtime behavior. Source hashes indicate later drift only.",
+
+  "document": {"digest":"4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/chat-attachment.ts","digest":"acf48de0ad38da3cd46b22e46020a8ef36d9fad0fefe28f1edfe30e545f8473e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/config.ts","digest":"d7eb4b693fdae3966c9ec13321f50eb92c3da6c4bf6d62b9e7f9679b05f276f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/settings-registry.ts","digest":"95bcee81c363ab5ab39dff227f2aaec271f7baecd7bf1c9ae33b85ac7928de5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"schemas/agent.schema.json","digest":"d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/constants.ts","digest":"124a7483ef48792d16d02ff54a577cc948be45a0ee1bc2bd9ce24773ff34513a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/app-config-seed.ts","digest":"78eca3518b6a4f9ed8370f305605d03ee2aa710cec670c4ef3e4ca28773ae222","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/config-loader-agents.ts","digest":"e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/knowledge-store/conversation-root-bootstrap.ts","digest":"658683fe19a2d352c6ab3e9b7a18d96d8752fcc20c2808a08050f5062b4ab31c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/anthropic-llm-provider.ts","digest":"2719b04e12929cd43f99dca6c482ac89d992e3a50e1e13c247b66ef7c6c5aeb8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/bedrock-region.ts","digest":"a60f287958c5db26c48d3e89d433c8e1586e8b52cd442027785708724bf65bdb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/google-llm-provider.ts","digest":"71cafec96e6d5f48bca876cbb8f833e192decec1c7744259003f2ebcddc5a7ff","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/ollama-provider.ts","digest":"868b1856847fc5faeffb7660108440b999d851d625100327aff62fbcb8f04715","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/openai-compat-provider.ts","digest":"3947c2c6bc098058e2890b79b56953ebccfc8f22a6021aed5f9081dbd82eafe6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/registries/default-registry.ts","digest":"37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/invoke-global.ts","digest":"798593a5e1cc7636321286b28214428cfe927eb467bd4744169a6f83ee9a044f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/chat/chat.ts","digest":"530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/attachments.ts","digest":"628b930049e5ea6a021ba03e7bee9ec916a32656f6a5979d555864b86eee71f9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/diagnostics.ts","digest":"80f92c11f22c58b4799d18dd3dcb3e33a5543bf5c4987abfa76cd3b2b1344009","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/agent-hooks.ts","digest":"69d4f905ff37904fa95e1f6e6da4c8e30d5ef176eee7b1753173d0c6138e261a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/runtime-template-variables.ts","digest":"bd513e1ef20fe3f80633064c0ea8a3b6bde1ca8fd515baa0a81193f8ed71e894","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"882de4a1963c2247e547d1dd8a47d64adcdb7bdedc45fb9fe05423d0f626b6db","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-startup.ts","digest":"80cf34735ed30ab3bf64a9be2f23b724189266d74e5eb5073c3ebf60af1a0a4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/runtime/conversation/dispatch-model-policy.ts","digest":"3fe2e900fd33da1f883a02ee81c9ca8017cfe650390f772e4f7c65cea1e78387","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/frameworks/framework-model-factory.ts","digest":"f5c0dbafd0fe04bbc4da9fed642ab1d13787f49460001b49e56a9055a7d168bb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/frameworks/strands-tool-loader.ts","digest":"8c98e38000a34ed2ab459e478da8c085f15bcf9cfc885d136fd8a02a06f99815","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4","revision":"5e564120522181c6fa726b474c138b229b00b95c"},
+
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/plugins/runtime-provider-resolution.ts","digest":"99c57df9288ec94d454dace087cb1bfc99867e41f6caa992d244bc053a2a0253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a480ff22bbe85830582d75094fd4a97de077d1886e67fe766437aee33bcaf6aa","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cbf613e34f6760cae2bc60eba80aab9365a8c6d3f2eeffa65dcf368a57100b42","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/security/runtime-request-security.ts","digest":"98a961eac469e998213b5764111132eab977b34ed730df27c67730472c757f78","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/security/station-control-authority-guard.ts","digest":"0e3d20ae5bb4f5815cc8030595663768964ac5a7222004176edb35cb7697d6de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/connections/connection-readiness-evidence.ts","digest":"ef862329790c4a2f477162da8f4f64ccf974c46ebc54aeb66125b13895c2bd99","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/infra/server-log-reader.ts","digest":"2b71dc69ab73e803132fd01b8fa552b164b70e942a9bad38ecbb7c22a5dcc1b9","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/infra/server-log-store.ts","digest":"1d764caf97cb921c50ed5be5839770819ff89aa1d344810c8dde263955c31487","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/attachment-blob-store.ts","digest":"d059c34e6fb37d33e1d83f5d90530483db408d04a8b27fe54825c485dc5db6dd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"23e3eb7ecc40c556f8dcd05c65998ab4fe029cf330373b0f72f268ecdce6a4d4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/terminal/terminal-shells.ts","digest":"89e7b5b6c1c23a14bad60c13e42a8b318d445df581323f403f3e060d16c715cb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/utils/logger-correlation.ts","digest":"43185abd71d7b07dc73cf246b12a24d88a90a9419a81fdbcd2d1700430b63648","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/utils/logger.ts","digest":"d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"1b5cc5dffc75ad25fc60c09e7b8e29a45c8e192e31d3c9d6767a930e51540a78","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat/FilePartPreview.tsx","digest":"46dbc6a57ae860432ab98f8ec53976d005043f4a3c7b70c01dfad173bc5186d5","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Actual SchemaValidator + prompt substitution on extracted old/current examples: three old failures (date-format JSON, malformed JSON fragment, invalid Agent shape); five corrected current fences pass. The standalone policy object is syntax-only, not a complete config. No home writes or inference.",
+
+    "250 existing tests across 11 focused files pass, exit 0, 27.13s: config loader/validator/templates/dispatch/tool filters/pre-tool policy/log reader/store/diagnostics/attachments.",
+
+    "407 Markdown local paths and rendered anchors pass; git diff --check passes; Veritas readiness veritas-1790521583908: 0 failures, 0 warnings. One documentation file committed; no runtime edits.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/security/station-control-authority-guard.ts: Adds thread-command scope validation for steer/adopt: derives target owner/project/host from persisted session; bound non-operator requires same owner; other scoped callers need same owner/project and not host. Bound operator still passes route ownership checks. Unknown thread fails closed. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d1e0facc2: Dispatch helpers and observer deadline are private; selection and timing behavior are unchanged. Request-default fetch helper is private; request behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml dropped the bearing/forage importers, and runtime-startup made shouldRegisterRuntimeDefaultSkillRegistry/initializeRuntimeUsageAggregator module-private with the same behavior. The configuration claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 makes the config route answer a refused full-access Station default with the structured fullAccessRefusal body, and main added a `defaultApprovalMode` row. Checked that row against config.ts (mayGrantFullAccess, checked only when a write raises the default to `never`), approval-authority.ts and full-access-refusal.ts. Corrected the row: the grant can come from any authenticated caller whose granted scope carries approval:full-access, not only a device, and the refusal names a device and the host grant command only when a paired device made the request. Other inputs (device-pairing deviceHoldsScope, event-store, orchestration reset, runtime wiring) do not affect the page's other claims. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds an optional RuntimeHttpSecurityOptions.recognizeCredential, wired to verifyCredential in runtime-routes. With it, the runtime-http gate answers 403 insufficient_scope, not 401, for a live credential that route admission refuses. The document's auth claims are the 403 approval-full-access-not-granted write refusal, home-possession locality minting and the diagnostics pairing-scope tier. None of them depends on the 401-versus-403 gate outcome. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a chat-stream-status notice to ChatDockBody for unacknowledged or not-sent decisions. It adds no setting and changes no attachment re-send behavior. The chat-dock claims in config.md (attachment re-send refusal) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); strands-tool-loader.ts now imports the shared tool-load-failure classifier instead of its private copy of the same redaction decision; mcp-manager.ts only made createRuntimeOAuthProvider module-private; event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

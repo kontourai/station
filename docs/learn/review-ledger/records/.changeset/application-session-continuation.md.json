@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/application-session-continuation.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"f2d295e83ac382988049aeb1c5f84c1d29527bb34e87d90b32173b0564474b84","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

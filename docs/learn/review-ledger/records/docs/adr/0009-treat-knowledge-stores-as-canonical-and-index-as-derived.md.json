@@ -1,0 +1,45 @@
+{
+  "path": "docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "The 2026-07-05 split and sqlite-vec selection remain decision rationale. A new status note distinguishes historical single-store/single-personal-root descriptions from current registered roots, derived index, and coexisting legacy API, and routes operating instructions to the Knowledge guide.",
+
+  "limits": "The 2026-07-05 Ollama/sqlite-vec/LanceDB timings, package sizes, rankings, license observations and external ecosystem survey were not rerun or refreshed. No live provider, rebuild equivalence, migration completeness, root authorization, or Neo4j qualification is certified.",
+
+  "document": {"digest":"88fd109b12ec637aae8b81fe9d7a11fac8a250f530b3a4a4804b9c805cc276c3","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+  "sources": [
+    {"path":"docs/guides/knowledge.md","digest":"c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/knowledge-index/sqlite-vec-index-provider.ts","digest":"96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a480ff22bbe85830582d75094fd4a97de077d1886e67fe766437aee33bcaf6aa","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"}
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Added bounded physical identity admission for Obsidian creates, explicit unrecoverable path-index limit, preserved ordinary empty-frontmatter notes, and linked graph walkthrough. Current store/index ownership remains unchanged.",
+
+    "Reviewed integration deltas: docs/guides/knowledge.md: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Reviewed the added distribution section in the canonical Knowledge guide. Historical store/index decision and its current-guide route remain accurate; no ADR prose change needed.",
+
+    "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904's runtime-routes changes are limited to the full-access refusal identity middleware and pairing revocation reports. Nothing in them touches knowledge roots, the derived index or the legacy API that the status note describes. Classification and prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential security wiring in runtime-routes.ts. It does not touch knowledge store roots, the derived index or the legacy API composition, so the ADR's status note and decision rationale are unaffected. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

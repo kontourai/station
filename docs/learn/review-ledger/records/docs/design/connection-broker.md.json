@@ -1,0 +1,41 @@
+{
+  "path": "docs/design/connection-broker.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Dated requirements and local milestones mapped to broker/connector/protected dispatcher/Device enrollment owners; preserves production/native enablement boundary.",
+
+  "limits": "Not a complete signaling/encryption/key/trust/rotation/cookie/cancellation audit or fresh lab, remote internet, actual native-origin or external-provider qualification.",
+
+  "document": {"digest":"bb29d688346f32249196773e64cc0fa2624d041d5bd3748209887f6c63c6faa3","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+  "sources": [
+    {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-desktop/src/relay_grant_vault.rs","digest":"fa9d9a3b98bc611d6dff5742c0e0b10a0dc3293e9aac0a3b72b1eb55dbc651ed","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"0acbbb36351bcb535e346310a19163921ce8b4314617d0a5b5f011b70ad443a8","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"408c9acaacc694e5dd56d93289701fc54a3f9c688470f33b88d982c3f470a263","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/connections/virtual-application.ts","digest":"b9e2446298cad53ee4a9923d317b0f5d060a1097d56c2c705caee12a12fbe8da","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"aa5ec04dbafae74f8cdf0b9ab77f1e0cca319c7f69cdc6327455f47f4968456e","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"13fae40e60a2c48f3bad5aea34a859c2af772af25f6bb0de12630ad19e71264a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"49951201fe9590b5fbf6b33873d2ae6c48a68dbef028f4ed57169d67f01cdf83","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+  ],
+
+  "checks": [
+    "Full original body read and bounded current-owner/caller inspection; no blanket semantic certification.",
+
+    "91 focused tests across4files passed; actual handler/store/service budget probe retained privately.",
+
+    "Relevant frozen upstream source deltas independently reviewed; classification scope and historical/runtime evidence limits retained.",
+
+    "Required merge-queue recovery through 421517851: Qualified the current native note: library/server opt-in application lane now exists, ordinary saved-route activation remains unwired; dated requirements and original transport receipts remain historical.. Changed inputs reviewed: docs/design/connection-broker.md, src-server/services/connections/virtual-application.ts, packages/connect/src/core/nativeApplicationTransport.ts, src-server/services/connections/native-v2-pion-application-adapter.ts, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical."
+  ]
+}

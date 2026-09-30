@@ -1,0 +1,43 @@
+{
+  "path": "packages/board-pane/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read. Corrected descriptor subpath ownership and obsolete injected component slots; verified private source exports, current WorkspacePaneHostContract alias, SDK error primitive, Project/standalone/preview descriptor and the actual core mounter and intent-routing implementation.",
+
+  "limits": "Boundary tests prove package import/shape rules, not absence of behavioral drift. No real Board execution, consent/provider operation, responsive visual/physical device proof or npm publication.",
+
+  "document": {"digest":"f7fde6380c810e97b0e606ffbf2e0b82a1686695b840fcd9baff9d2c91873069","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
+
+  "sources": [
+    {"path":"packages/board-pane/package.json","digest":"8c6beb7421ba370894f635ae2c3cd0101d634a5b25d5078eef281d4d3fbead65","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"},
+
+    {"path":"packages/board-pane/src/ConsoleBoardPane.tsx","digest":"d60f642e10d03ab7ee6ea284dbcc3bb0e4aabfdfbc5f407a591ea787767e8f2c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/board-pane/src/index.ts","digest":"148438fd97b147f43826c33f74d6dc303420c011055d2f49fc81968dedb0b05f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/board-pane/src/workspace-board-pane.ts","digest":"92c83e5a637cb8571ffb1d2bf579ce884445475ff3206c6dc692b1a51d5410c0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/views/board/BoardWorkspacePane.tsx","digest":"48c4933174dd69e1bac7bf8fdd8ed2f4f405be3a36a8a1570dc1ab201926248d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+
+    "Integration source review through d1e0facc2: Process-ID comment now names the Console bridge; parsing behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes WORKSPACE_BOARD_PANE_DESCRIPTOR_ID and _SOURCE_ID module-private and deletes the unused isCanonicalWorkspaceBoardDescriptor. The /workspace-board-pane entry still exports the descriptor, renderer IDs, createWorkspaceBoardPaneInstance and isCanonicalWorkspaceBoardPaneInstance. The README's 'React-free descriptor and instance helpers' does not name the removed symbols. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

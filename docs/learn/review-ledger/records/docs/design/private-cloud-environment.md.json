@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/private-cloud-environment.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Working single-operator VM deployment design already identifies unvalidated provisioning and restore drills; no prose edit needed. Located runtime image and actual container smoke owners without treating them as executed cloud evidence.",
+
+  "limits": "No container build/smoke run, provider provisioning, workload sizing, quota proof, backup/restore drill, cloud service or live ingress validation. External Docker guidance and every operational recommendation were not independently re-audited.",
+
+  "document": {"digest":"d42528730112f077ab59b4ce7ae31016f4af098f11c0aff63d4fa34e2f4aa1c0","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
+
+  "sources": [
+    {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
+
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"6a0d3e154170e88514a9ad71e1b7af587073aeb4"},
+
+    {"path":"scripts/container-smoke.sh","digest":"31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"}
+  ],
+
+  "checks": [
+    "Full document read: 114 original lines; all original body bytes preserved.",
+
+    "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+
+    "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+
+    "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7e244ddfc6734d83bdef1947f80ca092b2c5a415",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Review through 7e244ddfc: vitest-resource-manifest.mjs classifies the new docs-freshness-job-env probe as process-heavy, following this file's rule that child-process tests are classified in that manifest; prose accurate. Source review is separate from executed test evidence."}
+  ]
+}

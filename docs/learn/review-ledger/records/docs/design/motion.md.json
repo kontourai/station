@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/motion.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Motion grammar and structural enforcement with historical evidence; exact reduced-motion duration and three-declaration/two-file exception scope corrected.",
+
+  "limits": "No fresh latency/screenshot/computed-motion/device proof; structural ratchet is not visual or accessibility certification.",
+
+  "document": {"digest":"0604fe00d441d53cadddf32425c68cc32745dbf4ff04e98d0ae81a05ffe4dd8c","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+
+  "sources": [
+    {"path":"scripts/motion-contract-baseline.json","digest":"fe02168284beb8997472640e2bd29ad8ee6638ee911ba59d425008b8bbdcb657","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+
+    {"path":"scripts/motion-contract-ratchet.mjs","digest":"381da46821c137626ac1f426a27d5c95e09075296890dc881b2e88b56cd546a8","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+
+    {"path":"src-ui/src/components/notifications/NotificationHistory.css","digest":"e8d285de81a6deeeb60e7416a2278dbcd25a3200d07076ce3974c0ebe9ac1cd6","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+
+    {"path":"src-ui/src/components/voice/VoicePill.css","digest":"f6d9ffcd093524270bced87c269776da857dbd1910f6292f96557a3a2cde5d78","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+
+    {"path":"src-ui/src/tokens.css","digest":"18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"}
+  ],
+
+  "checks": [
+    "Full body read; bounded actual-owner/caller inspection. Purpose classification, not whole-document semantic certification.",
+
+    "Detailed exception rationale and all recorded route/screenshot evidence preserved."
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/dogfood/dogfood-016-consume-kontourai-ui/report.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+
+  "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+
+  "document": {"digest":"f87fdbb45daa8bf4b54c2c9a46c38ddd7a3450c3544a814585e6f51730ffb129","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

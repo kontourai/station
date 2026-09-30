@@ -1,0 +1,55 @@
+{
+  "path": "docs/design/cli-triage.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed every command-design claim against CLI dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction and actual child-launch implementation. Corrected model-service sharing and terminal-output limits.",
+
+  "limits": "No real installed agent, provider, remote diagnostics or keyring journey. Flags request read-only behavior; they do not independently establish installed-agent enforcement or arbitrary secret detection.",
+
+  "document": {"digest":"b064c8f2e26b8250bf675fac1277b9674b87ce0483d62bed32072950b536887d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"docs/reference/cli.md","digest":"f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"e0934da8f4630b295f64b6275c25a48a41819ee58305b7b774a426aa0652bcaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/station-cli-implementation.ts","digest":"e747e51f4b5b6dd72ed1505ea99027dc18ea67a4aa272139b9ad013cbca46a22","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/station-cli.ts","digest":"f7c3079b713e6bda690bf4b73419ffad0ff3fd8856c9c9be1f85eeb1271b3b36","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Full original body read; bounded actual-owner/caller review. Purpose classification is separate from whole-document semantic review.",
+
+    "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "42 setup, target and triage focused tests passed.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/triage.ts: Replaces its unbounded Windows trust spawn wrapper with the shared bounded runner. Triage stdout passthrough, stored redaction, owner-only directory policy and draft-only behavior unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Updated prebuilt installer-owned upgrades and retained loose-archive/service refusals; unrelated command, API and triage contracts remain unchanged.",
+
+    "Integration source review through e0314c727: cli.md gained the archive install path, archive service units and installer-owned archive upgrade (#2867). None of this touches the triage command's dispatch, read-only mode, redaction or child-launch claims, which remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 changes cli.ts only in `describeCliError`, which now tries `explainFullAccessRefusal` before `explainRequestFailure`. docs/reference/cli.md gains the access devices/scope/scopes reference. None of this touches triage dispatch, source-doctor injection, authenticated diagnostics selection, artifact redaction or child-launch flags. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 changes only packages/cli/src/__tests__/triage.test.ts. The invalid-remote-diagnostics rejection now runs unconditionally instead of only when this machine observed remote as unavailable. No triage product behavior changed. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the delegate decision-delivery subsection to docs/reference/cli.md, and the auto-merged cli.md is coherent. The triage design (bundle collection, agent launch flags, artifact policy) does not touch delegation decisions. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) changed only the service and upgrade sections of docs/reference/cli.md (fixed launcher, supervised update, Check for server updates). The triage command's reference text and this design's claims are untouched. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -540,6 +540,10 @@ export function selectChangedVerification(
   // file's behaviour, so it must not turn "no suite covers this file" into a
   // completed green (#2176).
   const ownedRelatedPaths = new Set();
+  // Lanes a supplemental edge deferred, by the path that deferred them. Kept
+  // structured so execution can tell them from escalations (see
+  // prepareChangedSelection) without reading reason text.
+  const supplementalDeferrals = [];
   let escalated = false;
   const changed = new Set(paths);
   for (const path of paths) {
@@ -567,9 +571,15 @@ export function selectChangedVerification(
     // Added before every branch below: a supplemental test is additive even
     // where the path escalates, and naming it in the receipt is the point.
     for (const edge of edges)
-      if (edge.supplemental)
+      if (edge.supplemental) {
         for (const test of edge.tests ?? [])
           addReason(tests, test, `${edge.reason}: ${path}`);
+        for (const lane of edge.deferredLanes ?? []) {
+          const reason = `${edge.reason}: ${path}`;
+          addReason(lanes, lane, reason);
+          supplementalDeferrals.push({ lane, path, reason });
+        }
+      }
     const hasExplicitBoundary =
       isChangedTest ||
       boundaryEdges.some((edge) => edge.tests?.length || edge.lanes?.length);
@@ -617,8 +627,29 @@ export function selectChangedVerification(
       .map((id) => ({ id, reasons: [...lanes.get(id)].sort() })),
     relatedPaths: [...relatedPaths].sort(),
     ownedRelatedPaths: [...ownedRelatedPaths].sort(),
+    supplementalDeferrals,
     escalated,
   };
+}
+
+/**
+ * The paths whose supplemental edges deferred every selected lane, or null
+ * when any lane has another reason (an escalation, an ordinary lane edge, an
+ * unavailable path or product law). A supplemental edge only adds work, so
+ * its deferral must not cost the rest of the diff its related discovery.
+ */
+function supplementalOnlyDeferredPaths(selection) {
+  const deferrals = selection.supplementalDeferrals ?? [];
+  if (!selection.lanes.length || !deferrals.length) return null;
+  for (const { id, reasons } of selection.lanes)
+    for (const reason of reasons)
+      if (
+        !deferrals.some(
+          (deferral) => deferral.lane === id && deferral.reason === reason,
+        )
+      )
+        return null;
+  return new Set(deferrals.map(({ path }) => path));
 }
 
 function addReason(collection, key, reason) {
@@ -1568,12 +1599,22 @@ export function prepareChangedSelection(
   // Broad import expansion remains deferred. Explicit, existing test targets
   // still provide bounded diagnostic failures; passing them cannot complete
   // the deferred obligations. Never truncate a selection into a green claim.
+  // A lane deferred only by supplemental edges (#2922) keeps the other
+  // paths' related discovery; the deferring paths themselves go to the lane.
+  const deferredOnly = supplementalOnlyDeferredPaths(selection);
   const executionSelection =
     selection.lanes.length === 0
       ? selection
       : {
           ...selection,
-          relatedPaths: [],
+          relatedPaths: deferredOnly
+            ? selection.relatedPaths.filter((path) => !deferredOnly.has(path))
+            : [],
+          ownedRelatedPaths: deferredOnly
+            ? (selection.ownedRelatedPaths ?? []).filter(
+                (path) => !deferredOnly.has(path),
+              )
+            : selection.ownedRelatedPaths,
           tests:
             selection.tests.length <= 32
               ? selection.tests.filter((entry) =>

@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/dogfood/first-run-ritual.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+
+  "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+
+  "document": {"digest":"730252b225d365d0ce6b221a0a6599492d956e5bfbfd6a7f1ef7eb6eadb48013","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}
