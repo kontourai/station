@@ -270,6 +270,36 @@ reproduced remote exploit against Station. Runtime Axios consumers include
 transitive SAP HTTP clients, localtunnel, and PostHog; their configuration and
 network reachability determine which advisory conditions apply.
 
+## 2026-09 gRPC floor
+
+The workspace override requires `@grpc/grpc-js` 1.14.5 or newer compatible
+1.x, and its lockfile selects 1.14.5. The
+[certificate-authentication advisory](https://github.com/advisories/GHSA-m9gg-hp2v-232j)
+identifies 1.14.5 as patched on the 1.14 line.
+
+The threat is an unauthorized client certificate being exposed as authorized
+when a gRPC server permits optional client certificates and uses `getAuthContext`
+for authentication. Station's own server code does not call `getAuthContext`;
+its installed dependency path is the OTLP gRPC exporter. This correction is
+bounded by version and source inspection, not a reproduced remote certificate
+attack against Station. It changes no Station authentication contract or
+advisory-policy exception.
+
+## 2026-09 DOMPurify floor
+
+The root dependency and lockfile select DOMPurify 3.4.16, fixing the
+[in-place hook-detachment advisory](https://github.com/advisories/GHSA-p98j-92pf-mc4p).
+Its threat model is untrusted markup processed in `IN_PLACE` mode with a
+node-removing after-sanitize hook. Station's first-party HTML renderer uses
+string sanitization without those options or hooks; the plug-in bridge exposes
+the underlying sanitizer API. No matching first-party caller was found.
+
+An isolated jsdom probe retained a descendant `onerror` attribute after hook
+detachment on 3.4.15, while 3.4.16 removed it. That proves the library-level
+neutralization difference; it does not execute an attacker script or establish
+an exploitable Station path. The live advisory floor passed after the gRPC and
+DOMPurify corrections without new exceptions.
+
 ## 2026-07 critical/high disposition
 
 This dated matrix records the intake snapshot. One package row can contain

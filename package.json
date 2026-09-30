@@ -368,7 +368,7 @@
     "better-auth": "1.7.5",
     "chokidar": "^5.0.0",
     "debug": "^4.4.3",
-    "dompurify": "^3.4.15",
+    "dompurify": "^3.4.16",
     "dotenv": "^17.4.2",
     "google-auth-library": "^11.1.0",
     "hono": "^4.13.8",
