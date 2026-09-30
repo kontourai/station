@@ -72,7 +72,7 @@
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a480ff22bbe85830582d75094fd4a97de077d1886e67fe766437aee33bcaf6aa","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
     {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

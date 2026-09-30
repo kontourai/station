@@ -20,6 +20,8 @@
 
     {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"b6e58833d00c3823cf7cc0410b757ec27b4ec1a65ef2d26b2efa37a76bac8fc3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
     {"path":"packages/shared/src/tool-request-preview.ts","digest":"32a2636e1267a213c32434980f5e8dea111c52eb5004ed41cf02655da3d81361","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
@@ -29,6 +31,8 @@
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"62628f377e3b3ec1ed3bb134c58ab9cfd1aaf287508fdc9a3c559c1efe8d5ad7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
@@ -40,23 +44,19 @@
 
     {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/services/approvals/approval-inbox.ts","digest":"86f6654861290a3c6a7cd303bfe9a339e2ee1275f1dc9fd67c23c0cab275bbba","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/services/orchestration/request-presentation.ts","digest":"6bde57de6020c50c9784630c585e0744a249e197c6f035fdb8fc0a9ed768aa31","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-ui/src/components/badges/ApprovalModeChip.tsx","digest":"d74ef9adc51a198ae125997d3dea412a24af03f1e427e10c43c97d526c21cbab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"src-ui/src/components/chat/ToolCallDisplay.tsx","digest":"230994803c6e56636bdf11aee4dc3417f9c7da83242c99a1c4a68b2fdd8184f7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
     {"path":"src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","digest":"77417daeb5063994d160f5a7bc842e9bffe448258646e0a352c19875d03193bf","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"03c9f0371490796b697bc774bb1b5c36de11f2d27874d27d215d652c2aa73154","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"b6e58833d00c3823cf7cc0410b757ec27b4ec1a65ef2d26b2efa37a76bac8fc3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"62628f377e3b3ec1ed3bb134c58ab9cfd1aaf287508fdc9a3c559c1efe8d5ad7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"src-server/services/approvals/approval-inbox.ts","digest":"86f6654861290a3c6a7cd303bfe9a339e2ee1275f1dc9fd67c23c0cab275bbba","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"src-ui/src/components/chat/ToolCallDisplay.tsx","digest":"230994803c6e56636bdf11aee4dc3417f9c7da83242c99a1c4a68b2fdd8184f7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"b2ad336b2a519684fb2c2e4759207610b250779c971ab2fc7330f7b03c11a611","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
   ],

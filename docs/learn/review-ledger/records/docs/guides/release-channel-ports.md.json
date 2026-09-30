@@ -28,7 +28,15 @@
 
     {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"config/portable-server-node-runtime.json","digest":"740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/build:ios:simulator","digest":"3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754","revision":"f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df"},
+
+    {"path":"package.json#/scripts/channel-ports:check","digest":"199f794cc84fc36a71366f1503f6b3520343fd664feab4790718d996932b6029","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/install-script:check","digest":"71f9c5895d8e19e1c1216cf5bf576168cf7a4d1d4a592024f3268febcbc4c6cd","revision":"6f10c06b853f98e26779822e14e3ac108397e977"},
 
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -38,11 +46,15 @@
 
     {"path":"packages/cli/src/commands/lifecycle-code-root.ts","digest":"f6b5b71d277613daa02c3a46d45082e7f5fd460f8fc794e111483ba4167ad28f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
     {"path":"packages/cli/src/commands/service-run.ts","digest":"2b3560dd4f26026869b307587704c134cc63a81fe8295527131ba225d0486154","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/service-windows.ts","digest":"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"packages/shared/src/portable-server-targets.mjs","digest":"71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -65,6 +77,8 @@
     {"path":"scripts/check-android-16kb-alignment.mjs","digest":"b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/dev-desktop.mts","digest":"e5ad5e41f4d402d485492426a826ad9c6f095f5ae5da21c0fcee40eb51053798","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/install-script-generated.mjs","digest":"2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -94,7 +108,7 @@
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -132,21 +146,7 @@
 
     {"path":"src-ui/src/views/settings/SystemSection.tsx","digest":"628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/install-script-generated.mjs","digest":"2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/shared/src/portable-server-targets.mjs","digest":"71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"config/portable-server-node-runtime.json","digest":"740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
-
-    {"path":"package.json#/scripts/build:ios:simulator","digest":"3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754","revision":"f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df"},
-
-    {"path":"package.json#/scripts/channel-ports:check","digest":"199f794cc84fc36a71366f1503f6b3520343fd664feab4790718d996932b6029","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/install-script:check","digest":"71f9c5895d8e19e1c1216cf5bf576168cf7a4d1d4a592024f3268febcbc4c6cd","revision":"6f10c06b853f98e26779822e14e3ac108397e977"}
+    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

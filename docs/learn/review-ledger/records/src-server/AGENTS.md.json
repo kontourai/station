@@ -12,11 +12,11 @@
   "document": {"digest":"00bfed83f5bfd3af081f1197430799b3aa84470e657ddfcabc545f75aa7167e1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"docs/architecture/module-map.md","digest":"b38e8fff2feac60a53ce342236e2063edfc6f79edefbd87d0e59cebec3f53fcc","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
     {"path":"docs/guides/development.md","digest":"dd6933dc12b9e5d7ecb93b433fcf1cb00a7a564293976839b332448236208799","revision":"c8f80c629fca13479b0010de84094ad0a13332c1"},
 
-    {"path":"docs/guides/testing.md","digest":"972c582ae97bded24fbf5d6171e47d81c9fcf587fea25d94041e6fbb83719cd4","revision":"8830f573323af6fa13853fbc00d48ea511da42ad"},
+    {"path":"docs/guides/testing.md","digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
     {"path":"src-server/services/evidence/workflow-sidecar-service.ts","digest":"bb07d659390bf7acd2e30eae827fdbfb33b4e1b908e7ff0d92394f1b2bda6896","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 

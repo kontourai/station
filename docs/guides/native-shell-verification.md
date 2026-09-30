@@ -92,6 +92,84 @@ and supervisor unit tests use injected boundaries. Neither their passing result
 nor the existence of the shell lane establishes a completed native run here.
 Mobile background renewal and packaged-platform acceptance remain separate.
 
+### Native protected Project pilot
+
+The explicit macOS development lane is:
+
+```sh
+npm run test:tauri-shell -- --build --lane=native-project-proof
+```
+
+The [shell selector](../../scripts/run-tauri-shell-e2e.mjs) uses the separate
+WebDriver relay-grant app identity. The lane needs an unlocked macOS Keychain,
+Docker with the pinned coturn image, the pinned Go toolchain and cached Pion
+modules, and OpenSSL. It is a manual lane; the default shell sweep does not run
+it. Its debug build does not qualify a signed release artifact.
+
+The [runtime fixture](../../tests/tauri-shell/native-project-runtime-fixture.ts)
+starts the real StationRuntime, local account provider, broker, TURN and Pion
+connector in private fixture homes on allocated non-default ports. It preserves
+the same Station identity when restarting with one exact native client surface
+and the explicit Device-proof pilot. Real account login and invitation
+acceptance install an active Viewer membership, which the operator API verifies
+before account-bound Device pairing. Registration alone does not install that
+membership. The native host owns the pairing bearer, routing grant and distinct
+Device/account keys; the WebView supplies no fabricated principal or Device
+metadata.
+
+The [driver](../../tests/tauri-shell/native-project-acceptance.e2e.ts) and
+[main-WebView runner](../../tests/tauri-shell/native-project-acceptance-webview.ts)
+check operator-approved Device binding and host self-receipt,
+host-owned peer preparation and signing, native account challenge/exchange,
+protected Project read and reconnect through the application channel, and
+subsequent account and Device revocation. Selected relay pairs and a browser direct-Project
+request counter distinguish the exercised transport. Direct loopback bootstrap
+is still used for trust, pairing and the host receipt; this is not fresh
+relay-only enrollment.
+
+On September 30, 2026, the macOS debug lane completed against frozen harness
+revision `d468df79564510e9df72e3b19da7d36a89ac41e0`. The retained
+`tauri-shell-final-d468df795.txt` log records the current host self-receipt,
+real Keychain Device key, active Viewer membership and native challenge/exchange
+responses with status 200. The protected shared-Project read and reconnect
+returned 200; account revocation returned 401; reauthentication restored a 200
+read; revoking the paired Device returned 403 with no Project payload. The run
+observed nine selected relay pairs, fresh request peer handles and zero browser
+direct-Project requests, and completed its fixture-owned cleanup checks.
+
+The exercised debug executable has SHA-256
+`baa3dee2f882354be1f55f2ffbcaaaf8163eb75bd2872e3cdc507eaff67d767b`;
+its embedded build/client revision is `d7f19eeda`. The harness revision is
+recorded separately because its later changes were confined to the Node child
+launcher and fixture/driver files; production Rust, SDK, UI and proof sources
+were unchanged between those revisions.
+
+This is executed real WebView/IPC/Keychain and local-provider evidence for that
+development bundle and frozen harness. It does not establish signed release
+provenance or all-platform qualification. Later binaries and source changes need
+their own receipt.
+
+After merging the updated server runtime, the same debug executable completed
+the lane again at frozen Station/runtime and harness revision
+`a612b6df46e494c7905cfcb2579d402922db9246`. The retained
+`native-project-main-merge-tauri.log` ends with `TAURI_LANE_EXIT_CODE=0` and
+records the same 200/200/401/200/403 read, reconnect, account revocation,
+reauthentication and Device revocation sequence. It again observed nine selected
+relay pairs, zero browser direct-Project requests, current host self-receipt and
+successful fixture-owned cleanup. The binary/build identity above remains
+separate from this later server/runtime revision; this rerun does not broaden
+the platform, deployment or onboarding qualification.
+
+Cleanup targets only generated fixture homes, owned processes/containers and
+exact Keychain service/account owners. Device and account proof-key owner hashes
+use raw UUID bytes; candidate-record and credential metadata hashes use their
+string fields. Unverified cleanup is a failure, and retained artifacts
+are not permission to delete unrelated Keychain entries.
+
+This lane does not enable ordinary native route/sign-in UI or qualify mobile,
+Windows/Linux, packaged release use, remote internet connectivity, production
+TURN/TLS, external identity providers or two-person collaboration.
+
 The separate hostile-plugin lane also runs in a real Tauri WebView:
 
 ```sh

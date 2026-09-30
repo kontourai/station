@@ -16,13 +16,13 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"94f81b48093080a0e80c3cb131a5fb568ca970b277209fb8a47ab560bd6fff25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"a4dfd0454dc0e354c29903ee291f7b75660b05e3"},
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"c702b8c3079399f04156eef2a27fee77e36930042ed8d2d7ebf18d65c0869318","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"src-desktop/src/native_station_key_custody.rs","digest":"77f5b988eb6104e08c59594d1666791534f973e165c0f3691cec81774e9115d5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"058f685c87ec89317352cf9c09f232b50113dabdb2dd4b564d6806f0a85e93db","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"5a6d4e6e672a1b8187efda2833395e1efd571a65ccc5c01ae673800f4fd043e4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"b5d0cfdd54890ea9a0dc179a56a501bcb64f99350b5bd7111bccc40b5a16cf17","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

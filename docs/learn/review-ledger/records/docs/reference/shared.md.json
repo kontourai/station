@@ -64,6 +64,8 @@
 
     {"path":"packages/shared/src/git.ts","digest":"e937710f53be37a50ec58616e6d987b390ee0273ae098a660de60411ae7cea77","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"packages/shared/src/harness-questions.ts","digest":"b8b0b14163551da7b8628f1921050bf56c338fbc8bada7a34dfc51d5cd5418d4","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
     {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -108,9 +110,7 @@
 
     {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"packages/shared/src/harness-questions.ts","digest":"b8b0b14163551da7b8628f1921050bf56c338fbc8bada7a34dfc51d5cd5418d4","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
   ],
 
   "checks": [

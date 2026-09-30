@@ -68,6 +68,8 @@
 
     {"path":"scripts/fast-checks-shard.mjs","digest":"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
+    {"path":"scripts/gh-app-token.mjs","digest":"a04d8595b86db65207f5d7da128cd0c9b6a97ae32f0f2d7e9c0237a526af3f3a","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"},
+
     {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
@@ -100,9 +102,7 @@
 
     {"path":"src-server/__test-utils__/sse-helpers.ts","digest":"daa4853dc02cf11574f8afb6c813145c58cc5356a2ff432870e55b1b23511492","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
-
-    {"path":"scripts/gh-app-token.mjs","digest":"a04d8595b86db65207f5d7da128cd0c9b6a97ae32f0f2d7e9c0237a526af3f3a","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"}
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
   ],
 
   "checks": [

@@ -9,7 +9,7 @@
 
   "limits": "No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence.",
 
-  "document": {"digest":"4a478aba3b37cc2292c8c5ef9db1c326718ce88bc4f90abbb6494618224fe7ff","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+  "document": {"digest":"713e6c15ba5eb9c5e8ac651e8f6f7d18cda605ac92f12fd4fe0f5925b31bf927","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
   "sources": [
     {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -82,7 +82,11 @@
 
     {"path":"scripts/workspace-dependency-provenance.mjs","digest":"8e26b9bba267b682ba2f800bbb948dc46fad7071ff93ffcfe8060b60908c400b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts","digest":"8b5245ec85e9c85728be53067a9916953ab979880a3172a09d6cc4e89ded07fb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts","digest":"8b5245ec85e9c85728be53067a9916953ab979880a3172a09d6cc4e89ded07fb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/components/chat/SanitizedHtml.tsx","digest":"801ed68ce1b7b8dc71b1f2e269d600f89b868ce1bcf00c7afac819c667bfab2f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"}
   ],
 
   "checks": [

@@ -72,7 +72,7 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
     {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],

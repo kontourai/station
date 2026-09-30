@@ -12,11 +12,11 @@
   "document": {"digest":"de4153eb7fa8cf900319497947010d639d5ac51fec51950e788cb1b34485c15d","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
   "sources": [
-    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
-
     {"path":"packages/sdk/package.json","digest":"12e6f1e6e03061c656da6cfaa2dc70be1f60a70ee742bc458988452b77dd3040","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
     {"path":"packages/sdk/src/__tests__/browser-entry-bundles.test.ts","digest":"cbd20ee2ae028c4276a9412ddc5335b10957251f5d37597e53369968264d37f5","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
     {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 

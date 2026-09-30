@@ -38,19 +38,25 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"882de4a1963c2247e547d1dd8a47d64adcdb7bdedc45fb9fe05423d0f626b6db","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cbf613e34f6760cae2bc60eba80aab9365a8c6d3f2eeffa65dcf368a57100b42","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b3d6cc66077eb50e31ec87f9f31fedd69e8d9aa164badf377061b1e748e5c27f","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
     {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/services/orchestration/event-bus.ts","digest":"e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/utils/logger.ts","digest":"d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/AGENTS.md","digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/__tests__/branding-role-cascade.test.ts","digest":"7f8a4a575fc67363e9964fe8d8e83a0b928572565c07668e7422d961272895a3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/components/BrandingThemeBridge.tsx","digest":"50426a6e110f2f98a3ded606e7435e0ba4c5bbb038a9bcec9e71655324e17a6a","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
     {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -66,6 +72,8 @@
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
+    {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
     {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
@@ -76,15 +84,7 @@
 
     {"path":"src-ui/src/tokens.css","digest":"18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/AGENTS.md","digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"src-ui/src/components/BrandingThemeBridge.tsx","digest":"50426a6e110f2f98a3ded606e7435e0ba4c5bbb038a9bcec9e71655324e17a6a","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
-
-    {"path":"src-ui/src/__tests__/branding-role-cascade.test.ts","digest":"7f8a4a575fc67363e9964fe8d8e83a0b928572565c07668e7422d961272895a3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
+    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

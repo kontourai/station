@@ -9,7 +9,7 @@
 
   "limits": "Selected documented claims only, not all broker protocols, transport implementation branches or provider/device behaviors. Existing fixture tests are not physical/native storage, cookie lifetime, reachable network, endpoint ownership or live revocation proof. Revocation rejects new authenticated admission; existing streams retain their own currentness boundaries. No new live authority/security probe or external write.",
 
-  "document": {"digest":"e4977bfd6271262feec0f1ba01e6f313910bc4c88f30453136ae8c3757d3fd74","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+  "document": {"digest":"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
 
   "sources": [
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
@@ -23,6 +23,8 @@
     {"path":"packages/connect/src/__tests__/ConnectionStore.test.ts","digest":"29eb842491b162700a15f07cda5ceb47b6d001d0afe5d7afddb14588bc18dfec","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/__tests__/devicePairing.test.ts","digest":"750c33d90f8da137a01070e089cb4c574ece2c5963090674a06d75ad8bd32e25","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"packages/connect/src/core/ConnectionHealthCoordinator.ts","digest":"5dc1d75cc488ffafe720fc3dfad8787103042e3462d581c9806316151624c4b0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -41,6 +43,10 @@
     {"path":"packages/connect/src/core/devicePairing.ts","digest":"1072b18524cd5e982906263d776f3aaf94818b14fea3f83220d40596e175f4ed","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/environmentProof.ts","digest":"34482dbc2db9cc2ed7398658de2f8933b49c290eb3f5668c208491183616c377","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"packages/connect/src/core/nativeConnectionShared.ts","digest":"67212b5369a0e7be572b20be340e47deca9fe4c18fde8d94d9cbc02ac5cebfea","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/storage.ts","digest":"ccc9b390c0ab8521df87d6c37d7e2b519bbe1c0c98c91562be67137d57b155aa","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -72,11 +78,11 @@
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"882de4a1963c2247e547d1dd8a47d64adcdb7bdedc45fb9fe05423d0f626b6db","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a480ff22bbe85830582d75094fd4a97de077d1886e67fe766437aee33bcaf6aa","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
-    {"path":"src-server/security/runtime-request-security.ts","digest":"98a961eac469e998213b5764111132eab977b34ed730df27c67730472c757f78","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+    {"path":"src-server/security/runtime-request-security.ts","digest":"930feaa5c2d9670b5e04fbdd6e16d68c477fa6fcc00c7b3e8691906b735bfdef","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
     {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -86,7 +92,7 @@
 
     {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"},
 
     {"path":"src-server/services/terminal/terminal-ws-server.ts","digest":"fda1cd3049b51f46292bfa7672d66dfc08f3b83cfd0b45598c657a33df079f30","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -94,15 +100,11 @@
 
     {"path":"src-ui/src/lib/serverHealth.ts","digest":"c0840b525e21f5cc637007f2a5047f9629c2d147d87167e6cd470d22c365711d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
+    {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"7111914934e5bdd2a236f497e695795402681ccd1ee4e7d9e54334c5a735574b","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
     {"path":"src-ui/src/platform/native/pairingTransport.ts","digest":"ff3b1d70df749c1ad0db5975df4f138f5ae897630a80d482c2828a623d405613","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"aa5ec04dbafae74f8cdf0b9ab77f1e0cca319c7f69cdc6327455f47f4968456e","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/core/nativeConnectionShared.ts","digest":"67212b5369a0e7be572b20be340e47deca9fe4c18fde8d94d9cbc02ac5cebfea","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"cb980b7cbbb75e7a17558b9b02c8e85a761377eb09915a494763f5b41a09d1f4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
   ],
 
   "checks": [

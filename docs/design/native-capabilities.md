@@ -89,39 +89,49 @@ The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 
 ### Desktop application signaling commands
 
-The Desktop command table registers three main-window-only signaling commands
-in [the native relay owner](../../src-desktop/src/native_relay_redemption.rs):
+The Desktop registers main-window-only commands for public binding metadata and
+the separate host-owned native application peer. The existing
+`station_native_relay_application_binding` command remains the source of the
+saved profile's public scope, client surface and approved Station trust view.
+The peer commands in the [native peer owner](../../src-desktop/src/native_application_peer.rs)
+are:
 
-| Command | Caller input beyond the saved profile name and exact revision | Result |
+| Command | Caller input | Result |
 | --- | --- | --- |
-| `station_native_relay_application_binding` | None | Host-derived public profile, scope, native surface and approved Station trust metadata |
-| `station_native_relay_application_open` | Nonce and bounded offer SDP | Offer expiry |
-| `station_native_relay_application_read` | Existing offer nonce | Optional answer SDP and opaque Station proof, plus expiry |
+| `station_native_application_peer_prepare` | Saved profile name and exact profile revision | Versioned opaque peer handle, host nonce, client connection ID and expiry |
+| `station_native_application_peer_open` | Peer handle and bounded offer SDP | Peer expiry |
+| `station_native_application_peer_read` | Peer handle | Versioned answer, Station proof and expiry after host transcript verification |
+| `station_native_application_peer_sign` | Peer handle and exact method, path and bounded body bytes | Versioned native Device request proof |
+| `station_native_application_peer_close` | Peer handle | No result |
 
-These are application-named entry points to the same service used by the
-diagnostic commands. The host resolves the saved profile, approved Station key
-and an existing keyring-held routing grant; it rechecks custody after broker
-I/O. Input envelopes reject caller-supplied bearer, private key, broker URL or
-Project authority. Requests use fixed broker paths. An uncertain `open` may
-already have created an offer: retain its nonce and read that offer within its
-window rather than blindly opening it again.
+The host derives authority from the selected profile, approved Station trust,
+current Device receipt and existing routing custody. The renderer supplies no
+broker URL, bearer, key, nonce, Project authority, proof claims or audience.
+Uncertain `open` results are recovered by reading the same handle; the client
+does not open a second peer. The adapter is separate from diagnostic signaling.
+Connect verifies the Station proof before applying the answer, then uses the
+host signer for bounded per-request Device proof. Neither the saved route nor
+this opt-in library surface is enabled by default. Account continuation remains
+separate, so this is not account proof or a complete authenticated Project flow.
 
-The renderer's [application signaling adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
-wraps these names for one exact saved-profile revision and validates their
-results, but no ordinary native application caller composes it. The commands
-themselves do not open a DataChannel, verify the returned Station proof,
-carry application requests, select a route, sign in or enroll a Device. The
-account proof-key vault below remains separate and unwired. Command registration
-and source tests are not an executed Tauri IPC, packaged-platform or physical
-device receipt; no such execution is claimed by this review.
+Rust verifies the exact Station-signed nonce, connection identity, offer/answer
+digests and both DTLS fingerprints. It owns transcript state and one proof per
+handle, not browser RTC connectivity. The handle/nonce exist before network open;
+owner/epoch changes, replay and expiry refuse. Read deadlines can shorten but
+cannot extend prior polling deadlines, and the adapter retires expired handles.
+
+The source adapter and focused tests do not establish executed Tauri IPC,
+packaged-platform behavior, physical-device qualification or a completed
+authenticated Project journey. The account proof-key vault below also remains
+separate from account sign-in and enrollment.
 
 ### Desktop account proof-key foundation
 
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
-is included only for non-mobile builds. It is Rust-internal: no Tauri command,
-capability-report field, renderer adapter or production account-sign-in caller
-currently reaches it. It does not change the available connection or recovery
-actions.
+is included only for non-mobile builds. The vault remains Rust-internal; the
+[account operation owner](../../src-desktop/src/native_account_operations.rs)
+reaches it through three main-window commands, with no raw signing IPC. This
+does not select a native transport or enable ordinary sign-in/recovery actions.
 
 The vault uses a separate OS-keyring service and account namespace from the
 broker routing proof key. Its owner binds the app identifier, channel, client
@@ -134,10 +144,108 @@ This is software-key custody: Rust holds decoded private bytes while signing.
 Owner construction validates identifiers; it does not establish Device approval
 or account authority, and the signer itself does not validate a request protocol.
 
+`station_native_account_challenge_prepare` restores or creates the independent
+account key for the reconciled host Device owner and returns its public key,
+fixed challenge body and opaque handle. `station_native_account_exchange_prepare`
+accepts closed opaque challenge data and local username/password credentials;
+Rust derives identity, hashes, JTI and time and returns the complete exchange
+body and matching proof header. `station_native_account_request_headers` accepts
+opaque native continuation data and only canonical GET/HEAD Project targets.
+No caller-supplied audience, Device, surface, hash or signing bytes reach these
+operations.
+
+Sixteen process-local contexts are bounded to fifteen minutes and the current
+grant lifetime. One exchange consumes a context before signing; challenge IDs
+remain consumed for the full host challenge window independently of shorter
+untrusted expiry hints. Current profile, Device/epoch, trust, grant and binding
+are checked through the shared live-owner callback. Effective challenge or
+continuation expiry and the actual account key are checked again after key/sign
+waits before a result returns. Refusal preserves the key. An existing account-bound
+paired Device and approved native Device binding are server prerequisites;
+this does not bootstrap fresh relay-only enrollment or an unsupported provider.
+
 The source includes memory-backend tests and an opt-in macOS Keychain test.
-They were not run for this documentation review. IPC, account continuation,
-mobile custody and packaged/device behavior require separate integration and
-platform evidence.
+Unit checks do not establish IPC, account continuation, mobile custody or
+packaged/device behavior; those require separate integration and platform evidence.
+
+### Desktop Device proof-key foundation
+
+The [Device proof-key vault](../../src-desktop/src/native_device_proof_key.rs)
+is also desktop-only and Rust-internal. Its keyring service and record prefix
+are separate from the account and routing vaults. Its exact owner adds a random
+Device binding UUID to the app, channel, client instance, Station and Device
+IDs. A shared [private custody core](../../src-desktop/src/native_proof_key_core.rs)
+preserves the account record format and implements both vaults' storage and
+ES256 operations.
+
+The vault remains Rust-internal. A desktop-only, main-window-guarded
+`station_native_device_binding_candidate` command in the
+[native relay owner](../../src-desktop/src/native_relay_redemption.rs) returns
+only the public candidate descriptor. Under one locked profile-store snapshot,
+the selected relay-route profile supplies Station, trust, grant and surface;
+the separately host-authorized profile supplies the active paired Device. They
+must share the same store revision, client instance and exact Station origin.
+The [candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
+persists that owner snapshot and a provisional binding ID in a private
+Keychain namespace before creating the Device proof key, then returns only the
+public JWK and thumbprint. It retains the initial Device-authorization epoch
+for provenance and resumes the same key after reauthorization, while keeping
+the profile revision, Station, Device, trust, route and surface exact. No
+renderer caller currently uses this command. It does not submit operator
+approval, reconcile a server receipt, bind a peer session or sign a request. A
+key and owner tuple do not establish operator approval. Server-side Device
+authorization exists in the opt-in pilot; request-signing IPC and a packaged
+Project journey remain integration requirements. The software key is decoded
+inside Rust for signing; this is not hardware-backed non-exportability.
+
+The separate main-window command `station_native_device_binding_self_receipt`
+loads an existing candidate and reads its fixed Station receipt URL through the
+native HTTP owner. It accepts only the saved profile and expected revision;
+the bearer stays in Rust. One process-wide nonblocking guard prevents overlapping
+reads from overwriting newer observations. The HTTP exchange has a 45-second
+deadline, including capacity wait, and a 4 KiB response limit. Receipt-only
+global and body budgets leave ordinary HTTP and open-ended SSE behavior unchanged.
+
+After HTTP, profile and authority locks cover owner revalidation, receipt
+validation, the Keychain observation write and result construction. The current
+host authorization epoch is separate from the Device proof binding UUID. A
+matching receipt reports `current` or `not-current`; only the closed versioned
+404 response records `not-found`. Transport failure or the versioned unavailable
+response may return a prior observation with `source: cached-observation` and
+its original timestamp. A prior positive observation is labeled
+`previously-confirmed-current`, never fresh `current`. Missing, malformed,
+mismatched or unavailable readback preserves the candidate and key. The peer and
+account operation owners require a positive observation bound to the current
+owner/epoch; ordinary route-selection UI does not automatically invoke this command.
+Source and Rust/HTTP fixtures do not establish an executed native IPC or packaged journey.
+
+### Desktop paired-Device identity custody
+
+The [Device custody owner](../../src-desktop/src/native_device_custody.rs) keeps
+a versioned companion beside the existing bearer in a separate OS-keyring
+namespace. The authenticated pairing exchange captures the Device ID and kind
+in host-held pending state. The companion binds the native app and channel,
+credential reference, bearer digest, exact origin, Station and client instance.
+Neither the bearer nor its digest is returned to the renderer.
+
+The Rust-internal resolver holds the profile-file lock and checks the current
+authorized profile, revision and epoch against the bearer and companion.
+Missing, malformed or mismatched metadata refuses Device identity resolution;
+ordinary legacy HTTP credential use remains independent. This establishes no
+Device-key approval, account or Project authority and exposes no signing IPC.
+
+Credential retirement records durable, profile-scoped intent before a profile
+removal or replacement. Public and cold-start retries permit cleanup only,
+check the original credential digest and refuse an intervening replacement or
+reauthorization. An unreadable legacy entry without a trustworthy digest stays
+quarantined for manual removal. Its journal entry can be released only after
+both owned keyring entries are confirmed absent, without attempting deletion.
+
+Pending pairing handles remain process-memory state; they do not survive a
+crash. Cold observation of a completed profile and retirement recovery are
+separate from unfinished pairing recovery. Mobile deletion behavior is
+unchanged. Source tests and the macOS Keychain roundtrip do not establish
+packaged or physical-device Project access.
 
 ### Pairing deep-link threat review (station#1957)
 

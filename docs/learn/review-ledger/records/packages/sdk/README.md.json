@@ -18,6 +18,8 @@
 
     {"path":"packages/sdk/package.json","digest":"12e6f1e6e03061c656da6cfaa2dc70be1f60a70ee742bc458988452b77dd3040","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -58,9 +60,7 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"}
+    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

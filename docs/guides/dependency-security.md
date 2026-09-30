@@ -247,6 +247,30 @@ scheduled scan always covers all scopes. A single registry request serves all
 selected views, avoiding repeated registry-bound npm processes while retaining
 each importer's exact full and production closure.
 
+## 2026-09 grpc-js and DOMPurify floor
+
+The workspace lock selects `@grpc/grpc-js@1.14.5` and `dompurify@3.4.16`.
+These compatible patches address the [optional-client-certificate authentication
+advisory](https://github.com/advisories/GHSA-m9gg-hp2v-232j),
+[handler-error disclosure](https://github.com/advisories/GHSA-f596-whhp-79r4),
+and [detached-subtree sanitizer handlers](https://github.com/advisories/GHSA-p98j-92pf-mc4p).
+The threats are remote callers reaching certificate-based gRPC authentication
+or failing handlers, and untrusted markup reaching in-place sanitization with
+node-removing after-sanitize hooks.
+
+Station's locked gRPC path belongs to the OpenTelemetry exporter client;
+source review found no first-party gRPC server or `getAuthContext` caller.
+The chat HTML renderer sanitizes strings with default options. Plugins receive
+the shared sanitizer API and may supply configuration, so absence of first-party
+in-place hooks does not qualify every plugin. These caller bounds are source
+evidence, not a reproduced Station exploit.
+
+The live advisory floor failed before these patches and passed afterward for
+root, SDK and Shared. The real chat sanitizer and shared-plugin consumer tests
+passed, as did SDK typechecking and the managed frozen install. Minimum release
+age, lifecycle permissions, sanitizer configuration and existing residual
+expiries remain unchanged; no new exception was added.
+
 ## 2026-09 Axios floor
 
 The Station workspace override requires Axios 1.20.0 or newer compatible 1.x,

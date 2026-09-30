@@ -22,6 +22,7 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import { PAIRING_SCOPE_ORCHESTRATION_READ } from '@kontourai/station-contracts/environment-security';
+import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
@@ -229,6 +230,15 @@ export class ApplicationSessionService {
     private readonly adoption?: ApplicationSessionCookieAdoptionCallbacks,
     private readonly readNativeRequest: ReadVerifiedNativeApplicationRequest = () =>
       undefined,
+    /**
+     * #2893 pilot: resolves the current PairedDevice for a request that
+     * carries a PROVEN native Device authority (the credential-free
+     * principal minted at the runtime admission seam). Only consulted for
+     * proof attempts; a browser bearer/cookie request keeps `device()`.
+     */
+    private readonly resolveNativeProofDevice?: (
+      request: Request,
+    ) => { readonly device: PairedDevice } | undefined,
   ) {
     if (!stationId.trim() || new URL(requestOrigin).origin !== requestOrigin)
       throw new ApplicationSessionRefusal('unavailable');
@@ -1767,7 +1777,23 @@ export class ApplicationSessionService {
     account?: NativeAccountBinding,
   ): PairedDevice {
     this.nativeTarget(request, target);
-    const device = this.device(request, expectedDeviceId, account?.principalId);
+    let device: PairedDevice;
+    if (request.headers.has(NATIVE_DEVICE_PROOF_HEADER)) {
+      // A proof attempt resolves its Device ONLY through the injected
+      // native authority; a callback failure never falls through to the
+      // bearer path. Expected ID and account binding are rechecked here on
+      // every call, including after every provider await.
+      const resolved = this.resolveNativeProofDevice?.(request);
+      if (
+        !resolved ||
+        resolved.device.kind !== 'device' ||
+        (expectedDeviceId && resolved.device.id !== expectedDeviceId)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      device = resolved.device;
+    } else {
+      device = this.device(request, expectedDeviceId, account?.principalId);
+    }
     const current = this.nativeAccountBinding(device);
     if (
       account &&
