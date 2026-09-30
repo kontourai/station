@@ -7550,7 +7550,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "5e564120522181c6fa726b474c138b229b00b95c",
+      "sourceRevision": "6834c8272c12f1d98125b4f21c8d2617d9113b08",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7574,7 +7574,7 @@
         },
         {
           "path": "src-server/runtime/__tests__/voltagent-agent-hooks.test.ts",
-          "digest": "cd25a7bfc918e62b8f26078d5b0cdb506273b95464bb8d89222f1f3531128dc1"
+          "digest": "582f8f69f228067c0bd37626d22db64ebd71712e023098ec2e0d6a3cdf89c073"
         },
         {
           "path": "src-server/runtime/frameworks/__tests__/conduit-framework-adapter.test.ts",
@@ -7607,7 +7607,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read. | Cites station-runtime-conformance.json, whose only change is the station-strands hostVersion (1.15.0 to 1.18.0) from the #2599 dependency bump. Searched this page for 1.15.0, 1.18.0 and hostVersion and found none, and it states no capability or verdict that moved, so its statements still hold. Checked by search plus the generated diff, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
-        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added."
+        "Bounded #599 review: VoltAgent outward failed tool-result chunks now omit raw output while retaining fixed/Station-composed error text and policy badges; successful outputs and lifecycle hooks remain unchanged. Reviewed affected hook, configuration and stream claims against the adapter and actual route caller. Whole-frame canary failed before the fix and34 focused tests pass. Raw SDK wrapping remains covered separately; no live provider or model-history redaction claim added.",
+        "Bounded #599 hook-test update: the existing genuine-denial chain still asserts the safe reason, call identity and policy badge, and now expects raw output to be absent after normalization. Its previous output expectation pinned the disclosed leak. No hook invocation, authority, denial composition or monitoring behavior changes."
       ]
     },
     {
