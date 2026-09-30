@@ -990,8 +990,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               </select>
               <span className="settings__field-hint">
                 A project can override its new-chat workspace and its default
-                model connection and model. Every other setting on this page
-                belongs to the Station.
+                model connection and model. Other settings keep the Station or
+                device scope shown in their section.
               </span>
             </div>
 
