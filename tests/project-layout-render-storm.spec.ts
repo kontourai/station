@@ -124,10 +124,20 @@ test.describe('Project layout render storm', () => {
       await page.goto('/projects/dev/layouts/code?chat=conv-1');
       await dismissSetupLauncher(page);
 
-      // A phone lands on the Coding stack's Chat page, which is its
-      // (maximized) dock over the Coding workbench.
-      await expect(page.locator('#chat-dock')).toBeVisible();
-      await expect(page.locator('.coding-workbench')).toHaveCount(1);
+      // A phone lands on the Chat page, which is its maximized dock; the
+      // detector samples a drilled-in pane, as the desktop case does.
+      const dock = page.locator('#chat-dock');
+      await expect(dock).toHaveClass(/is-maximized/, { timeout: 20_000 });
+      await page.getByRole('button', { name: 'Chat actions' }).click();
+      await page
+        .getByRole('menu', { name: 'Chat actions' })
+        .getByRole('menuitem', { name: 'Collapse chat' })
+        .click();
+      await expect(dock).not.toHaveClass(/is-maximized/);
+      await selectCodingPane(page, 'Files');
+      await expect(
+        page.locator('.file-tree-panel__search-input'),
+      ).toBeVisible();
 
       const records = await sampleSteadyStateMutations(page);
       console.log(

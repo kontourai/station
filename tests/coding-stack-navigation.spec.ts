@@ -108,7 +108,11 @@ async function landOnChat(page: Page) {
 async function drillIntoDiff(page: Page) {
   await openCodingView(page, 'Diff');
   await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
-  await expect(crumbs(page)).toContainText('Diff');
+  await expect(crumbs(page).getByRole('listitem')).toHaveText([
+    'Inbox',
+    'Dev Agent Chat',
+    'Diff',
+  ]);
 }
 
 test.describe('Coding stack — desktop (1280px)', () => {
@@ -311,6 +315,87 @@ test.describe('Coding stack — desktop (1280px)', () => {
             ).length,
       ),
     ).toBe(0);
+  });
+});
+
+test.describe('Coding stack — the dock is left as the reader had it', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('an open, maximized dock is left exactly as it was by the Coding layout, whatever asks to show Chat there', async ({
+    page,
+  }) => {
+    const mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().includes('MAC'),
+    );
+    const primary = mac ? 'Meta' : 'Control';
+    const savedDock = () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('station-device-settings-v1');
+        const record = raw ? JSON.parse(raw)?.values?.regionArrangement : null;
+        return JSON.stringify(record?.regions?.bottom ?? null);
+      });
+    await page.goto('/projects/dev?chat=conv-1&dock=open');
+    await dismissSetupLauncher(page);
+    const dock = page.locator('#chat-dock');
+    await expect(dock).toBeVisible({ timeout: 20_000 });
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+    await page.keyboard.press(`${primary}+KeyM`);
+    await expect(dock).toHaveClass(/is-maximized/);
+    await expect.poll(savedDock).toContain('"maximized":true');
+    const before = await savedDock();
+
+    // Into the Coding layout by its layout chip, as a reader would.
+    await page
+      .getByRole('toolbar', { name: 'Dev layouts' })
+      .getByRole('button', { name: 'Code' })
+      .click();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    // One Chat: the centre's. The dock the reader left open mounts no Chat.
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
+
+    // Everything that shows Chat goes to the Chat page instead of the dock.
+    await openCodingView(page, 'Diff');
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+    await page.keyboard.press(`${primary}+KeyD`);
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+    await page.keyboard.press(`${primary}+KeyK`);
+    await page
+      .getByRole('combobox', { name: 'Search commands' })
+      .fill('Open chat dock');
+    await page.keyboard.press('Enter');
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
+    // Nothing on the route rewrote the reader's dock.
+    expect(await savedDock()).toBe(before);
+
+    // Leaving restores the dock exactly as it was.
+    while (new URL(page.url()).pathname !== '/projects/dev') {
+      await page.goBack();
+    }
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveClass(/is-maximized/);
+    await expect(centreChat(page)).toHaveCount(0);
+    expect(await savedDock()).toBe(before);
+  });
+
+  test('the stack chords are text editing inside a field, not Back', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await openCodingView(page, 'Files');
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+    const search = page.locator('.file-tree-panel__search-input');
+    await search.fill('two words');
+    await page.keyboard.press('Alt+ArrowLeft');
+    await page.keyboard.press('Meta+BracketLeft');
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(page).toHaveURL(/[?&]pane=/);
+    await expect(search).toBeFocused();
   });
 });
 
