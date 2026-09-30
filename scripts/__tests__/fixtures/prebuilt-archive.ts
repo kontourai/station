@@ -44,8 +44,16 @@ export function hostTarget(): { os: string; arch: string; id: string } {
  * Station with a sibling `.running` file, so a test can see which version
  * directory ran which command. The version directory itself is read-only
  * once installed, so nothing is written inside it.
+ *
+ * `service <status|stop|start> --instance=<id>` model one installed user
+ * service per id in `<log>.service-<id>`: `{"active": true|false|null,
+ * "present"?: false (the unit is gone), "sha"}`
+ * (#2675 slice C). status prints the CLI's `service status --json` fields
+ * install.sh reads (unit.active, instance.healthy, instance.sha); start marks
+ * the unit active serving this archive's sha (or lib/service-sha's), and
+ * fails, with the unit left up and unhealthy, when lib/fail-start exists.
  */
-const FAKE_CLI = `import { appendFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+const FAKE_CLI = `import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,6 +67,27 @@ if (log) {
     writeFileSync(running, root);
   }
   if (args[0] === 'stop') rmSync(running, { force: true });
+  if (args[0] === 'service') {
+    const id = args.find((arg) => arg.startsWith('--instance='))?.slice('--instance='.length);
+    const unit = \`\${log}.service-\${id}\`;
+    const state = existsSync(unit) ? JSON.parse(readFileSync(unit, 'utf8')) : { active: false };
+    if (args[1] === 'status') {
+      const healthy = state.active === true && state.sha !== undefined;
+      process.stdout.write(JSON.stringify({ healthy, unit: { active: state.active, present: state.present ?? true }, instance: { healthy, sha: state.sha } }) + '\\n');
+      process.exit(healthy ? 0 : 1);
+    }
+    if (args[1] === 'stop') writeFileSync(unit, JSON.stringify({ active: false, present: state.present }));
+    if (args[1] === 'start') {
+      if (existsSync(join(root, 'lib', 'fail-start'))) {
+        writeFileSync(unit, JSON.stringify({ active: true }));
+        process.exit(1);
+      }
+      const sha = existsSync(join(root, 'lib', 'service-sha'))
+        ? readFileSync(join(root, 'lib', 'service-sha'), 'utf8').trim()
+        : JSON.parse(readFileSync(join(root, '.station-release.json'), 'utf8')).sha;
+      writeFileSync(unit, JSON.stringify({ active: true, sha }));
+    }
+  }
 }
 `;
 
@@ -119,6 +148,12 @@ export function buildPrebuiltArchive(
     installScript?: string;
     /** This archive's CLI fails `start` (other versions' do not). */
     failStart?: boolean;
+    /** The sha a service this archive's CLI starts reports, if not its own. */
+    serviceSha?: string;
+    /** Replaces the fake CLI bundled as lib/station-cli.mjs. */
+    cli?: string;
+    /** More files at the archive root, by relative path. */
+    extraFiles?: Record<string, string>;
   } = {},
 ): PrebuiltArchive {
   const ring = ringOf(version);
@@ -164,8 +199,16 @@ export function buildPrebuiltArchive(
     join(launcherSource, 'station.mjs'),
     join(root, 'bin', 'station.mjs'),
   );
-  writeFileSync(join(root, 'lib', 'station-cli.mjs'), FAKE_CLI);
+  copyFileSync(
+    join(launcherSource, 'station-launcher.mjs'),
+    join(root, 'bin', 'station-launcher.mjs'),
+  );
+  writeFileSync(join(root, 'lib', 'station-cli.mjs'), options.cli ?? FAKE_CLI);
+  for (const [path, content] of Object.entries(options.extraFiles ?? {}))
+    writeFileSync(join(root, path), content);
   if (options.failStart) writeFileSync(join(root, 'lib', 'fail-start'), '');
+  if (options.serviceSha)
+    writeFileSync(join(root, 'lib', 'service-sha'), options.serviceSha);
   writeFileSync(join(root, 'runtime', 'bin', 'node'), renameGuardedNode());
   chmodSync(join(root, 'runtime', 'bin', 'node'), 0o755);
   copyFileSync(

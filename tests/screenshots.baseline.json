@@ -77,13 +77,13 @@
       "name": "mobile-access-request-error-320",
       "width": 320,
       "height": 844,
-      "sha256": "85cc0d3e2c18e2c39af138536f917794f0de2de3b12bf7cf238d2044da7926d5"
+      "sha256": "6dca9aece5bfd8bc2fd359c16b24f24e1fcfcbf7613a7dc6a69c0d8fdaf54610"
     },
     {
       "name": "mobile-access-request-error-390",
       "width": 390,
       "height": 844,
-      "sha256": "652b1d2f9dd269a98008eb5f00e3cc3a9bff5cb1289a3cfad5826dfda5b0d756"
+      "sha256": "6835dc1bbd7d6df2b159a07762a758d3f1fc89f83a2a9bc2a8d9fcaaa5a2d38e"
     },
     {
       "name": "mobile-activity-compact",
@@ -137,25 +137,25 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "825ebbf6fa281461b378dc8bf14d0062a416849ea26c2dab695308435f9fd152"
+      "sha256": "ce68f61939f12fedf8b9a8a1507626e9fd64117227dc54c0a54ddb08100845e8"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "11004f19c336f34ef1c7a1e7a22ea565f1e378b2f721ad0b39980bda2a04a45a"
+      "sha256": "338a5d03c5341676201875d3f63898924d97e9246a94d73b910a7463a331b238"
     },
     {
       "name": "mobile-onboarding-setup",
       "width": 390,
       "height": 844,
-      "sha256": "d8311c0320c7c3ea1e1af9881b8e1c2ba0eae0c62ea89a593fb92ae7734b4f4e"
+      "sha256": "86d0567f30aa135278e4da2db1fbbfcc465bb3b7830cb30c71a6bf0fab0628b4"
     },
     {
       "name": "mobile-settings-overview",
       "width": 390,
       "height": 844,
-      "sha256": "7f72d294cd9eb2ae2d862670dad52bf88c50c83a56a2bcd2d9514a14ba8976b8"
+      "sha256": "bb068001972750a72acf42be91f4e64819bc72a89c519e1aed3cd7121c908520"
     },
     {
       "name": "motion-reduced-mobile-chat",
@@ -185,13 +185,13 @@
       "name": "motion-reduced-schedule-modal",
       "width": 1440,
       "height": 900,
-      "sha256": "7b2246282778e9c08ca6d7e11eb1c1858bf6384bca4f7208addf91d4b72cf6ce"
+      "sha256": "d35de81ea1519925f04e41c244e15e7dd1e1a0cb12bbd617301d6ab462c5ae36"
     },
     {
       "name": "overlay-add-job-modal",
       "width": 1440,
       "height": 900,
-      "sha256": "7b2246282778e9c08ca6d7e11eb1c1858bf6384bca4f7208addf91d4b72cf6ce"
+      "sha256": "d35de81ea1519925f04e41c244e15e7dd1e1a0cb12bbd617301d6ab462c5ae36"
     },
     {
       "name": "overlay-agent-actions-menu",
@@ -245,7 +245,7 @@
       "name": "overlay-new-project-modal",
       "width": 1440,
       "height": 900,
-      "sha256": "e8d3e283df6b7843fbfdaf8cc35293c289ca7688df69712210c30b159757b43a"
+      "sha256": "961a8cd80e071a0e8d339362c707c1f8a86a37307948fc6aae5cca3a4a83703c"
     },
     {
       "name": "overlay-project-switcher-populated",
@@ -311,7 +311,7 @@
       "name": "settings",
       "width": 1440,
       "height": 900,
-      "sha256": "b69752c25f07a33b4a9f36e82588135727c797af04574e2de466d16a3adc50bf"
+      "sha256": "abe82ffd77e17044b61e4c49eb35027d7a9ed396d390d943dc54b5f18f547f97"
     },
     {
       "name": "settings-info-tip",

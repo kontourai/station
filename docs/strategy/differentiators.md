@@ -4,6 +4,9 @@ This document defines Station's durable differentiation and the evidence
 boundaries for product claims. It deliberately does not mirror issue status or
 name a feature as “next”; query GitHub and current source for live state.
 
+These are product priorities and constraints. The linked implementation and
+evidence routes establish which parts a particular feature currently delivers.
+
 ## The One-Line Differentiation
 
 Station is the agent workspace where the work and the reason it is allowed to
@@ -58,8 +61,8 @@ Use the owning evidence rather than copying status into this document:
   seam.
 - [Module map](../architecture/module-map.md) — implementation ownership and
   focused proof routes.
-- [Local merge readiness](local-merge-readiness.md) — candidate verification
-  and disclosure rules.
+- [Testing](../guides/testing.md) and [root agent instructions](../../AGENTS.md)
+  — current candidate verification, merge queue and disclosure rules.
 - GitHub issues and pull requests — live gaps, scope, ownership, and delivery
   state.
 

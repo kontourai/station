@@ -214,26 +214,6 @@ describe('persistUserTurnIfMissing (#797)', () => {
     expect(memoryAdapter.addMessage).not.toHaveBeenCalled();
   });
 
-  test('persists a repeated prompt when the previous turn already answered it', async () => {
-    const memoryAdapter = {
-      addMessage: vi.fn().mockResolvedValue(undefined),
-      getMessages: vi.fn().mockResolvedValue([
-        { role: 'user', parts: [{ type: 'text', text: 'continue' }] },
-        { role: 'assistant', parts: [{ type: 'text', text: 'a reply' }] },
-      ]),
-    };
-
-    const persisted = await persistUserTurnIfMissing({
-      memoryAdapter,
-      conversationId: 'conv-1',
-      userId: 'user-1',
-      input: 'continue',
-    });
-
-    expect(persisted).toBe(true);
-    expect(memoryAdapter.addMessage).toHaveBeenCalledTimes(1);
-  });
-
   test('keeps attachment parts from a structured input', async () => {
     const memoryAdapter = {
       addMessage: vi.fn().mockResolvedValue(undefined),
@@ -414,29 +394,46 @@ describe('persistUserTurnIfMissing (#797)', () => {
 
   // The stop-at-assistant rule (see isUserTurnAlreadyPersisted's doc
   // comment) is what keeps the widened window from becoming the
-  // silent-data-loss alternative archive#797's review rejected: an assistant reply
-  // between the match and the tail means that earlier occurrence belongs to
-  // a DIFFERENT, already-answered turn, not this one.
-  test('does not treat an earlier, already-answered occurrence of the same text as a duplicate of this turn', async () => {
-    const memoryAdapter = {
-      addMessage: vi.fn().mockResolvedValue(undefined),
-      getMessages: vi.fn().mockResolvedValue([
+  // silent-data-loss alternative archive#797's review rejected: an assistant
+  // reply after the match means that earlier occurrence belongs to a
+  // DIFFERENT, already-answered turn, not this one. Both reply positions are
+  // cases: a scan that skips the tail row misses the first, and a rule that
+  // only checks the tail misses the second.
+  test.each([
+    [
+      'the reply is the tail',
+      [
+        { role: 'user', parts: [{ type: 'text', text: 'continue' }] },
+        { role: 'assistant', parts: [{ type: 'text', text: 'a reply' }] },
+      ],
+    ],
+    [
+      'the reply is mid-window',
+      [
         { role: 'user', parts: [{ type: 'text', text: 'continue' }] },
         { role: 'assistant', parts: [{ type: 'text', text: 'a reply' }] },
         { role: 'user', parts: [{ type: 'text', text: 'an unrelated ask' }] },
-      ]),
-    };
+      ],
+    ],
+  ])(
+    'does not treat an earlier, already-answered occurrence of the same text as a duplicate of this turn — %s',
+    async (_label, stored) => {
+      const memoryAdapter = {
+        addMessage: vi.fn().mockResolvedValue(undefined),
+        getMessages: vi.fn().mockResolvedValue(stored),
+      };
 
-    const persisted = await persistUserTurnIfMissing({
-      memoryAdapter,
-      conversationId: 'conv-1',
-      userId: 'user-1',
-      input: 'continue',
-    });
+      const persisted = await persistUserTurnIfMissing({
+        memoryAdapter,
+        conversationId: 'conv-1',
+        userId: 'user-1',
+        input: 'continue',
+      });
 
-    expect(persisted).toBe(true);
-    expect(memoryAdapter.addMessage).toHaveBeenCalledTimes(1);
-  });
+      expect(persisted).toBe(true);
+      expect(memoryAdapter.addMessage).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test('stays bounded — a match older than the scan window is not found (accepted narrow scope, not an unbounded history scan)', async () => {
     const memoryAdapter = {

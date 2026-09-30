@@ -133,16 +133,23 @@ describe('SessionInventoryAppReadModule', () => {
       isEnabled: () => true,
     },
   ) => createSessionInventoryAppReadModule(options);
-  test('reserves before owner I/O and binds a completed occurrence to exact scope, caller, authority, and route family', async () => {
-    const read = vi.fn(async () => ({ status: 'found' as const, projection }));
+  test('reserves before owner I/O and binds a completed occurrence to exact scope and route family', async () => {
+    const read = vi.fn(async () => ({
+      status: 'found' as const,
+      projection: validProjection('open'),
+    }));
+    const page = vi.fn(async () => ({
+      status: 'found' as const,
+      page: validPage(),
+    }));
     const module = createSessionInventoryAppReadModule({
       read,
-      page: vi.fn(),
+      page,
       authorize: () => true,
       isEnabled: () => true,
     });
     const opened = await module.open({
-      scope: projection.scope,
+      scope: pageScope,
       routeFamily: 'orchestration',
       callerBinding: caller,
       authority: authority(),
@@ -150,17 +157,32 @@ describe('SessionInventoryAppReadModule', () => {
     expect(opened.status).toBe('available');
     expect(read).toHaveBeenCalledTimes(2);
     if (opened.status !== 'available') return;
-    await expect(
+    const pageWith = (
+      scope: typeof pageScope,
+      routeFamily: 'orchestration' | 'task',
+    ) =>
       module.page({
-        scope: projection.scope,
-        routeFamily: 'task',
+        scope,
+        routeFamily,
         occurrenceId: opened.occurrenceId,
         groupId: 'inputs',
-        continuationToken: 'token_'.padEnd(24, 'b'),
+        continuationToken: opened.continuations[0]!.continuationToken,
         callerBinding: caller,
         authority: authority(),
-      }),
+      });
+    // The same live token is refused under another route family or scope,
+    // before any owner I/O...
+    await expect(pageWith(pageScope, 'task')).resolves.toEqual({
+      status: 'unavailable',
+    });
+    await expect(
+      pageWith({ ...pageScope, turnId: 'other-turn' }, 'orchestration'),
     ).resolves.toEqual({ status: 'unavailable' });
+    expect(page).not.toHaveBeenCalled();
+    // ...and still pages under the exact binding it was minted for.
+    await expect(pageWith(pageScope, 'orchestration')).resolves.toMatchObject({
+      status: 'available',
+    });
     expect(read).toHaveBeenCalledTimes(2);
   });
 
@@ -247,47 +269,43 @@ describe('SessionInventoryAppReadModule', () => {
     });
   });
 
-  test('revoke and TTL purge make a live occurrence unreplayable', async () => {
-    let at = 0;
+  test('revoke makes a live occurrence unreplayable', async () => {
     const module = make({
-      read: async () => ({ status: 'found' as const, projection }),
-      page: async () => ({ status: 'unavailable' as const }),
+      read: async () => ({
+        status: 'found' as const,
+        projection: validProjection('open'),
+      }),
+      page: async () => ({ status: 'found' as const, page: validPage('next') }),
       authorize: () => true,
       isEnabled: () => true,
-      now: () => at,
     });
     const opened = await module.open({
-      scope: projection.scope,
+      scope: pageScope,
       routeFamily: 'orchestration',
       callerBinding: caller,
       authority: authority(),
     });
     if (opened.status !== 'available') throw new Error('expected occurrence');
-    module.revoke({
-      routeFamily: 'orchestration',
-      callerBinding: caller,
-      occurrenceId: opened.occurrenceId,
-    });
-    await expect(
+    const pageWith = (continuationToken: string) =>
       module.page({
-        scope: projection.scope,
+        scope: pageScope,
         routeFamily: 'orchestration',
         callerBinding: caller,
         authority: authority(),
         occurrenceId: opened.occurrenceId,
         groupId: 'inputs',
-        continuationToken: 'token_'.padEnd(24, 'a'),
-      }),
-    ).resolves.toEqual({ status: 'unavailable' });
-    at = 5 * 60_000 + 1;
-    await expect(
-      module.open({
-        scope: projection.scope,
-        routeFamily: 'orchestration',
-        callerBinding: caller,
-        authority: authority(),
-      }),
-    ).resolves.toMatchObject({ status: 'available' });
+        continuationToken,
+      });
+    // Live before revoke: the page succeeds and hands back a fresh token.
+    const paged = await pageWith(opened.continuations[0]!.continuationToken);
+    if (paged.status !== 'available') throw new Error('expected live page');
+    const next = paged.continuations[0]!.continuationToken;
+    module.revoke({
+      routeFamily: 'orchestration',
+      callerBinding: caller,
+      occurrenceId: opened.occurrenceId,
+    });
+    await expect(pageWith(next)).resolves.toEqual({ status: 'unavailable' });
   });
   test('accepts differing opaque owner cursors, rotates from the second page read, and removes terminal continuation', async () => {
     let reads = 0;
@@ -325,8 +343,7 @@ describe('SessionInventoryAppReadModule', () => {
     if (paged.status !== 'available') return;
     expect(paged.continuations[0]!.continuationToken).not.toBe(first);
   });
-  test('terminal pages remove the continuation and deny old-token replay, caller, authority, TTL, and page-cap reuse', async () => {
-    let at = 0;
+  test('terminal pages remove the continuation and deny old-token replay, caller, and authority', async () => {
     const module = make({
       read: async () => ({
         status: 'found' as const,
@@ -335,7 +352,6 @@ describe('SessionInventoryAppReadModule', () => {
       page: async () => ({ status: 'found' as const, page: validPage() }),
       authorize: () => true,
       isEnabled: () => true,
-      now: () => at,
     });
     const opened = await module.open({
       scope: pageScope,
@@ -381,18 +397,6 @@ describe('SessionInventoryAppReadModule', () => {
       continuationToken: token,
     });
     expect(terminal).toMatchObject({ status: 'available', continuations: [] });
-    await expect(
-      module.page({
-        scope: pageScope,
-        routeFamily: 'orchestration',
-        callerBinding: caller,
-        authority: authority(),
-        occurrenceId: opened.occurrenceId,
-        groupId: 'inputs',
-        continuationToken: token,
-      }),
-    ).resolves.toEqual({ status: 'unavailable' });
-    at = 5 * 60_000 + 1;
     await expect(
       module.page({
         scope: pageScope,

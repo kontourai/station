@@ -97,9 +97,9 @@ const loadDeviceAccessibilityOverlay = () =>
  * Below this container width the Tools drawer overlays the device stage;
  * at or above it the drawer docks as a 288px column beside it.
  */
-export const DEVICE_TOOLS_DOCK_MIN_WIDTH = 560;
+const DEVICE_TOOLS_DOCK_MIN_WIDTH = 560;
 
-export function deviceToolsLayout(width: number): 'overlay' | 'docked' {
+function deviceToolsLayout(width: number): 'overlay' | 'docked' {
   return width >= DEVICE_TOOLS_DOCK_MIN_WIDTH ? 'docked' : 'overlay';
 }
 
@@ -193,8 +193,6 @@ function hostLabel(
   if (hostId === 'local') return 'Local';
   return hosts?.find((host) => host.hostId === hostId)?.label ?? hostId;
 }
-
-export { DEVICE_PLACEHOLDER_ASPECT, deviceCornerRadius };
 
 /**
  * How long a pane asked to show a device (the float's "Open in right panel")

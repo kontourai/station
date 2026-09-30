@@ -397,9 +397,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+  'github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+  'github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
@@ -2210,6 +2210,15 @@ const CHANGED_SET_CHROMIUM_STEP = Object.freeze({
   run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
 });
 
+const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
+  // Reviewed with its workflow step: the same apt provisioning and preflight
+  // full-regression and merge-queue-regression run. It installs a distro
+  // package and reads no secret or credential; the shard's selection can
+  // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
+  name: 'Provision and preflight zsh for process-heavy installer fixtures',
+  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo apt-get update\n  sudo apt-get install --yes zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
+});
+
 /**
  * #2709: the plan, the shards and the `fast-checks` aggregator all run
  * pull-request head code under pull_request_target, so each carries the same
@@ -2304,6 +2313,7 @@ function fastChecksShardingFindings(file, jobs) {
           run: PINNED_ACTIONLINT_PROVISION_RUN,
         },
         { name: undefined, run: 'npm run dependencies:ci' },
+        FAST_CHECKS_SHARD_ZSH_STEP,
         CHANGED_SET_CHROMIUM_STEP,
         { name: 'Run fast-checks shard', run: FAST_CHECKS_SHARD_RUN },
       ],

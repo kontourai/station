@@ -409,9 +409,12 @@ export function renderInline(value) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
-      const normalized = href.endsWith('.md')
-        ? href.replace(/\.md$/, '.html')
-        : href.replace(/\.md#/, '.html#');
+      const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href);
+      const normalized = external
+        ? href
+        : href.endsWith('.md')
+          ? href.replace(/\.md$/, '.html')
+          : href.replace(/\.md#/, '.html#');
       const safeHref = /^(?:https?:|mailto:|#|\/|\.\.?\/)/i.test(normalized)
         ? normalized
         : '#';

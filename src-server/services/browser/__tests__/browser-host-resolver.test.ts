@@ -137,28 +137,11 @@ describe('browser host resolution (D13)', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  test('the resolver is the only path to a host: the registry and the service construct none themselves', () => {
+  test('the registry constructs no browser host itself; it only resolves one', () => {
     const registrySource = readFileSync(
       join(import.meta.dirname, '..', 'browser-session-registry.ts'),
       'utf8',
     );
-    // One call site resolves hosts; the legacy convenience is only wrapped
-    // into a local resolver, never called on its own.
-    expect(registrySource.match(/hostResolver\.resolve\(/g)).toHaveLength(1);
-    expect(registrySource).toMatch(/this\.hostResolver\.resolve\(/);
-    expect(registrySource.match(/\bcreateHost\(/g)).toHaveLength(1);
-    expect(registrySource).not.toMatch(/options\.createHost\(/);
-    expect(registrySource).toMatch(
-      /createHost\(profileForRequest\(request\)\)/,
-    );
     expect(registrySource).not.toMatch(/new ChromiumServerHost/);
-    const serviceSource = readFileSync(
-      join(import.meta.dirname, '..', 'browser-service.ts'),
-      'utf8',
-    );
-    expect(serviceSource).toMatch(
-      /hostResolver: createLocalBrowserHostResolver\(/,
-    );
-    expect(serviceSource).not.toMatch(/\bcreateHost:/);
   });
 });

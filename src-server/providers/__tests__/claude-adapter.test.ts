@@ -78,13 +78,12 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
-  mintStationControlStdioCallerToken,
+  mintStationControlMcpToken,
   revokeStationControlMcpToken,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
-import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
@@ -1993,6 +1992,8 @@ describe('ClaudeAdapter', () => {
     expect(resolved.value).toMatchObject({
       method: 'request.resolved',
       status: 'approved',
+      // #2880: the Agent SDK's canUseTool reports no delivery.
+      acknowledgement: 'none',
     });
   });
 
@@ -2054,6 +2055,750 @@ describe('ClaudeAdapter', () => {
       },
     });
     await adapter.stopSession('thread-session-grant');
+  });
+
+  describe('#2915/#2916: a tool-level session grant never answers an escalation', () => {
+    /**
+     * Drives the adapter's real `canUseTool` and reports whether the call was
+     * answered without a prompt (`allowed`) or published a `request.opened`
+     * (`prompted`). One `iterator.next()` is kept outstanding across calls, so
+     * an event is never swallowed by a race the call won.
+     */
+    async function grantHarness(
+      threadId: string,
+      options: {
+        modelOptions?: Record<string, unknown>;
+        query?: ReturnType<typeof createControlledMockQuery>;
+      } = {},
+    ) {
+      const query = options.query ?? createMockQuery([]);
+      mockQuery.mockReturnValue(query);
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        ...(options.modelOptions ? { modelOptions: options.modelOptions } : {}),
+      });
+      await iterator.next();
+      await iterator.next();
+      const canUseTool =
+        mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options
+          .canUseTool;
+      let nextEvent = iterator.next();
+      let calls = 0;
+      /** Events consumed while waiting for a specific one. */
+      const seen: any[] = [];
+      /** Consumes events until one matches; fails fast (not at the test timeout). */
+      const waitFor = async (
+        predicate: (event: any) => boolean,
+        timeoutMs = 2_000,
+      ) => {
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const next = await Promise.race([
+            nextEvent,
+            new Promise<'timeout'>((resolve) => {
+              timer = setTimeout(
+                () => resolve('timeout'),
+                Math.max(0, deadline - Date.now()),
+              );
+            }),
+          ]);
+          clearTimeout(timer);
+          if (next === 'timeout')
+            throw new Error(
+              `No matching event within ${timeoutMs}ms; saw ${seen.map((event) => event.method).join(', ')}`,
+            );
+          const event = next.value;
+          nextEvent = iterator.next();
+          if (predicate(event)) return event;
+          seen.push(event);
+        }
+      };
+      const ask = async (
+        toolName: string,
+        toolInput: Record<string, unknown>,
+        extra: Record<string, unknown> = {},
+      ) => {
+        calls += 1;
+        const call: Promise<PermissionResult> = canUseTool(
+          toolName,
+          toolInput,
+          {
+            signal: new AbortController().signal,
+            toolUseID: `tool-use-${calls}`,
+            ...extra,
+          },
+        );
+        const race = await Promise.race([
+          call.then((result) => ({ kind: 'allowed' as const, result })),
+          nextEvent.then((event) => ({ kind: 'prompted' as const, event })),
+        ]);
+        if (race.kind === 'allowed') return { ...race, call };
+        nextEvent = iterator.next();
+        expect(race.event.value).toMatchObject({
+          method: 'request.opened',
+          payload: { toolName },
+        });
+        const answer = async (
+          decision: 'accept' | 'acceptForSession' | 'decline',
+        ) => {
+          await adapter.respondToRequest(
+            threadId,
+            race.event.value.requestId,
+            decision,
+          );
+          const result = await call;
+          // Consume up to the matching `request.resolved`.
+          await waitFor((event) => event.method === 'request.resolved');
+          return result;
+        };
+        return { kind: 'prompted' as const, event: race.event.value, answer };
+      };
+      return { adapter, ask, query, seen, waitFor };
+    }
+
+    /**
+     * The ask the engine (the bundled CLI of SDK 0.3.261 and 0.3.278) sends
+     * for Read, Glob, Grep or LSP on a path outside the session's working
+     * directories: no
+     * `blockedPath`, a session `addRules` rule for the directory written
+     * `//<abs dir>/**` under the `Read` rule name, and the workingDir reason.
+     */
+    const outsideDirRead = (dir: string) => ({
+      decisionReason: 'Path is outside allowed working directories',
+      suggestions: [
+        {
+          type: 'addRules',
+          rules: [{ toolName: 'Read', ruleContent: `/${dir}/**` }],
+          behavior: 'allow',
+          destination: 'session',
+        },
+      ],
+    });
+
+    test.each([
+      ['Read', (dir: string) => ({ file_path: `${dir}/notes.md` })],
+      ['Glob', (dir: string) => ({ pattern: '**/*.ts', path: dir })],
+      ['Grep', (dir: string) => ({ pattern: 'TODO', path: dir })],
+    ])(
+      'a session answer on %s grants the engine its folder rule and Station nothing: a later outside-folder call prompts',
+      async (toolName, input) => {
+        const { adapter, ask } = await grantHarness(`thread-${toolName}-grant`);
+        const first = await ask(
+          toolName,
+          input('/work/a'),
+          outsideDirRead('/work/a'),
+        );
+        expect(first.kind).toBe('prompted');
+        if (first.kind !== 'prompted') throw new Error('unreachable');
+        // The folder grant is the engine's: its rule is forwarded for the
+        // session, and the engine then reads inside /work/a without asking.
+        await expect(first.answer('acceptForSession')).resolves.toEqual({
+          behavior: 'allow',
+          updatedInput: input('/work/a'),
+          updatedPermissions: outsideDirRead('/work/a').suggestions,
+        });
+
+        const outside = await ask(
+          toolName,
+          input('/work/b'),
+          outsideDirRead('/work/b'),
+        );
+        expect(outside.kind).toBe('prompted');
+        if (outside.kind === 'prompted') await outside.answer('decline');
+
+        await adapter.stopSession(`thread-${toolName}-grant`);
+      },
+    );
+
+    test('a read-only tool mints no tool grant even from a read that carries no escalation signal', async () => {
+      // The engine's own ask-rule and safety-check asks for Read carry no
+      // suggestion and no blocked path (the SDK drops the reason's type), so
+      // only the read-only rule keeps a session answer from covering them all.
+      const { adapter, ask } = await grantHarness('thread-read-no-signal');
+      const first = await ask('Read', { file_path: '/work/a/.env' });
+      if (first.kind !== 'prompted') throw new Error('expected a prompt');
+      await first.answer('acceptForSession');
+
+      const next = await ask('Read', { file_path: '/work/a/.env.local' });
+      expect(next.kind).toBe('prompted');
+      if (next.kind === 'prompted') await next.answer('decline');
+
+      await adapter.stopSession('thread-read-no-signal');
+    });
+
+    test('a session answer on an escalating request mints no tool grant', async () => {
+      const { adapter, ask } = await grantHarness('thread-escalation-no-mint');
+      // The engine's Bash path check for a read outside the working
+      // directories: the blocked path and a session Read rule for its folder.
+      const readRule = {
+        type: 'addRules',
+        rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+        behavior: 'allow',
+        destination: 'session',
+      };
+      const escalating = await ask(
+        'Bash',
+        { command: 'cat /etc/hosts' },
+        { blockedPath: '/etc/hosts', suggestions: [readRule] },
+      );
+      if (escalating.kind !== 'prompted') throw new Error('expected a prompt');
+      // The folder rule still reaches the engine for the session.
+      await expect(
+        escalating.answer('acceptForSession'),
+      ).resolves.toMatchObject({ updatedPermissions: [readRule] });
+
+      const plain = await ask('Bash', { command: 'git status' });
+      expect(plain.kind).toBe('prompted');
+      if (plain.kind === 'prompted') await plain.answer('decline');
+
+      await adapter.stopSession('thread-escalation-no-mint');
+    });
+
+    test("a file edit's session answer forwards acceptEdits and mints nothing: a later sensitive-file edit prompts", async () => {
+      const { adapter, ask } = await grantHarness('thread-edit-mode');
+      const acceptEdits = {
+        type: 'setMode',
+        mode: 'acceptEdits',
+        destination: 'session',
+      };
+      // The engine's ask for a plain edit inside the working directories in
+      // default mode: the session acceptEdits mode change.
+      const edit = {
+        file_path: '/work/a/src/x.ts',
+        old_string: 'a',
+        new_string: 'b',
+      };
+      const first = await ask('Edit', edit, { suggestions: [acceptEdits] });
+      if (first.kind !== 'prompted') throw new Error('expected a prompt');
+      await expect(first.answer('acceptForSession')).resolves.toEqual({
+        behavior: 'allow',
+        updatedInput: edit,
+        updatedPermissions: [acceptEdits],
+      });
+
+      // The engine's sensitive-file safety check once in acceptEdits: no
+      // suggestion and no blocked path. Station must not answer it.
+      const sensitive = await ask(
+        'Edit',
+        { file_path: '/work/a/.git/config', old_string: 'a', new_string: 'b' },
+        {
+          decisionReason:
+            'Claude requested permissions to edit /work/a/.git/config which is a sensitive file.',
+          suggestions: [],
+        },
+      );
+      expect(sensitive.kind).toBe('prompted');
+      if (sensitive.kind === 'prompted') await sensitive.answer('decline');
+
+      // The same safety check while still in default mode: acceptEdits only.
+      const sensitiveDefault = await ask(
+        'Write',
+        { file_path: '/work/a/.claude/settings.json', content: '{}' },
+        { suggestions: [acceptEdits] },
+      );
+      expect(sensitiveDefault.kind).toBe('prompted');
+      if (sensitiveDefault.kind === 'prompted')
+        await sensitiveDefault.answer('decline');
+
+      // A later plain edit reaching Station is not auto-allowed by Station.
+      const plainEdit = await ask('Edit', edit, { suggestions: [acceptEdits] });
+      expect(plainEdit.kind).toBe('prompted');
+      if (plainEdit.kind === 'prompted') await plainEdit.answer('decline');
+
+      await adapter.stopSession('thread-edit-mode');
+    });
+
+    test("an edit-mode session answer moves Station's recorded mode with the engine: picking Ask again reaches the engine", async () => {
+      const query = createControlledMockQuery();
+      const threadId = 'thread-mode-sync';
+      const { adapter, ask, seen } = await grantHarness(threadId, {
+        modelOptions: { approvalMode: 'ask' },
+        query,
+      });
+      const acceptEdits = {
+        type: 'setMode',
+        mode: 'acceptEdits',
+        destination: 'session',
+      };
+      const edit = await ask(
+        'Edit',
+        { file_path: '/work/a/src/x.ts', old_string: 'a', new_string: 'b' },
+        { suggestions: [acceptEdits] },
+      );
+      if (edit.kind !== 'prompted') throw new Error('expected a prompt');
+      await edit.answer('acceptForSession');
+      // The composer's applied-mode channel reports the engine's new mode.
+      expect(seen).toContainEqual(
+        expect.objectContaining({
+          method: 'session.configured',
+          metadata: { permissionMode: 'acceptEdits', approvalMode: 'auto' },
+        }),
+      );
+
+      // The server records the answer as an Auto decision, so the next turn
+      // carries Auto; the engine already runs it, so nothing is sent.
+      await adapter.sendTurn({
+        threadId,
+        input: 'next',
+        modelOptions: { approvalMode: 'auto' },
+      });
+      expect(query.setPermissionMode).not.toHaveBeenCalled();
+      await completeClaudeTurn(query, threadId);
+
+      // Picking Ask again is a real change: the next turn sends it.
+      await adapter.sendTurn({
+        threadId,
+        input: 'again',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
+      expect(query.setPermissionMode).toHaveBeenCalledWith('default');
+
+      await adapter.stopSession(threadId);
+    });
+
+    test.each([
+      ['auto', 'acceptEdits'],
+      ['ask', 'default'],
+      ['never', 'bypassPermissions'],
+    ] as const)(
+      'a follow-up turn under %s never pulls the engine out of the plan mode it entered',
+      async (approvalMode, _requested) => {
+        const query = createControlledMockQuery();
+        const threadId = `thread-plan-${approvalMode}`;
+        const { adapter, waitFor } = await grantHarness(threadId, {
+          modelOptions: { approvalMode },
+          query,
+        });
+        query.push({
+          type: 'system',
+          subtype: 'status',
+          status: null,
+          permissionMode: 'plan',
+          uuid: 'status-plan',
+          session_id: 'claude-session',
+        });
+        await waitFor(
+          (event) =>
+            event.method === 'session.configured' &&
+            event.metadata?.permissionMode === 'plan',
+        );
+        // The user's follow-up carries the unchanged posture.
+        await adapter.sendTurn({
+          threadId,
+          input: 'follow-up',
+          modelOptions: { approvalMode },
+        });
+        expect(query.setPermissionMode).not.toHaveBeenCalled();
+        await adapter.stopSession(threadId);
+      },
+    );
+
+    test.each([
+      ['ask', undefined, 'default'],
+      // The engine reported leaving full access (e.g. after a plan's review),
+      // so an edit-mode answer was offered under a never posture.
+      ['never', 'default', 'bypassPermissions'],
+    ] as const)(
+      'an edit-mode answer under %s with no Auto recorded: the next same-posture turn sends the posture back',
+      async (approvalMode, reported, expected) => {
+        const query = createControlledMockQuery();
+        const threadId = `thread-edit-revert-${approvalMode}`;
+        const { adapter, ask, waitFor } = await grantHarness(threadId, {
+          modelOptions: { approvalMode },
+          query,
+        });
+        if (reported) {
+          query.push({
+            type: 'system',
+            subtype: 'status',
+            status: null,
+            permissionMode: reported,
+            uuid: 'status-reported',
+            session_id: 'claude-session',
+          });
+          await waitFor(
+            (event) =>
+              event.method === 'session.configured' &&
+              event.metadata?.permissionMode === reported,
+          );
+          await waitFor((event) => event.method === 'extension.notification');
+        }
+        const edit = await ask(
+          'Edit',
+          { file_path: '/work/a/x.ts', old_string: 'a', new_string: 'b' },
+          {
+            suggestions: [
+              { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+            ],
+          },
+        );
+        if (edit.kind !== 'prompted') throw new Error('expected a prompt');
+        await expect(edit.answer('acceptForSession')).resolves.toMatchObject({
+          updatedPermissions: [
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+        });
+
+        // No Auto was recorded: the turn carries the unchanged posture.
+        await adapter.sendTurn({
+          threadId,
+          input: 'next',
+          modelOptions: { approvalMode },
+        });
+        expect(query.setPermissionMode).toHaveBeenCalledTimes(1);
+        expect(query.setPermissionMode).toHaveBeenCalledWith(expected);
+        await adapter.stopSession(threadId);
+      },
+    );
+
+    test('under full access a file edit offers no session grant and forwards no mode change', async () => {
+      const query = createControlledMockQuery();
+      const threadId = 'thread-edit-bypass';
+      const { adapter, ask } = await grantHarness(threadId, {
+        modelOptions: { approvalMode: 'never' },
+        query,
+      });
+      const input = {
+        file_path: '/work/a/.git/config',
+        old_string: 'a',
+        new_string: 'b',
+      };
+      const edit = await ask('Edit', input, {
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      });
+      if (edit.kind !== 'prompted') throw new Error('expected a prompt');
+      expect(edit.event.payload).toMatchObject({
+        permissionMode: 'bypassPermissions',
+      });
+      await expect(edit.answer('acceptForSession')).resolves.toEqual({
+        behavior: 'allow',
+        updatedInput: input,
+        updatedPermissions: undefined,
+      });
+      await adapter.stopSession(threadId);
+    });
+
+    test('picking a different posture while the engine is in plan mode is applied', async () => {
+      const query = createControlledMockQuery();
+      const threadId = 'thread-plan-repick';
+      const { adapter, waitFor } = await grantHarness(threadId, {
+        modelOptions: { approvalMode: 'auto' },
+        query,
+      });
+      query.push({
+        type: 'system',
+        subtype: 'status',
+        status: null,
+        permissionMode: 'plan',
+        uuid: 'status-plan',
+        session_id: 'claude-session',
+      });
+      await waitFor(
+        (event) =>
+          event.method === 'session.configured' &&
+          event.metadata?.permissionMode === 'plan',
+      );
+      await adapter.sendTurn({
+        threadId,
+        input: 'follow-up',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      expect(query.setPermissionMode).toHaveBeenCalledWith('default');
+      await adapter.stopSession(threadId);
+    });
+
+    test('an unchanged engine mode report publishes nothing', async () => {
+      const query = createControlledMockQuery();
+      const threadId = 'thread-mode-noop';
+      const { adapter, waitFor, seen } = await grantHarness(threadId, {
+        query,
+      });
+      const status = (permissionMode: string, uuid: string) => ({
+        type: 'system',
+        subtype: 'status',
+        status: null,
+        permissionMode,
+        uuid,
+        session_id: 'claude-session',
+      });
+      query.push(status('plan', 'status-1'));
+      query.push(status('plan', 'status-2'));
+      query.push(status('default', 'status-3'));
+      await waitFor(
+        (event) =>
+          event.method === 'session.configured' &&
+          event.metadata?.permissionMode === 'default',
+      );
+      expect(
+        seen.filter(
+          (event) =>
+            event.method === 'session.configured' &&
+            event.metadata?.permissionMode === 'plan',
+        ),
+      ).toHaveLength(1);
+      await adapter.stopSession(threadId);
+    });
+
+    test('in plan mode a file edit offers no session grant and forwards no mode change', async () => {
+      const query = createControlledMockQuery();
+      const threadId = 'thread-plan-edit';
+      const { adapter, ask, waitFor } = await grantHarness(threadId, { query });
+      // The engine reports entering plan mode (its own EnterPlanMode).
+      query.push({
+        type: 'system',
+        subtype: 'status',
+        status: null,
+        permissionMode: 'plan',
+        uuid: 'status-plan',
+        session_id: 'claude-session',
+      });
+      await waitFor(
+        (event) =>
+          event.method === 'session.configured' &&
+          event.metadata?.permissionMode === 'plan',
+      );
+      await waitFor((event) => event.method === 'extension.notification');
+
+      // A sensitive-file safety check in plan mode still suggests acceptEdits.
+      const input = {
+        file_path: '/work/a/.git/config',
+        old_string: 'a',
+        new_string: 'b',
+      };
+      const sensitive = await ask('Edit', input, {
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      });
+      if (sensitive.kind !== 'prompted') throw new Error('expected a prompt');
+      expect(sensitive.event.payload).toMatchObject({ permissionMode: 'plan' });
+      await expect(sensitive.answer('acceptForSession')).resolves.toEqual({
+        behavior: 'allow',
+        updatedInput: input,
+        updatedPermissions: undefined,
+      });
+
+      await adapter.stopSession(threadId);
+    });
+
+    test('a folder grant forwards only the directory, and an ask with nothing to forward is answered once', async () => {
+      const { adapter, ask } = await grantHarness('thread-folder-forward');
+      // The engine's Edit ask outside the working directories: a session
+      // acceptEdits mode change and the directory. Only the directory goes.
+      const edit = await ask(
+        'Edit',
+        { file_path: '/work/b/x.ts', old_string: 'a', new_string: 'b' },
+        {
+          decisionReason: 'Path is outside allowed working directories',
+          suggestions: [
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+            {
+              type: 'addDirectories',
+              directories: ['/work/b'],
+              destination: 'session',
+            },
+          ],
+        },
+      );
+      if (edit.kind !== 'prompted') throw new Error('expected a prompt');
+      await expect(edit.answer('acceptForSession')).resolves.toMatchObject({
+        updatedPermissions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+        ],
+      });
+
+      // A Bash redirect writing outside the working directories: the blocked
+      // path, the directory and acceptEdits. Only the directory goes.
+      const redirect = await ask(
+        'Bash',
+        { command: 'echo done > /work/b/out.txt' },
+        {
+          blockedPath: '/work/b/out.txt',
+          suggestions: [
+            {
+              type: 'addDirectories',
+              directories: ['/work/b'],
+              destination: 'session',
+            },
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+        },
+      );
+      if (redirect.kind !== 'prompted') throw new Error('expected a prompt');
+      await expect(redirect.answer('acceptForSession')).resolves.toMatchObject({
+        updatedPermissions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+        ],
+      });
+
+      const ruleForced = await ask(
+        'Bash',
+        { command: 'git push' },
+        {
+          matchedAskRule: {
+            source: 'userSettings',
+            toolName: 'Bash',
+            ruleContent: 'git push:*',
+          },
+          suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Bash', ruleContent: 'git push:*' }],
+              behavior: 'allow',
+              destination: 'session',
+            },
+          ],
+        },
+      );
+      if (ruleForced.kind !== 'prompted') throw new Error('expected a prompt');
+      // The surfaces compute the same grant from the published payload.
+      expect(ruleForced.event.payload).toMatchObject({
+        matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
+      });
+      await expect(ruleForced.answer('acceptForSession')).resolves.toEqual({
+        behavior: 'allow',
+        updatedInput: { command: 'git push' },
+        updatedPermissions: undefined,
+      });
+
+      await adapter.stopSession('thread-folder-forward');
+    });
+
+    test('a folder rule suggestion is an escalation even for a tool Station does not classify as read-only', async () => {
+      // "NotebookRead" stands for a later engine's read tool that the
+      // read-only list does not name yet; the ask shape is the engine's own.
+      const { adapter, ask } = await grantHarness('thread-folder-rule');
+      const grant = await ask('NotebookRead', {
+        notebook_path: '/work/a/x.ipynb',
+      });
+      if (grant.kind !== 'prompted') throw new Error('expected a prompt');
+      await grant.answer('acceptForSession');
+
+      const outside = await ask(
+        'NotebookRead',
+        { notebook_path: '/work/b/y.ipynb' },
+        outsideDirRead('/work/b'),
+      );
+      expect(outside.kind).toBe('prompted');
+      if (outside.kind === 'prompted') await outside.answer('decline');
+
+      await adapter.stopSession('thread-folder-rule');
+    });
+
+    test('a directory widening or a rule-forced ask is never answered by a tool grant', async () => {
+      const { adapter, ask } = await grantHarness('thread-other-escalations');
+      const grant = await ask('Bash', { command: 'git status' });
+      if (grant.kind !== 'prompted') throw new Error('expected a prompt');
+      await grant.answer('acceptForSession');
+
+      // Positive control: an ordinary, different Bash call is covered, also
+      // when the engine suggests a command rule (not a folder).
+      await expect(
+        ask('Bash', { command: 'git log -1' }),
+      ).resolves.toMatchObject({ kind: 'allowed' });
+      await expect(
+        ask(
+          'Bash',
+          { command: 'npm run build' },
+          {
+            suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Bash', ruleContent: 'npm run build:*' }],
+                behavior: 'allow',
+                destination: 'session',
+              },
+            ],
+          },
+        ),
+      ).resolves.toMatchObject({ kind: 'allowed' });
+
+      const widening = await ask(
+        'Bash',
+        { command: 'ls ../other' },
+        {
+          suggestions: [
+            {
+              type: 'addDirectories',
+              directories: ['/work/other'],
+              destination: 'session',
+            },
+          ],
+        },
+      );
+      expect(widening.kind).toBe('prompted');
+      if (widening.kind === 'prompted') await widening.answer('decline');
+
+      // A blocked path with no suggestion (e.g. a safety check).
+      const blocked = await ask(
+        'Bash',
+        { command: 'cat < ~/.ssh/config' },
+        { blockedPath: '/home/user/.ssh/config' },
+      );
+      expect(blocked.kind).toBe('prompted');
+      if (blocked.kind === 'prompted') await blocked.answer('decline');
+
+      const ruleForced = await ask(
+        'Bash',
+        { command: 'git push' },
+        {
+          matchedAskRule: {
+            source: 'userSettings',
+            toolName: 'Bash',
+            ruleContent: 'git push:*',
+          },
+        },
+      );
+      expect(ruleForced.kind).toBe('prompted');
+      if (ruleForced.kind === 'prompted') await ruleForced.answer('decline');
+
+      await adapter.stopSession('thread-other-escalations');
+    });
+
+    test('a session answer on ExitPlanMode mints nothing, and the next plan exit prompts', async () => {
+      const { adapter, ask } = await grantHarness('thread-plan-exit');
+      const planExitSuggestions = [
+        { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+      ];
+      const first = await ask(
+        'ExitPlanMode',
+        { plan: 'Step 1' },
+        { suggestions: planExitSuggestions },
+      );
+      expect(first.kind).toBe('prompted');
+      if (first.kind !== 'prompted') throw new Error('unreachable');
+      // Answered for this one call: no session-wide mode change is forwarded.
+      await expect(first.answer('acceptForSession')).resolves.toEqual({
+        behavior: 'allow',
+        updatedInput: { plan: 'Step 1' },
+        updatedPermissions: undefined,
+      });
+
+      const second = await ask(
+        'ExitPlanMode',
+        { plan: 'Step 2' },
+        { suggestions: planExitSuggestions },
+      );
+      expect(second.kind).toBe('prompted');
+      if (second.kind === 'prompted') await second.answer('decline');
+
+      await adapter.stopSession('thread-plan-exit');
+    });
   });
 
   describe('canUseTool honors the session agent tools.autoApprove (external autoApprove parity)', () => {
@@ -5212,7 +5957,6 @@ describe('ClaudeAdapter', () => {
       const createInProcessStationControl = vi.fn(() => instance);
       const adapter = new ClaudeAdapter({
         createInProcessStationControl,
-        mintStationControlCallerToken: () => 'must-not-be-used',
         revokeStationControlCallerToken: vi.fn(),
       });
       await adapter.startSession({
@@ -5350,11 +6094,7 @@ describe('ClaudeAdapter', () => {
     test('Station #90 lane D: a session whose station-control id is not the canonical built-in mints nothing', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const createInProcessStationControl = vi.fn();
-      const mintStationControlCallerToken = vi.fn(() => 'token');
-      const adapter = new ClaudeAdapter({
-        createInProcessStationControl,
-        mintStationControlCallerToken,
-      });
+      const adapter = new ClaudeAdapter({ createInProcessStationControl });
       await adapter.startSession({
         provider: 'claude',
         threadId: 'thread-impostor',
@@ -5371,7 +6111,6 @@ describe('ClaudeAdapter', () => {
         },
       });
       expect(createInProcessStationControl).not.toHaveBeenCalled();
-      expect(mintStationControlCallerToken).not.toHaveBeenCalled();
     });
 
     test('Station #90 lane D: stopSession revokes the credential even when no session record exists', async () => {
@@ -5390,9 +6129,11 @@ describe('ClaudeAdapter', () => {
       });
       let minted: string | undefined;
       const adapter = new ClaudeAdapter({
-        mintStationControlCallerToken: (threadId) => {
-          minted = mintStationControlStdioCallerToken(threadId);
-          return minted;
+        // The in-process channel production composes: creating the server
+        // mints the session's credential before query() runs.
+        createInProcessStationControl: (threadId) => {
+          minted = mintStationControlMcpToken(threadId, 'sdk-in-process').token;
+          return { connect: vi.fn(), close: vi.fn() };
         },
         revokeStationControlCallerToken: (threadId) =>
           revokeStationControlMcpToken(threadId),
@@ -5406,51 +6147,6 @@ describe('ClaudeAdapter', () => {
       ).rejects.toThrow('sdk refused options');
       expect(typeof minted).toBe('string');
       expect(verifyStationControlMcpToken(minted)).toBeUndefined();
-    });
-
-    test('Station #90 lane D: the stdio fallback child carries a per-session caller credential and its tenant, and stopSession revokes it', async () => {
-      __resetStationControlMcpTokensForTests();
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        mintStationControlCallerToken: (threadId, tenant) =>
-          mintStationControlStdioCallerToken(threadId, tenant),
-        revokeStationControlCallerToken: (threadId) =>
-          revokeStationControlMcpToken(threadId),
-      });
-
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-caller-credential',
-        tenantExecutionContext: {
-          tenantId: 'alpha' as never,
-          source: 'request',
-        },
-        agent: { slug: 'my-agent', toolServers: stationControlToolServers },
-      });
-
-      const queryArgs = mockQuery.mock.calls[0][0] as {
-        options: {
-          mcpServers: Record<string, { env?: Record<string, string> }>;
-        };
-      };
-      const token =
-        queryArgs.options.mcpServers['station-control'].env?.[
-          STATION_CONTROL_CALLER_TOKEN_ENV
-        ];
-      expect(typeof token).toBe('string');
-      expect(verifyStationControlMcpToken(token)).toEqual({
-        sessionId: 'thread-caller-credential',
-        tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
-      });
-      // The child's REST calls keep the tenant the token was minted for.
-      expect(
-        queryArgs.options.mcpServers['station-control'].env
-          ?.STATION_INTERNAL_TENANT,
-      ).toBe('alpha');
-      expect(queryArgs.options.mcpServers['third-party'].env).toBeUndefined();
-
-      await adapter.stopSession('thread-caller-credential');
-      expect(verifyStationControlMcpToken(token)).toBeUndefined();
     });
 
     test('reports an invalid HTTP tool server and still starts the session', async () => {

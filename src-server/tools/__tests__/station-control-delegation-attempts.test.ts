@@ -659,24 +659,6 @@ describe('controller forwarding — capability gate + duplicate relay', () => {
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
       }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'orchestration:read orchestration:operate',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
-      }
       if (url === `${REMOTE_API}/.well-known/station/v1`) {
         return json(remoteHandshake);
       }
@@ -684,6 +666,35 @@ describe('controller forwarding — capability gate + duplicate relay', () => {
         return peerPost();
       }
       throw new Error(`Unexpected request: ${url}`);
+    });
+  }
+
+  /** #2377 slice C2b: the route's one remote seam, over the peer's credential. */
+  async function peerForwarder() {
+    const { createRemoteStationForwarder } = await import(
+      '../../services/remote-stations/remote-station-forwarder.js'
+    );
+    return createRemoteStationForwarder({
+      ssh: {
+        list: () => [],
+        connect: async () => {
+          throw new Error('no SSH profile');
+        },
+      },
+      peers: {
+        get: (environmentId: string) =>
+          environmentId === 'environment-remote'
+            ? {
+                environmentId,
+                apiBase: REMOTE_API,
+                scope: 'orchestration:read orchestration:operate',
+                credential: 'peer-secret',
+                label: 'Station B',
+                createdAt: 0,
+                updatedAt: 0,
+              }
+            : null,
+      },
     });
   }
 
@@ -719,12 +730,16 @@ describe('controller forwarding — capability gate + duplicate relay', () => {
       return seen(input, init);
     });
     const { delegateTask } = await import('../station-control-delegation.js');
-    const error = await delegateTask({
-      prompt: 'Ship the portable thing',
-      target: peerTarget(),
-      isRequestAuthorityCurrent: () => true,
-      delegationAttemptId: 'attempt-1',
-    }).catch((caught: unknown) => caught);
+    const error = await delegateTask(
+      {
+        prompt: 'Ship the portable thing',
+        target: peerTarget(),
+        isRequestAuthorityCurrent: () => true,
+        delegationAttemptId: 'attempt-1',
+      },
+      undefined,
+      await peerForwarder(),
+    ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ReceiverExecutionRefusal);
     expect((error as ReceiverExecutionRefusal).code).toBe(
       'delegation_attempt_unsupported',
@@ -764,12 +779,16 @@ describe('controller forwarding — capability gate + duplicate relay', () => {
       return seen(input, init);
     });
     const { delegateTask } = await import('../station-control-delegation.js');
-    const error = await delegateTask({
-      prompt: 'Ship the portable thing',
-      target: peerTarget(),
-      isRequestAuthorityCurrent: () => true,
-      delegationAttemptId: 'attempt-1',
-    }).catch((caught: unknown) => caught);
+    const error = await delegateTask(
+      {
+        prompt: 'Ship the portable thing',
+        target: peerTarget(),
+        isRequestAuthorityCurrent: () => true,
+        delegationAttemptId: 'attempt-1',
+      },
+      undefined,
+      await peerForwarder(),
+    ).catch((caught: unknown) => caught);
     // The forward carried the opt-in correlation…
     expect(forwardedBody).toMatchObject({ attemptId: 'attempt-1' });
     // …and the receiver's duplicate came back typed, never laundered.

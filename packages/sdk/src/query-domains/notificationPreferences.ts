@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/notification-preferences';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -75,7 +76,8 @@ async function request(
     | undefined;
   try {
     result = (await response.json()) as typeof result;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     result = undefined;
   }
   if (!response.ok || !result?.success || !result.data) {

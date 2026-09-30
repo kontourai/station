@@ -85,10 +85,6 @@ function createMockConfigLoader() {
       .fn()
       .mockResolvedValue({ id: 'mcp-1', name: 'Test', type: 'stdio' }),
     deleteIntegration: vi.fn().mockResolvedValue(undefined),
-    loadAgent: vi.fn().mockResolvedValue({
-      tools: { mcpServers: ['mcp-1'], available: ['*'] },
-    }),
-    updateAgent: vi.fn().mockResolvedValue(undefined),
   });
   return Object.assign(loader, {
     loadIntegrationWithOwnership: vi.fn(async (id: string) => ({
@@ -838,25 +834,28 @@ describe('MCPService', () => {
     );
   });
 
-  test('opens every platform browser with argv and no shell interpolation', () => {
-    const unref = vi.fn();
-    const spawnProcess = vi.fn(() => ({ unref }));
-    const url = 'https://auth.example/authorize?a=1&b=2';
+  test.each([
+    ['darwin', 'open', []],
+    ['linux', 'xdg-open', []],
+    ['win32', 'rundll32.exe', ['url.dll,FileProtocolHandler']],
+  ] as const)(
+    'opens the %s browser with argv and no shell interpolation',
+    (platform, command, leading) => {
+      const unref = vi.fn();
+      const spawnProcess = vi.fn(() => ({ unref }));
+      const url = 'https://auth.example/authorize?a=1&b=2';
 
-    openSystemBrowser(url, 'win32', spawnProcess as never);
+      openSystemBrowser(url, platform, spawnProcess as never);
 
-    expect(spawnProcess).toHaveBeenCalledWith(
-      'rundll32.exe',
-      ['url.dll,FileProtocolHandler', url],
-      {
+      expect(spawnProcess).toHaveBeenCalledWith(command, [...leading, url], {
         detached: true,
         shell: false,
         stdio: 'ignore',
         windowsHide: true,
-      },
-    );
-    expect(unref).toHaveBeenCalledOnce();
-  });
+      });
+      expect(unref).toHaveBeenCalledOnce();
+    },
+  );
 
   test('rejects a non-http authorization URL before local browser launch', async () => {
     const home = await mkdtemp(join(tmpdir(), 'station-oauth-url-'));
@@ -1784,51 +1783,6 @@ describe('MCPService', () => {
     expect(result.probe?.checkedAt).toBe('2026-08-14T10:00:05.000Z');
     vi.useRealTimers();
   });
-  test('listIntegrations delegates to configLoader', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    const result = await svc.listIntegrations();
-    expect(result).toEqual([{ id: 'mcp-1', name: 'Test' }]);
-  });
-
-  test('getToolAgentMap delegates', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    const result = await svc.getToolAgentMap();
-    expect(result).toEqual({ 'mcp-1': ['default'] });
-  });
-
-  test('saveIntegration delegates', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    await svc.saveIntegration({ id: 'new', name: 'New' } as any);
-    expect(loader.saveIntegration).toHaveBeenCalled();
-  });
-
   test('ordinary edits preserve hidden binding references', async () => {
     const loader = createMockConfigLoader();
     loader.loadIntegration.mockResolvedValue({
@@ -1996,21 +1950,6 @@ describe('MCPService', () => {
       }),
     ).rejects.toThrow('operator binding API');
     expect(loader.saveIntegration).not.toHaveBeenCalled();
-  });
-
-  test('deleteIntegration delegates', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    await svc.deleteIntegration('mcp-1');
-    expect(loader.deleteIntegration).toHaveBeenCalledWith('mcp-1');
   });
 
   test('deleteIntegration clears an in-memory OAuth consent flow', async () => {
@@ -2223,86 +2162,6 @@ describe('MCPService', () => {
         }),
       ]),
     );
-  });
-
-  test('addToolToAgent adds to mcpServers list', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    const result = await svc.addToolToAgent('default', 'mcp-2');
-    expect(result).toContain('mcp-2');
-    expect(loader.updateAgent).toHaveBeenCalled();
-  });
-
-  test('addToolToAgent deduplicates', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    const result = await svc.addToolToAgent('default', 'mcp-1');
-    expect(result.filter((id: string) => id === 'mcp-1')).toHaveLength(1);
-  });
-
-  test('removeToolFromAgent removes from list', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new MCPService(
-      loader as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    await svc.removeToolFromAgent('default', 'mcp-1');
-    expect(loader.updateAgent).toHaveBeenCalledWith(
-      'default',
-      expect.objectContaining({
-        tools: expect.objectContaining({ mcpServers: [] }),
-      }),
-    );
-  });
-
-  test('getConnectionStatus returns undefined for unknown', () => {
-    const svc = new MCPService(
-      {} as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    expect(svc.getConnectionStatus('default', 'mcp-1')).toBeUndefined();
-  });
-
-  test('getConnectionStatus returns stored status', () => {
-    const status = new Map([['mcp-1', { connected: true }]]);
-    const svc = new MCPService(
-      {} as any,
-      new Map(),
-      status as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    expect(svc.getConnectionStatus('default', 'mcp-1')).toEqual({
-      connected: true,
-    });
   });
 
   function svcWithMcpUiConnection(
@@ -2605,24 +2464,6 @@ describe('MCPService', () => {
       svc.readMCPUIResourceFromTool('mcp-1', 'render'),
     ).rejects.toThrow("MCP tool 'render' is disabled");
     expect(callTool).not.toHaveBeenCalled();
-  });
-
-  test('reads metadata from the shared integration key', () => {
-    const svc = new MCPService(
-      createMockConfigLoader() as any,
-      new Map(),
-      new Map(),
-      new Map([['mcp-1', { type: 'mcp', transport: 'stdio', toolCount: 2 }]]),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-
-    expect(svc.getIntegrationMetadata('writer', 'mcp-1')).toEqual({
-      type: 'mcp',
-      transport: 'stdio',
-      toolCount: 2,
-    });
   });
 
   test('readMCPUIResource byte-caps oversized text and flags truncation', async () => {

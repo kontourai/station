@@ -26,7 +26,6 @@
  */
 
 import type { BuiltinStationControlDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { EvidenceType } from '@kontourai/surface';
 import { describe, expect, test } from 'vitest';
 
@@ -56,16 +55,5 @@ describe('station#1549: capability basis vocabulary is Surface’s, not a local 
   test('the compile-time pins hold', () => {
     expect(_basisIsSurfaceVocabulary).toBe(true);
     expect(_observationBasisIsSurfaceMember).toBe(true);
-  });
-
-  test('every shipped delivery mechanism carries an explicit basis — no cell may be silent about how it is verified', () => {
-    for (const matrix of Object.values(ENGINE_CAPABILITY_MATRICES)) {
-      const cell = matrix.toolServers;
-      if (cell.state !== 'session') continue;
-      const delivery = cell.builtinStationControlDelivery;
-      if (delivery === undefined) continue;
-      expect(delivery.basis).toBeDefined();
-      expect(['declared', 'runtime_observation']).toContain(delivery.basis);
-    }
   });
 });

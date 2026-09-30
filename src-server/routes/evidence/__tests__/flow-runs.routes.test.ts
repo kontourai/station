@@ -395,7 +395,7 @@ describe('Flow Run Routes', () => {
     expect(service.ensureLayout).toHaveBeenCalledWith('/ws');
   });
 
-  test('POST /init is idempotent — reports already-initialized', async () => {
+  test('POST /init reports already-initialized when the workspace was initialized before the call', async () => {
     const service = createMockFlowRunService();
     // detectWorkspace defaults to initialized:true for both calls.
     const { app } = createApp(service);

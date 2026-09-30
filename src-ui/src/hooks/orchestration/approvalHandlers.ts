@@ -3,6 +3,7 @@ import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -51,7 +52,12 @@ export function handleRequestOpenedEvent(
   // the literal shell command — and "Allow <a whole command line> for this
   // session" would both mislead about the grant's scope and swamp the button.
   // The inline card uses the same helper (#2316).
-  const grantLabel = toolRequestGrantLabel(payloadToolName);
+  // #2915/#2916: says what a session answer grants for THIS request, and is
+  // undefined where none is offered (a plan exit, an ask rule).
+  const grantLabel = toolRequestGrantLabel(
+    payloadToolName,
+    toolRequestSessionGrantFromPayload(event.payload),
+  );
   if (
     isReplayThread(event.threadId) ||
     chat.approvalToasts?.has(event.requestId)
@@ -72,7 +78,7 @@ type ApprovalToastView = {
   toolPreview: string;
   agentName: string;
   conversationTitle?: string;
-  grantLabel: string;
+  grantLabel?: string;
 };
 
 function showApprovalToast(
@@ -95,14 +101,18 @@ function showApprovalToast(
         variant: 'primary',
         onClick: () => answer('accept'),
       },
-      {
-        // Says what the grant covers: "Allow for Session" reads as a grant for
-        // this one call, and it is a standing grant for every later call to the
-        // same tool in this session.
-        label: view.grantLabel,
-        variant: 'secondary',
-        onClick: () => answer('acceptForSession'),
-      },
+      ...(view.grantLabel
+        ? [
+            {
+              // Says what the grant covers: "Allow for Session" reads as a
+              // grant for this one call, and it is a standing grant for every
+              // later call to the same tool in this session.
+              label: view.grantLabel,
+              variant: 'secondary' as const,
+              onClick: () => answer('acceptForSession'),
+            },
+          ]
+        : []),
       { label: 'Deny', variant: 'danger', onClick: () => answer('decline') },
     ],
   });
@@ -141,7 +151,7 @@ async function answerFromToast(
     });
     if (outcome === 'already-settled') {
       toastStore.show(
-        `${view.toolName}: this request was already answered.`,
+        `${view.toolName}: this request is no longer open.`,
         event.threadId,
         5000,
       );
@@ -166,6 +176,45 @@ async function answerFromToast(
       showApprovalToast(apiBase, event, view);
     }
   }
+}
+
+/**
+ * #2880: the engine-side fate of a recorded decision. `unacknowledged` puts
+ * the request on the chat's list; a later `acknowledged` (late ack) takes it
+ * off, which clears the status note. The runtime.warning that accompanies an
+ * unacknowledged decision is shown by its own handler.
+ */
+export function handleRequestDeliveryEvent(
+  event: Extract<OrchestrationEvent, { method: 'request.delivery' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat) return;
+  // The note speaks for a live engine; a report settled after the session
+  // ended (a cancel written during teardown) must not re-add what
+  // `session.exited` cleared.
+  if (
+    event.outcome === 'unacknowledged' &&
+    chat.orchestrationStatus === 'exited'
+  )
+    return;
+  const others = (chat.unacknowledgedDecisions || []).filter(
+    (decision) => decision.requestId !== event.requestId,
+  );
+  activeChatsStore.updateChat(event.threadId, {
+    unacknowledgedDecisions:
+      event.outcome === 'unacknowledged'
+        ? [
+            ...others,
+            {
+              requestId: event.requestId,
+              reason:
+                event.reason === 'invalid-reply'
+                  ? 'invalid-reply'
+                  : 'no-acknowledgement',
+            },
+          ]
+        : others,
+  });
 }
 
 export function handleRequestResolvedEvent(

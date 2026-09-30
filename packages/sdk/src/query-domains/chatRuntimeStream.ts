@@ -1,5 +1,6 @@
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
 import { resolveApiBase } from '../query-core';
 import type {
@@ -17,6 +18,7 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
     const body = (await response.json()) as {
       error?: unknown;
       code?: unknown;
+      details?: unknown;
     } | null;
     const serverMessage =
       body && typeof body.error === 'string' && body.error.length > 0
@@ -26,13 +28,18 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
       body && typeof body.code === 'string' && body.code.length > 0
         ? body.code
         : undefined;
+    // The failure form, so the envelope's `details` ride on the one field
+    // `StationHttpError` carries them in (#1796's full-access refusal is
+    // rendered from them, never from the prose).
     return new ChatHttpError(
-      response.status,
-      serverMessage,
-      code,
+      new StationHttpError(response.status, serverMessage, {
+        code,
+        details: body?.details ?? undefined,
+      }),
       isStationEnvelope(body),
     );
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // Body isn't JSON (or is empty) — fall back to a generic status message
     // rather than failing to construct an error at all. Not Station's answer.
     return new ChatHttpError(response.status, undefined, undefined, false);
@@ -450,3 +457,4 @@ export async function streamConversationTurn(input: {
 }
 
 import { authenticatedFetch } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';

@@ -157,50 +157,6 @@ describe('OrchestrationMonitoringBridge', () => {
     ]);
   });
 
-  test('carries no lifetime-analytics ingress at all (station#3245)', () => {
-    // This bridge used to be a SECOND fold of the same events into
-    // `analytics/stats.json`, and a wrong one — it kept the last
-    // `token-usage.updated` frame per turn believing every engine reports
-    // cumulatively, which re-added Codex's whole running total once per turn,
-    // and it published cost as `0` because it had none to give. The one
-    // derivation is now `foldUsageEvents`, reached by `UsageAggregator`
-    // through `OrchestrationService.listSessionUsage`.
-    //
-    // Asserted structurally, not by a "was not called" spy: the constructor
-    // takes no analytics collaborator, so no call site can reintroduce one
-    // without failing to compile. A dropped-argument regression would leave
-    // this test passing but the arity assertion below red.
-    expect(OrchestrationMonitoringBridge.length).toBe(2);
-    const bridge = new OrchestrationMonitoringBridge(undefined, context);
-    bridge.onTurnDispatched({
-      provider: 'claude',
-      threadId: 'conversation-1',
-      turnId: 'turn-1',
-      prompt: 'hello',
-    });
-    bridge.onRuntimeEvent(
-      runtimeEvent({
-        provider: 'claude',
-        method: 'token-usage.updated',
-        promptTokens: 3,
-        completionTokens: 5,
-        totalTokens: 8,
-      }),
-    );
-    // Completing the turn must not throw now that the ingress is gone, and
-    // must still clear the turn entry (a later terminal emits nothing).
-    expect(() =>
-      bridge.onRuntimeEvent(
-        runtimeEvent({
-          provider: 'claude',
-          method: 'turn.completed',
-          outputText: 'done',
-          finishReason: 'stop',
-        }),
-      ),
-    ).not.toThrow();
-  });
-
   test('closes every open thread turn when an async runtime error has no turn id', async () => {
     const persisted: Record<string, unknown>[] = [];
     const emitter = new MonitoringEmitter(new EventEmitter(), async (event) => {

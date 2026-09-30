@@ -1,5 +1,16 @@
 # Design: server-ordered approval posture
 
+> **Reading status: accepted design and implementation history.** Section 3's
+> surface map, line numbers, comparisons with `main`, and test reports describe
+> the recorded revisions below. They are not a fresh authorization audit.
+> Current posture resolution is owned by
+> [ApprovalPosture](../../src-server/services/orchestration/approval-posture.ts),
+> applied by [OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts);
+> [coding authority](../../src-server/security/coding-authority.ts) separately
+> owns full-access grants. Use the [Session API](../reference/session-api.md)
+> for current requests. The historical “full access” descriptions do not replace
+> those current authority and engine boundaries.
+
 > Status: **accepted (owner decision on #2436, 2026-09-23); implemented on the
 > branch that closes #2436, #2418 and #2409.** It replaces the client-side pick
 > bookkeeping that #2449 added in `src-ui/src/utils/approvalMode.ts`. Line
@@ -381,7 +392,9 @@ A session spawned before this change has nothing recorded.
   - The scope is in no preset and never in the default grant, like
     `engine:login` and #2412's `coding:exec`.
   - The operator grants it once per device, in the device access editor
-    ("Allow full access").
+    (**Paired devices** → the device → **Change access** → "Allow full
+    access") or on the Station host with `station environment access scope
+    <device> --add approval:full-access` (#1796).
 - **One derivation.** The check is `mayGrantFullAccess` in
   `src-server/security/coding-authority.ts`, next to #2412's
   `mayRunCommandsOnHost`. It shares the same `isOperatorInPerson`.
@@ -439,10 +452,107 @@ A session spawned before this change has nothing recorded.
   - The tasks and starter routes keep an early 403 from the same derivation,
     so a refused Starter launch leaves no Task behind.
 - **The refusal.** It is 403 with `approval-full-access-not-granted`, decided
-  before the send or the command has any effect.
+  before the send or the command has any effect. Since #1796 it is
+  actionable without being weakened: `details` carries what was requested
+  (`never`), the requester derived from the request's own verified
+  credential (`device` with short id and display name, `agent`, or `person`),
+  the refusing Station's environment id, and the operator's grant path
+  (`grant.cli`, the exact host command
+  `station environment access scope <short-id> --add approval:full-access`,
+  and `grant.uiSteps`, the desktop app steps through **Paired devices** →
+  the device → **Change access**). An Agent's refusal has `grant: null`: no
+  scope lets an Agent choose full access. The requester chooses its pairing
+  name, so the name is sanitized (control, format and separator characters
+  removed, 64 characters at most) and carried only in `details`; the `error`
+  prose names the device by its short id alone. Clients render the refusal
+  from `details` as plain text (the chat card, the CLI through
+  `terminalSafeText`), never the prose as Markdown, and never retry at
+  another mode. The wording is in `src-server/security/full-access-refusal.ts`
+  and the parser in `@kontourai/station-contracts/orchestration`;
+  `mayGrantFullAccess` stays the only derivation. A refused send is not a
+  failed chat: the chat returns to idle, the draft to the composer, and the
+  only way on is an explicit "Send without full access" at the chat's
+  current mode.
+- **Granting and revoking.** The grant is a device scope, managed like any
+  other on the operator's host channel (`station environment access
+  devices|scope|scopes`, over `POST /api/pairing/devices/:id/scope` with
+  `expectedScope`). The scope is read per request, so a removal refuses that
+  device's next full-access pick or dispatch at once.
+- **Revocation resets what the device granted (owner decision, #1796 G3).**
+  Removing `approval:full-access`, or revoking the device, runs
+  `OrchestrationService.resetFullAccessGrantedBy`. Attribution is exact and
+  server-derived. A decision carries its recorder in `clientOrigin.actor`.
+  A `host` start stamp carries its grantor in
+  `metadata.stationConfinementGrantor`, beside the stamp and carried forward
+  on a respawn and an adoption. The grantor comes from the grant itself:
+  `fullAccessGrantFor` names the operator in person or the paired device.
+  A caller that may grant but is neither gets no grant. So every path that
+  carries a grant (chat, delegation, Task dispatch, Starter Work, adoption,
+  pane actions) records who granted it. `prepareStart` and adoption refuse a
+  grant that names no grantor (`UnattributedFullAccessGrantError`). No
+  legitimate actor-less grant exists: every grant is minted from a request.
+  The start's command receipt also records `clientOrigin`, and Task dispatch
+  and Starter Work carry the request's server-derived origin to it.
+  - Behaviour change: a caller that may grant full access but is neither
+    the operator in person nor a paired device (for example an account
+    session holding the scope) gets no grant at session start. Its new
+    sessions start `workspace`, unless a recorded `never` decision makes them
+    `host`; that decision's `clientOrigin.actor` is `unknown`, not a device,
+    so no device's revocation resets it.
+  - A conversation gets a new Ask decision when its standing decision is one
+    of that device's: its `never`, its Default that still resolves to
+    unconfined `never`, or its Auto on a session its grant unconfined. So
+    does a conversation with no standing decision whose `host` session that
+    device started, unless that session's `never` comes from the Agent's or
+    Station's default.
+  - Re-confinement: the applied start stamp reads the grant live
+    (`isFullAccessGrantorCurrent`, backed by the pairing registry). A `host`
+    stamp whose device grantor no longer holds `approval:full-access` applies
+    as `workspace` at every turn start and respawn. The respawn then
+    re-stamps it `workspace`. Both adapters take confinement per turn, but
+    Claude only changes its permission mode when a mode is sent. So a session
+    is re-confined from its next turn while a decision stands, and from its
+    next start otherwise. A running engine with no decision standing keeps
+    its start posture until it restarts. It is listed as `stillUnconfined`
+    (`engine-restart`). Re-granting the scope lets the stamp apply again, but
+    the recorded Ask still stands.
+  - The Ask carries `revocation: { reason, deviceId, cause }` and the
+    operator's `clientOrigin`. History is kept.
+  - A running turn is not touched. The next turn start or respawn applies the
+    decision, which wins over a start's carried mode.
+  - Left alone and listed: a standing decision by the operator or another
+    device; a default-only `never`; a `never` decision with no recorded
+    actor; and live `host` sessions with no recorded grantor (at most 50,
+    with the total).
+  - The route answer carries the report (`fullAccessRevocation`). Each entry
+    names the conversation, its title and a session to open it by. Clients
+    pass a title through `sanitizeUntrustedDisplayText` (control, format,
+    bidi and zero-width characters removed, 256 at most) before showing it. A failed
+    reset is `fullAccessRevocationError`, and the CLI treats it as an error.
+    The reset is idempotent and can be re-run.
+    `station environment access scope <device> --remove approval:full-access`
+    on a device that no longer holds it sends `resetFullAccess: true`, and the
+    route runs the reset again. `DELETE` on a revoked device does the same.
 - **Who can reach a session at all.** Command authorization
   (`canReadSessionForCommand`) admits only the session owner's own
   principals. There is no multi-user shared session to decide for.
+- **Later addition (#2915, owner decision 2026-09-28).** A Claude approval
+  answered "Auto-accept file edits for this session" is also a posture
+  decision, recorded only for a caller holding `setApprovalMode` authority:
+  an answer sent through `POST /api/orchestration/commands`, the route and
+  session authorization an Auto pick needs. Once the engine has taken the
+  answer, the service records an `auto` `session.approval-mode-set` for the
+  conversation, based on the decision that stood before the answer was sent.
+  If any decision was recorded after the answer was sent, that decision stands
+  and nothing is recorded. The compare-and-set alone would admit Auto over a
+  newer `never`, so the service also checks that the standing decision is
+  unchanged. It is not recorded over a standing Auto or `never`. On the
+  delegated `respond_to_task_request` path for a task on this Station (a
+  bound Project approver) and the approval inbox, the answer is sent as a
+  one-call `accept` and nothing is recorded, so no engine is left in
+  acceptEdits with no decision to undo it. A delegated answer for a task on
+  a saved Environment reaches that Station's command route with this
+  Station's enrolled credential and is judged there by the same rule.
 
 ### 4.9 An Agent's default posture (owner request)
 

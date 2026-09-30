@@ -1,6 +1,6 @@
 /**
- * OpenTelemetry SDK bootstrap — must be imported before all other modules.
- * Graceful no-op when OTEL_EXPORTER_OTLP_ENDPOINT is not set.
+ * Optional OpenTelemetry bootstrap. Await provider registration before creating
+ * instruments; importing this module first is insufficient (#2755).
  */
 
 import { platform } from 'node:os';
@@ -27,10 +27,6 @@ const activeTelemetrySdks = new Set<TelemetrySdk>();
 export interface InitializeTelemetryOptions {
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
-  createInstallationIdHash?: (
-    homeDir: string,
-    filename: string,
-  ) => Promise<string>;
   createSdk?: (
     resourceAttributes: Record<string, string>,
     endpoint: string,
@@ -81,20 +77,6 @@ function createSdk(
   });
 }
 
-/** Resolves the exact non-identifying attributes attached to every OTel signal. */
-export async function resolveOtelResourceAttributes(
-  homeDir: string,
-  createInstallationIdHash = persistedRandomIdentifierHash,
-): Promise<Record<string, string>> {
-  return {
-    [OTEL_INSTALLATION_ID_ATTRIBUTE]: await createInstallationIdHash(
-      homeDir,
-      'otel-installation-id',
-    ),
-    'os.type': platform(),
-  };
-}
-
 /** Starts configured OTel after its non-identifying installation id is ready. */
 export async function initializeTelemetry(
   options: InitializeTelemetryOptions = {},
@@ -104,10 +86,14 @@ export async function initializeTelemetry(
   // No endpoint means no identity file I/O, preserving inert-install behavior.
   if (!endpoint) return;
 
-  const resourceAttributes = await resolveOtelResourceAttributes(
-    options.homeDir ?? resolveHomeDir(),
-    options.createInstallationIdHash ?? persistedRandomIdentifierHash,
-  );
+  // The exact non-identifying attributes attached to every OTel signal.
+  const resourceAttributes = {
+    [OTEL_INSTALLATION_ID_ATTRIBUTE]: await persistedRandomIdentifierHash(
+      options.homeDir ?? resolveHomeDir(),
+      'otel-installation-id',
+    ),
+    'os.type': platform(),
+  };
   const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);
   sdk.start();
   activeTelemetrySdks.add(sdk);

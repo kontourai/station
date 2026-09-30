@@ -140,7 +140,7 @@ describe('generateSessionSummary', () => {
     );
   });
 
-  test('keeps a single oversized final turn bounded without counting it as complete', () => {
+  test('caps an oversized turn and still includes it', () => {
     const rendered = renderSessionSummaryTranscript([
       {
         id: 'm1',
@@ -152,8 +152,9 @@ describe('generateSessionSummary', () => {
       SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS,
     );
     expect(rendered.transcript.startsWith('User: ')).toBe(true);
+    // The per-message cap ran, not just redaction's own string limit.
+    expect(rendered.transcript).toContain('[…truncated…]');
     expect(rendered.included).toEqual([expect.objectContaining({ id: 'm1' })]);
-    expect(rendered.partialMessage).toBeUndefined();
   });
 
   test('redacts secrets, excludes tool parts, and revisions include consumed context boundaries', () => {

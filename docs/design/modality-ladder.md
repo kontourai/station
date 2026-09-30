@@ -1,5 +1,14 @@
 # The modality ladder
 
+> **Reading status: adopted interaction policy with an August 2026 migration survey.**
+> The opening modal count and deviation table record that survey, not a current
+> inventory. Current selection and navigation belong to
+> [useUrlSelection](../../src-ui/src/hooks/useUrlSelection.ts) and the
+> [router](../../src-ui/src/app-shell/routing.ts); dirty-form navigation is a
+> separate [unsaved-guard concern](../../src-ui/src/hooks/useUnsavedGuard.tsx).
+> The ladder states intended interaction promises; it does not certify every
+> existing overlay's focus, dismissal, accessibility, or draft recovery.
+
 > Status: design contract, adopted 2026-08-14 (station#2685). Cited in review:
 > when a PR introduces or moves a surface, name its rung. Deviations from the
 > ladder are design decisions and get a sentence of rationale in the PR body —
@@ -34,8 +43,9 @@ promise the surface actually needs.**
 **Promise: this place has an address.** Anything a user might want to return
 to, share, or open from a notification is a page. Sub-state that changes what
 the user is looking at (active tab, selected channel, highlighted row) goes in
-query params so deep links capture it. A page's content survives app restart
-by construction — it re-derives from the URL.
+query params so deep links capture it. The URL can restore the addressed view
+and selection. Content must be re-read from its owner; unsaved drafts need
+their own persistence and are not preserved merely because the page has an address.
 
 Use for: every top-level destination; any multi-section surface (`?view=` /
 `?tab=` for the section); anything a badge, notification, or command-palette
@@ -48,8 +58,8 @@ convention: the list is the page, the selected entity is a path segment
 (`useUrlSelection`), and the detail pane is where the entity is viewed *and
 edited*. Creation happens here too — `new` as a pseudo-selection — because
 **creation belongs where the created thing will live**; the user learns one
-place per entity, and an interrupted creation is recoverable (it is just a
-URL).
+place per entity. A `new` URL can reopen that creation surface; recovering
+half-written fields requires a separate draft owner.
 
 Use for: entity management (agents, skills, tool servers,
 providers, plugins). If an entity list exists, its create flow is this rung —

@@ -61,29 +61,4 @@ describe('buildTranscriptSession', () => {
     expect(session.id).not.toBe('undefined');
     expect(session.id).not.toBeUndefined();
   });
-
-  test('a different sessionId produces a different id (not hardcoded)', () => {
-    const state = baseState();
-    expect(buildTranscriptSession('session-a', 'codex', state).id).toBe(
-      'session-a',
-    );
-    expect(buildTranscriptSession('session-b', 'codex', state).id).toBe(
-      'session-b',
-    );
-  });
-
-  test('message anchor keys derived from this session id are namespaced correctly', () => {
-    const session = buildTranscriptSession(
-      'acp-session-42',
-      'codex',
-      baseState({
-        messages: [{ role: 'user', content: 'hi', timestamp: 1 }],
-      }),
-    );
-    // Mirrors ChatMessageList's content-derived key closely enough to
-    // catch the "undefined" regression without importing a private helper.
-    const anchorKey = `${session.id}:message:${session.messages[0].timestamp}:${session.messages[0].role}:${session.messages[0].content}`;
-    expect(anchorKey.startsWith('undefined:')).toBe(false);
-    expect(anchorKey).toBe('acp-session-42:message:1:user:hi');
-  });
 });

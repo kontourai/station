@@ -148,7 +148,7 @@ describe('BrowserPreviewWorkspacePane (v2 renderer in the v1 slot)', () => {
     });
   });
 
-  test('a stored record for ANOTHER Project is a state mismatch, never a browser', () => {
+  test('a stored record for ANOTHER Project is a state mismatch, never a browser', async () => {
     window.localStorage.setItem(
       storageKey,
       JSON.stringify({
@@ -159,6 +159,11 @@ describe('BrowserPreviewWorkspacePane (v2 renderer in the v1 slot)', () => {
       }),
     );
     renderSlot();
+    await screen.findByText('This pane’s saved contents are missing');
+    // The pane is lazy: settle any pending import before asserting absence,
+    // or a synchronous miss would pass with the mismatch guard removed.
+    await vi.dynamicImportSettled();
     expect(screen.queryByTestId('browser-pane')).toBeNull();
+    expect(mocks.paneProps).toHaveLength(0);
   });
 });

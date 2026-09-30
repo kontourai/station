@@ -3,12 +3,16 @@
 Station's desktop app is a Tauri v2 application. A normal build consumes only
 committed repository inputs: it must not require generating icons, schemas, or
 a Cargo lockfile by hand.
+This is a build contract, not a claim that this review built or launched every
+platform. Keep compile, native interaction, signing and provider receipts separate.
 
 ## Release updates
 
 In the desktop shell, Settings → System → **Desktop app updates** →
-**Check for desktop app updates** checks the signed update channel embedded in
-the installed app. An available update can be installed with **Install desktop
+**Check for desktop app updates** checks the updater configuration embedded in
+the installed app. The native updater is registered only when the build carries
+usable endpoint/key configuration; an ordinary development build may have none.
+An available update can be installed with **Install desktop
 app update and restart**. Manual checks expose failures and can be retried; the
 automatic launch check remains quiet on check failure. The desktop package
 includes the built-in Station server, so installing this update replaces the
@@ -30,7 +34,7 @@ and restart of a packaged app; retain that runtime verification separately.
 ## Prerequisites
 
 - Node 24, as declared by `.nvmrc` and `package.json`
-- npm 10 or newer
+- npm as the script interface and the pinned pnpm version in `package.json`
 - the stable Rust toolchain
 - Tauri's platform prerequisites for your operating system
 
@@ -65,14 +69,17 @@ Git. It then runs the supported compile command verbatim:
 npm run tauri -- build --debug --no-bundle
 ```
 
-Finally, it compares NUL-delimited Git status snapshots from before and after
-the build. Pre-existing intentional worktree edits are preserved, while new
-tracked or unignored generated residue fails with the affected path. Expected
+Finally, it compares NUL-delimited Git status entries from before and after
+the build. A newly dirty path or unignored output fails with the affected path.
+This is not a byte-preservation check: further changes to an already-dirty path
+can keep the same status entry. Preserve and inspect intentional edits separately. Expected
 caches and outputs such as `dist-*` and `src-desktop/target/` remain ignored.
 
-Desktop-affecting pull requests run the same npm command in
-`.github/workflows/desktop-clean-checkout.yml`; the workflow does not carry a
-second copy of the verification logic.
+The path-filtered Ubuntu job in
+[desktop-clean-checkout.yml](../../.github/workflows/desktop-clean-checkout.yml)
+runs the same npm command for PR heads, `main` pushes and manual dispatches.
+Its separate Windows job exercises unsigned diagnostic NSIS packaging. Neither
+job's definition establishes that the current revision passed.
 
 ## Startup readiness boundary
 
@@ -96,16 +103,18 @@ normal build prerequisite. See `src-desktop/icons/README.md`.
 
 ## Reviewed Tauri versions
 
-Verified against npm and crates.io on 2026-08-15, Station uses the latest
-published direct Tauri versions:
+The earlier 2026-08-15 registry review is historical. The current checkout
+requests these direct versions; this list is not a claim that they remain the
+latest upstream releases:
 
 - Rust `tauri` 2.11.5
 - Rust `tauri-build` 2.6.3
-- npm `@tauri-apps/api` 2.11.1
-- npm `@tauri-apps/cli` 2.11.4
+- npm `@tauri-apps/api` `^2.11.1`
+- npm `@tauri-apps/cli` `^2.11.5`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
-Station keeps the resolved npm and Cargo graphs in their lockfiles. Check
+Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
+manifest ranges do not by themselves identify the installed npm package version. Check
 Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
@@ -131,15 +140,16 @@ hashes/nonces that bundled assets require.
 | `manifest-src`, `form-action` | Same-origin application metadata and forms only. |
 | `object-src`, `base-uri`, `frame-ancestors` | All denied to prevent object embedding, base replacement, and framing Station. |
 
-Dynamic installed plugins no longer receive Station's shell nonce **in a
-browser**: a same-origin bundle is loaded by plain `<script src>`, which
+For bundles admitted to the trusted in-process
+[`PluginRegistry`](../../src-ui/src/core/PluginRegistry.ts), a same-origin
+browser bundle is loaded by plain `<script src>`, which
 `script-src 'self'` admits on its own, and the server no longer publishes the
 response nonce as a page global at all (station#4287). Handing a nonce to
 plugin code let it mint further nonce'd scripts, remote ones included, so the
 policy constrained everything except the code it was written for.
 
-In the **desktop shell** the bundle is cross-origin — the document is Tauri's
-asset origin while the bundle lives on the supervised server's loopback origin
+In the **desktop shell** that trusted bundle can be cross-origin — the document is Tauri's
+asset origin while the bundle lives on the configured Station server origin
 — so `'self'` cannot admit it and the fetched bytes are still inlined under
 the nonce Tauri replaces on Station's `data-station-csp-nonce` marker. That
 residual is disclosed rather than closed: closing it needs the desktop host to
@@ -152,27 +162,47 @@ Station's nonce to bypass its own domain allowlist. The policy does not grant
 remote scripts, extra native capabilities, a Tauri asset-CSP bypass, signing,
 notarization, release publication, auto-update, or mobile packaging.
 
+This trusted-registry path is distinct from isolated plugin frames. CSP is not
+an isolation boundary against code deliberately admitted to the shell realm.
+Capabilities in `src-desktop/capabilities/` separately scope native IPC; do not
+widen them to make a build or plugin test pass.
+
 This contract does not prove code signing, notarization, installer
 publication, auto-update delivery, or mobile packaging. Those require their
 own release and real-device evidence.
 
 ## Packaged Browser Preview fixture (macOS)
 
-The bounded physical-host fixture builds the current release package, creates
-one marker-owned temporary `STATION_HOME`, pre-seeds exactly one Project and
-Coding layout, and launches the real packaged app with its bundled service.
-Its only preview target is a numeric-loopback HTTP server owned by the same
-temporary fixture. It neither injects a development grant nor substitutes a
-browser for the packaged renderer.
+**Current limitation:** the checked-in fixture is not a working acceptance
+recipe for today's home-admission contract. Its helper seeds the Project and
+Coding layout under a temporary root, while the runner selects a nested
+`instances/browser-preview` runtime home. The root has no saved-profile store
+and already contains data, so Desktop's profile-store genesis check refuses
+it before sidecar startup. The runner also writes evidence files into the
+unversioned runtime home before schema admission; that independently causes
+a schema refusal. Repair both initialization order and seed location before
+using this fixture to claim packaged Browser Preview success.
+The existing [fixture backlog](https://github.com/kontourai/station/issues/218)
+was folded into the [packaged-platform epic](https://github.com/kontourai/station/issues/199);
+its closed state is not a current successful-run receipt.
+
+The owners are
+[`browser-preview-packaged-fixture.mjs`](../../scripts/browser-preview-packaged-fixture.mjs),
+its [filesystem helper](../../scripts/lib/browser-preview-packaged-fixture.mjs),
+and Desktop home preparation in [`lib.rs`](../../src-desktop/src/lib.rs).
+The command below identifies the existing opt-in entry point, not a successful
+run or an instruction to bypass admission:
 
 ```sh
 PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH" \
   npm run fixture:browser-preview:macos
 ```
 
-The command prints its owned home, service endpoint, loopback target, and
-bounded event-log paths after the packaged service answers its identity route.
-In the seeded Coding layout, open Browser Preview, use the printed loopback
+The intended fixture builds a package, owns one temporary root and numeric-loopback
+preview target, then waits for the packaged service's identity before printing
+its evidence paths. It does not substitute a browser for the native renderer.
+After repairing and qualifying startup, the intended checklist is: in the
+seeded Coding layout, open Browser Preview, use the printed loopback
 target, then record discovery/grant use, input/focus, same-origin navigation,
 remote-redirect, popup and download denial, resize/z-order, close, and
 rediscovery/reopen. `Ctrl-C` stops the app and removes only a directory carrying

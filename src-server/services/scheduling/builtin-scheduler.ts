@@ -294,6 +294,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private readonly announcementOutbox: SchedulerAnnouncementOutbox;
   private readonly monitorTerminalOutbox: MonitorTerminalAnnouncementOutbox;
   private readonly monitorProbeTerminalOutbox: MonitorProbeTerminalAnnouncementOutbox;
+  /** Failed runs this scheduler already announced (the outbox's fast path). */
+  private readonly announcedRunIds = new Set<string>();
   /** In-flight announcements, so `stop()` cannot outrun the bell. */
   private pendingAnnouncements = new Set<Promise<void>>();
   /** At most one armed re-sweep for a run another claimant still holds. */
@@ -392,6 +394,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         broadcast: (event) => this.broadcast(event),
         notificationService: this.notificationService,
         outbox: this.announcementOutbox,
+        announcedRunIds: this.announcedRunIds,
       }),
     );
   }
@@ -978,6 +981,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
             notificationService: this.notificationService,
             broadcast: (event) => this.broadcast(event),
             announcementOutbox: this.announcementOutbox,
+            announcedRunIds: this.announcedRunIds,
             logger: jobLogger,
             signal: this.stopController.signal,
           }));
@@ -1008,6 +1012,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
               broadcast: (event) => this.broadcast(event),
               notificationService: this.notificationService,
               outbox: this.announcementOutbox,
+              announcedRunIds: this.announcedRunIds,
             }),
           );
           if (recovered.kind === 'terminal') {

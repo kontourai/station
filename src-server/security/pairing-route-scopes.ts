@@ -2167,21 +2167,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // default tier is enough. (This no longer rests on ownerless sessions
     // being readable by every personal caller; none is readable at all.)
     { method: 'GET', path: '/api/orchestration/presence/summary' },
-    // Station #90 lane D: the verified-caller projection for station-control
-    // stdio children. Internal-only at the route: every non-internal
+    // Station #90 lane D: the verified-caller projection, which stdio
+    // children once read (no production client now). Internal-only at the route: every non-internal
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
-    // #2601: the child delegation context this Station derives for the
-    // verified station-control caller, read by the tools before forwarding to
-    // a saved Environment. Internal-only at the route exactly like its sibling
-    // above: every non-internal principal gets a 404 whatever its scope, and
-    // an internal request without a verified per-session token gets
-    // `{ delegation: null }`, so a paired credential learns nothing.
-    {
-      method: 'GET',
-      path: '/api/orchestration/station-control/caller/delegation',
-    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -3084,6 +3074,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/boot' },
     { method: 'GET', path: '/api/system/core-update' },
     { method: 'GET', path: '/api/system/core-update/restart-status' },
+    // A read of this install's own service-update progress, from its runtime
+    // files: no other Station's or Environment's data, nothing written. The
+    // /api/system read tier, like the restart-status leaf above.
+    { method: 'GET', path: '/api/system/core-update/service-update' },
     { method: 'POST', path: '/api/system/core-update' },
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },

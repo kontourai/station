@@ -91,57 +91,17 @@ describe('device pairing notifications', () => {
 });
 
 describe('syncStatus', () => {
-  it('emits actioned for confirmed requests', async () => {
-    const provider = providerFor([request({ status: 'confirmed' })]);
-    const updates = await provider.syncStatus();
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({
-      dedupeTag: 'device-pairing:request-1',
-      status: 'actioned',
-      actionId: 'allow',
-    });
-  });
-
-  it('emits actioned for denied requests', async () => {
-    const provider = providerFor([request({ status: 'denied' })]);
-    const updates = await provider.syncStatus();
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({
-      dedupeTag: 'device-pairing:request-1',
-      status: 'actioned',
-      actionId: 'deny',
-    });
-  });
-
-  it('emits expired for expired pending requests', async () => {
-    const provider = providerFor([request({ expiresAt: Date.now() - 1 })]);
-    const updates = await provider.syncStatus();
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({
-      dedupeTag: 'device-pairing:request-1',
-      status: 'expired',
-    });
-  });
-
-  it('returns empty for pending unexpired requests', async () => {
-    const provider = providerFor([request()]);
-    const updates = await provider.syncStatus();
-    expect(updates).toEqual([]);
-  });
-
-  it('handles mixed statuses', async () => {
+  it('settles decided and expired requests, and leaves a live pending one alone', async () => {
     const provider = providerFor([
       request({ requestId: 'a', status: 'confirmed' }),
       request({ requestId: 'b', status: 'denied' }),
       request({ requestId: 'c', expiresAt: Date.now() - 1 }),
       request({ requestId: 'd' }), // pending, not expired
     ]);
-    const updates = await provider.syncStatus();
-    expect(updates).toHaveLength(3);
-    const byId = Object.fromEntries(updates.map((u) => [u.dedupeTag, u]));
-    expect(byId['device-pairing:a'].status).toBe('actioned');
-    expect(byId['device-pairing:b'].status).toBe('actioned');
-    expect(byId['device-pairing:c'].status).toBe('expired');
-    expect(byId['device-pairing:d']).toBeUndefined();
+    expect(await provider.syncStatus()).toEqual([
+      { dedupeTag: 'device-pairing:a', status: 'actioned', actionId: 'allow' },
+      { dedupeTag: 'device-pairing:b', status: 'actioned', actionId: 'deny' },
+      { dedupeTag: 'device-pairing:c', status: 'expired' },
+    ]);
   });
 });

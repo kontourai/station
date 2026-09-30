@@ -12,6 +12,14 @@ attests the complete public release again, derives a bounded same-channel
 previous-public-release range, and advances only the implicated issue labels.
 It has no release, package, or image mutation permission.
 
+**Current implementation blocker:** the `assemble` CLI in
+[`release-artifacts.mjs`](../../scripts/release-artifacts.mjs) calls
+`readFileSync` without importing it. A bounded synthetic CLI invocation fails
+before inventory output. The workflow contract below describes the intended
+stage/publish sequence; it is not a claim that this checkout can currently
+complete draft assembly. [#2783](https://github.com/kontourai/station/issues/2783)
+tracks the import repair and a regression through the actual CLI entry point.
+
 ## Supported inventory
 
 The cross-platform/channel authority is
@@ -20,13 +28,18 @@ preview, and Stable cell's artifact, producing job, test lane, signing and
 publication requirements, update authority, rollback source, and evidence
 selector. `node scripts/release-platform-matrix.mjs` fails when a cell or
 workflow job disappears. `--project` resolves current evidence from the deploy
-ledger; only receipt-backed cells become `VERIFIED`, while every other gap
-remains explicit `NOT_VERIFIED` with an owner and reason.
+ledger. The projection marks a matching ledger row `VERIFIED`; it does not
+independently fetch provider receipts or re-verify their signatures. Its trust
+comes from the ledger-writing path. Missing cells remain `NOT_VERIFIED` or
+`UNSUPPORTED`; a configured subset is not complete platform delivery.
 
-The checked-in [inventory schema](../../schemas/release-artifact-manifest.schema.json)
-requires these variants: portable server, macOS arm64 and x86_64, Windows x86_64,
-Linux x86_64, Android universal APK and AAB, iOS simulator verification archive,
-and iOS device IPA. It also requires every desktop updater bundle to have its
+The [variant owner](../../scripts/lib/release-variants.mjs) and checked-in
+[inventory schema](../../schemas/release-artifact-manifest.schema.json)
+cover portable server, macOS arm64 and x86_64, Windows x86_64, Linux x86_64,
+and Android universal APK/AAB. Stable additionally inventories the iOS simulator
+archive and device IPA. Preview excludes iOS from this GitHub asset inventory
+while its separate Beta TestFlight job remains required by draft assembly.
+Every desktop updater bundle must have its
 matching Tauri `.sig` file. Artifact names are canonicalized by
 `scripts/release-artifacts.mjs`; do not rename files in Actions or by hand.
 
@@ -40,7 +53,10 @@ cross-scope subjects, source/predicate disagreement, non-canonical JSON, and
 invalid UTF-8 before the existing inventory authority recomputes the four asset
 digests and binds them to the exact stable or preview tag.
 
-`@cyclonedx/cyclonedx-npm` is pinned to `6.0.1`; `src-desktop/Cargo.toml`
+The production JavaScript fragment now comes from
+[`generate-pnpm-sbom.mjs`](../../scripts/generate-pnpm-sbom.mjs), which reads
+the authoritative lock graph rather than guessing from installed layout.
+`@cyclonedx/cyclonedx-npm` remains pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
 `3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
@@ -55,13 +71,25 @@ before it can draft a release, and attests them. Publish redownloads every
 asset and rechecks the inventory and exact scope predicates before any image
 alias or release-visibility effect.
 
+Draft assembly copies producer files into `release-assets` only from the
+explicit artifact allowlist in
+[`release-admit-producer-assets.mjs`](../../scripts/release-admit-producer-assets.mjs):
+both macOS desktop artifacts, Windows, Linux, portable, Android, and the
+container descriptor, plus, for Stable only, the iOS simulator archive and the
+`release-assets/` directory of the staged TestFlight artifact. It refuses a
+missing or empty allowlisted artifact, a nested entry, a symlink, and two
+producers that emit one file name. Build-provenance descriptors, scanner
+scratch, TestFlight receipts, and test artifacts in the same download root are
+never copied. A new producer artifact needs one allowlist entry there.
+
 The simulator archive is deliberately `verification-only` and unsigned. It is
-not an installable distribution or a readiness claim. The current local probe
+not an installable distribution or a readiness claim. The earlier recorded local probe
 compiled and packaged the arm64 simulator app, installed and launched it, and
 rendered the branded Station connection UI. A fresh simulator client correctly
 shows the connection state until a Station server is configured; this is not a
 distribution-readiness claim. The release workflow retains the archive as a
-diagnostic/smoke input, not an end-user install channel. All other variants
+diagnostic/smoke input, not an end-user install channel. That historical
+observation was not rerun in this documentation audit. All other variants
 marked distributable must satisfy the platform-signing contract for that
 operating system. Desktop updater signing is tracked separately: macOS and
 Windows tagged releases require both a valid platform signature and a Tauri updater signature;
@@ -77,7 +105,7 @@ a release-only Tauri overlay from the tag's exact version. Preview-to-Stable
 promotion can therefore retain the exact reviewed commit.
 The overlay also derives Android `versionCode` and iOS `CFBundleVersion` from
 the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + channel`, where
-channel is the preview number or `99` for the stable tag). That integer is
+channel is the preview number 1–98 or `99` for the stable tag). That integer is
 what Play and App Store Connect use as the monotonic build number; do not
 fall back to Gradle's `1` / `1.0` defaults for a store upload. Nightly
 Android uses a different application id and its own day-based numbering. Before
@@ -110,10 +138,10 @@ identity, then stages a signed Android AAB (arm64-v8a only, #1456), notarized
 macOS downloads, a Windows NSIS installer with a mandatory Tauri updater signature
 (Authenticode is optional for Nightly), one shared desktop
 manifest, and the signed, audited iOS package (#1454)
-as run artifacts with content-bound stage receipts. It publishes nothing: no
-Play upload, no release asset, no tag move, no TestFlight upload, no ledger
-write. A failed night therefore costs one reserved version code and nothing
-else. Every staged artifact is attested under this workflow's identity, which
+as run artifacts with content-bound stage receipts. It performs no product publication: no Play upload, release asset, rolling
+tag move, TestFlight upload or deploy-ledger write. It does create the immutable
+reservation tag, signed artifacts and attestations, and can submit notarization
+requests. A failed stage is not a claim of no external effect or cost. Every staged artifact is attested under this workflow's identity, which
 is what the protected verifier checks staged bytes against. Rust dependency
 compilation is cached per platform (`Swatinem/rust-cache`, restored on every
 ref, saved only from `main`, #1455).
@@ -237,6 +265,32 @@ edit cannot silently demote a required platform, not properties the cohort deriv
 run time. This is only an available configured subset, and fleet/CLI
 completion remains `NOT_VERIFIED`.
 
+## Prebuilt portable server qualification
+
+[`portable-server-archives.yml`](../../.github/workflows/portable-server-archives.yml)
+is a separate build/smoke matrix for platform-specific server archives. The
+[builder](../../scripts/lib/portable-server-archive.mjs) stages the selected
+Node runtime, native dependencies, compiled server/UI/CLI, and platform launcher.
+It refuses a target that differs from the build host's platform and architecture,
+because native dependencies come from that host's install.
+It marks the tree as prebuilt so the CLI does not try to rebuild it at startup.
+The workflow's smoke checks that archive through an isolated long-path home,
+without relying on a host Node executable. A declared matrix is not a current
+pass or published release.
+
+The platform-array release manifest now selects these archives through
+`install.sh`'s explicit signed-public-manifest path. The installer verifies the
+host target, launcher protocol, signed size/hash and release identity, stages
+the bundled runtime under `versions/<version>`, then promotes the active link.
+When a running Station service's fixed launcher runs that install, the installer only
+stages the version and the launcher trials the switch instead.
+It does not run dependencies or build that archive. The default authenticated
+GitHub path and schema-v1 public source manifests still install and build a source
+release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
+and [installation lifecycle](release-channel-ports.md) for prerequisites,
+upgrade and rollback behavior. Fixture signing and archive smoke results do not
+establish production publication, key custody or a user's installed outcome.
+
 ## Nightly fleet staging
 
 `nightly-fleet-staging.yml` is an independent reusable, portable-only evidence
@@ -253,8 +307,9 @@ install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is the scheduled Nightly build, which fires every six hours,
-builds the current workflow event SHA once, and no-ops when the rolling
-`nightly` tag already names that commit. To request that normal behavior
+uses the current workflow event SHA, and skips native staging only when the
+cohort decision has the required platform markers and matching ledger rows.
+The tag alone is insufficient, as described above. To request that normal behavior
 manually, leave the optional field empty:
 
 ```sh
@@ -285,13 +340,16 @@ Use Node 24 and build only the shared native client before mobile
 initialization:
 
 ```sh
-PATH="$HOME/.local/share/mise/installs/node/24.18.0/bin:$PATH"
-npm ci
+PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH"
+npm run dependencies:ci
 npm run build:native-client
-npx tauri android init --ci --skip-targets-install
-npx tauri ios init --ci --skip-targets-install
 npm run release:static
 ```
+
+Initialization and post-init steps are platform/channel-specific: follow
+[Android build](android-build.md) or the [Dev simulator route](native-shell-verification.md#build-a-development-ios-simulator-app),
+and use the release workflows for protected distribution. A bare Tauri init
+is not the complete signing, icon, provenance or permission preparation.
 
 Android requires Java 17, Android SDK/NDK 27, and Rust Android targets. iOS
 requires Xcode with an installed simulator runtime, XcodeGen, libimobiledevice,
@@ -301,12 +359,13 @@ a static architecture gate enforces that boundary. Tauri generates
 `src-desktop/gen/apple/` from the checked-in Tauri config; its project files are
 source-controlled so a fresh checkout has the same input project.
 `src-desktop/gen/android/` is regenerated from `tauri.android.conf.json`; do
-not patch either generated platform from CI with `sed`.
+not rely on ad-hoc edits to either generated platform. Durable customization
+belongs in the maintained post-init helper/template and its regeneration tests.
 
 ## Linux AppImage runtime layout
 
 The Linux desktop overlay normally puts the bundled Station server, seed data,
-schemas, and offline Node runtime under `usr/lib/Station`. That layout remains
+schemas, and Node dependencies under `usr/lib/Station`. That layout remains
 the `.deb` and `.rpm` contract. AppImage is deliberately different: linuxdeploy
 walks `usr/lib` and invokes `ldd` while constructing its AppDir, which is not
 safe for the staged vendor executables in the Node dependency tree.
@@ -318,17 +377,22 @@ only the inherited server and raw `node_modules` resources, then colocates them
 at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
 `usr/lib/Station` remains free of the vendor tree.
 
-At launch, the desktop host detects that contained AppImage entrypoint. Because
-the server and its `node_modules` are package-adjacent, Node uses its ordinary
-module resolution on every supported runtime version. This avoids relying on
-`NODE_PATH` (which is inconsistent for ESM across Node versions) or a
-custom-file symlink (which Tauri's AppImage bundler dereferences and rejects),
-while still keeping linuxdeploy away from the vendor executables. The host
-resolves `node` from the user's PATH rather than choosing among mise, nvm,
-Volta, system, or vendor installations. The build staging helper fails if the
-runtime is missing or over budget. The AppImage path never downloads packages
-or relies on a global package installation; Claude, Codex, Flow Agents, and the
-other staged runtime packages remain part of the offline bundle.
+**Current source mismatch:** the
+[AppImage overlay](../../src-desktop/tauri.linux-appimage.conf.json) places the
+server and dependencies under `usr/share/Station`, but the
+[native host](../../src-desktop/src/lib.rs) currently joins both the registry
+bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
+The pinned `tauri-utils` 2.9.3 resolves the AppImage resource directory under
+`usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
+callers. Package-layout checks alone therefore do not establish a working
+AppImage startup; this source mismatch needs repair and an actual Linux launch.
+
+The staged server and `node_modules` are adjacent for ordinary Node module
+resolution once the correct entrypoint is selected. The host resolves `node`
+from its login-shell PATH; the dependency tree is bundled, not the Node
+executable. The [staging helper](../../scripts/lib/desktop-server-runtime.mjs)
+refuses missing or over-budget runtime inputs. That is packaging evidence,
+not proof that the current AppImage can start or execute a staged Agent.
 
 Tauri constructs and signs the final AppImage and then produces the updater
 archive and signature. Station deliberately selects Tauri's `v1Compatible`
@@ -345,10 +409,10 @@ On a Linux builder with the release dependencies, verify the exact checkout
 before any protected signing run:
 
 ```sh
-npm ci
+npm run dependencies:ci
 npm run build:sdk && npm run build:connect
-npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm
-npx tauri build --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json
+npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles deb,rpm
+npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage --config tauri.linux-appimage.conf.json
 
 appimage=$(find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
 test -n "$appimage"
@@ -382,9 +446,9 @@ node scripts/lib/native-release-config.mjs \
   --updater-public-key-file "$test_root/updater.key.pub"
 TAURI_SIGNING_PRIVATE_KEY="$(cat "$test_root/updater.key")" \
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD=test-only \
-  npx tauri build --target x86_64-unknown-linux-gnu --bundles appimage \
+  npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage \
   --config "$test_root/tauri.release.conf.json" \
-  --config src-desktop/tauri.linux-appimage.conf.json
+  --config tauri.linux-appimage.conf.json
 ```
 
 Never publish artifacts signed by that disposable key. The protected tag
@@ -394,12 +458,13 @@ signing nor draft-release publication.
 
 ## Required protected environments and secrets
 
-Create two GitHub Environments before attempting a native release:
+The workflow declarations require these GitHub Environments. Their current
+reviewers and branch/tag policies must be inspected separately:
 
-- `native-release`: protected reviewers; available only to the signing build
-  jobs.
-- `native-release-publish`: protected reviewers; available only to the manual
-  promotion workflow.
+- `native-release`: signing, native-cohort and Stable iOS jobs.
+- `native-release-publish`: manual publication.
+- `ios-beta` and `ios-nightly`: the corresponding reusable TestFlight channels;
+  Stable iOS uses `native-release`.
 
 `native-release` requires the matching `TAURI_SIGNING_PRIVATE_KEY`,
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_SIGNING_PUBLIC_KEY`. The
@@ -412,24 +477,13 @@ GitHub secret: the keyless Google identity fetches
 `station-android-upload-keystore-base64` and
 `station-android-upload-keystore-password` from Secret Manager, while the
 secret-free `ANDROID_UPLOAD_KEY_ALIAS` repository variable names the key.
-Unlike the desktop updater key, the Tauri CLI itself has no Android signing
-support at all — `tauri android build` takes no signing
-flags and reads no `TAURI_ANDROID_*` environment variable (there is no
-upstream contract for this; verified against the Tauri CLI's own
-`ENVIRONMENT_VARIABLES.md` and its `android build` option set). The `android`
-job maps the fetched values to `TAURI_ANDROID_KEYSTORE_PATH` /
-`TAURI_ANDROID_KEYSTORE_PASSWORD` / `TAURI_ANDROID_KEY_ALIAS` /
-`TAURI_ANDROID_KEY_PASSWORD` purely to mirror this repo's `TAURI_SIGNING_*`
-naming convention; the actual consumer is a `signingConfigs` block hand-added
-to the checked-in `src-desktop/gen/android/app/build.gradle.kts` (plain
-Gradle, `System.getenv(...)`), not anything Tauri-provided. That file is
-source-controlled (`src-desktop/gen/**` is tracked; `.gitignore` only excludes
-selected binary assets under it) and
-`tauri android init` will never regenerate it once it exists — its
-`generate_out_file` skips any templated file that's already present except
-`BuildTask.kt` — so a future re-init after an upstream template change will
-not reintroduce or clobber this block; it also will not pick up unrelated
-upstream template fixes to that file automatically. macOS Developer ID
+The `TAURI_ANDROID_*` variables are consumed by Station's generated Gradle
+`signingConfigs` block. The durable owner is
+[`apply-android-release-signing.mjs`](../../scripts/apply-android-release-signing.mjs),
+which release workflows run after initialization. The tracked Gradle seed is
+not the only authority: channel workflows can recreate the project. Reapply
+and test that helper instead of assuming Tauri will never replace the file.
+macOS Developer ID
 signing and API-key notarization data
 (`APPLE_DEVELOPER_ID_CERTIFICATE_BASE64`,
 `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`,
@@ -439,7 +493,7 @@ signing and API-key notarization data
 `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`,
 `APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and Windows
 Authenticode certificate data
-(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`). The release
+(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`).
 Each protected platform job checks only its own credentials before it starts
 its signing operation. There is no shared credential-aggregator job and no
 desktop matrix with cross-platform secrets: macOS receives Apple plus Tauri
@@ -451,9 +505,10 @@ Play build signing and upload both use GitHub OIDC federation rather than a
 downloadable Google service-account key or GitHub-held Android keystore.
 Repository variables `GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER` and
 `GCP_PLAY_SERVICE_ACCOUNT` name the Google provider and keyless service
-account; Google independently restricts the provider to this repository's
-Nightly-on-main and Release-on-version-tag workflow identities. Secret Manager
-access is scoped only to the two Android upload-key secrets. iOS similarly treats
+account. Configure Google to restrict the provider to this repository's
+Nightly-on-main and Release-on-version-tag workflow identities, and scope Secret
+Manager access to the two Android upload-key secrets. Those account policies
+must be checked by the owner; workflow variables alone do not establish them. iOS similarly treats
 `APPLE_API_KEY_ID`/`APPLE_API_ISSUER_ID`/`APPLE_API_PRIVATE_KEY` as the
 required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above remains required
 and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
@@ -466,15 +521,18 @@ APK/AAB signatures, and Tauri updater signatures before inventory assembly. An
 unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
 distributable release asset. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
-daily Nightly workflow may still skip publication while its setup is absent.
+Nightly staging also fails when its required signing setup is absent.
 Stable, Beta, and Nightly App Store upload is required and fail-closed once a
 channel is configured. The shared iOS delivery workflow uses three distinct
 bundle IDs and protected environments; it binds each upload to the caller's
 already frozen SHA and numeric `CFBundleVersion`, reconciles a pre-existing
 build before upload, waits for VALID processing, attaches the owned internal
 group, and retains a provider receipt binding Apple's app/build IDs to the
-source SHA and IPA digest. Physical tester availability remains a separate
-provider/device observation.
+candidate source SHA and IPA digest. A new upload records their association
+with the upload operation; a reconciled pre-existing build instead records
+`providerSourceSha: NOT_VERIFIED` and no provider IPA digest. Never attribute
+a newly rebuilt candidate to that existing provider binary. Group membership
+has its own readback receipt; physical installation remains separate.
 
 ## Stage, inspect, publish, and roll back
 
@@ -522,8 +580,11 @@ signatures against the release-bound public key before publication. Publish
 uploads the signed updater archives to the rolling release before replacing
 `latest.json`, then redownloads and verifies the complete result. The pointer
 guard refuses to replace a newer manifest with an older version, so a delayed
-draft cannot silently regress the channel. A failed remote verification restores
-the prior `latest.json` (or removes the first bootstrap pointer).
+draft cannot silently regress the channel. On failed remote verification, the
+workflow attempts to restore the prior `latest.json` (or remove the first
+bootstrap pointer). That compensation reports command failure but does not
+perform a second remote readback of the restored pointer. Inspect the channel
+after a failed publish rather than assuming compensation completed.
 
 Rolling release assets require owner-managed retention because every publish
 adds eight versioned archives and signatures. Before a publish, record the

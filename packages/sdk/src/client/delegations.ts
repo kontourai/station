@@ -50,6 +50,7 @@ import type {
 import { apiErrorMessage } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
+import { rethrowDeadline } from './request-deadline';
 
 interface DelegationEnvelope<T> {
   success: boolean;
@@ -57,6 +58,7 @@ interface DelegationEnvelope<T> {
   error?: string;
   code?: string;
   retryable?: boolean;
+  details?: unknown;
 }
 
 /** A delegated engine-start refusal with a stable machine-readable cause. */
@@ -65,6 +67,8 @@ export class DelegationApiError extends Error {
     message: string,
     readonly code?: string,
     readonly retryable?: boolean,
+    /** The envelope's `details`, exactly as sent (e.g. #1796's refusal). */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'DelegationApiError';
@@ -75,7 +79,8 @@ async function unwrapDelegationResponse<T>(response: Response): Promise<T> {
   let result: DelegationEnvelope<T> | null = null;
   try {
     result = (await response.json()) as DelegationEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new Error(`Delegation API error: ${response.status}`);
   }
   if (!response.ok || !result.success) {
@@ -83,6 +88,7 @@ async function unwrapDelegationResponse<T>(response: Response): Promise<T> {
       apiErrorMessage(result, `Delegation API error: ${response.status}`),
       result.code,
       result.retryable,
+      result.details,
     );
   }
   return result.data as T;
@@ -314,6 +320,29 @@ export interface DelegatedTaskPendingRequest {
   type?: string;
 }
 
+/**
+ * #2880: the latest decision recorded on a delegated task and what its
+ * engine has reported since (mirrors the server's `DelegatedTaskDecision`;
+ * this SDK is a typed carrier, not a deriver). `acknowledged` means the
+ * engine closed the request after Station's well-formed reply, never that it
+ * applied the decision; `not-reported` means the engine's protocol reports no
+ * delivery.
+ */
+export interface DelegatedTaskDecision {
+  requestId: string;
+  status: string;
+  delivery:
+    | 'awaiting-acknowledgement'
+    | 'acknowledged'
+    | 'unacknowledged'
+    | 'in-process'
+    | 'closed-by-engine'
+    | 'not-reported';
+  reason?: 'no-acknowledgement' | 'invalid-reply';
+  engineStatus?: string;
+  waitedMs?: number;
+}
+
 export interface DelegatedTaskSnapshot {
   /** Durable identity accepted by `station delegate --session=<id>`. */
   conversationId: string;
@@ -342,6 +371,13 @@ export interface DelegatedTaskSnapshot {
   capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
+  /** #2880: the latest recorded decision and its delivery, if any. */
+  lastDecision?: DelegatedTaskDecision;
+  /**
+   * #2880: earlier decisions the engine reported unacknowledged, oldest
+   * first; `lastDecision` is never repeated here.
+   */
+  earlierUnacknowledgedDecisions?: DelegatedTaskDecision[];
   pendingRequest?: DelegatedTaskPendingRequest;
   canInterrupt: boolean;
   resumable: boolean;

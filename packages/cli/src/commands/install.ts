@@ -105,6 +105,13 @@ interface PluginPreviewResult {
     };
   }>;
   contentDigest?: string;
+  /**
+   * `excluded`: Station staged this source without its git metadata (a
+   * proposal names it, or it was installed that way before). The install
+   * sends it back so Station stages the same bytes; without it the install
+   * is refused.
+   */
+  gitMetadata?: 'excluded';
   grantRevision?: string;
   registryTrustRevision?: string;
   permissions?: {
@@ -289,6 +296,9 @@ export async function install(
           contentDigest: previewed.contentDigest,
           registryTrustRevision: previewed.registryTrustRevision,
           grantRevision: previewed.grantRevision,
+          ...(previewed.gitMetadata
+            ? { gitMetadata: previewed.gitMetadata }
+            : {}),
           dependencies: (previewed.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),

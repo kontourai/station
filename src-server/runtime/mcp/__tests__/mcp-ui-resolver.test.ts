@@ -159,12 +159,6 @@ describe('resolveMCPToolUIRef', () => {
     expect(result).not.toHaveProperty('permissions');
   });
 
-  test('omits csp/permissions when the tool declares none', async () => {
-    const result = await resolveMCPToolUIRef(service(), 'server-a/render');
-    expect(result).not.toHaveProperty('csp');
-    expect(result).not.toHaveProperty('permissions');
-  });
-
   test('resolves UI metadata through production MCPService catalog contract', async () => {
     const tools = new Map([
       [
@@ -211,47 +205,34 @@ describe('resolveMCPToolUIRef', () => {
     });
   });
 
-  test('does not fall back when a disabled server authoritatively has no UI tools', async () => {
-    const fallback = vi.fn().mockReturnValue([
-      {
-        serverId: 'server-a',
-        originalName: 'render',
-        _meta: { ui: { resourceUri: 'ui://stale' } },
-      },
-    ]);
-    const result = await resolveMCPToolUIRef(
-      service({
-        getMCPUIToolCatalog: vi
-          .fn()
-          .mockResolvedValue({ available: true, tools: [] }),
-        getMCPToolCatalog: fallback,
-      }),
-      'server-a/render',
-    );
-    expect(result.status).toBe('missing_tool');
-    expect(fallback).not.toHaveBeenCalled();
-  });
-
-  test('does not fall back when all server tools are authoritatively disabled', async () => {
-    const fallback = vi.fn().mockReturnValue([
-      {
-        serverId: 'server-a',
-        originalName: 'render',
-        _meta: { ui: { resourceUri: 'ui://stale' } },
-      },
-    ]);
-    const result = await resolveMCPToolUIRef(
-      service({
-        getMCPUIToolCatalog: vi
-          .fn()
-          .mockResolvedValue({ available: true, tools: [] }),
-        listTools: fallback,
-      }),
-      'server-a/render',
-    );
-    expect(result.status).toBe('missing_tool');
-    expect(fallback).not.toHaveBeenCalled();
-  });
+  // An available server-scoped catalog is authoritative even when empty, over
+  // every compatibility catalog the service could otherwise fall back to.
+  test.each(['getMCPToolCatalog', 'listTools'] as const)(
+    'does not fall back to %s when a disabled server authoritatively has no UI tools',
+    async (fallbackName) => {
+      const fallback = vi.fn().mockReturnValue([
+        {
+          serverId: 'server-a',
+          originalName: 'render',
+          _meta: { ui: { resourceUri: 'ui://stale' } },
+        },
+      ]);
+      const result = await resolveMCPToolUIRef(
+        service({
+          getMCPUIToolCatalog: vi
+            .fn()
+            .mockResolvedValue({ available: true, tools: [] }),
+          // Leave the named fallback as the only compatibility catalog, so a
+          // regression that falls through would actually reach it.
+          getMCPToolCatalog: undefined,
+          [fallbackName]: fallback,
+        }),
+        'server-a/render',
+      );
+      expect(result.status).toBe('missing_tool');
+      expect(fallback).not.toHaveBeenCalled();
+    },
+  );
 
   test('falls back when the server-scoped catalog is genuinely unavailable', async () => {
     const fallback = vi.fn().mockReturnValue([
@@ -305,24 +286,14 @@ describe('resolveMCPToolUIRef', () => {
       expect(result.resourceUri).toBe(SURVEY_URI);
     });
 
-    test('resolves when Survey emits both the flat and nested keys', async () => {
-      const result = await resolveMCPToolUIRef(
-        surveyService({
-          'ui/resourceUri': SURVEY_URI,
-          ui: { resourceUri: SURVEY_URI, visibility: ['model', 'app'] },
-        }),
-        'survey/review_card',
-      );
-      expect(result.status).toBe('success');
-      expect(result.resourceUri).toBe(SURVEY_URI);
-    });
-
     test('prefers nested extension metadata over the flat legacy pointer', async () => {
       const nested = 'ui://survey/review-card/nested';
       const result = await resolveMCPToolUIRef(
         surveyService({
           'ui/resourceUri': 'ui://survey/review-card/legacy',
-          ui: { resourceUri: nested },
+          // Survey also emits `visibility`; extra nested fields must not
+          // demote the nested pointer to the legacy one.
+          ui: { resourceUri: nested, visibility: ['model', 'app'] },
         }),
         'survey/review_card',
       );

@@ -1466,6 +1466,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
         'docs:public:contract-examples',
         'docs:foundations:test',
         'docs:links:check',
+        'docs:metrics:check',
         'docs:truth:biome',
       ].sort(),
     );
@@ -1491,8 +1492,10 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       'docs:public:contract-examples':
         'node scripts/public-doc-contract-examples.mjs',
       'docs:links:check': 'node scripts/check-markdown-links.mjs',
+      'docs:metrics:check':
+        'node scripts/generate-metric-reference.mjs --check',
     };
-    expect(Object.keys(EXPECTED_NODE_LANE_COMMANDS)).toHaveLength(10);
+    expect(Object.keys(EXPECTED_NODE_LANE_COMMANDS)).toHaveLength(11);
     const nodeLaneCommands = Object.fromEntries(
       DOCS_TRUTH_GATE_LANES.filter((lane) =>
         root.scripts[lane.script].startsWith('node '),

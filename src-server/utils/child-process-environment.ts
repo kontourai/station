@@ -1,3 +1,4 @@
+import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
 import { INTERNAL_API_TOKEN_ENV } from './internal-api-token.js';
 
 /**
@@ -22,12 +23,15 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
  * THIS process": inherited by a terminal or engine child, a Station started
  * from there would read itself as supervised and refuse its own core update
  * (#2674), or arm a parent watchdog against a process that is not its parent.
+ * The service launcher's context (#2675 D) names the install whose update
+ * requests only the launcher-supervised server may queue.
  */
 const SUPERVISOR_CHANNEL_ENV_KEYS = [
   'STATION_STDOUT_LOGS',
   'STATION_SUPERVISOR_PID',
   'STATION_SUPERVISOR_BIRTH',
   'STATION_SERVICE_MANAGED',
+  SERVICE_LAUNCHER_ENV,
 ] as const;
 
 /** Removes the boot-internal secrets and, despite the name, the

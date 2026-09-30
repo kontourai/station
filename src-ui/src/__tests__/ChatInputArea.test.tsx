@@ -121,6 +121,28 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test.each([{ modifier: 'metaKey' }, { modifier: 'ctrlKey' }] as const)(
+    '$modifier+S opens portable drafts; Up still recalls history',
+    async ({ modifier }) => {
+      const { onHistoryUp } = renderChatInputArea();
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      const drafts = await screen.findByRole('button', { name: 'Drafts' });
+
+      fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+      expect(onHistoryUp).toHaveBeenCalledOnce();
+      fireEvent.keyDown(textarea, { key: 's' });
+      expect(drafts.getAttribute('aria-expanded')).toBe('false');
+
+      const delivered = fireEvent.keyDown(textarea, {
+        key: 's',
+        [modifier]: true,
+      });
+      expect(delivered).toBe(false);
+      expect(drafts.getAttribute('aria-expanded')).toBe('true');
+      expect(onHistoryUp).toHaveBeenCalledOnce();
+    },
+  );
+
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
     const onSend = vi.fn(async () => {});

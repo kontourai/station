@@ -50,7 +50,8 @@ exec ${JSON.stringify(process.execPath)} "$@"`,
     'npm',
     signalParent
       ? 'kill -TERM $PPID; sleep 0.1; print child-done > "$CHILD_DONE"; exit 91'
-      : 'print npm-ran > "$NPM_RAN"; exit 91',
+      : // Records the STATION_ROOT a child inherits, proving it is exported.
+        'print -r -- "${STATION_ROOT-unexported}" > "$NPM_RAN"; exit 91',
   );
   if (signalParent) {
     script(
@@ -66,7 +67,7 @@ workdir=''
 if [[ "$1" == -C ]]; then workdir="$2"; shift 2; fi
 if [[ "$1 $2" == 'rev-parse --show-toplevel' ]]; then print "${'$'}{workdir:-${root}}"; exit 0; fi
 if [[ "$1 $2" == 'rev-parse --git-common-dir' ]]; then print .git; exit 0; fi
-if [[ "$1" == status ]]; then exit 0; fi
+if [[ "$1" == status ]]; then [[ -z "${'$'}{GIT_DIRTY:-}" ]] || print ' M package.json'; exit 0; fi
 if [[ "$1" == fetch || "$1" == checkout ]]; then exit 0; fi
 if [[ "$1 $2" == 'rev-parse HEAD' || "$1 $2" == 'rev-parse FETCH_HEAD' || "$1 $2" == 'rev-parse origin/main' ]]; then print ${'a'.repeat(40)}; exit 0; fi
 if [[ "$1" == clone ]]; then [[ -z "${'$'}{GIT_LOG:-}" ]] || print "${'$'}{@: -1}" >> "$GIT_LOG"; mkdir -p "${'$'}{@: -1}/.git"; exit 0; fi
@@ -142,6 +143,61 @@ exit 99
     expect(existsSync(join(dir, 'staging'))).toBe(false);
     expect(existsSync(join(dir, 'lock'))).toBe(false);
   });
+  it('refuses an output directory that already exists instead of publishing into it', () => {
+    const source = readFileSync(installer, 'utf8');
+    const acquisition = source.match(
+      / {2}if ! mkdir\b[^\n]*"\$output_dir"; then[\s\S]*?\n {2}fi\n {2}output_owned=1\n/,
+    )?.[0];
+    expect(acquisition).toBeTruthy();
+    // Execute the production acquisition block (matched loosely so a changed
+    // mkdir flag reaches the behavior assertions); only the copier is
+    // replaced so reaching publication is observable.
+    const harness = `
+set -eu
+output_dir="$CASE_DIR/out"
+ditto() { print copied >> "$CASE_DIR/copies"; }
+${acquisition}
+ditto
+print "owned=$output_owned"
+exit 0
+`;
+    const run = (dir) => {
+      try {
+        const stdout = execFileSync('zsh', ['-c', harness], {
+          env: { ...process.env, CASE_DIR: dir },
+          stdio: 'pipe',
+          windowsHide: true,
+        });
+        return { status: 0, stdout: String(stdout), stderr: '' };
+      } catch (caught) {
+        return {
+          status: caught.status,
+          stdout: String(caught.stdout),
+          stderr: String(caught.stderr),
+        };
+      }
+    };
+
+    const fresh = mkdtempSync(join(tmpdir(), 'station-output-fresh-'));
+    dirs.push(fresh);
+    expect(run(fresh)).toMatchObject({ status: 0, stdout: 'owned=1\n' });
+    expect(existsSync(join(fresh, 'out'))).toBe(true);
+
+    const taken = mkdtempSync(join(tmpdir(), 'station-output-taken-'));
+    dirs.push(taken);
+    mkdirSync(join(taken, 'out'));
+    writeFileSync(join(taken, 'out/receipt.json'), 'prior receipt\n');
+    const refused = run(taken);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain(
+      `Build-only output directory already exists: ${join(taken, 'out')}. Refusing to overwrite an artifact receipt.`,
+    );
+    expect(refused.stdout).toBe('');
+    expect(existsSync(join(taken, 'copies'))).toBe(false);
+    expect(readFileSync(join(taken, 'out/receipt.json'), 'utf8')).toBe(
+      'prior receipt\n',
+    );
+  });
   it('removes owned staging and lock after a bounded npm failure', () => {
     const f = fixture();
     expect(() =>
@@ -198,6 +254,35 @@ exit 99
         'build-checkout-v2',
       ),
     );
+  });
+  it('defaults an unset STATION_ROOT to ~/.station and exports it to children', () => {
+    const f = fixture();
+    const { STATION_ROOT: _unset, ...env } = process.env;
+    expect(() =>
+      execFileSync(
+        'zsh',
+        [installer, '--build-only', '--output-dir', f.output],
+        {
+          cwd: f.dir,
+          env: {
+            ...env,
+            GIT_LOG: f.gitLog,
+            HOME: f.home,
+            NPM_RAN: f.npmRan,
+            PATH: `${f.bin}:${process.env.PATH}`,
+          },
+          stdio: 'pipe',
+        },
+      ),
+    ).toThrow();
+    // The installer canonicalizes the checkout path (/var -> /private/var).
+    const stationRoot = realpathSync(join(f.home, '.station'));
+    expect(readFileSync(f.gitLog, 'utf8').trim()).toBe(
+      join(stationRoot, 'cache', 'nightly', 'build-checkout-v2'),
+    );
+    const exported = readFileSync(f.npmRan, 'utf8').trim();
+    expect(exported).not.toBe('unexported');
+    expect(realpathSync(exported)).toBe(stationRoot);
   });
   it('preserves a foreign lock while cleaning its owned staging', () => {
     const f = fixture({ foreignLock: true });
@@ -256,5 +341,80 @@ exit 99
     expect(existsSync(join(f.lock, 'foreign-owner'))).toBe(true);
     expect(existsSync(f.output)).toBe(false);
     expect(existsSync(join(f.dir, 'npx-ran'))).toBe(false);
+  });
+});
+
+describe('installer refusals', () => {
+  function run(f, args, env = {}) {
+    try {
+      execFileSync('zsh', [installer, ...args], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_LOG: f.gitLog,
+          HOME: f.home,
+          NPM_RAN: f.npmRan,
+          PATH: `${f.bin}:${process.env.PATH}`,
+          STATION_ROOT: join(f.home, '.station'),
+          ...env,
+        },
+        stdio: 'pipe',
+      });
+    } catch (error) {
+      return { status: error.status, stderr: String(error.stderr) };
+    }
+    return { status: 0, stderr: '' };
+  }
+
+  // Each message starts with `--`: `print -u2` without `--` parsed it as
+  // options and replaced the refusal with "bad option" noise.
+  it.each([
+    [['--build-only'], '--build-only requires --output-dir'],
+    [
+      ['--output-dir', 'out'],
+      '--output-dir and --notary-profile require --build-only.',
+    ],
+    [
+      ['--build-only', '--relaunch', '--output-dir', 'out'],
+      '--relaunch cannot be used with --build-only.',
+    ],
+    [
+      ['--build-only', '--output-dir', 'out', '--notary-profile'],
+      '--notary-profile requires an existing named Keychain profile.',
+    ],
+  ])('refuses %j before touching the checkout', (args, message) => {
+    const f = fixture();
+    expect(run(f, args)).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(message),
+    });
+    expect(existsSync(f.gitLog)).toBe(false);
+    expect(existsSync(f.npmRan)).toBe(false);
+  });
+
+  it('refuses a dirty tracked checkout before building', () => {
+    const f = fixture();
+    expect(
+      run(f, ['--build-only', '--output-dir', f.output], { GIT_DIRTY: '1' }),
+    ).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(
+        'Refusing to build Station Nightly from a dirty tracked checkout.',
+      ),
+    });
+    expect(existsSync(f.gitLog)).toBe(false);
+    expect(existsSync(f.npmRan)).toBe(false);
+  });
+
+  it('refuses a held lock before refreshing the owned checkout', () => {
+    const f = fixture({ foreignLock: true });
+    expect(run(f, ['--build-only', '--output-dir', f.output])).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining(
+        'Another Station Nightly installation is already running.',
+      ),
+    });
+    expect(existsSync(f.gitLog)).toBe(false);
+    expect(existsSync(f.npmRan)).toBe(false);
   });
 });

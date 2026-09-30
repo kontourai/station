@@ -3,7 +3,7 @@
  *
  * Station owns project confinement, metadata placement, host lifecycle, and
  * presentation. Fieldwork owns the run, review, and reviewed output. This
- * module deliberately interacts only with `createFieldworkApplication()`.
+ * module uses the published application facade and reviewed-source parsers.
  */
 
 import { randomUUID } from 'node:crypto';

@@ -2,29 +2,11 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import {
-  createDeviceHostResolver,
-  createLocalDeviceHostResolver,
-  LOCAL_DEVICE_HOST_ID,
-} from '../device-host-resolver.js';
+import { createDeviceHostResolver } from '../device-host-resolver.js';
 import { explicitDeviceHubEndpoint } from '../device-hub-endpoint.js';
 
 /**
- * D13: device host selection goes through `DeviceHostResolver`. Only the
- * local host exists; a future capability host is one more resolver entry.
- */
-
-describe('the local device host resolver', () => {
-  test('resolves local, and nothing else', () => {
-    const local = explicitDeviceHubEndpoint('http://127.0.0.1:43871');
-    const resolver = createLocalDeviceHostResolver(local);
-    expect(resolver.resolve({ hostId: LOCAL_DEVICE_HOST_ID })).toBe(local);
-    expect(resolver.resolve({ hostId: 'kontour' })).toBeNull();
-    expect(resolver.resolve({ hostId: '' })).toBeNull();
-  });
-});
-
-/**
+ * D13: device host selection goes through `DeviceHostResolver`.
  * #1973: an SSH device host resolves to ITS endpoint, by id; `local` stays
  * the local hub; anything malformed or not stored is null (never local).
  */
@@ -110,9 +92,6 @@ describe('the resolver is the only path to a hub', () => {
       [
         // Definitions and their internal composition.
         'services/devices/device-hub-endpoint.ts:explicitHubConnection',
-        // `LocalMobileDeviceHost({ endpoint })` for callers that pass a
-        // string (tests); the runtime never does (next test).
-        'services/mobile-device/mobile-device-host.ts:explicitDeviceHubEndpoint',
         // The runtime composition: the managed hub (falling back to an
         // explicit one), wrapped by the resolver.
         'runtime/routes/runtime-routes.ts:deviceHubEndpointFromToolchain',
@@ -122,22 +101,29 @@ describe('the resolver is the only path to a hub', () => {
   });
 
   test('the runtime passes the managed-or-explicit endpoint straight into the resolver and builds hosts from what it resolves', () => {
-    const runtime = files.find(
-      ({ path }) => path === 'runtime/routes/runtime-routes.ts',
-    )!.text;
-    expect(runtime).toMatch(
-      /createDeviceHostResolver\(\{\s*local:\s*deviceHubEndpointFromToolchain\(\s*devices,\s*explicitDeviceHubEndpoint\(/,
-    );
-    // SSH device hosts reach the resolver as its `remote`, never as a hub.
-    expect(runtime).toMatch(/remote:\s*hostRegistry,?\s*\}\)/);
-    expect(runtime).toMatch(/resolver:\s*deviceHosts/);
-    expect(runtime).toMatch(/deviceHosts\.resolve\(\{/);
+    // Whitespace-free, so a reformat of runtime-routes cannot turn this red;
+    // the resolver's local binding name is read from the source, not assumed.
+    const runtime = files
+      .find(({ path }) => path === 'runtime/routes/runtime-routes.ts')!
+      .text.replace(/\s+/g, '');
+    const resolverCall =
+      /const(\w+)=createDeviceHostResolver\(\{local:deviceHubEndpointFromToolchain\(\w+,explicitDeviceHubEndpoint\([^)]*\),?\),remote:\w+,?\}\)/.exec(
+        runtime,
+      );
+    expect(resolverCall).not.toBeNull();
+    const resolverName = resolverCall![1]!;
+    // SSH device host services are handed the same resolver.
+    expect(runtime).toContain(`resolver:${resolverName}`);
     const hosts = [
-      ...runtime.matchAll(/new LocalMobileDeviceHost\(([^)]*)\)/g),
+      ...runtime.matchAll(/newLocalMobileDeviceHost\(\{hub:(\w+)/g),
     ];
+    // Every runtime LocalMobileDeviceHost takes `hub:` first (the type
+    // requires it) and that hub is what the resolver resolved.
+    expect(hosts.length).toBe(
+      runtime.split('newLocalMobileDeviceHost(').length - 1,
+    );
     expect(hosts.length).toBeGreaterThan(0);
-    for (const [, args] of hosts)
-      expect(args).toMatch(/hub:\s*deviceHubEndpoint/);
-    expect(runtime).not.toMatch(/new LocalMobileDeviceHost\(\{\s*endpoint:/);
+    for (const [, hub] of hosts)
+      expect(runtime).toContain(`const${hub}=${resolverName}.resolve({`);
   });
 });

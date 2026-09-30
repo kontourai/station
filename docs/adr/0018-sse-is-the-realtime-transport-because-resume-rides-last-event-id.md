@@ -3,6 +3,20 @@
 **Status:** Accepted. Records a choice that was already load-bearing but
 undocumented; no behaviour changes with this ADR. Filed as station#935.
 
+**Reading status (2026-09-26 source review):** The transport choice stands;
+the connection counts and Browser-frame plan below are design observations,
+not a current all-surface connection census. Station uses authenticated
+`fetch`, so its [SDK stream owner](../../packages/sdk/src/client/http.ts)
+explicitly retains and sends `Last-Event-ID`; automatic `EventSource` reconnect
+behavior is not doing that work. Durable replay described here belongs to the
+orchestration event stream, not every endpoint that emits SSE. Binary
+[live-surface routes](../../src-server/routes/live-surface.ts) and a
+[viewer](../../src-ui/src/live-surface/useLiveSurface.ts) now exist. The viewer
+opens a stream per visible viewer; this is not proof of the planned single
+multiplexed stream per client or of a saturated-pool input-latency guarantee.
+The original decision, alternatives, and connection-budget constraints remain
+below; no live connection-budget or browser/native qualification was rerun here.
+
 ## Context
 
 Station streams agent and chat output to its clients over Server-Sent Events.

@@ -35,6 +35,7 @@ export function createStarterSessionOwner(
       operationId,
       fullAccessGrant,
       owner,
+      clientOrigin,
     }) => {
       try {
         const command = {
@@ -49,6 +50,7 @@ export function createStarterSessionOwner(
             ? { ownerAttribution: owner.ownerAttribution }
             : {}),
           ...(fullAccessGrant ? { fullAccessGrant } : {}),
+          ...(clientOrigin ? { clientOrigin } : {}),
         });
         const session = outcome.result as AdoptedSessionResult | undefined;
         if (!session?.threadId)

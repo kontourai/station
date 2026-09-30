@@ -165,15 +165,6 @@ const CONTRACTS_PACKAGE_PATH = path.resolve(
   '../../../contracts/package.json',
 );
 
-it('publishes the pull-request record types consumed by SDK UI components', () => {
-  const indexSource = fs.readFileSync(INDEX_PATH, 'utf8');
-  expect(indexSource).toContain('PullRequest,');
-  expect(indexSource).toContain('PullRequestResult,');
-  expect(indexSource).toContain(
-    "from '@kontourai/station-contracts/pull-request-provider'",
-  );
-});
-
 function listQueryDomainModuleNames(): string[] {
   return fs
     .readdirSync(QUERY_DOMAINS_DIR)

@@ -134,8 +134,13 @@ export class TerminalWebSocketServer {
       const peerClass =
         this.auth?.classifyPeer?.(address) ??
         classifyRuntimePeer(address).peerClass;
+      // One normalized key for every limiter call on this connection, so a
+      // query-credential failure from `::ffff:1.2.3.4` counts against the
+      // same bucket the auth-frame path checks for `1.2.3.4`.
+      const limiterKey =
+        classifyRuntimePeer(address).address ?? address ?? '<absent>';
       if (this.auth && hasWebSocketCredentialQuery(url)) {
-        this.authLimiter?.recordFailure(address ?? '<absent>');
+        this.authLimiter?.recordFailure(limiterKey);
         this.auditFailure('query_credential_rejected', peerClass);
         ws.close(...WEBSOCKET_AUTH_CLOSE.queryCredential);
         return;
@@ -144,8 +149,6 @@ export class TerminalWebSocketServer {
         this.acceptBusinessClient(ws);
         return;
       }
-      const limiterKey =
-        classifyRuntimePeer(address).address ?? address ?? '<absent>';
       const releaseReservation = this.reserveUnauthenticated(limiterKey);
       if (!releaseReservation) {
         this.auditFailure('authentication_capacity_exceeded', peerClass, true);
@@ -154,7 +157,6 @@ export class TerminalWebSocketServer {
       }
       this.authenticateRemoteClient(
         ws,
-        url,
         limiterKey,
         peerClass,
         releaseReservation,
@@ -165,7 +167,6 @@ export class TerminalWebSocketServer {
 
   private authenticateRemoteClient(
     ws: WebSocket,
-    url: URL,
     limiterKey: string,
     peerClass: RuntimePeerClass,
     releaseReservation: () => void,
@@ -194,13 +195,6 @@ export class TerminalWebSocketServer {
     };
     ws.once('close', finish);
     ws.once('error', finish);
-
-    if (hasWebSocketCredentialQuery(url)) {
-      limiter.recordFailure(limiterKey);
-      this.auditFailure('query_credential_rejected', peerClass);
-      ws.close(...WEBSOCKET_AUTH_CLOSE.queryCredential);
-      return;
-    }
 
     const onAuthMessage = async (raw: RawData) => {
       if (settled) return;

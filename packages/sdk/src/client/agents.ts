@@ -7,6 +7,7 @@
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export interface AgentEnvelope<T> {
   success: boolean;
@@ -39,6 +40,7 @@ async function readAgentBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) {
       throw envelopeError(
         response,
@@ -106,7 +108,7 @@ export async function fetchAgentCatalog(
  * The ONE envelope → `['agents']` cache-value derivation (station#3824).
  *
  * `useAgentsQuery` caches an `AgentCatalogProjection` and reads `data.agents`
- * off it. `seedBootPayload` wrote `/api/boot`'s agents section straight into
+ * off it. The boot seeder wrote `/api/boot`'s agents section straight into
  * the same key, and since #3751 changed that cached shape from a bare array
  * to this projection, the seeded value no longer had an `.agents` — so the
  * accelerator seeded a value the hook could not read, and the Agents rail was
@@ -181,7 +183,8 @@ export async function getAgent(
   let payload: AgentEnvelope<unknown> | null = null;
   try {
     payload = (await response.json()) as AgentEnvelope<unknown>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) throw envelopeError(response, undefined, failed);
     throw new Error('Expected JSON response');
   }

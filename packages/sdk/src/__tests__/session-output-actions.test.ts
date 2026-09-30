@@ -1,27 +1,31 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * Keep invalidation, driven through the real mutation hook on a real
+ * QueryClient. The cache is seeded from the production query factories, so a
+ * factory whose key shape drifts away from what Keep invalidates turns this
+ * red instead of leaving the kept output invisible to its readers.
+ */
 import type { TaskDeclaredOutputKeepResult } from '@kontourai/station-contracts';
-import type {
-  MutationFunctionContext,
-  UseMutationOptions,
-} from '@tanstack/react-query';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
-import type { KeepSessionOutputInput } from '../session-output-actions';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
+import { describe, expect, test, vi } from 'vitest';
 
-type KeepMutationOptions = UseMutationOptions<
-  TaskDeclaredOutputKeepResult,
-  Error,
-  KeepSessionOutputInput
->;
+const transport = vi.hoisted(() => ({
+  keepDeclaredTaskOutput: vi.fn(),
+}));
 
-const queryClient = vi.hoisted(() => ({
-  invalidateQueries: vi.fn().mockResolvedValue(undefined),
+vi.mock('../client/task-outputs', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  keepDeclaredTaskOutput: transport.keepDeclaredTaskOutput,
 }));
-const reactQuery = vi.hoisted(() => ({
-  useMutation: vi.fn(),
-}));
-const successContext: MutationFunctionContext = {
-  client: queryClient as never,
-  meta: undefined,
-};
+
+import { sessionInventoryQueries } from '../session-inventory';
+import { useKeepSessionOutputMutation } from '../session-output-actions';
+import { taskBasisQueries } from '../task-basis';
+import { taskOutputQueries } from '../task-outputs';
+import { taskToolResultQueries } from '../task-tool-results';
 
 const keepResult: TaskDeclaredOutputKeepResult = {
   version: 'task-declared-output-keep/v1',
@@ -47,89 +51,85 @@ const keepResult: TaskDeclaredOutputKeepResult = {
   },
 };
 
-vi.mock('@tanstack/react-query', () => ({
-  useMutation: reactQuery.useMutation,
-  useQueryClient: () => queryClient,
-}));
-
-import { useKeepSessionOutputMutation } from '../session-output-actions';
+const scope = { apiBase: 'http://station.test', authorityKey: 'epoch-a' };
+const otherAuthority = { ...scope, authorityKey: 'other-authority' };
+const wholeSession = { kind: 'whole-session', sessionId: 'session-a' } as const;
 
 describe('Session output Keep invalidation', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  test('invalidates the exact Task families and only the matching authority inventory', async () => {
-    reactQuery.useMutation.mockImplementation(
-      (options: KeepMutationOptions) => options,
-    );
-    useKeepSessionOutputMutation();
-    const input = {
-      taskId: 'task-a',
-      sessionId: 'session-a',
-      eventId: 'event-a',
-      operationId: 'operation-a',
-      requestScope: {
-        apiBase: 'http://station.test',
-        authorityKey: 'epoch-a',
-      },
+  test('invalidates the kept Task families and only the matching authority inventory', async () => {
+    transport.keepDeclaredTaskOutput.mockResolvedValue(keepResult);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const invalidated = {
+      outputs: taskOutputQueries.outputs('task-a').queryKey,
+      wholeTaskBasis: taskBasisQueries.task('task-a', undefined, scope),
+      answerBasis: taskBasisQueries.task('task-a', 'answer-1', scope),
+      toolResultReferences: taskToolResultQueries.references('task-a', scope)
+        .queryKey,
+      sessionInventory: sessionInventoryQueries.projection(wholeSession, scope)
+        .queryKey,
+      keptInTaskPage: sessionInventoryQueries.page(
+        { kind: 'kept-in-task', sessionId: 'session-a', taskId: 'task-a' },
+        'outputs',
+        'next',
+        scope,
+      ).queryKey,
     };
-    const options = reactQuery.useMutation.mock.calls[0]?.[0] as
-      | KeepMutationOptions
-      | undefined;
-    await options?.onSuccess?.(keepResult, input, undefined, successContext);
-
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['task-outputs', 'task-a'],
-      exact: true,
-    });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['task-basis', 'task-a', 'http://station.test', 'epoch-a'],
-    });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: [
-        'task-tool-result-references',
+    const untouched = {
+      otherTaskOutputs: taskOutputQueries.outputs('task-b').queryKey,
+      otherTaskBasis: taskBasisQueries.task('task-b', undefined, scope),
+      otherAuthorityBasis: taskBasisQueries.task(
         'task-a',
-        'http://station.test',
-        'epoch-a',
-      ],
-      exact: true,
+        'answer-1',
+        otherAuthority,
+      ),
+      otherAuthorityToolResults: taskToolResultQueries.references(
+        'task-a',
+        otherAuthority,
+      ).queryKey,
+      otherAuthorityInventory: sessionInventoryQueries.projection(
+        wholeSession,
+        otherAuthority,
+      ).queryKey,
+      otherSessionInventory: sessionInventoryQueries.projection(
+        { kind: 'whole-session', sessionId: 'session-b' },
+        scope,
+      ).queryKey,
+    };
+    for (const key of [
+      ...Object.values(invalidated),
+      ...Object.values(untouched),
+    ])
+      client.setQueryData(key, { seeded: true });
+
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+    const { result } = renderHook(() => useKeepSessionOutputMutation(), {
+      wrapper,
     });
-    const inventoryCall = queryClient.invalidateQueries.mock.calls.find(
-      ([options]) => typeof options.predicate === 'function',
+    await act(() =>
+      result.current.mutateAsync({
+        taskId: 'task-a',
+        sessionId: 'session-a',
+        eventId: 'event-a',
+        operationId: 'operation-a',
+        requestScope: scope,
+      }),
     );
-    const matches = inventoryCall?.[0].predicate as (query: {
-      queryKey: readonly unknown[];
-    }) => boolean;
-    expect(
-      matches({
-        queryKey: [
-          'session-inventory',
-          { kind: 'whole-session', sessionId: 'session-a' },
-          'http://station.test',
-          'epoch-a',
-        ],
-      }),
-    ).toBe(true);
-    expect(
-      matches({
-        queryKey: [
-          'session-inventory-page',
-          { kind: 'kept-in-task', sessionId: 'session-a', taskId: 'task-a' },
-          'outputs',
-          'next',
-          'http://station.test',
-          'epoch-a',
-        ],
-      }),
-    ).toBe(true);
-    expect(
-      matches({
-        queryKey: [
-          'session-inventory',
-          { kind: 'whole-session', sessionId: 'session-a' },
-          'http://station.test',
-          'other-authority',
-        ],
-      }),
-    ).toBe(false);
+
+    expect(transport.keepDeclaredTaskOutput).toHaveBeenCalledOnce();
+    const isInvalidated = (key: readonly unknown[]) =>
+      client.getQueryState(key)?.isInvalidated;
+    for (const [name, key] of Object.entries(invalidated))
+      expect({ name, invalidated: isInvalidated(key) }).toEqual({
+        name,
+        invalidated: true,
+      });
+    for (const [name, key] of Object.entries(untouched))
+      expect({ name, invalidated: isInvalidated(key) }).toEqual({
+        name,
+        invalidated: false,
+      });
   });
 });

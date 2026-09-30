@@ -86,17 +86,10 @@ function open(
   const directory = mkdtempSync(join(tmpdir(), 'station-work-item-store-'));
   directories.push(directory);
   const path = join(directory, 'orchestration.sqlite');
-  const store = new EventStore(
-    path,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    input.admissionFault,
-    input.savepointOpenFault,
-  );
+  const store = new EventStore(path, undefined, undefined, {
+    sessionWorkItemAdmission: input.admissionFault,
+    sessionWorkItemSavepointOpen: input.savepointOpenFault,
+  });
   store.upsertSession({
     provider: 'claude',
     threadId: 'session-a',
@@ -311,7 +304,21 @@ describe('EventStore Session work-item associations', () => {
       expect(() => store.appendEvent(completion())).toThrow(
         'injected savepoint-open failure',
       );
+      const observations = () =>
+        store.listSessionWorkItemObservations({
+          sessionId: 'session-a',
+          conversationId: 'session-a',
+        });
+      expect(store.listEvents('session-a')).toEqual([]);
+      expect(observations()).toEqual([]);
+      // The staged candidate survived the failed open: the retry admits it.
       expect(store.appendEvent(completion())).toBe(1);
+      expect(observations()).toEqual([
+        expect.objectContaining({
+          associationId: 'association-a',
+          eventId: 'event-a',
+        }),
+      ]);
     } finally {
       store.close();
     }

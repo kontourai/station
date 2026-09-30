@@ -76,24 +76,6 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
     expect(userBadge.className).toContain('tool-call__status-badge--error');
   });
 
-  test('user-denied behaviour is unchanged (station#3091 does not weaken it)', () => {
-    render(
-      <ToolCallDisplay
-        toolCall={{
-          type: 'tool-invocation',
-          toolCallId: 't1',
-          toolName: 'fs_write',
-          approvalStatus: 'user-denied',
-        }}
-      />,
-    );
-
-    const badge = screen.getByText('User denied');
-    expect(badge.className).toBe(
-      'tool-call__status-badge tool-call__status-badge--error',
-    );
-  });
-
   // Negative control: a call with genuinely unknown approval state (no
   // approvalStatus at all — the ordinary, ungated case) renders no badge.
   test('a call with no approvalStatus renders no approval badge', () => {

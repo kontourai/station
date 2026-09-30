@@ -1,6 +1,25 @@
 # Monitoring & Telemetry
 
-Station ships a full observability stack: OTel Collector → Prometheus → Grafana for metrics, and Jaeger for distributed traces. Telemetry is a **no-op** when `OTEL_EXPORTER_OTLP_ENDPOINT` is not set — no configuration is required for local development.
+Station has three separate measurement paths:
+
+| Path | Owner and destination | What enables it |
+| --- | --- | --- |
+| Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
+| OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and the startup limitation below |
+| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+
+The repository includes an optional Docker example for Collector → Prometheus
+→ Grafana metrics and Collector → Jaeger traces. Starting that example is not
+proof that Station recorded or delivered a measurement. The local event log is
+also separate from the canonical orchestration EventStore.
+
+**Current collection limit:** instruments created before asynchronous OTel
+initialization can remain bound to a no-op meter after the SDK starts. A
+controlled initializer/in-memory-reader probe reproduced this with the actual
+exported chat counter. Treat the tables below as declarations and recording
+call sites, not proof of a populated collector. The startup owner needs to fix
+this binding before an enabled endpoint alone can establish metric collection:
+[#2755](https://github.com/kontourai/station/issues/2755).
 
 ## Quick Start
 
@@ -21,8 +40,9 @@ The Grafana dashboard auto-provisions from `monitoring/grafana/dashboards/statio
 
 | Variable                    | Required | Default     | Description                                      |
 |-----------------------------|----------|-------------|--------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No     | —           | OTLP HTTP endpoint. Telemetry is disabled if unset. |
-| `OTEL_SERVICE_NAME`         | No       | `station`  | Service name reported in traces and metrics.     |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint. Unset means no OTel SDK initialization; local monitoring remains available. |
+| `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
+| `STATION_TELEMETRY_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
 
@@ -33,9 +53,11 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=station
 ```
 
-## Resource Attributes, and a Breaking Rename (station#2484)
+<a id="resource-attributes-and-a-breaking-rename-station2484"></a>
 
-Every exported metric and trace carries two resource attributes:
+## Resource Attributes, and a Breaking Rename (archive#2484)
+
+Station supplies these two resource attributes:
 
 | Attribute | Value |
 | --- | --- |
@@ -48,13 +70,21 @@ If you have dashboards, alerts, saved queries, or cardinality groupings keyed on
 
 It remains a stable **pseudonymous** installation identifier: consistent within your collector, so per-install grouping still works. It is not "anonymous" in a sense implying unlinkability inside a store that also holds other data about that install.
 
+This is not the complete SDK resource inventory. The pinned Node SDK defaults
+to environment, process, and host detectors unless its detector configuration
+is overridden. Those can add host name/ID, process owner, executable and command
+arguments. A random installation ID does not remove those other fields.
+Inspect the effective SDK configuration and emitted resource before making a
+claim about identity linkage. This audit inspected the pinned implementation;
+it did not read real detector values or send them to a collector.
+
 ## Local Event History and Retention
 
 Station writes queryable monitoring events as daily NDJSON files under
-`<STATION_HOME>/monitoring`. On startup it removes closed-day files older than 30
-days, then removes the oldest closed-day files until retained history is at or
-below 256 MiB. The active UTC day's file is protected so Station never deletes
-the file it is appending to. Invalid environment values fall back to these
+`<STATION_HOME>/monitoring`. Retention removes closed-day files older than 30
+days, then removes the oldest closed-day files to reduce retained history
+toward a 256 MiB budget. The active UTC day's file is protected, so the byte
+setting is not a hard cap on all monitoring data. Invalid environment values fall back to these
 defaults.
 
 These files are operational telemetry, not the canonical orchestration event
@@ -63,11 +93,13 @@ to an export directory before they leave the configured retention window. Files
 that do not use Station's `events-YYYY-MM-DD.ndjson` naming scheme are excluded
 from automatic retention.
 
-## A Counter Is Not a Local Read Path (station#1686)
+<a id="a-counter-is-not-a-local-read-path-station1686"></a>
 
-Because the SDK only starts when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, every
-instrument in `src-server/telemetry/metrics.ts` **discards its writes** on an
-ordinary install. Nothing is buffered, so nothing is recoverable after the
+## Local evidence and the historical migration shadow
+
+Without an OTel SDK, metric instruments **discard their writes**. The startup
+binding issue above can also leave an early-created instrument inactive after
+SDK registration. Nothing is buffered, so nothing is recoverable after the
 fact. That is fine for a rate you would only ever read on a dashboard, and it
 is *not* fine for a counter some gate is supposed to read as evidence: an
 instrument that throws its writes away produces exactly the same silence as a
@@ -77,14 +109,14 @@ If a metric is load-bearing for a decision, it needs a local record as well.
 Station's own server logs are one instance of this: `station.logs.read` counts
 read-path *queries*, but the durable local record is the NDJSON store itself
 (`<STATION_HOME>/logs/server/`) plus its self-read path — `GET
-/api/diagnostics/logs` and the `read_logs` MCP tool (station#1896 slice 2, see
+/api/diagnostics/logs` and the `read_logs` MCP tool (archive#1896 slice 2, see
 [docs/reference/config.md#logging](../reference/config.md#logging)) — so the logs
 this section's own counters describe are themselves locally readable, not just
 counted.
 
 The worked example is the project-resource migration shadow
-(station#1501 slice 3a): alongside `station.project_resource.shadow_comparisons`
-it appends every comparison, with the same dimensions, to a durable per-home
+(archive#1501 slice 3a): alongside `station.project_resource.shadow_comparisons`
+it aggregates comparison counts by dimension in a per-home
 record at `<STATION_HOME>/project-resource-shadow.json`
 (`src-server/services/projects/project-resource-shadow-record.ts`). Read it
 with:
@@ -92,8 +124,8 @@ with:
 ```bash
 npm run project-shadow:report              # rendered summary
 npm run project-shadow:report -- --json    # machine-readable
-npm run project-shadow:report -- --gate    # exits non-zero unless slice 3c's
-                                           # populations are all observed
+npm run project-shadow:report -- --gate    # requires intact coverage with no
+                                         # divergence or tripwire outcomes
 ```
 
 The record's shape is what makes it honest: an outcome that has never been
@@ -101,7 +133,7 @@ observed is **absent**, never a zero row, and a home with no record at all
 answers `NOT OBSERVED` for every question rather than `0`. "The observer ran
 and saw agreement" and "the observer never ran" are different answers.
 
-**What a passing `--gate` does not prove (station#1775).** The gate states its
+**What a passing `--gate` does not prove (archive#1775).** The gate states its
 own limits: it prints a `WHAT THIS PASS DOES NOT PROVE` block alongside a
 passing verdict, and `--json` carries the same strings as `gateLimits`. Read
 them there rather than here — one of the two is *derived from the record* (the
@@ -110,14 +142,16 @@ when it mattered, and a second, differently-worded copy is how a limit quietly
 stops matching the thing it limits.
 
 The short version, for orientation only: coverage is a statement about a
-*home's history*, not about the resolver currently on disk. Do not cite a pass
-as sufficient authority for slice 3c's one-way flip without either #1775
-deriving the provenance or the gap being accepted explicitly.
+*home's history*, not about the resolver currently on disk. The current runtime already wires `createProjectSessionDirectoryResolver`
+and uses it after the legacy shadow comparison. The old one-way-flip discussion
+is migration history, not an instruction to perform another cutover. This
+record still does not identify the resolver revision that produced each count;
+a recovered record is a qualified floor and does not pass the gate.
 
 The write is deliberately `tear-safe` rather than fsync-durable: it happens
-once per session start on the event loop, where four fsyncs cost ~15ms. It
-keeps the same-directory temp file, the atomic rename and the retained
-`.previous`, and drops only the fsyncs (~0.4ms).
+on the resolution path. It keeps the same-directory temp file, atomic rename
+and retained `.previous`, and omits the fsyncs. Earlier notes reported about
+15 ms with fsync and 0.4 ms without; this audit did not repeat those measurements.
 
 Be precise about what that gives up, because an earlier version of this
 paragraph was wrong. `rename()` is atomic for concurrent readers either way,
@@ -147,166 +181,142 @@ Station server
        └─ Metrics → OTLP HTTP :4318/v1/metrics → Collector → Prometheus → Grafana
 ```
 
-The SDK bootstraps in `src-server/telemetry.ts` and **must be imported before all other modules**. It registers:
-- `HttpInstrumentation` — auto-instruments HTTP requests, normalising path params to `:id`
+`src-server/index.ts` imports `src-server/telemetry.ts` early, but initialization
+is asynchronous and does not hold up application startup. A failure warns and
+Station continues. Import order alone does not solve the instrument-binding
+problem described above. The configured SDK includes:
+- `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)
 - `AwsInstrumentation` — auto-instruments AWS SDK calls
-- A `PeriodicExportingMetricReader` that flushes every 30 seconds
+- A `PeriodicExportingMetricReader` with a 30-second export interval and delta temporality
 
-## Metrics Reference
+## Metrics reference
 
-All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to import even when no SDK is configured.
+These are the instruments covered by this guide. The generated
+[declaration catalog](../reference/metrics.md) lists every instrument declared
+in [the definitions](../../src-server/telemetry/metrics.ts); it does not prove
+that an instrument records or exports observations. Follow the
+recording owners below. Attribute sets are unions across current callers; not
+every observation carries every attribute. Several families mix route and
+domain operations, so their totals are not counts of one business action.
 
-### Counters
+<a id="counters"></a>
+<a id="chat--tokens"></a>
 
-#### Chat & Tokens
+### Counters with recording calls
 
-| Metric                      | Description                                              | Labels         |
-|-----------------------------|----------------------------------------------------------|----------------|
-| `station.chat.requests`    | Total chat requests                                      | `agent`        |
-| `station.tokens.input`     | Input tokens consumed                                    | `agent`        |
-| `station.tokens.output`    | Output tokens consumed                                   | `agent`        |
-| `station.tokens.context`   | Fixed context tokens per request (system prompt + MCP tools) | `agent`   |
-| `station.tool.calls`       | Tool INVOCATIONS by an agent (definition CRUD moved to `station.tool.definitions.operations`, station#3077) | `tool` (omitted when unreported, station#3073) |
-| `station.chat.errors`      | Total chat errors                                        | `agent`        |
-| `station.cost.estimated`   | Estimated cost in USD (cumulative)                       | `agent`        |
+| Instrument | What the current callers record | Attributes |
+| --- | --- | --- |
+| `station.chat.requests` | Primary-chat finalization plus separate invocation requests; these are different populations | `agent`, `plugin`, or `op` |
+| `station.tokens.input`, `station.tokens.output` | Reported usage at primary-chat finalization; missing values are omitted | `agent`, `plugin` |
+| `station.tool.calls` | Tool-call chunks seen by `MetadataHandler`; external-engine bridge calls do not increment this counter | `tool` when reported, `plugin` |
+| `station.chat.errors` | Outer chat-route failures; not every streaming failure | `agent`, `plugin` |
+| `station.cost.estimated` | Positive primary-chat estimates with supported pricing; not total provider spending | `agent`, `plugin` |
+| <a id="plugins"></a>`station.plugin.installs`, `station.plugin.uninstalls`, `station.plugin.updates`, `station.plugin.settings_updates` | Their plugin lifecycle/settings operations | `plugin` |
+| <a id="crud-operations"></a>`station.agent.operations` | Agent route and service operations | `op` or `operation`, sometimes `agent` |
+| `station.project.operations` | Project route and service operations | `op` or `operation`, sometimes `project`, `outcome`, `source` |
+| `station.tool.definitions.operations` | Tool-definition management, separate from tool execution | `op` |
+| <a id="providers--infrastructure"></a>`station.provider.operations` | Provider management and adapter outcomes | `op` or `operation`, plus `type`, `provider`, `reason`, `model_options`, `outcome`, `status` where supplied |
+| `station.notification.operations` | Notification service/route operations | `op` |
+| `station.notification.agent_operations` | Agent notification admission outcomes; no content or Session identity | `result`, `urgency` |
+| `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `job`, `status`, or `op` |
+| `station.scheduler.concurrency.deferrals` | Invocation-capacity lifecycle outcomes | `reason`, `disposition` |
+| `station.mcp.lifecycle` | MCP connection lifecycle observations | `event`, `server` |
+| `station.mcp.negotiation.total` | Negotiation outcomes | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, and failure-only `error_class` |
+| `station.knowledge.operations` | Knowledge operations, including derived-index unavailability | `op` |
+| `station.feedback.operations` | Feedback route/service and context operations | `op` or `operation`, plus `rating`, `agent`, `reinforceCount`, `avoidCount`, `durationMs` where supplied |
+| `station.approval.operations` | Approval registry operations | `operation` |
+| `station.terminal.operations` | Terminal service operations | `operation` |
+| `station.acp.operations` | ACP connection configuration create/update/delete, not the full lifecycle of engines connected through ACP | `op` |
+| `station.voice.operations` | Voice Session and route operations | `op` |
+| `station.template.operations` | Template listing/application | `op` |
+| `station.conversation.operations` | Conversation operations | `operation`, with `source`, `outcome`, `agent`, `format` where supplied |
+| `station.coding.operations` | Coding file/search/Git/execution operations | `operation` |
+| `station.auth.operations` | Auth status, renewal and user search operations | `operation` |
+| `station.filetree.operations` | Filesystem route and file-tree/preview service operations | `op` or `operation`, sometimes `outcome` |
+| `station.registry.operations` | Registry operations | `operation`, with `outcome`, `source`, `item` where supplied |
+| <a id="skills"></a>`station.skill.discoveries` | Discovery passes; the discovered count is an attribute | `count`, `projectSlug` |
+| `station.skill.activations` | `skill_read` calls, including failed reads; not proof an Agent executed a skill | `skill` |
+| <a id="other"></a>`station.analytics.operations` | Analytics route operations | `op` |
+| `station.bedrock.operations` | Model catalog and Bedrock operations | `op` |
+| `station.config.operations` | Config and connection operations | `op`, sometimes `id` |
+| `station.sse.operations` | Event-stream connection operations | `op` |
+| `station.insight.operations` | Insights queries | `op` |
+| `station.system.operations` | System status/update/resource-posture operations | `op` |
+| `station.uicommand.operations` | UI command operations | `op` |
 
-#### Plugins
+The scheduler counter's mixed meaning is tracked in
+[#2750](https://github.com/kontourai/station/issues/2750).
+For the separate concurrency lifecycle, `waiting` adds a parked retry and
+`admitted`/`stopped` remove it. `released` and `indeterminate` describe first
+attempts, not parked depth. Within one process lifetime, parked depth is
+`waiting - admitted - stopped`. An ungraceful exit can leave unmatched waits;
+reset/rebase the calculation at restart. `indeterminate` deliberately has no
+`job.deferred` SSE counterpart: an uncertain release must not be announced as
+a confirmed deferral.
 
-| Metric                        | Description              | Labels   |
-|-------------------------------|--------------------------|----------|
-| `station.plugin.installs`    | Plugin install events    | —        |
-| `station.plugin.uninstalls`  | Plugin uninstall events  | —        |
-| `station.plugin.updates`     | Plugin update events     | —        |
-| `station.plugin.settings_updates` | Plugin settings update events | —   |
+<a id="histograms"></a>
 
-#### CRUD Operations
+### Histograms with recording calls
 
-| Metric                        | Description              | Labels      |
-|-------------------------------|--------------------------|-------------|
-| `station.agent.operations`   | Agent CRUD operations    | `operation` |
-| `station.layout.operations`  | Layout CRUD operations   | `operation` |
-| `station.project.operations` | Project CRUD operations  | `operation` |
-| `station.prompt.operations`  | Prompt CRUD operations   | `operation` |
-| `station.tool.definitions.operations` | Tool DEFINITION management — add/remove/list/reconnect. Split out of `station.tool.calls` (station#3077), which counted these alongside actual tool invocations. | `op` |
+| Instrument | What is measured | Attributes | Unit |
+| --- | --- | --- | --- |
+| `station.chat.duration` | Primary-chat duration | `agent`, `plugin` | ms |
+| `station.tool.duration` | Matched call/result elapsed time from MetadataHandler **and** the external-engine bridge | `tool` when reported, `plugin` | ms |
+| `station.scheduler.job.duration` | Scheduler execution duration | `job` | ms |
+| `station.approval.duration` | Explicit registry settlement time | `action` | ms |
+| `station.skill.activation.duration` | `skill_read` duration, including failed reads | `skill` | ms |
+| `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
 
-#### Providers & Infrastructure
+The cost counter has USD semantics in its producer but no declared instrument
+unit. Token counters likewise have no explicit unit property.
 
-| Metric                             | Description                              | Labels      |
-|------------------------------------|------------------------------------------|-------------|
-| `station.provider.operations`     | Provider register/remove/health events   | `op`        |
-| `station.notification.operations` | Notification schedule/deliver/dismiss    | `op`        |
-| `station.notification.agent_operations` | Agent `notify_user` outcomes (sent/updated/deduped/muted/rate_limited/unavailable/caller-required); never content or session identity | `result`, `urgency` |
-| `station.scheduler.job.runs`      | Scheduler job executions                 | —           |
-| `station.scheduler.concurrency.deferrals` | Automatic invocation-ceiling lifecycle outcomes | `reason`, `disposition` |
-| `station.mcp.lifecycle`           | MCP connection lifecycle events          | `event`     |
-| `station.mcp.negotiation.total`   | Modern/legacy negotiation outcomes        | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, `error_class` |
-| `station.mcp.negotiation.duration`| Negotiation plus initial discovery latency| same as negotiation outcome |
-| `station.knowledge.operations`    | Knowledge query/index operations         | `op`        |
-| `station.feedback.operations`     | Feedback submission events               | `op`        |
-| `station.approval.operations`     | Tool approval request/approve/deny       | `op`        |
-| `station.terminal.operations`     | Terminal session lifecycle events        | `op`        |
-| `station.acp.operations`          | ACP connection lifecycle events          | `op`        |
-| `station.voice.operations`        | Voice session lifecycle events           | `op`        |
-| `station.template.operations`     | Template list/apply events               | `op`        |
-| `station.conversation.operations` | Conversation lifecycle events            | `operation` |
-| `station.coding.operations`       | Coding session events                    | `op`        |
-| `station.auth.operations`         | Auth lifecycle events                    | `op`        |
-| `station.filetree.operations`     | File tree browse events                  | `op`        |
-| `station.registry.operations`     | Registry install/uninstall events        | `op`        |
+<a id="observable-gauges"></a>
 
-`station.scheduler.concurrency.deferrals` is a lifecycle counter. Its complete
-`disposition` vocabulary is:
+### Gauges and unavailable series
 
-- `waiting`: a durable retry parked for invocation capacity; adds one to parked
-  depth.
-- `admitted`: a parked retry received capacity; subtracts one from parked
-  depth.
-- `stopped`: shutdown ended a parked retry; subtracts one from parked depth.
-- `released`: a first automatic attempt was definitively released without
-  invocation; it does not participate in parked depth.
-- `indeterminate`: the scheduler could not prove that a first-attempt release
-  committed; it does not participate in parked depth.
+`registerObservableGauges` registers callbacks polled during export. Current
+runtime wiring supplies these map sizes:
 
-For one process lifetime, derive parked retry depth as `waiting - admitted -
-stopped`. Graceful shutdown records the matching `stopped` exits. SIGKILL, OOM,
-or another ungraceful process loss can leave unmatched `waiting` increments in
-the last cumulative series, so this formula is not self-healing across process
-loss. Reset or rebase the derived value when the Station process restarts.
+| Instrument | Current meaning |
+| --- | --- |
+| `station.agents.active` | Loaded entries in `activeAgents`, not currently executing turns |
+| `station.mcp.connections` | Entries in `mcpConnectionStatus`, including failed entries, not only healthy connections |
 
-This counter is new in this release; no prior Station emitted it, so there are
-no existing dashboards to migrate. Note that its unfiltered total is a
-**lifecycle** count, not a deferral count: a parked retry that later runs
-contributes both `waiting` and `admitted`. Alert on `disposition="released"`
-for occurrences that were actually given up, and use the full set for the
-parked-depth identity above.
+`station.tokens.context` and `station.prompt.operations` are declared, but this
+audit found no current production recording calls for them in the repository.
+`station.layout.operations` and `station.voice.duration` have no current
+declaration. Historical retained series or a dashboard query do not establish
+a current producer. The dashboard follow-up is
+[#2751](https://github.com/kontourai/station/issues/2751).
 
-The `indeterminate` metric has no matching `job.deferred` SSE event. That state
-means the release receipt could not be confirmed; broadcasting a deferral would
-turn uncertainty into a false claim. Consequently, the metric lifecycle and SSE
-stream are intentionally not reconcilable one-for-one.
+<a id="token-field-fallback-pattern"></a>
 
-#### Skills
+### Token values and missing observations
 
-| Metric                          | Description              | Labels |
-|---------------------------------|--------------------------|--------|
-| `station.skill.discoveries`    | Skill discovery events   | —      |
-| `station.skill.activations`    | Skill activation events  | —      |
+The primary-chat finalizer accepts both usage field shapes through nullish
+fallback: `promptTokens ?? inputTokens` and `completionTokens ?? outputTokens`.
+It records only defined values, preserving a measured zero and leaving missing
+usage absent. Do not replace this with `|| ... || 0`, which turns missing
+observations into a zero and can override a reported zero. Field spelling is
+not a universal way to identify the provider.
 
-#### Other
+### Cost tracking
 
-| Metric                          | Description                    | Labels |
-|---------------------------------|--------------------------------|--------|
-| `station.analytics.operations` | Analytics query events         | `op`   |
-| `station.bedrock.operations`   | Bedrock model catalog events   | `op`   |
-| `station.config.operations`    | App config read/write events   | `op`   |
-| `station.sse.operations`       | SSE connection events          | `op`   |
-| `station.insight.operations`   | Insight query events           | `op`   |
-| `station.system.operations`    | System status/verify events    | `op`   |
-| `station.uicommand.operations` | UI command execution events    | `op`   |
+The primary-chat finalizer is the current producer of the cost counter.
+`findModelPricing` resolves supported Bedrock pricing. `estimateCost` is absent
+if no components are reported, or any reported token/cache component lacks a
+valid count or rate. An estimate covers only reported components; input-only
+usage can be priced even when output usage is missing. A valid zero estimate can be retained locally
+without a positive counter increment. This is neither an all-engine billing
+ledger nor proof of a provider invoice.
 
-### Histograms
-
-| Metric                              | Unit | Description                            | Labels  |
-|-------------------------------------|------|----------------------------------------|---------|
-| `station.chat.duration`            | ms   | Chat request duration                  | `agent` |
-| `station.tool.duration`            | ms   | Tool execution duration                | `tool`  |
-| `station.scheduler.job.duration`   | ms   | Scheduler job execution duration       | —       |
-| `station.approval.duration`        | ms   | Time from approval request to decision | —       |
-| `station.voice.duration`           | ms   | Voice session duration                 | —       |
-| `station.skill.activation.duration`| ms   | Skill activation duration              | —       |
-
-### Observable Gauges
-
-Registered via `registerObservableGauges()` in the runtime — callbacks are polled on each export cycle.
-
-| Metric                    | Description                    |
-|---------------------------|--------------------------------|
-| `station.agents.active`  | Number of active agents        |
-| `station.mcp.connections`| Number of MCP connections      |
-
-### Token Field Fallback Pattern
-
-The AI SDK uses different field names across providers. The runtime normalises this with a fallback:
-
-```ts
-tokensInput.add(usage.promptTokens || usage.inputTokens || 0, { agent: slug });
-```
-
-`promptTokens` is the Anthropic/OpenAI field; `inputTokens` is used by Bedrock and the Strands adapter. Always apply both fallbacks when reading usage from a model response.
-
-### Cost Tracking
-
-Cost is tracked as a cumulative USD counter (`station.cost.estimated`). The runtime computes cost from token counts and model pricing, then calls:
-
-```ts
-costEstimated.add(cost, { agent: slug });
-```
-
-The Grafana dashboard shows both total estimated cost (stat panel) and cost broken down by agent (bar gauge).
+See [chat finalization](../../src-server/routes/chat/chat-lifecycle.ts) and
+[pricing](../../src-server/utils/pricing.ts) for the actual conditions.
 
 ## Grafana Dashboard
 
-The dashboard (`monitoring/grafana/dashboards/station.json`) contains 28 panels:
+The dashboard (`monitoring/grafana/dashboards/station.json`) contains 28 non-row panels plus five section rows. The following numbers are
+reading order, not Grafana JSON panel IDs:
 
 | # | Title | Type | Category |
 |---|-------|------|----------|
@@ -339,22 +349,53 @@ The dashboard (`monitoring/grafana/dashboards/station.json`) contains 28 panels:
 | 27 | Cost by Agent | bargauge | Performance |
 | 28 | Token Usage | stat | Performance |
 
+Current query limits matter when interpreting those panels:
+
+- Layout, Prompt, and Context queries do not have current recording sources as
+  described above. Notifications and Knowledge group by `operation`, but their
+  producers use `op`. Other mixed-label families need their populations separated.
+- Scheduler and chat request panels include operations beyond completed work.
+  Tool-call and tool-duration populations differ. Gauge titles do not change
+  the map-cardinality meanings above.
+- Chat p95 is calculated per histogram series without aggregating Agent/plugin
+  buckets into a global p95. Cost panels show partial estimates.
+- `or vector(0)` in the Errors query can render zero when no series was observed.
+  That is not evidence that instrumentation ran and observed no errors.
+
+[#2751](https://github.com/kontourai/station/issues/2751) owns the query/producer
+reconciliation. The Compose files use `latest` images and do not pin host bind
+addresses; Grafana enables an anonymous Viewer and the example admin password.
+Treat this as an operator-configured development example, not a qualified
+production deployment. This audit did not start Docker or test collector,
+Prometheus, Grafana, or Jaeger delivery.
+
 ## Distributed Traces (Jaeger)
 
 Traces are exported via OTLP to the Collector, which forwards them to Jaeger over gRPC (port 4317, insecure).
 
 Access traces at **http://localhost:16686**. Select service `station` (or the value of `OTEL_SERVICE_NAME`) from the search dropdown.
 
-Each chat request creates a root span. Tool calls and tool results are added as span events:
+The primary-chat stream creates a `station.chat` span with `startSpan`.
+That call neither forces it to be a root span nor makes it the active context.
+`MetadataHandler` adds tool events only when its monitoring emitter/context
+exist and an active span is available; the code does not establish that every
+such event belongs to the new chat span. Other engines have their own paths.
+A failed primary stream can currently be finalized as OK; an in-memory exporter
+probe reproduced that mismatch, tracked in
+[#2752](https://github.com/kontourai/station/issues/2752).
+
+The conditional event write looks like this:
 
 ```ts
 trace.getActiveSpan()?.addEvent('tool-call', {
-  'tool.name': chunk.toolName,
+  ...(chunk.toolName ? { 'tool.name': chunk.toolName } : {}),
   'tool.call_id': chunk.toolCallId,
 });
 ```
 
-The `tracer` export from `src-server/telemetry/metrics.ts` can be used to create custom child spans:
+The `tracer` export from `src-server/telemetry/metrics.ts` can create custom
+spans. Parenting depends on an active or explicitly supplied parent context;
+this example does not activate a new context:
 
 ```ts
 import { tracer } from '../telemetry/metrics.js';
@@ -379,29 +420,28 @@ export const myCounter = meter.createCounter('station.my.counter', {
 **2. Import and record in your handler:**
 
 ```ts
-import { myCounter } from '../../telemetry/metrics.js';
+import { myCounter } from '../../../telemetry/metrics.js';
 
-// Inside your handler logic:
 myCounter.add(1, { label: 'value' });
 ```
 
 **3. Add a Grafana panel** by editing `monitoring/grafana/dashboards/station.json` or via the Grafana UI (save JSON back to the file to persist).
 
-The full pattern from `MetadataHandler`:
+Define the observation and its owning caller before choosing a metric name.
+Test that caller with a registered in-memory meter, including missing-data and
+failure cases. Match the panel's labels and aggregation to those observations;
+a declaration or a mocked factory argument does not establish collection.
 
-```ts
-import { toolCalls as otelToolCalls, toolDuration as otelToolDuration } from '../../../telemetry/metrics.js';
+`MetadataHandler` omits an unreported tool name instead of inventing `unknown`,
+adds the plugin attribute, and stores a start only when a call ID exists. On a
+matching result it records elapsed time and consumes that entry. The resolved
+name/duration also travel into the local result event. Follow the
+[handler](../../src-server/runtime/streaming/handlers/MetadataHandler.ts) and its
+caller instead of copying a partial snippet that changes those conditions.
 
-// On tool-call chunk:
-otelToolCalls.add(1, { tool: chunk.toolName || 'unknown' });
-this.toolStartTimes.set(chunk.toolCallId, { start: performance.now(), tool: chunk.toolName });
-
-// On tool-result chunk:
-const entry = this.toolStartTimes.get(chunk.toolCallId);
-if (entry) {
-  otelToolDuration.record(performance.now() - entry.start, { tool: entry.tool });
-}
-```
+The optional SDK shutdown joins Station's shared 1.5-second network-teardown
+budget. It is best effort; process exit or that deadline is not proof of
+collector delivery.
 
 ## Application-Level Monitoring (MonitoringEmitter)
 
@@ -410,26 +450,38 @@ Beyond OTel infrastructure metrics, Station tracks GenAI-specific events through
 ### Architecture
 
 ```
-StreamOrchestrator / ACPBridge
+Station-agent stream / OrchestrationMonitoringBridge
   └─ MonitoringEmitter (src-server/monitoring/emitter.ts)
-       ├─ EventBus (SSE fan-out to /monitoring/events)
-       └─ Disk persistence (events-YYYY-MM-DD.ndjson)
+       ├─ EventEmitter (SSE fan-out to /monitoring/events)
+       └─ Best-effort asynchronous persistence (events-YYYY-MM-DD.ndjson)
 ```
 
-The emitter is injected into the streaming pipeline and ACP bridge. It captures events at key lifecycle points without coupling to any specific transport.
+Station-agent streams feed the emitter through their streaming pipeline.
+External canonical engine events are projected by
+[OrchestrationMonitoringBridge](../../src-server/services/orchestration/orchestration-monitoring-bridge.ts),
+which excludes Station-agent to avoid a duplicate projection. The bridge does
+not own lifetime usage accounting; that has its own canonical usage fold.
+
+The emitter redacts content, emits the live event, and tracks an asynchronous
+persistence promise. Persistence rejection is contained; `flush()` waits for
+pending attempts but does not turn a failed write into durable evidence. This
+is operational history, not an execution receipt or the canonical EventStore.
 
 ### Event Schema
 
-Events follow the [OTel GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/) with Station extensions. Defined in `src-server/monitoring/schema.ts`.
+Station's flat [event schema](../../src-server/monitoring/schema.ts) uses
+OTel-style GenAI names and Station-specific fields. The record is not an OTLP
+span encoding. [Shared key constants](../../src-shared/monitoring-keys.ts)
+keep producers and readers on the same spelling.
 
-Core attributes (every event):
+Typed event fields (stored or imported rows can still be incomplete):
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `timestamp` | string | ISO-8601 |
 | `timestamp.ms` | number | Epoch ms for sorting |
-| `trace.id` | string | Groups related events |
-| `gen_ai.operation.name` | string | `chat`, `invoke_agent`, `execute_tool` |
+| `trace.id` | optional string | Groups related events when reported; absence is not an empty identifier |
+| `gen_ai.operation.name` | string | Schema permits `chat`, `invoke_agent`, `execute_tool`, `embeddings`, and `text_completion` |
 | `span.kind` | string | `start`, `end`, `event`, `log` |
 
 GenAI attributes (set per operation type):
@@ -437,24 +489,24 @@ GenAI attributes (set per operation type):
 | Attribute | Set On | Description |
 |-----------|--------|-------------|
 | `gen_ai.request.model` | agent start/end | Model ID |
-| `gen_ai.conversation.id` | all agent events | Conversation ID |
+| `gen_ai.conversation.id` | when reported | Optional Conversation ID |
 | `gen_ai.usage.input_tokens` | agent complete | Input token count |
 | `gen_ai.usage.output_tokens` | agent complete | Output token count |
-| `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (station#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
-| `gen_ai.provider.name` | tool call/result | The engine that ran the tool (station#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
+| `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (archive#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
+| `gen_ai.provider.name` | tool call/result | The engine that ran the tool (archive#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
 | `gen_ai.request.model` | tool call/result | Session-configured model at dispatch — not observed per call. |
-| `station.tool.duration_ms` | tool result | Elapsed milliseconds from call to result, rounded (station#3077). Recorded on the EVENT because the OTel histogram is a no-op unless an exporter endpoint is configured. Absent when the matching call was never seen. |
+| `station.tool.duration_ms` | tool result | Elapsed milliseconds from call to result, rounded (archive#3077). Recorded on the EVENT because the OTel histogram is a no-op unless an exporter endpoint is configured. Absent when the matching call was never seen. |
 | `gen_ai.tool.call.id` | tool call/result | Unique call ID |
 
 Station extensions:
 
 | Attribute | Description |
 |-----------|-------------|
-| `station.agent.slug` | Agent identifier. **Omitted when the session reported none** (station#3082) — absence is absence, never an agent named `unknown`. Events written before that change carry the literal, so the eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
+| `station.agent.slug` | Agent identifier. **Omitted when the session reported none** (archive#3082) — absence is absence, never an agent named `unknown`. Events written before that change carry the literal, so the eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
 | `station.agent.steps` | Steps taken in agent loop |
 | `station.input.chars` | Input character count |
 | `station.output.chars` | Output character count |
-| `station.user.id` | User identifier. Omitted when the session reported none (station#3082), same discipline as the agent slug. |
+| `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
 
 ### Emitter Methods
@@ -471,16 +523,51 @@ Station extensions:
 
 ### Consuming Events
 
-**SSE stream**: `GET /monitoring/events` — real-time event stream for the Monitoring view.
+**Live stream:** `GET /monitoring/events` without a time bound streams current
+events. It does not provide the canonical orchestration stream's durable replay
+contract. The Monitoring view subscribes through its own context and filters
+its projection.
 
-**Disk**: Events persist to `<STATION_HOME>/monitoring/events-YYYY-MM-DD.ndjson` (one JSON object per line). Historical events are queryable via `GET /monitoring/events?start=<iso-or-ms>&end=<iso-or-ms>`.
+**Historical read:** specifying `start` or `end` selects JSON history from
+`<STATION_HOME>/monitoring/events-YYYY-MM-DD.ndjson`. Bounds accept ISO timestamps
+or epoch milliseconds; an absent start defaults to zero and an absent end to
+now. Invalid bounds fail rather than widening the window. User ownership and
+Session/tenant policy are applied before dimension filters and a requested
+limit. Results are timestamp-ordered oldest first; a limit keeps the newest
+matching rows. `limit` is optional and capped at 5,000 when supplied, so an
+uncapped export is not a bounded page. The returned `truncated` flag says
+whether the limit dropped matching rows; `data.length` is the returned row
+count. The response does not report the total number of matches.
 
-**UI**: The Monitoring view (`MonitoringContext.tsx`) subscribes to the SSE stream and displays events in real-time with filtering by agent, operation type, and time range.
+`RuntimeEventLog` caches per-file timestamp bounds with filesystem identity,
+not payloads. Appends/replacements invalidate that shortcut. Missing history is
+empty; other filesystem errors propagate. A successful read still only describes
+records that reached the monitoring files.
 
 ### Insights API
 
-`GET /api/insights` aggregates event data from the monitoring directory for the Insights Dashboard.
+`GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
+hourly activity and totals. Its default window is 14 days. The route applies
+user and Session/tenant checks and optional Agent/tool/engine filters; health
+probes are excluded. A tool filter removes non-tool rows too, and an engine
+filter cannot recover provider attribution missing from older or differently
+shaped events. Empty buckets under a filter are not a claim about all work.
 
-- Reads all `events-*.ndjson` files from `<STATION_HOME>/monitoring/`
-- Returns parsed events for analytics and feedback analysis
-- Used by the `InsightsDashboard` component alongside the feedback tab
+The optional positive `limit` caps ranked bucket lists at 500; totals still
+come from the matching scan. File-day skipping reduces old-file reads, while
+unparseable date filenames still enter row filtering. Unlike the history
+reader's content-derived bounds, this optimization can omit a clock-skewed
+exporter's row at a UTC day boundary. It does not scan every retained file on
+every request.
+
+Insights logs and skips per-row parsing and per-file read failures, then can
+still return `success: true` without a completeness indicator. A successful
+aggregate therefore does not prove every relevant file/row was read. This
+differs from the history reader's propagation of non-missing-file I/O errors.
+
+For exact query parsing and response fields, read the
+[monitoring route](../../src-server/routes/operations/monitoring.ts),
+[Insights route](../../src-server/routes/operations/insights.ts), and
+[event-log owner](../../src-server/runtime/conversation/runtime-event-log.ts).
+Source and fixture checks do not establish real collector delivery, retained
+historical completeness, or dashboard correctness.

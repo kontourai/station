@@ -1,5 +1,4 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { _getApiBase } from './api';
 import { toAgentCatalogProjection } from './client/agents';
 import { authenticatedFetch } from './client/http';
 
@@ -17,7 +16,7 @@ const agentsQueryKey = () => ['agents'] as const;
 const projectsQueryKey = () => ['projects'] as const;
 const modelsQueryKey = () => ['model-catalog'] as const;
 
-/** Test seam: the exact keys seedBootPayload writes, for the runtime
+/** Test seam: the exact keys seedBootPayloadGuarded writes, for the runtime
  * binding test that proves each equals its hook's registered key. */
 export const BOOT_SEED_KEYS = {
   auth: authStatusQueryKey(),
@@ -34,16 +33,6 @@ export interface BootPayload {
   sections: Record<string, { data?: any; error?: true }>;
 }
 
-interface BootRequest {
-  startedAt: number;
-  apiBase: string;
-}
-
-export async function fetchBootPayload(): Promise<BootPayload> {
-  const apiBase = await _getApiBase();
-  return fetchBootPayloadAt(apiBase);
-}
-
 /**
  * Captured-origin fetch: the caller passes the exact origin its authority
  * scope verified, so the request never resolves a module-global origin that
@@ -58,38 +47,6 @@ export async function fetchBootPayloadAt(
   if (!response.ok)
     throw new Error('Could not load Station’s startup information');
   return response.json() as Promise<BootPayload>;
-}
-
-/** Seeds only complete sections, using the exact keys consumed by the hooks. */
-export async function seedBootPayload(
-  queryClient: QueryClient,
-  payload: BootPayload,
-  request?: BootRequest,
-): Promise<void> {
-  const bootRequest = request ?? {
-    startedAt: Date.now(),
-    apiBase: await _getApiBase(),
-  };
-  if ((await _getApiBase()) !== bootRequest.apiBase) {
-    console.debug(
-      '[boot] discarded aggregate payload after Station connection changed',
-    );
-    return;
-  }
-  await seedBootPayloadGuarded(
-    queryClient,
-    payload,
-    bootRequest.startedAt,
-    () => true,
-  );
-}
-
-export async function fetchAndSeedBootPayload(
-  queryClient: QueryClient,
-): Promise<void> {
-  const request = { startedAt: Date.now(), apiBase: await _getApiBase() };
-  const payload = await fetchBootPayloadAt(request.apiBase);
-  await seedBootPayload(queryClient, payload, request);
 }
 
 /**

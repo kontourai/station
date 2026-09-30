@@ -262,9 +262,17 @@ describe('JobFormModal schedule compatibility', () => {
         }),
       ),
     ).toBe('Every 2 hours');
-    expect(
-      formatSchedule({ kind: 'at', timeMs: Date.UTC(2030, 0, 2, 3, 4) }),
-    ).not.toContain('[object Object]');
+    // `toLocaleString` output depends on the runner's locale and zone, so
+    // assert locale-independent invariants. Mid-June keeps the year 2030 in
+    // every zone.
+    const once = formatSchedule({
+      kind: 'at',
+      timeMs: Date.UTC(2030, 5, 15, 12, 0),
+    });
+    expect(once).toMatch(/^Once at /);
+    expect(once).toContain('2030');
+    expect(once).not.toContain('Invalid Date');
+    expect(once).not.toContain('[object Object]');
   });
 
   test('renders a duplicate-name conflict without closing the dialog', () => {

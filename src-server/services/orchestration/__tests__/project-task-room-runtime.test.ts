@@ -2353,7 +2353,7 @@ describe('ProjectTaskRoomRuntime', () => {
     ).toMatchObject({ kind: 'available', result: { outcome: 'rate_limited' } });
   });
 
-  test('admits the intended 120 live transitions per minute without two checkpoint exports per command', async () => {
+  test('admits the intended 120 live transitions per minute', async () => {
     const { runtime } = fixture();
     const request = new Request('http://station');
     await runtime.live({ taskId: task.id, request, command: 'join' });

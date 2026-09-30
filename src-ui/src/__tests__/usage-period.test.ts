@@ -4,7 +4,6 @@ import {
   describeDailyHistoryGap,
   periodRange,
   trendMetric,
-  utcDateKey,
 } from '../components/usage-stats/period';
 
 /**
@@ -49,13 +48,6 @@ describe('periodRange', () => {
 
   test('all time has no window — it reads the lifetime fields instead', () => {
     expect(periodRange('all', new Date('2026-08-18T12:00:00Z'))).toBeNull();
-  });
-
-  test('keys match the byDate writer shape', () => {
-    // usage-aggregator-state.ts writes keys as toISOString.split('T')[0].
-    expect(utcDateKey(new Date('2026-08-18T23:30:00Z'))).toBe(
-      new Date('2026-08-18T23:30:00Z').toISOString().split('T')[0],
-    );
   });
 });
 

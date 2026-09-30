@@ -5,9 +5,9 @@
  * `station-control-server.ts`.
  *
  * Unlike station-control this server needs no credential and no environment
- * at all: everything it serves is compiled into its own bundle. That is what
- * lets Station deliver it to every engine, including the engines that can
- * never be handed `station-control`.
+ * at all: everything it serves is compiled into its own bundle. Delivery still
+ * requires an engine with a supported tool-server transport; being credential
+ * free does not establish that channel or Station-control authority.
  */
 
 import { serveStdio } from '@modelcontextprotocol/server/stdio';

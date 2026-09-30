@@ -28,6 +28,15 @@ describe('OllamaLLMProvider', () => {
       new OllamaLLMProvider({ baseUrl: 'http://remote.example' }).execution
         .locality,
     ).toBe('unknown');
+    // The endpoint decides nothing: the default local URL undeclared stays
+    // unknown, and a remote URL declared local stays local.
+    expect(new OllamaLLMProvider({}).execution.locality).toBe('unknown');
+    expect(
+      new OllamaLLMProvider({
+        baseUrl: 'http://remote.example',
+        locality: 'local',
+      }).execution.locality,
+    ).toBe('local');
   });
 
   test('streams chat through the OpenAI-compatible /v1 endpoint', async () => {

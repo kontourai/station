@@ -631,32 +631,19 @@ overrides:
     );
   });
 
-  it('stays silent while a residual expiry is more than a fortnight out', () => {
-    const result = evaluateAuditPolicy(
-      [productionLowDocument()],
-      {
-        version: 2,
-        exceptions: [],
-        residuals: [validResidual({ expires: '2026-07-30' })],
-      },
-      { now: NOW },
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.expiryWarnings).toEqual([]);
-    expect(formatPolicyReport(result)).not.toContain('WARN:');
-  });
-
   it('warns on the fourteenth day and not the fifteenth', () => {
-    const warningsFor = (expires: string) =>
+    const resultFor = (expires: string) =>
       evaluateAuditPolicy(
         [productionLowDocument()],
         { version: 2, exceptions: [], residuals: [validResidual({ expires })] },
         { now: NOW },
-      ).expiryWarnings;
+      );
 
-    expect(warningsFor('2026-07-24')).toHaveLength(1);
-    expect(warningsFor('2026-07-25')).toHaveLength(0);
+    expect(resultFor('2026-07-24').expiryWarnings).toHaveLength(1);
+    const outsideWindow = resultFor('2026-07-25');
+    expect(outsideWindow.ok).toBe(true);
+    expect(outsideWindow.expiryWarnings).toEqual([]);
+    expect(formatPolicyReport(outsideWindow)).not.toContain('WARN:');
   });
 
   it('fails rather than warns once a residual has expired', () => {

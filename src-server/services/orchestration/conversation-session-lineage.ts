@@ -1,7 +1,6 @@
 /**
- * Durable boundary between a human-visible conversation and replaceable
- * execution sessions. This slice records only today's legacy one-to-one shape
- * and deliberately does not alter continuation or lifecycle behavior.
+ * Durable mapping from a conversation to its ordered execution sessions.
+ * Successor reservations preserve the conversation and predecessor identity.
  */
 export interface ConversationSessionLineage {
   conversationId: string;

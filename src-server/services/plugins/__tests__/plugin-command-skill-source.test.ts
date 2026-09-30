@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import {
   scanPluginCommandSkills,
   scanPluginPromptFileSafety,
@@ -181,8 +182,18 @@ describe('plugin prompt-file safety, preview and install', () => {
     expect(blocked.map((entry) => entry.file)).toEqual(['unsafe.md']);
     expect(blocked[0].findings.length).toBeGreaterThan(0);
 
-    // The same input, through the install reader: a refusal, not a filter.
-    expect(() => scanPluginPromptGeneration(pluginDir, 'demo')).toThrow();
+    // The same input, through the install reader: a refusal, not a filter,
+    // and a refusal of exactly the findings preview reported.
+    let refusal: unknown;
+    try {
+      scanPluginPromptGeneration(pluginDir, 'demo');
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ContextSafetyError);
+    expect((refusal as ContextSafetyError).findings).toEqual(
+      blocked[0].findings,
+    );
   });
 
   test('a plugin whose prompt files are clean is blocked by neither', () => {

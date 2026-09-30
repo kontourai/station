@@ -8,7 +8,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { BrowserHost, CdpTransport } from '../browser-host.js';
+import {
+  type BrowserHost,
+  type CdpTransport,
+  createLocalBrowserHostResolver,
+} from '../browser-host.js';
 import {
   BROWSER_SESSION_HISTORY_LIMIT,
   type BrowserSessionActor,
@@ -100,11 +104,11 @@ function harness(
   const registry = new BrowserSessionRegistry({
     stationHome,
     idleShutdownMs: options.idleShutdownMs ?? 1_000,
-    createHost: () => {
+    hostResolver: createLocalBrowserHostResolver(() => {
       const host = fakeHost(hosts.length + 1, options.holds);
       hosts.push(host);
       return host;
-    },
+    }),
     newId: () => `bs_${++ids}`,
   });
   return { registry, hosts, stationHome };

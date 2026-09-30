@@ -12,7 +12,7 @@ import { ACPProcess } from '../acp-process.js';
  * engine connection whose Working Directory was `~/` (a literal tilde — the
  * connection form is free text and does no expansion) killed the whole server:
  *
- *   Uncaught exception: Error: spawn /Users/brian/.local/bin/stub-acp ENOENT
+ *   Uncaught exception: Error: spawn <home>/.local/bin/stub-acp ENOENT
  *   Shutting down gracefully (uncaughtException)...
  *
  * Two separate failures in one line. The `spawn()` `'error'` event had no

@@ -72,3 +72,17 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
     await manager.shutdown();
   });
 });
+
+describe('ACPManager.removeConnection', () => {
+  test('resolves for a configured connection that never got a probe', async () => {
+    // The connection routes remove by config id on update and delete, and a
+    // disabled or unregistered connection was never added, so its id is
+    // unknown to the manager. That must not fail the route.
+    const manager = new ACPManager(
+      {} as any,
+      { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+      '/tmp',
+    );
+    await expect(manager.removeConnection('disabled')).resolves.toBeUndefined();
+  });
+});

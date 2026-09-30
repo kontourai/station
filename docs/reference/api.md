@@ -1,50 +1,42 @@
 # Station API Documentation
 
-This document retains historical REST API narrative and worked examples. It is
-not a complete endpoint inventory.
+This reference explains selected HTTP route families and their current owners.
+It is not a complete endpoint inventory. Request examples use illustrative IDs;
+replace them with identities returned by the selected Station. Response excerpts
+show relevant fields rather than every optional field.
 
 **Base URL**: the selected Station's server origin. The CLI resolves an
 unbootstrapped Stable loopback target to `http://localhost:18141` through the
 shared runtime context; development/bootstrap ports are explicit, not fallback
 documentation. Prefer the endpoint from `station target` instead of assuming a
 channel or port. Protected routes
-require the saved Station's paired credential; loopback is not an
-authentication bypass.
+require a supported credential and the route's authority checks; loopback is not
+an authentication bypass. Paired devices, application sessions, and internal
+server requests have different authority paths.
 
 **Endpoint authority**: See [endpoints.md](./endpoints.md) for OpenAPI and auth
-authorities. This document is historical narrative, not an endpoint inventory.
+authorities. The [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+mounts handlers and their request boundaries. A handler existing in source does
+not mean every deployment mounts or admits it.
 
 ## Endpoint Legend
 
-- 🟢 **Custom** - Station-specific extensions
-- ✅ **In Use** - Currently used by frontend
-- ⚪ **Available** - Implemented but not currently used
+- Method and path identify the route, not its permission tier.
+- HTTP success can mean persisted or accepted while activation remains pending.
+- Readiness, health, catalog discovery, and a completed model turn are distinct
+  observations. Response fields and receipts state which one was observed.
 
 ## Table of Contents
 
-- [Agent Management](#agent-management)
-- [Integration Management](#integration-management)
-- [Layout Management](#layout-management)
-- [Workflow Management](#workflow-management)
-- [Conversation Management](#conversation-management)
-- [Configuration](#configuration)
-- [Fleet Inference](#fleet-inference)
-- [Bedrock Models](#bedrock-models)
-- [Analytics](#analytics)
-- [Monitoring](#monitoring)
-- [Agent Invocation](#agent-invocation)
-- [Auth & Users](#auth--users) *(new)*
-- [Branding](#branding) *(new)*
-- [Events (SSE)](#events-sse) *(new)*
-- [File System](#file-system) *(new)*
-- [Insights](#insights) *(new)*
-- [Standalone Model Capability Routes](#standalone-model-capability-routes) *(new)*
-- [Plugins](#plugins) *(new)*
-- [Registry](#registry) *(new)*
-- [Scheduler](#scheduler) *(new)*
-- [System](#system) *(new)*
-- [Starter Work](#starter-work)
-- [Spatial Board](#spatial-board)
+| Area | Route families |
+| --- | --- |
+| Work and layouts | [Starter Work](#starter-work), [Spatial Board](#spatial-board), [personal Boards](#personal-boards), [Layouts](#layout-management), [workflow files](#workflow-management), [independent review](#independent-review-evidence) |
+| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
+| Models and configuration | [App configuration](#configuration), [connections](#connections), [fleet inference](#fleet-inference), [Bedrock catalog](#bedrock-models), [model capabilities](#model-capabilities), [standalone model routes](#standalone-model-capability-routes) |
+| Activity and observations | [Analytics](#analytics), [monitoring](#monitoring), [insights](#insights), [events](#events-sse), [analytics reset](#additional-analytics) |
+| Extensions | [Plugins](#plugins), [Registry](#registry), [frontend clients](#frontend-usage-summary) |
+| Host operations | [Scheduler](#scheduler), [system](#system), [additional system reads](#additional-system-routes), [filesystem browse](#file-system), [UI commands](#ui-commands) |
+| Identity and protocol | [Auth and users](#auth--users), [person binding](#bind-a-paired-device-to-its-verified-person), [branding](#branding), [errors](#error-handling), [registration/auth/CORS](#architecture-notes) |
 
 ---
 
@@ -52,79 +44,57 @@ authorities. This document is historical narrative, not an endpoint inventory.
 
 ```http
 GET /api/starter-work
-POST /api/starter-work/bind
-POST /api/starter-work/launch
 GET /api/starter-work/:starterId
 GET /api/starter-work/:starterId/candidate
 GET /api/starter-work/:starterId/observation
+POST /api/starter-work/bind
+POST /api/starter-work/launch
+DELETE /api/starter-work/:starterId/binding
 ```
 
-Starter Work is a bounded server catalog, not a client-defined checklist. The
-catalog exposes `start-task`, `continue-session`, `inspect-approval`, and
-`inspect-receipt`, plus `run-scheduled-check`; all require the durable
-completed first-run decision. Their targets are, respectively, an exact Task
-with its matching Project ID and an exact Station-owned continuation Session.
-`GET` returns catalog projections (including each starter's correlation
-status). Binding accepts only the registered target kind and owner identity and
-returns `409` for a conflicting binding or mismatched/missing owner, `404` for
-an unknown starter, and `503` when the durable ledger is unavailable. A bind
-does not declare a Task complete: Task Session, run, and receipt owners remain
-the completion authority.
+Starter Work links a bounded onboarding catalog to real Work owners. Its five
+IDs are `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
+and `run-scheduled-check`. Binding/launch and inspection candidates require the
+home's completed first-run decision. Catalog/status reads describe readiness
+and correlation; they do not make a browser checklist authoritative.
 
-`POST /api/starter-work/launch` is the first vertical's only create-and-start
-intent. Readiness is checked first: `200` with `state: deferred|unavailable`
-and `retrySafe: true` creates no Task and dispatches nothing. A ready launch
-returns `201` with `state: started`: it creates a real Task idempotently,
-persists its exact binding and operation fence, then asks the existing Task
-dispatcher exactly once. The response separates correlation from the total
-dispatch disposition. `indeterminate` is never retried automatically;
-`NOT_VERIFIED` remains until the Task's owner evidence reports a passed receipt
-or explicit exception. Hosted tenant execution exposes no personal-home
-Starter route until it has equivalent tenant-bound Work owners.
+The [routes](../../src-server/routes/starter-work.ts) return
+`{success: true, data}` for successful reads/actions. Unknown starters return 404;
+invalid targets, prerequisites, or conflicting correlation return 409; unavailable
+owner/storage paths return 503. Launch results with state `started`, `continued`,
+or `opened` use 201; other typed dispositions use 200. Always inspect the data:
+HTTP status alone does not prove useful-work completion.
 
-For `continue-session`, the launch body carries only the exact read-only source
-Session ID and an operation ID. Station validates that source through the
-orchestration owner and uses the existing adoption ledger's idempotency key to
-create or replay one Station-owned child. A `201 state: continued` response
-contains the exact child Session and command receipt identity; failures remain
-typed as `failed`, `unavailable`, or `indeterminate`, with the same operation ID
-safe to retry when `retrySafe` is true. The command receipt proves admission,
-not useful-work completion, so evidence remains `NOT_VERIFIED`.
-The catalog binding is one-time: after it is bound, later attached-session
-continuations stay on the ordinary orchestration owner API rather than
-overwriting Starter correlation.
+- **Start a Task:** the body names `starterId`, a stable `operationId`, and
+  `task` with its Project ID/title, plus optional top-level `dispatch` inputs. The
+  [registry](../../src-server/services/starter-work/starter-registry.ts) checks
+  readiness before creation. Deferred/unavailable readiness is retry-safe and
+  creates no Task. A ready request creates the Task idempotently, then binds and
+  fences dispatch. `state: "started"` can still contain unverified correlation
+  or failed/indeterminate dispatch; read those fields before claiming execution.
+- **Continue a Session:** the body names only the Starter ID, operation ID, and
+  exact source Session ID. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+  validates and adopts the source through the existing idempotency ledger.
+  Its child Session/command receipt proves admission, not useful completion.
+- **Inspect approval/receipt:** candidate reads return exact typed references.
+  Launch revalidates the owner and returns an approval-inbox or Project Review
+  layout link. Inspection does not approve a request or turn review findings
+  into a gate verdict. Observation rereads the owner; it does not trust copied
+  browser state.
+- **Run a scheduled check:** the server prepares `station-starter-check` disabled,
+  using the Station Agent, no generic retries, and a 24-hour interval. It binds
+  the exact manual scheduler-run receipt before activation. Repeated operation
+  IDs replay that prepared run. The Home recovery action uses the stored
+  operation ID; observing `completed` proves the check ran, not that its findings
+  passed a gate.
 
-The two inspection starters are read-only owner journeys. Candidate reads
-select only a validated Approval Inbox notification or independent-review
-receipt and return its exact typed reference; they never select by title.
-Launching revalidates that owner, binds the exact reference idempotently, and
-returns a server-built `/notifications?approval=...` or
-`/projects/<slug>/layouts/review?receipt=...` link — the Project's own Review
-layout, which #2065 made the home of review evidence when the global
-`/review-queue` was retired. A stored `/review-queue?receipt=...&project=...`
-link still resolves: it redirects to that same layout with the receipt
-selected, and one carrying no `project` goes to `/notifications` rather than
-guessing a Project. Observation re-reads the owner every
-time, so resolved, expired, missing, stale, unavailable, and `NOT_VERIFIED`
-states do not come from a browser checkbox or copied payload. Inspecting does
-not approve an approval, and independent-review findings remain input-only
-evidence rather than a pass, exception, or gate verdict. Hosted execution does
-not mount candidate or launch routes until tenant-bound owners exist.
-Starter telemetry remains default-off until the product telemetry decision is
-resolved.
-
-`run-scheduled-check` accepts only its Starter ID and stable operation ID. The
-server creates the canonical `station-starter-check` job disabled, with the
-Station Agent, no retries, and a daily schedule that does not recur until an
-operator explicitly enables it. SchedulerLedger atomically prepares the exact
-manual run; Starter Work binds its canonical `scheduler-run` receipt before
-activation. Response loss replays that run rather than invoking again. The
-bound Home recovery action reuses the binding's stored `operationId`, including
-for SDK-created identities, so restart recovery cannot drift to a new run. The
-result and observation link to `/schedule?run=...`; running, completed, failed,
-and indeterminate are derived from RunService. Completion proves the check ran,
-not that its free-form findings passed a gate, so evidence remains
-`NOT_VERIFIED`.
+The [binding store](../../src-server/services/starter-work/starter-work-module.ts)
+keeps correlation separate from dispatch fencing. Explicitly clearing a binding
+does not delete the underlying Work or erase an admitted dispatch fence.
+`NOT_VERIFIED` remains appropriate until the referenced owner supplies the
+relevant evidence. Starter counters use the normal monitoring instrumentation;
+see [telemetry configuration](env-vars.md#telemetry) for export/usage controls.
+These personal Starter routes are not mounted in hosted mode.
 
 ## Spatial Board
 
@@ -140,98 +110,94 @@ POST /api/spatial-board/cleanup
 POST /api/spatial-board/undo
 ```
 
-The Spatial Board is a personal, revision-checked schema-v2 layout store. Pins
-persist only a full WorkReference (Project, Task, Session, approval, Flow
-run/gate, scheduler or independent-review receipt, run-output Artifact, or
-Agent) and bounded geometry. Titles, states, verdicts, and evidence remain
-with their owners. `GET /resolved` reads only the current board's stored refs,
-groups them by owner, and returns ephemeral `current`, `missing`, `stale`,
-`unavailable`, `ambiguous`, or `NOT_VERIFIED` projections; it is not a general
-cross-product query API. Every mutation supplies the last observed
-`expectedRevision`; stale writes return `409`, missing pins return `404`,
-capacity returns `413`, and unreadable/corrupt storage returns a redacted
-`503`. Cleanup accepts exact full WorkReferences observed missing by the
-caller, and undo exchanges one bounded prior snapshot. Hosted tenant execution
-mounts none of these routes until equivalent tenant-bound owner and storage
-seams exist.
+The Spatial Board is a separate, personal-mode pin store—not a personal Layout
+from `/api/me/layouts`. Its [schema-v2 store](../../src-server/services/spatial-board/spatial-board-store.ts)
+persists board title/camera and pins containing an ID, full WorkReference, and
+bounded geometry/order. Work titles, state, verdicts, and evidence stay with the
+referenced owners.
+
+[GET resolved](../../src-server/services/spatial-board/spatial-board-resolver.ts)
+groups only the current board's stored references by owner. It returns ephemeral
+`current`, `missing`, `stale`, `unavailable`, `ambiguous`, or `NOT_VERIFIED`
+projections rather than a general cross-product query result.
+
+Every mutation carries `expectedRevision`, including DELETE and undo. The
+[routes](../../src-server/routes/spatial-board.ts) return 409 for revision/identity
+conflict, 404 for a missing pin, 413 for capacity, and a redacted 503 for unavailable
+storage. Successful results use `{success: true, data}`. PUT also requires the
+body pin ID to match the path.
+
+Cleanup accepts full references that the caller observed as missing. The store
+checks they belong to the board and removes matching pins; it does not rerun
+owner resolution inside that write. Undo swaps one prior bounded snapshot and
+advances revision; it is not an unbounded edit history. Hosted mode does not
+mount these personal-storage routes.
 
 ## Agent Management
 
-### 🟢 ✅ Custom Chat Stream
+### Custom Chat Stream
+
 ```http
 POST /api/agents/:slug/chat
 ```
 
-**Custom endpoint** that provides streaming chat with elicitation support and tool approval handling.
+The [chat handler](../../src-server/routes/chat/chat.ts) is Station's managed
+chat stream, with tool approval and elicitation handling. The current chat dock
+primarily enters through [orchestration](#orchestration-model-launch-behavior),
+which owns durable Sessions and engine selection. Do not substitute this route
+for the orchestration lifecycle merely because both stream text.
 
-**Request Body**:
 ```json
 {
-  "input": "Hello, how can you help?",
-  "options": {
-    "userId": "user-123",
-    "conversationId": "conv-456",
-    "temperature": 0.7,
-    "maxOutputTokens": 1000,
-    "model": "anthropic.claude-3-5-sonnet-20240620-v1:0"
-  }
+  "input": "Summarize this project.",
+  "options": { "conversationId": "existing-conversation-id" }
 }
 ```
 
-**Response**: Server-Sent Events stream
+`input` can also carry the supported chat-message array. Options and principal
+handling are prepared by
+[chat-request-preparation](../../src-server/routes/chat/chat-request-preparation.ts).
+A supplied `userId` is not authentication. Explicit model overrides are resolved
+through the selected provider/catalog; absent or unknown selector evidence does
+not create an arbitrary model binding. The response is SSE; failures before
+stream creation use HTTP errors, while failures during a stream must be handled
+as stream outcomes.
 
-**Status**: In use  
-**Used by**: `ConversationsContext.tsx`, `ChatDock.tsx` (primary chat interface)
+<a id="agent-management-1"></a>
 
-**Features**:
-- Elicitation support for gathering user information
-- Tool approval workflow integration
-- Model override capability
-- Conversation history management
+### Default Agent
 
-An explicit model override is accepted only when Station has a configured model catalog that resolves the exact selector. A missing catalog or unknown selector rejects the request instead of constructing an unverified model binding.
+The public built-in Agent ID is **`station`**. `default` remains a private
+Station-engine map key; use public identities returned by `/api/agents`.
+The built-in Agent can be bound to an external engine, or run on Station's own
+engine with a resolvable Model connection and model. A model-less Station still
+starts its configuration and connection surfaces; that does not prove the
+Station-engine Agent is launchable.
 
----
+The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
+loads `station-control` and `station-docs` on the Station-engine path, installs
+approval hooks and memory, and processes the configured system prompt. This is
+not a tool-free text helper. Delivery to an external engine depends on that
+engine's supported delivery mechanisms. The catalog projection is separate
+from proof that a particular engine received its tools.
 
-## Agent Management
-
-### 🟢 ✅ Default Agent
-
-Station creates the **system default agent** only when `defaultModel` is configured and resolves through the current model catalog:
-
-**Agent ID**: `default`  
-**Model**: Uses current `defaultModel` from `app.json`  
-**Tools**: None (simple text generation only)  
-**Instructions**: "You are a helpful AI assistant. Provide clear, concise, and accurate responses."
-
-**Usage**:
-```bash
-# Use with any agent endpoint
-POST /agents/default/invoke
-POST /agents/default/text
-POST /api/agents/default/chat
-```
-
-**Behavior**:
-- A fresh model-less Station still starts its setup, configuration, readiness, and connection surfaces
-- No model-less default agent is registered until a launchable model is configured
-- Once configured, the agent uses the catalog-resolved default model
-- No tools = fast, simple text generation
-- Suitable for utility tasks (prompt generation, text formatting, etc.)
-
-**Used by**: `AgentEditorView.tsx` (prompt generation)
+For a named one-shot invocation, use an available Agent such as
+`POST /agents/station/invoke`; see [Agent Invocation](#agent-invocation) for its
+limits. The global `/invoke` path is described separately below.
 
 ---
 
-### 🟢 ✅ List All Agents (Enriched)
+### List All Agents (Enriched)
 ```http
 GET /api/agents
 ```
 
-**Custom endpoint** that returns enriched agent data including configuration, tools, and metadata.
+The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
+persisted definitions, registry defaults, and runtime observations. Rows can
+include execution binding, availability/validation findings, and activation
+failures; inclusion in the list is not proof that a chat can launch. The example
+below is a field excerpt, not a fixed response for every Agent.
 
-**Status**: In use  
-**Used by**: `AgentsContext.tsx`, agent selector, layout views
 
 **Response**:
 ```json
@@ -239,9 +205,8 @@ GET /api/agents
   "success": true,
   "data": [
     {
-      "id": "agent-id",
       "slug": "my-agent",
-      "name": "Station Agent",
+      "name": "My Agent",
       "prompt": "System instructions...",
       "description": "Agent description",
       "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
@@ -250,7 +215,7 @@ GET /api/agents
         "maxTokens": 4096,
         "temperature": 0.7
       },
-      "maxTurns": 10,
+      "maxSteps": 10,
       "icon": "🤖",
       "commands": {},
       "toolsConfig": {
@@ -264,16 +229,23 @@ GET /api/agents
 }
 ```
 
-**Used by**: `AgentsContext.tsx`, agent selector, layout views
 
 ---
 
-### 🟢 ✅ Create Agent
+### Create Agent
 ```http
 POST /agents
 ```
 
-**Custom endpoint** for creating new agents.
+The [Agent routes](../../src-server/routes/agents/agents.ts) validate the body,
+persist the definition through AgentService, and queue runtime reconciliation.
+Creation can succeed with a non-blocking availability warning. Raising the
+effective default approval posture to full access requires its separate authority.
+That includes creating an Agent which inherits a Station default of `never`,
+or clearing an Agent override so that it inherits that default. Updating an
+already-effective full-access default without raising it follows the existing
+write authorization; an unreadable prior Agent is not evidence of that state.
+See [configuration](config.md#agentjson) for admitted file fields.
 
 **Request Body**:
 ```json
@@ -299,8 +271,7 @@ POST /agents
   "success": true,
   "data": {
     "slug": "my-agent",
-    "name": "My Agent",
-    ...
+    "name": "My Agent"
   }
 }
 ```
@@ -321,7 +292,6 @@ the response is HTTP `202` and also includes this acceptance-time snapshot:
 live status subscription and activation may complete before the response is
 processed.
 
-**Used by**: `AgentsContext.tsx`, agent editor
 
 ---
 
@@ -333,7 +303,7 @@ PUT /agents/:slug
 **Request Body**: Partial agent configuration (same structure as create)
 
 **Response**:
-```json
+```jsonc
 {
   "success": true,
   "data": { /* updated agent */ }
@@ -343,7 +313,6 @@ PUT /agents/:slug
 Updates use the same HTTP `202` `configurationActivation` receipt described
 under Create Agent when persistence completes before runtime activation.
 
-**Used by**: `AgentsContext.tsx`, agent editor
 
 ---
 
@@ -362,7 +331,7 @@ DELETE /agents/:slug
 Deletes use the same HTTP `202` `configurationActivation` receipt described
 under Create Agent when persistence completes before runtime activation.
 
-**Error** (if agent is referenced by layouts):
+**Example refusal** (a definition still referenced by a layout cannot be deleted):
 ```json
 {
   "success": false,
@@ -370,11 +339,17 @@ under Create Agent when persistence completes before runtime activation.
 }
 ```
 
-**Used by**: `AgentsContext.tsx`, agent management view
 
 ---
 
 ### Get Agent Health
+
+This [handler](../../src-server/routes/agents/agent-tools.ts) inspects Station’s
+active Agent/model/memory and recorded MCP status. It does not run a fresh
+provider turn. An external engine can be usable through orchestration without
+appearing in this active-Agent map. Missing identities return 404; known inactive
+ones return 409; pending activation returns 503.
+
 ```http
 GET /agents/:slug/health
 ```
@@ -415,99 +390,51 @@ GET /agents/:slug/health
 }
 ```
 
-**Used by**: Monitoring view, health checks
 
 ---
 
 ## Integration Management
 
+These routes manage MCP integration definitions through the
+[MCP service](../../src-server/services/plugins/mcp-service.ts) and
+[tool routes](../../src-server/routes/agents/tools.ts). A saved definition,
+a successful probe, and tool availability on an Agent are separate states.
+
 ### List All Integrations
-```http
-GET /integrations
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "files",
-      "kind": "mcp",
-      "displayName": "File System",
-      "description": "Read and write files",
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"]
-    }
-  ]
-}
-```
-
-**Used by**: Integration management view
-
----
+`GET /integrations` returns `{success: true, data}`. Rows are integration metadata
+augmented with `builtin`, `usedBy`, recorded `connected` status, known tool
+names/descriptions, and `renderAllowed`. This is not a complete raw definition
+or proof that every listed tool can currently execute.
 
 ### Create Integration
-```http
-POST /integrations
-```
 
-**Request Body**: Integration definition (same shape as `integration.json`).
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* created integration */ }
-}
-```
-
----
+`POST /integrations` accepts the integration definition schema and returns
+`{success: true}`. The handler saves the definition disabled; creation does not
+automatically connect or enable it. Submitted `env` values enter the service's
+secret-environment write path instead of being echoed as ordinary read data.
 
 ### Get Integration
-```http
-GET /integrations/:id
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* integration definition */ }
-}
-```
-
----
+`GET /integrations/:id` returns `{success: true, data: definition}` through the
+read projection. It withholds raw `env`, `secretEnv`, and credential-binding
+values; clients use the returned metadata when editing. A failed lookup returns
+404 from this handler.
 
 ### Update Integration
-```http
-PUT /integrations/:id
-```
 
-**Request Body**: Partial integration definition.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* updated integration */ }
-}
-```
-
----
+`PUT /integrations/:id` accepts a partial definition and returns
+`{success: true}`. Environment updates are merged by key: omission preserves
+stored values, `{env: {}}` clears nothing, and removal uses
+`removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
+service refuses changes that would create a shadow copy.
 
 ### Delete Integration
-```http
-DELETE /integrations/:id
-```
 
-**Response**:
-```json
-{
-  "success": true
-}
-```
+`DELETE /integrations/:id` returns `{success: true}` after deletion.
+Runtime-managed built-ins such as `station-control` and `station-docs` return
+409 because startup recreates them. Package-supplied definitions must be
+removed through their owning package instead.
 
 ---
 
@@ -541,13 +468,17 @@ Returns tools available to a specific agent with full schemas.
 }
 ```
 
-**Errors** — the two reasons an agent has no tool list are separated
-(station#3158): `404` `Agent '<slug>' not found` when neither the persisted
-catalog nor the registry's default agents knows the slug, and `409`
-`Agent '<slug>' exists but is not active` when it does and its runtime is not
-up.
+The [tool-catalog handler](../../src-server/routes/agents/agent-tools.ts) returns
+404 for an unknown Agent, 409 for a known inactive/failed Agent, and 503 with
+`Retry-After: 1` while activation is pending. A persisted external-engine Agent
+returns an empty Station-tool catalog; its external engine owns its tool loop.
+Tool add/remove/allow-list writes can carry the same 202 activation receipt as
+Agent writes. An empty `available` list filters out all loaded tools; omit it or
+use `["*"]` to include all loaded tools.
 
-**Used by**: `ConversationsContext.tsx`, tool displays, agent editor
+The current [Agent editor](../../src-ui/src/views/agent-editor/useAgentsViewModel.ts)
+reads this catalog through [useAgentToolsQuery](../../packages/sdk/src/query-domains/agentAdmin.ts).
+
 
 ---
 
@@ -571,7 +502,6 @@ POST /agents/:slug/tools
 }
 ```
 
-**Used by**: Agent editor, integration management
 
 ---
 
@@ -587,7 +517,6 @@ DELETE /agents/:slug/tools/:toolId
 }
 ```
 
-**Used by**: Agent editor, integration management
 
 ---
 
@@ -615,1333 +544,746 @@ PUT /agents/:slug/tools/allowed
 }
 ```
 
-**Used by**: Agent editor
 
 ---
 
 ## Layout Management
 
 Standalone `/layouts` endpoints were removed during project-layout convergence.
-Use the project-scoped layout endpoints under `/api/projects/:slug/layouts` instead.
+Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
+under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
+routes for principal-owned layouts.
 
-**Used by**: project-scoped layout management flows
 
 ---
 
 ## Personal Boards
 
-A **Board** is a Layout owned by a principal rather than a project
-(`docs/design/shell-ownership-and-boards.md`, decision D1). Boards are stored
-under the Station home keyed by principal, so the same Boards are served to
-every device that resolves to the same principal — a device identified by
-Tailscale WhoIs, or a paired device bound to a person. A bare paired device
-with no person binding resolves to a per-device principal instead and sees
-its own Boards; see `docs/design/principals.md` for how a request is placed.
+A Board here is a **Layout owned by a principal**. It differs from the Spatial
+Board's Work-reference pins. The [owner-scoped storage](../../src-server/domain/layout-owner-storage.ts)
+keys personal layouts from the exact principal ID, so devices resolving to the
+same person can share them. An unbound paired device normally has its own
+device principal. The request's identity resolver supplies the owner; the body
+cannot choose it.
 
-A caller the resolver cannot place at all is refused with `400` and
-`code: "principal_unresolved"` — a deterministic authorization failure, not a
-transient one, so retrying the same request with the same credential fails
-the same way.
-
-The owning principal is resolved from the request's own authentication. No
-path segment, body field, or query parameter names it, and a body that carries
-an `owner` is refused with 400 rather than accepted and stripped. A slug
-another principal owns answers exactly like a slug nobody owns — the same 404
-status and the same body — so the response cannot be used to discover whether
-someone else has a Board by that name.
+The [routes](../../src-server/routes/me/personal-layouts.ts) return 400 with
+`principal_unresolved` when no principal can be resolved. A Board outside the
+resolved owner's store has the same 404 as an absent Board. Operations use the
+[personal-layout service](../../src-server/services/layouts/personal-layout-service.ts).
 
 ### List My Boards
-```http
-GET /api/me/layouts
-```
+
+`GET /api/me/layouts` returns `{success: true, data: layouts}` for that owner.
 
 ### Create a Board
+
 ```http
 POST /api/me/layouts
-Content-Type: application/json
-
-{
-  "slug": "daily-brief",
-  "name": "Daily brief",
-  "type": "custom",
-  "icon": "star",
-  "description": "Morning view",
-  "config": {}
-}
 ```
-
-`slug` must be unique among the caller's own Boards; a repeat answers 409.
-
-### Get a Board
-```http
-GET /api/me/layouts/:layoutSlug
-```
-
-The response may carry `paneReferences` (#2090), a response-only verdict
-naming the Board's own tabs that cannot be shown to this caller:
 
 ```json
-{ "paneReferences": { "unavailableTabIds": ["notes"] } }
+{ "slug": "daily-brief", "name": "Daily brief", "type": "custom", "config": {} }
 ```
 
-It is present only when something really is withheld, it carries no reason,
-no source and no action, and it is never stored. A Board tab reaches the same
-renderer a project Layout's does, so a tab naming a component from a plugin
-this person cannot see would otherwise render "…is not installed or
-registered" — a cause the server never derived. Unlike the project layout
-read, this route withholds nothing else: it performs no live plugin read and
-no catalog backfill, and a Board's `config.plugin` is the caller's own input
-into their own record.
+Creation returns 201 with `{success: true, data: board}`. A duplicate slug within
+that owner's store returns 409. Unknown fields, including a supplied owner, are
+refused by the strict request schema.
+
+### Get a Board
+
+`GET /api/me/layouts/:layoutSlug` returns `{success: true, data: board}`.
+It can add response-only `paneReferences: {unavailableTabIds}` for tabs withheld
+from that viewer. The verdict contains no cause/source/action and is not stored.
+Unlike Project layout detail, this handler does not merge live plugin files or
+backfill a catalog contribution. See [plugin identity projection](#which-routes-return-plugin-identity).
 
 ### Update a Board
-```http
-PUT /api/me/layouts/:layoutSlug
-Content-Type: application/json
 
-{ "name": "Renamed" }
-```
+`PUT /api/me/layouts/:layoutSlug` accepts a partial writable shape, for example
+`{name: "Renamed"}`, and returns the updated Board. Omitted top-level fields
+remain stored; each update reads and writes under the owner's record transaction.
+Concurrent replacements of the same field still have ordinary last-write
+semantics, and `config` is not a deep merge of independent nested edits.
 
-Fields the body omits are left as stored. `id`, `slug`, `createdAt`, and the
-owner are immutable. The read and the write happen inside one per-record
-transaction, so two concurrent updates cannot lose one another's change.
-
-This body is otherwise strict — an unrecognized key is refused rather than
-quietly dropped — with one exception: `paneReferences` is ACCEPTED and
-discarded, so that reading a Board and writing it back is not a 400 against a
-field this route itself attached. It never reaches storage. The response
-carries the same verdict the read does.
+The schema refuses `id`, `slug`, owner, and timestamps. It tolerates then discards
+`paneReferences`. This does **not** make an entire GET response a valid PUT body;
+clients must still select writable fields. The returned verdict is recomputed.
 
 ### Delete a Board
-```http
-DELETE /api/me/layouts/:layoutSlug
-```
+
+`DELETE /api/me/layouts/:layoutSlug` returns `{success: true}` or 404 when absent.
 
 ### Promote a Board into a project
+
 ```http
 POST /api/me/layouts/:layoutSlug/promote
-Content-Type: application/json
-
-{ "projectSlug": "campfit" }
 ```
 
-A **move**, not a copy: on success the personal record is gone and the project
-owns the Layout under the same slug, keeping the Board's `id` and `createdAt`
-verbatim. Carrying the same id IS the lineage — there is no `promotedFrom`
-field, because layout ids are a record field rather than a directory key and
-nothing else records the move.
+```json
+{ "projectSlug": "project-slug" }
+```
 
-`projectSlug` is the only field the body may name; anything else is 400. A
-project that does not exist answers 404 `Project not found` — the project
-routes' own answer, given before the personal record is touched, so a promote
-that cannot land never destroys the Board. A slug the project already uses for
-a different Layout answers 409 and moves nothing.
+The body names only the destination Project. This is a move: it preserves the
+Board's ID, slug, and creation time, publishes under the Project owner, then
+deletes the personal record. A missing Project returns 404, and a different
+layout already occupying that slug returns 409.
 
-A Board the destination project would not accept is refused before anything
-moves. Promote runs the same admission `POST /api/projects/:slug/layouts`
-runs — the same function, not a second copy of its rules — so a layout naming
-an agent the project cannot reach answers 400 with that route's diagnostics,
-and a `coding` Board carrying its own `config.workingDirectory` is refused by
-name (that value is derived from the project). A promoted `coding` Board
-therefore persists no `workingDirectory` of its own.
+Before publication, the service uses the same
+[layout admission](../../src-server/routes/projects/project-layout-admission.ts)
+as Project creation: Agent reachability and derived workspace constraints still
+apply. A coding layout cannot bring its own `config.workingDirectory`; the
+Project supplies it. This data-admission step does not itself grant Project
+membership. The route retains the existing operation-scope boundary rather than
+adding a separate membership decision in this service.
 
-Promote grants no capability that `POST /api/projects/:slug/layouts` does not:
-it publishes through the same project transaction, and both carry the same
-`orchestration:operate` pairing scope. Read that as a statement about WHO may
-call, which is a different question from what a call may contain — the
-admission above is the second one, and the two are enforced separately.
-Station applies no per-project membership check to layout writes today
-(`docs/design/project-membership.md` specifies that contract and does not claim
-it is implemented), so promote does not claim one either.
-
-The two writes are ordered create-then-delete, which accepts a visible
-duplicate over a possible loss: if the process dies between them, the Layout is
-in the project AND still listed personally. Repeating the promote closes it —
-the second call sees the project occupant carrying this Board's own id,
-recognizes the interrupted run, and completes the delete.
-
-**Used by**: the Boards section of the left panel (#2062)
+Create-then-delete preserves the record if the process stops between writes,
+but can temporarily leave both copies. Repeating promotion recognizes the
+matching ID at the destination and finishes the personal deletion. That recovery
+is not a transaction spanning both stores.
 
 ---
 
 ## Workflow Management
 
+These routes manage retained Agent workflow **files**. Saving source does not
+execute it or create a Task/Flow run. The [route mapper](../../src-server/routes/projects/layouts.ts)
+calls [LayoutService](../../src-server/services/projects/layout-service.ts),
+which delegates to the Agent file store.
+
 ### List Agent Workflows
-```http
-GET /agents/:slug/workflows/files
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "filename": "example-simple.ts",
-      "path": ".station/agents/my-agent/workflows/example-simple.ts"
-    }
-  ]
-}
-```
-
-**Used by**: `WorkflowsContext.tsx`, workflow management
-
----
+`GET /agents/:slug/workflows/files` returns `{success: true, data: workflows}`.
+The rows are file metadata, not completed execution receipts.
 
 ### Get Workflow Content
-```http
-GET /agents/:slug/workflows/:workflowId
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "content": "import { Agent } from '@strands-agents/sdk';\n\nexport default andThen(() => 'Hello');"
-  }
-}
-```
-
-**Used by**: Workflow editor
-
----
+`GET /agents/:slug/workflows/:workflowId` returns
+`{success: true, data: {content}}` after the stored-content safety check.
 
 ### Create Workflow
+
 ```http
 POST /agents/:slug/workflows
 ```
 
-**Request Body**:
 ```json
 {
-  "filename": "new-workflow.ts",
-  "content": "import { Agent } from '@strands-agents/sdk';\n\nexport default andThen(() => 'Hello');"
+  "filename": "example.ts",
+  "content": "export default async function example() { return 'Hello'; }"
 }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "filename": "new-workflow.ts"
-  }
-}
-```
-
-**Used by**: Workflow editor
-
----
+A successful creation returns 201 with `{success: true, data: {filename}}`.
+The example is stored source; this request does not verify a runtime workflow
+contract or invoke its function.
 
 ### Update Workflow
-```http
-PUT /agents/:slug/workflows/:workflowId
-```
 
-**Request Body**:
-```json
-{
-  "content": "// Updated workflow code"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true
-}
-```
-
-**Used by**: Workflow editor
-
----
+`PUT /agents/:slug/workflows/:workflowId` accepts `{content: "..."}` and returns
+`{success: true}` after saving it.
 
 ### Delete Workflow
-```http
-DELETE /agents/:slug/workflows/:workflowId
-```
 
-**Response**:
-```json
-{
-  "success": true
-}
-```
+`DELETE /agents/:slug/workflows/:workflowId` returns `{success: true}` on deletion.
 
-**Used by**: Workflow management
+The typed refusal mapper distinguishes missing files (404), existing files on
+create (409), invalid input (400), and unsafe stored content on read (422).
+Unexpected storage failures reach the runtime's correlated generic 500 boundary;
+they are not all reported as bad requests.
 
 ---
 
 ## Conversation Management
 
+The [conversation routes](../../src-server/routes/chat/conversations.ts) combine
+personal file-memory history with authorized orchestration history. They do not
+make those storage models interchangeable. Reads use request-bound authority;
+file-memory title/context/deletion operations remain unavailable in hosted mode.
+
 ### List Agent Conversations
+
 ```http
-GET /agents/:slug/conversations
+GET /agents/:slug/conversations?limit=100
 ```
 
-**Response**:
 ```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "conv-123",
-      "userId": "agent:my-agent:user:default",
-      "title": "Conversation Title",
-      "createdAt": "2025-12-08T12:00:00Z",
-      "updatedAt": "2025-12-08T12:30:00Z",
-      "metadata": {
-        "stats": {
-          "inputTokens": 1000,
-          "outputTokens": 500,
-          "totalTokens": 1500,
-          "turns": 5,
-          "toolCalls": 2,
-          "estimatedCost": 0.05
-        }
-      }
-    }
-  ]
-}
+{ "success": true, "data": { "items": [], "hasMore": false } }
 ```
 
-**Used by**: `ConversationsContext.tsx`, conversation list
-
----
+`limit` is an integer from 1–100, default 100. Hosted reads may return
+`nextCursor`; the personal compatibility page rejects a supplied cursor.
+The route merges file-memory and orchestration rows by ID, sorts by recency,
+and returns a bounded page. `data` is a page object, not the old bare array.
+Respect `hasMore` rather than assuming one response contains the entire history.
 
 ### Get Conversation Messages
-```http
-GET /agents/:slug/conversations/:conversationId/messages
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "msg-1",
-      "role": "user",
-      "content": "Hello",
-      "timestamp": "2025-12-08T12:00:00Z"
-    },
-    {
-      "id": "msg-2",
-      "role": "assistant",
-      "content": "Hi! How can I help?",
-      "timestamp": "2025-12-08T12:00:05Z"
-    }
-  ]
-}
-```
-
-**Used by**: `ConversationsContext.tsx`, chat view
-
----
+`GET /agents/:slug/conversations/:conversationId/messages` returns
+`{success: true, data: messages}`. The reader can restore authorized messages
+from orchestration when the file-memory path has no usable record. Messages
+carry the owner's current parts/metadata shape; do not depend on every message
+having the old `content: string`/`timestamp` pair.
 
 ### Update Conversation
-```http
-PATCH /agents/:slug/conversations/:conversationId
-```
 
-**Request Body**:
-```json
-{
-  "title": "New Title"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* updated conversation */ }
-}
-```
-
-**Used by**: Conversation management, title editing
-
----
+`PATCH /agents/:slug/conversations/:conversationId` accepts the supported
+conversation update, such as `{title: "New title"}`, and returns
+`{success: true, data: updated}`. This is the file-memory update path.
+Orchestration-owned titles return 409 here; hosted requests and missing records
+are refused. Use the orchestration operation for its owned history.
 
 ### Delete Conversation
-```http
-DELETE /agents/:slug/conversations/:conversationId
-```
 
-**Response**:
-```json
-{
-  "success": true
-}
-```
-
-**Used by**: Conversation management
-
----
+`DELETE /agents/:slug/conversations/:conversationId` returns `{success: true}`
+after deleting file-memory history and its derived summary. Orchestration
+history is read-only through this path (409), and hosted requests return 404.
+A caller-scoped station-control deletion additionally checks the stored owner.
+This is not a general endpoint for deleting any Session visible in a list.
 
 ### Manage Conversation Context
+
 ```http
-POST /api/agents/:slug/conversations/:conversationId/context
+POST /agents/:slug/conversations/:conversationId/context
 ```
 
-**Request Body** (add system message):
 ```json
-{
-  "action": "add-system-message",
-  "content": "User switched to dark mode"
-}
+{ "action": "add-system-message", "content": "User switched to dark mode" }
 ```
 
-**Request Body** (clear history):
-```json
-{
-  "action": "clear-history"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "System event added"
-}
-```
-
-**Used by**: Context management features
-
----
+The [context owner](../../src-server/runtime/conversation/conversation-manager.ts)
+implements two actions. `add-system-message` requires content and stores a
+**user-role** message prefixed with `[SYSTEM_EVENT]`; the name does not make it
+a privileged model system instruction. `clear-history` clears the file-memory
+messages. Success returns `{success: true, message}`. Unknown actions or a
+missing adapter throw through this route's error handler. Hosted mode refuses
+these file-memory mutations before invoking the owner.
 
 ### Get Conversation Statistics
-```http
-GET /agents/:slug/conversations/:conversationId/stats
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "inputTokens": 1000,
-    "outputTokens": 500,
-    "totalTokens": 1500,
-    "contextTokens": 1500,
-    "turns": 5,
-    "toolCalls": 2,
-    "estimatedCost": 0.05,
-    "contextWindowPercentage": 0.75,
-    "conversationId": "conv-123",
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "modelStats": {},
-    "systemPromptTokens": 200,
-    "mcpServerTokens": 300,
-    "userMessageTokens": 500,
-    "assistantMessageTokens": 500,
-    "contextFilesTokens": 0
-  }
-}
-```
+`GET /agents/:slug/conversations/:conversationId/stats` returns
+`{success: true, data: stats}` after the shared stats parser. The owner uses
+file-memory stats or authorized orchestration usage when available. Prompt/tool
+estimates, reported tokens, cost, and observed model/context values are distinct
+inputs; missing provider observations are not measurements of zero.
 
-`contextWindowPercentage` is included only when Station can resolve the
-model's context-window size. When it is omitted, clients must treat context
-window usage as unavailable and omit the percentage display rather than
-rendering `0%`.
-
-**Used by**: `StatsContext.tsx`, `ConversationStats.tsx`
+`contextWindowPercentage` is absent when the model's context window cannot be
+resolved. Render that as unavailable. See the
+[stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
+and [response contract](../../packages/contracts/src/runtime.ts).
 
 ---
 
 ## Configuration
 
 ### Get App Configuration
-```http
-GET /config/app
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "region": "us-east-1",
-    "defaultModel": "anthropic.claude-3-5-sonnet-20240620-v1:0"
-  }
-}
-```
-
-**Used by**: `ConfigContext.tsx`, settings view
-
----
+`GET /config/app` returns `{success: true, data, provenance}`. `data` is the
+public app-config projection with applicable runtime-derived fields; it is not
+a raw file dump. `?project=<slug>` adds Project provenance, while the values
+remain this Station's config. It does not automatically return fully composed
+Project-effective settings. Invalid/missing Project selections return 400/404.
 
 ### Update App Configuration
+
 ```http
 PUT /config/app
 ```
 
-**Request Body**:
 ```json
-{
-  "region": "us-west-2",
-  "defaultModel": "anthropic.claude-3-haiku-20240307-v1:0"
-}
+{ "defaultMaxOutputTokens": 8192 }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* updated config */ }
-}
-```
-
-**Used by**: `ConfigContext.tsx`, settings view
+The [route](../../src-server/routes/system/config.ts) applies the settings
+sanitizer and serialized config mutation. The response contains the public
+updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
+Ordinary success is 200; persisted changes awaiting activation can return 202.
+A field being present in `AppConfig` does not mean this generic endpoint may
+write it: first-run decisions and revisioned log-level changes have separate
+routes, and contribution/full-access choices have additional checks.
+See [config reference](config.md) for effective defaults and consumer limits.
 
 ---
 
 ## Connections
 
+The [connection routes](../../src-server/routes/connections/connections.ts)
+call [ConnectionService](../../src-server/services/connections/connection-service.ts).
+Model connections configure inference providers. Agent App connections identify
+engines that run Agent loops. A connection ID and its `config.engineId` are
+separate identities.
+
 ### List All Connections
-```http
-GET /api/connections
-```
 
-Returns the merged Connections surface used by the UI, including both model/provider rows and runtime rows.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "bedrock-default",
-      "kind": "model",
-      "type": "bedrock",
-      "name": "Bedrock",
-      "enabled": true,
-      "capabilities": ["llm"],
-      "config": {},
-      "status": "ready",
-      "prerequisites": [],
-      "lastCheckedAt": null
-    },
-    {
-      "id": "codex",
-      "kind": "runtime",
-      "type": "codex",
-      "name": "Codex Runtime",
-      "enabled": true,
-      "capabilities": ["agent-runtime", "resume"],
-      "config": {
-        "provider": "codex",
-        "providerLabel": "Codex",
-        "defaultModel": "gpt-5.3-codex"
-      },
-      "status": "ready",
-      "prerequisites": [],
-      "lastCheckedAt": null
-    }
-  ]
-}
-```
-
-**Used by**: `ConnectionsHub.tsx`
-
----
+`GET /api/connections` returns `{success: true, data: connections}` with connection
+secrets redacted. Current Agent App rows use `kind: "agent"`; `runtime` is retained
+as a write-schema compatibility spelling, not the current row kind.
 
 ### List Model Connections
-```http
-GET /api/connections/models
-```
 
-Returns provider/model-backed connections only.
+`GET /api/connections/models` returns `{success: true, data, failures}`. A row
+that fails discovery is represented in `failures`; an empty `data` array alone
+does not establish that no Model connections exist. Provider-reported
+`config.modelOptions` is a discovery projection, not editable connection config.
 
-LLM-capable rows can include `config.modelOptions` when the provider can enumerate models.
+<a id="list-runtime-connections"></a>
 
-**Used by**: `ProviderSettingsView.tsx`, `KnowledgeConnectionView.tsx`, `NewChatModal.tsx`, `AgentEditorRuntimeTab.tsx`
+### List Agent App Connections
 
----
+`GET /api/connections/agents` returns `{success: true, data, failures}`. The old
+`/api/connections/runtimes` spelling is not registered here.
+`GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
-### List Runtime Connections
-```http
-GET /api/connections/runtimes
-```
-
-Returns runtime connections only.
-
-Current connected-runtime rows expose runtime-scoped model metadata on the read-only `runtimeCatalog` projection:
-
-- `source`: `live`, `cached`, `built-in`, or `none`
-- `models`: live or cached model entries
-- `builtInModels`: Station's bounded built-in entries
-- `reason`, `fetchedAt`, and `truncated`: status and completeness metadata
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "codex",
-      "kind": "runtime",
-      "type": "codex",
-      "name": "Codex Runtime",
-      "enabled": true,
-      "description": "Codex app-server runtime over the local Codex CLI.",
-      "capabilities": ["agent-runtime", "resume"],
-      "config": {
-        "provider": "codex",
-        "providerLabel": "Codex",
-        "defaultModel": "gpt-5.3-codex"
-      },
-      "runtimeCatalog": {
-        "source": "live",
-        "fetchedAt": "2026-08-09T00:00:00.000Z",
-        "reason": null,
-        "models": [
-          {
-            "id": "gpt-5.4-codex",
-            "name": "GPT-5.4 Codex",
-            "originalId": "gpt-5.4-codex"
-          }
-        ],
-        "builtInModels": [
-          {
-            "id": "gpt-5.3-codex",
-            "name": "GPT-5.3 Codex",
-            "originalId": "gpt-5.3-codex"
-          }
-        ]
-      },
-      "status": "ready",
-      "prerequisites": [],
-      "lastCheckedAt": null
-    }
-  ]
-}
-```
-
-**Used by**: `RuntimeConnectionView.tsx`, `ConnectionsHub.tsx`, `NewChatModal.tsx`, `useChatDockViewModel.ts`, `ChatDock.tsx`, `AgentEditorRuntimeTab.tsx`
-
----
+Rows can include `runtimeCatalog` model observations and readiness evidence.
+A cached catalog, built-in selector, prerequisite check, and successful smoke
+are different facts. Preserve the returned source/freshness/completeness fields;
+do not label every listed selector as a model that completed a turn.
+The [SDK connection query](../../packages/sdk/src/query-domains/workspaceConnections.ts)
+is a current consumer.
 
 ### List Launchable Model Inventory
+
 ```http
 GET /api/connections/model-inventory
 ```
 
-Returns a normalized, secret-free `station.model-inventory/v2` snapshot of model selectors reported by active model and agent connections. The snapshot keeps Station's configured launch binding (`providerId`) separate from adapter-declared runtime identity. `providerModel` is the selector Station passes to invocation, including a resolved Bedrock inference-profile id when required. Missing runtime, context, tool, vision, revision, or quantization facts remain `null`; Station does not infer them from endpoint URLs or model names.
+This compatibility route returns `{success: true, data: manifest}`, where
+`manifest` is the bounded **contributed** `station.fleet-contribution/v1`
+projection. It requires `inference:invoke`. It does not expose the complete
+`station.model-inventory/v2` value.
 
-`availability: "available"` requires current selector evidence. Station's own time-bounded, configuration-fingerprinted provider catalog may remain queryable as `availability: "stale"` with `freshness: "cached"`. Built-in and explicitly configured selectors observed during the current refresh may remain queryable as `"built-in"` or `"configured"`; peer-carried older observations use `"stale-snapshot"`. Bedrock opts out because its invocation selector must be returned by AWS evidence. Caller-provided persisted Agent app catalog fields are ignored; failed Agent app discovery contributes no substitute selector. Disabled and non-ready connections do not contribute model records.
+[ConnectionService](../../src-server/services/connections/connection-service.ts)
+still builds the complete inventory in-process for model resolution and the
+contribution projection. Its [inventory owner](../../src-server/services/connections/launchable-model-inventory.ts)
+contains the selector, completeness, freshness, and output-budget rules. The
+HTTP boundary intentionally returns only the contributed subset. See
+[the fleet manifest](#read-the-contributed-model-manifest); that route wraps the
+same projection as `{manifest}`, so the two response envelopes differ.
 
-Locality is declaration-backed. Station's built-in default Ollama runtime declares `local`; a configurable Ollama model endpoint remains `unknown` unless its connection explicitly declares locality. Station does not infer locality from provider type or endpoint URL.
-
-Refresh work is single-flight, deadline-bound, abortable, and concurrency-limited. Application-config updates are serialized so concurrent field updates cannot overwrite one another. Mutation revisions advance only after provider or application configuration persistence commits; native file events plus periodic semantic fingerprint observation detect out-of-process config commits, and duplicate observations do not double-count Station's own atomic writes. Each generation discovers models and runtimes from immutable provider-configuration and application-configuration snapshots captured with their respective revisions, then rechecks both owner revisions before publication. This prevents an unobserved external A-to-B-to-A file transition from substituting transient launchability input. Provider fingerprints are SHA-256 digests rather than retained serialized configuration.
-
-Mutation, timeout, and sibling-discovery failure abort in-flight network and subprocess work. Station starts deadline cancellation after 4.35 seconds to reserve the final 650 ms of the five-second response target for cleanup. Registration provenance, not adapter-supplied metadata, decides which adapters are trusted built-ins. Built-in model providers and Agent app adapters may declare that their discovery promise settles only after owned resources close; Station aborts on the first branch failure and awaits every active trusted cleanup-declaring branch only within the reserved cleanup window. A defective implementation cannot hold the inventory or orchestration request open indefinitely, and its late rejection remains supervised. Plugin metadata cannot elevate a plugin into this contract or inject plugin-controlled readiness dimensions. Concurrent Codex catalog callers share one process; cancelling one caller preserves work for remaining callers, while cancellation by the final caller terminates the process and confirms settlement before returning. Every Station-owned Codex process path, including catalog discovery, failed session startup, normal session stop, and bulk stop, sends `SIGTERM`, waits a bounded grace period, escalates to `SIGKILL`, and then waits within a second bounded confirmation window. A `kill()` return value is never treated as exit proof.
-
-Provider catalogs are bounded before projection: built-in HTTP and SDK pagination follows only returned cursors, rejects non-advancing cursors, stops after 32 pages or 1,000 accepted entries, and applies one cumulative 2 MiB response budget where raw response bytes are available. Reaching an entry ceiling while a continuation cursor remains is reported as incomplete discovery, never as a complete catalog; built-in Bedrock and Ollama Agent app adapters preserve that truncation signal through the shared adapter contract. Persisted app and provider configuration inputs are independently limited to 2 MiB before parsing. A refresh deterministically selects at most 64 Model connections and 64 Agent app adapters by stable identity. Projection retains only the lexically earliest bounded candidate set while scanning sources, serializes each candidate once for exact incremental byte accounting, and assembles the final response without repeatedly serializing whole candidate inventories. The final inventory contains at most 4,096 model records, and the complete `{success,data}` HTTP response is at most 2 MiB; omitted work produces a bounded `discovery-limited` diagnostic. Inventory discovery does not collect adapter commands.
-
-Catalog observations and the last successful inventory snapshot may be served stale for at most 15 minutes. The aggregate timestamp is no newer than its oldest published model observation; an unknown-age model is omitted rather than receiving the refresh time. A stale response preserves the original `observedAt`, marks records stale, and includes `refresh-unavailable`, including when the prior snapshot contained no models. Connection save and delete operations invalidate the snapshot and configuration-bound catalog cache, so an id reused for another endpoint cannot inherit the former endpoint's models. Adapter registration and plugin removal publish the same invalidation contract, including when a reload occurs during discovery.
-
-Every launch path requires an enabled LLM connection and exact selector evidence. Conversation, project, and application defaults define precedence only; Station does not rank providers, select the first of multiple configured connections, or replace an unsupported selector with the first catalog model. When exactly one enabled LLM connection exists, it is unambiguous and may be used without a separately persisted default. Non-Bedrock chat overrides resolve through the selected provider's bounded catalog, and Ollama sessions reject model-less or server-absent selectors rather than inventing `llama3.2`.
-
-Bedrock launch selectors are evidence-backed through one shared resolver used by inventory, `/bedrock/models`, model detail, validation, configured-model resolution, and the built-in adapter. Runtime initialization constructs the catalog and LLM provider from the same configured region and injects both into the adapter; the adapter has no independent default-region launch path. On-demand foundation-model IDs remain unchanged. An active inference profile is exposed only when its complete returned model-ARN set resolves to exactly one foundation model; every profile satisfying that relationship is exposed as its own selector, and Station does not choose among them. A provisioned-only base ID resolves implicitly only when exactly one such profile matches, including cross-region profiles discovered through bounded pagination; ambiguous or multi-model relationships are rejected. Unknown selectors, missing catalogs, and model-less adapter sessions fail closed before lifecycle events are published. Station does not invent a regional prefix or fall back to a configured selector when evidence is absent. Only streaming, text-capable Bedrock foundation models contribute selectors. Bedrock model, profile, and pricing caches expire after 15 minutes; pricing region ids are validated before AWS access, its per-region cache is capped at 32 LRU entries, and responses exceed neither 32 pages, 1,000 raw entries, nor 2 MiB. Model and pricing routes enforce a 2 MiB serialized-response ceiling. Google models are launchable only when the API explicitly reports `generateContent`, and incomplete Claude catalogs retain truncation metadata rather than being cached as complete.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "schemaVersion": "station.model-inventory/v2",
-    "observedAt": "2026-07-19T13:00:00.000Z",
-    "models": [
-      {
-        "id": "model:ollama-local:qwen3%3A30b",
-        "connectionId": "ollama-local",
-        "connectionKind": "model",
-        "providerId": "ollama-local",
-        "runtime": { "id": "ollama", "version": null },
-        "adapter": { "id": "station-ollama", "version": null },
-        "model": {
-          "id": "qwen3:30b",
-          "revision": null,
-          "quantization": null
-        },
-        "providerModel": "qwen3:30b",
-        "aliases": ["qwen3:30b"],
-        "displayName": "Qwen 3 30B",
-        "locality": "local",
-        "availability": "available",
-        "freshness": "live",
-        "observedAt": "2026-07-19T13:00:00.000Z",
-        "effectiveContextTokens": null,
-        "toolSurface": null,
-        "supportsVision": null
-      }
-    ],
-    "diagnostics": []
-  }
-}
-```
-
-**Consumers**: the Station SDK exports `fetchLaunchableModelInventory()` and `useLaunchableModelInventoryQuery()`. Datum-backed Auto routing is planned in `#423`. Its upstream contract must preserve Station's unknown execution dimensions rather than coercing them into a complete Bearing profile; that prerequisite is tracked in `kontourai/datum#21`. Existing manual model selection does not use or change this endpoint.
-
-> ## ⚠️ Superseded by station#1398 slice 2 — read this before the section above
->
-> **This endpoint no longer returns `station.model-inventory/v2`.** Both halves of §5.3's recorded decision shipped together:
->
-> 1. **Scope**: it requires the **`inference:invoke`** pairing scope instead of inheriting the `/api/connections` family's `orchestration:read` — a longest-prefix leaf override, the same mechanism `GET /api/environments/ssh/sessions` uses.
-> 2. **Payload**: it returns the **contributed-subset projection** (`station.fleet-contribution/v1`) — the same body and the same disclosure surface as [`GET /api/inference/manifest`](#read-the-contributed-model-manifest). Everything documented above about the un-projected inventory now describes an *in-process* value (`ConnectionService#listLaunchableModelInventory()`), not this route's response.
->
-> Shipping only the scope half would have been worse than shipping neither. Raising the tier hands this endpoint to precisely the fleet-peer class the completion route's refusal parity is built to keep from learning what this Station has but has **not** contributed — a peer that cannot discover a withheld model through `POST /api/inference/completions` must not be able to read the whole list here.
->
-> The reasoning for narrowing at all (`docs/design/inference-fleet.md` §5.3, §10 OQ-2): a model name discloses hardware class, spend, and what its owner works on, and the fleet design turns that list into a routing input. Tightening now is reversible; discovering the exposure later is not.
->
-> **Protected routes have no loopback bypass.** A credential-less caller over an SSH local forward receives `401 authentication_required`, just like any other direct caller. The UI proxy relays browser bearer/device-session credentials; Station's exact per-boot internal-token attestation is reserved for genuine internal/MCP callers and is a process credential, not authority inferred from a loopback address.
->
-> **Who this affects.** Direct consumers, including an SSH-forwarded browser, must present a supported credential. No in-repo caller existed — no view, CLI command, MCP tool, or E2E spec. What changes for out-of-repo consumers:
->
-> - The SDK exports are **renamed and re-typed**: `fetchLaunchableModelInventory()` / `useLaunchableModelInventoryQuery()` are now `fetchContributedModelManifest()` / `useContributedModelManifestQuery()`, returning `FleetContributionManifest`. Renamed deliberately rather than silently re-typed — a type change under the old name compiles everywhere while meaning something else. No alias is kept; this repo ships no compat shims.
-> - An embedder holding a `read-only`, `standard`, or `delegation` credential now receives `403 insufficient_scope`. Re-pair with the `inference` preset.
-
----
+The current SDK names are `fetchContributedModelManifest` and
+`useContributedModelManifestQuery`. The old launchable-inventory exports are
+not compatibility aliases.
 
 ### Get One Connection
-```http
-GET /api/connections/:id
-```
 
-Returns a single connection projection with the same shape used by the list endpoints.
-
-**Used by**: `RuntimeConnectionView.tsx`
-
----
+`GET /api/connections/:id` returns `{success: true, data: connection}` or 404 for
+an unknown connection. This read uses the same connection projection and
+secret-redaction path as the merged list.
 
 ### Save a Connection
+
 ```http
 POST /api/connections
 PUT /api/connections/:id
 ```
 
-Creates or updates a connection.
+These accept the [connection write schema](../../src-server/routes/schemas/schema-definitions/runtime.ts):
+`kind`, `type`, `name`, `config`, `enabled`, and `capabilities` are required even
+for PUT. PUT is not a generic partial patch. POST supplies an ID when omitted;
+PUT uses the path ID. Model discovery fields such as `config.modelOptions` are
+not persisted as operator choices. For an Agent App, the service resolves an
+existing engine identity and saves supported overrides; posting an arbitrary
+kind/name does not invent a new engine adapter.
 
-For runtime connections, the writable payload remains the existing editable surface (`name`, `enabled`, `config`). The server-projected `runtimeCatalog` is read-only response state and should not be treated as user-editable input.
-
-**Used by**: `ProviderSettingsView.tsx`, `KnowledgeConnectionView.tsx`, `RuntimeConnectionView.tsx`
-
----
+Creation normally returns 201, update 200, with `{success: true, data}`. A saved
+configuration awaiting runtime activation returns 202 and
+`configurationActivation`, as with Agent writes. The returned definition is
+redacted. Invalid saves return a structured 400 response.
 
 ### Delete or Reset a Connection
-```http
-DELETE /api/connections/:id
-```
 
-Deletes a model connection or resets a runtime connection override.
-
-**Used by**: `ProviderSettingsView.tsx`, `RuntimeConnectionView.tsx`
-
----
+`DELETE /api/connections/:id` deletes a Model connection. For an Agent App it
+removes saved overrides and unregisters the engine connection from the Agent
+registry. This does not uninstall the engine executable. A pending runtime
+reconciliation can return 202 with `configurationActivation`.
 
 ### Test a Connection
-```http
-POST /api/connections/:id/test
-```
 
-Runs a lightweight health check for the selected connection.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "healthy": true,
-    "status": "ready",
-    "prerequisites": []
-  }
-}
-```
-
-**Used by**: `ProviderSettingsView.tsx`, `RuntimeConnectionView.tsx`
+`POST /api/connections/:id/test` returns `{success: true, data}` with
+`healthy`, `status`, `prerequisites`, and optional `reason`/`checkedAt`.
+This is a readiness/health check, not the separate bounded-turn smoke at
+`POST /api/connections/:id/smoke`. A false `healthy` value remains a successful
+HTTP response describing an unsuccessful check. Unknown connections return 404;
+other thrown check failures return 400.
 
 ---
 
 ## Fleet Inference
 
-Station's serving side of the inference fleet (station#1398, `docs/design/inference-fleet.md`). A peer holding a credential for this Station can read which local models it contributes and ask for a completion on one of them. **This is not `delegate_task`**: a delegated task runs here, with this machine's agents, tools, credentials, and workspace, and persists in this machine's event store. Fleet inference keeps the agent loop, the tools, the files, and the event record on the *consumer* — only token generation happens here. There is no `tools` field, no session, no filesystem access, and no agent slug anywhere in this family.
+The [serving routes](../../src-server/routes/inference/fleet-inference.ts) let an
+authorized peer read contributed models and request token generation. The
+consumer keeps its Agent loop, tools, workspace, and Session; the serving route
+does not create a Session or accept tool/workspace inputs. This differs from
+`delegate_task`, which starts work on the receiving Station. The serving
+Station separately attempts to record a local serve receipt.
 
-**Authorization.** The whole `/api/inference/**` family requires the **`inference:invoke`** pairing scope and nothing else. Only the `inference` pairing preset grants it. It is deliberately absent from the default grant, so an unscoped offer, a credential migrated from a pre-scoping registry, and the Station operator bootstrap credential all lack it — including for local testing, where you must mint an `inference`-preset grant.
+The route-family pairing scope is `inference:invoke`; ordinary authentication,
+origin, and applicable request-authority checks still apply. The `inference`
+preset grants this scope; Standard, Delegation, Read-only, and the historical
+default grant do not. A direct loopback or SSH-forwarded request still needs a
+supported credential. See [scope definitions](../../packages/contracts/src/environment-security.ts)
+and [route mapping](../../src-server/security/pairing-route-scopes.ts).
 
-**No loopback bypass.** Like every protected route family, this one refuses a direct loopback caller that presents no credential (`401 authentication_required`). An SSH local forward is indistinguishable from a genuinely local caller at the TCP layer, so it must use a bearer or device-session credential; the exact Station-owned, per-boot internal-token attestation remains a separate internal credential path.
+The [contract limits](../../packages/contracts/src/fleet-inference.ts) are:
 
-**Bounds.** Request body ≤ 128 KiB, ≤ 64 messages, ≤ 96,000 prompt characters, ≤ 4,096 output tokens, ≤ 64,000 generated characters returned, ≤ 2 concurrent fleet completions, and a **120-second wall-clock deadline per completion**. Values are published on the contract (`FLEET_INFERENCE_LIMITS`, `@kontourai/station-contracts/fleet-inference`) so a caller can size a request rather than discover a limit as a failure.
+| Input/output | Limit |
+| --- | --- |
+| Request body | 128 KiB, checked while reading the stream |
+| Messages | 64 |
+| Total prompt text | 96,000 JavaScript string code units |
+| Output tokens | 4,096 (also the default) |
+| Returned generated text | 64,000 JavaScript string code units |
+| Concurrent completions | 2 |
+| Completion abort deadline | 120 seconds after generation admission |
 
-The deadline is what makes the concurrency cap a bound at all: without it, a provider that accepts a request and never yields holds its slot forever, and two such requests pin the whole fleet surface permanently — for the cost of two requests and no credential beyond `inference:invoke`. It is not caller-tunable, because it protects the serving machine. A client disconnect likewise aborts generation and frees the slot immediately rather than leaving this Station generating tokens nobody will read.
+The deadline and caller disconnect signal are **cooperative**. The
+[service](../../src-server/services/inference/fleet-inference-service.ts) releases
+a concurrency slot only when the provider iteration settles and its `finally`
+runs. An adapter that ignores abort can hold its slot beyond the deadline.
+The response-text ceiling stops accumulation but continues draining for terminal
+usage/finish data under the same cooperative bound.
 
-*The deadline is cooperative, not preemptive.* It fires the `AbortSignal` the provider was handed; it does not kill the generator. A provider that observes the signal settles and its slot is freed — that is every provider Station ships. A provider that accepts the signal and never observes it never settles, and **its slot is not freed**: the leak the deadline exists to prevent, relocated behind a worse-behaved adapter. Reaching that requires an operator to install a plugin-supplied provider which ignores abort *and* mark its connection as contributed, which is why it is disclosed rather than defended against — see `docs/design/inference-fleet.md` §12.
+The handler's domain refusals use `{refusal: {schemaVersion, code, message,
+participation?, refusedAt}}`. Earlier authentication/origin/scope middleware can
+return its own error envelope. A model not contributed and a nonexistent model
+receive the same contribution refusal.
 
-*Ingestion is stream-bounded.* A declared `Content-Length` over the ceiling is refused before a byte is read; past that, the body is read chunk by chunk and the reader is cancelled the moment observed bytes exceed the cap. A caller that lies about its length, or sends a chunked body with no declared length, is stopped mid-stream rather than buffered in full and measured afterwards.
-
-**Refusals are named, never a 404.** Every rejection returns `{ "refusal": { schemaVersion, code, message, participation?, refusedAt } }` with a closed `code`. A model this Station could launch but has not contributed is refused identically to one that does not exist — distinguishing them would let a peer enumerate the models the owner deliberately withheld.
-
-| `code` | Status | Meaning |
-|---|---|---|
-| `contribution-disabled` | 403 | The opt-in is off, or on with no connection marked. |
-| `model-not-contributed` | 403 | That model is not in the contributed subset. |
-| `model-unavailable` | 503 | Contributed, but not routable right now. |
-| `contribution-unavailable` | 503 | This Station cannot currently say what it offers. Unknown, not empty. |
-| `streaming-unsupported` | 400 | `stream: true` — reserved, refused rather than silently buffered. |
-| `request-invalid` | 400 | Malformed body, bad role, empty `messages`, missing `model`. |
-| `request-too-large` | 413 | A published size ceiling was exceeded. |
-| `capacity-exhausted` | 429 | Concurrency limit reached. Retry shortly. |
-| `completion-timeout` | 504 | The 120s deadline elapsed; the stream was aborted and the slot freed. Distinct from `execution-failed` — the provider did not fail, it failed to *finish*. |
-| `request-abandoned` | 499 | The caller disconnected before the completion finished. Nobody receives this; it exists so the outcome is named rather than indistinguishable from a success. |
-| `execution-failed` | 502 | The local provider failed. Upstream error text is never relayed. |
+| Code | HTTP status |
+| --- | --- |
+| `contribution-disabled`, `model-not-contributed` | 403 |
+| `model-unavailable`, `contribution-unavailable` | 503 |
+| `streaming-unsupported`, `request-invalid` | 400 |
+| `request-too-large` | 413 |
+| `capacity-exhausted` | 429 |
+| `completion-timeout` | 504 |
+| `request-abandoned` | 499 (recorded outcome after disconnect) |
+| `execution-failed` | 502 |
 
 ### Read The Contributed Model Manifest
+
 ```http
 GET /api/inference/manifest
 ```
 
-The `station.fleet-contribution/v1` projection (station#1398 slice 1) as it crosses the machine boundary. This is the **only** place participation is readable: the public handshake advertises the static `fleetInference` protocol-support flag and never whether this Station is currently contributing anything, so an unauthenticated LAN or tailnet scanner cannot enumerate which of the owner's machines have GPUs.
+Returns `{manifest}` containing the bounded `station.fleet-contribution/v1`
+projection. `/api/connections/model-inventory` returns the same projection under
+`{success: true, data}`, with the same pairing tier.
 
-`GET /api/connections/model-inventory` serves this same body, for the same scope — that leaf is the compatibility-path spelling of this route, not a wider one.
+`participation` distinguishes `contributing`, `disabled`, `nothing-contributed`,
+and `contributed-unavailable`; an empty `models` array alone cannot distinguish
+them. The boundary carries at most 128 models and 64 diagnostics, adding an
+`inventory-truncated` diagnostic when it trims a list. Diagnostic messages are
+bounded to 240 string code units. `projectedAt` dates the projection;
+`sourceObservedAt` and each model's `observedAt` date its evidence. A new
+projection does not make old evidence fresh.
 
-`participation` is a four-state fact — `contributing`, `disabled`, `nothing-contributed`, `contributed-unavailable` — and three of the four carry `models: []`, so the array is never the signal. `diagnostics[]` names which empty it is, per connection. Foreign diagnostic message text is truncated at 240 characters at this boundary; the `code` is the authoritative fact and the message is supporting prose.
-
-**Response**:
-```json
-{
-  "manifest": {
-    "schemaVersion": "station.fleet-contribution/v1",
-    "projectedAt": "2026-08-01T10:00:01.000Z",
-    "sourceObservedAt": "2026-08-01T10:00:00.000Z",
-    "participation": "contributing",
-    "models": [
-      {
-        "id": "model:ollama-workstation:llama3.3%3A70b",
-        "connectionId": "ollama-workstation",
-        "providerModel": "llama3.3:70b",
-        "model": { "id": "llama3.3", "revision": null, "quantization": null },
-        "aliases": ["llama3.3:70b"],
-        "displayName": "Llama 3.3 70B",
-        "locality": "local",
-        "availability": "available",
-        "freshness": "live",
-        "observedAt": "2026-08-01T10:00:00.000Z",
-        "effectiveContextTokens": 131072,
-        "supportsVision": false
-      }
-    ],
-    "diagnostics": []
-  }
-}
-```
-
-`projectedAt` is when the projection ran and is **not** a freshness input; `sourceObservedAt` and the per-model `observedAt` are. A fresh projection of a stale inventory is a stale claim.
+The public handshake's `fleetInference` capability describes protocol support,
+not current participation. Read the authorized manifest to learn what this
+Station currently contributes.
 
 ### Serve A Completion
+
 ```http
 POST /api/inference/completions
 ```
 
-**Request**:
 ```json
 {
-  "model": "model:ollama-workstation:llama3.3%3A70b",
-  "messages": [
-    { "role": "system", "content": "You summarize changelogs." },
-    { "role": "user", "content": "Summarize the 0.7.0 release." }
-  ],
+  "model": "exact-manifest-model-id",
+  "messages": [{ "role": "user", "content": "Summarize this changelog: ..." }],
   "maxOutputTokens": 512,
   "temperature": 0.2
 }
 ```
 
-`model` is the manifest's `id`, matched exactly — a provider-native id or an alias is refused, so the manifest is the only way to address a contributed model. `role` is `system`, `user`, or `assistant`; there is no `tool` role. `maxOutputTokens` above the ceiling is refused rather than silently clamped, because clamping would let a consumer believe it bounded a cost it did not.
+Use the manifest's exact model `id`, not a provider selector or alias. Roles are
+`system`, `user`, or `assistant`; content is text. `maxOutputTokens` must be a
+positive integer within the ceiling; it is refused rather than clamped above
+it. Temperature, when present, must be finite and within 0–2. `stream: true`
+returns `streaming-unsupported`; current delivery is buffered.
 
-**Response**:
-```json
-{
-  "completion": {
-    "schemaVersion": "station.fleet-inference-completion/v1",
-    "delivery": "buffered",
-    "model": {
-      "id": "model:ollama-workstation:llama3.3%3A70b",
-      "connectionId": "ollama-workstation",
-      "providerModel": "llama3.3:70b",
-      "displayName": "Llama 3.3 70B"
-    },
-    "servedAt": "2026-08-01T10:00:02.000Z",
-    "content": "The 0.7.0 release …",
-    "stop": "provider",
-    "finishReason": "stop",
-    "usage": { "inputTokens": 412, "outputTokens": 88 },
-    "elapsedMs": 1840
-  }
-}
-```
+The response is `{completion}` with schema version, `delivery: "buffered"`,
+model identity, `servedAt`, text `content`, `stop`, `finishReason`, `usage`, and
+`elapsedMs`. `stop: "response-bound"` means Station truncated accumulated text;
+`provider` means the provider ended without that truncation. `finishReason` is
+separate provider output. `usage` is null unless both input and output token
+figures were reported; null does not mean zero.
 
-`stop` reports whether the *provider* ended generation (`provider`) or this Station's own response ceiling did (`response-bound`), separately from the provider's `finishReason` — a truncated answer must not read as a complete one. `usage: null` means the provider reported none; that is unknown, not zero.
-
-**Specified for streaming, buffered in v1** (`inference-fleet.md` §10 OQ-8). `delivery` is the discriminant that makes streaming additive: a future streaming release answers `stream: true` with an event stream whose terminal event is exactly this object carrying `delivery: "stream"`. A consumer that never sets `stream` sees no change; one that branches on `delivery` is correct in both worlds. Until then `stream: true` is refused by name rather than served buffered, because a consumer told it is streaming when it is not has been misinformed about the path it routes over.
+A serve-receipt append failure is logged and counted, but does not replace the
+completion response. Successful delivery therefore does not prove the local
+receipt was durably written. Receipt reading and diagnosis are separate from
+completion execution.
 
 ### Who May Turn Contribution On
 
-Enabling contribution is `PUT /config/app` (`AppConfig.fleetContribution`), which sits in the `/config` family at **`orchestration:operate`** — unchanged by this slice, and stated here rather than left implicit (`inference-fleet.md` §5.4).
+`PUT /config/app` writes `fleetContribution` under its normal
+`orchestration:operate` tier. In addition, the
+[config handler](../../src-server/routes/system/config.ts) refuses a caller
+whose granted scope includes `inference:invoke` when it writes either
+`fleetContribution` or the separate `contribution` map. This covers changing
+connection IDs as well as enabling contribution.
 
-So a `delegation`-scoped peer or a Standard paired device can turn contribution on. That was weighed and accepted rather than overlooked, **on one stated precondition**: the credential that flips the switch must not be the one that benefits from it.
-
-The accepted case is a credential holding `orchestration:operate` and *not* `inference:invoke`. Such a peer already authorizes starting arbitrary agent sessions and driving turns on this Station — strictly *more* authority over this machine's compute than causing it to serve buffered completions — and flipping the opt-in grants it nothing, because it cannot invoke what it enabled. Adding a consent ceremony in front of the lesser of two powers the same credential already holds would teach the wrong lesson about which gate matters.
-
-**That reasoning stops holding the moment one grant carries both scopes**, so the code does not rely on it. A credential presenting `inference:invoke` is **refused (403) any write to `fleetContribution`** through `PUT /config/app`. Otherwise such a peer could enable contribution, name a connection — including a *billable hosted* one, since `connectionIds` rides the same write — and then spend the owner's money through `/api/inference/**` with no operator in the loop at any step. That is not "less authority than running agents here"; it is a self-authorized, self-serving budget. The guard covers `connectionIds` as well as `enabled` (naming a new connection on an already-enabled Station is the same act), is scoped to that one field so the peer's other settings writes are unaffected, and does not touch a caller presenting no credential — the loopback operator, who is exactly who should be making this decision.
-
-What remains true is that `PUT /config/app` is a broad write at a broad tier; narrowing that surface generally is the honest fix, and the scope vocabulary this slice adds makes it cheap to do later.
+An operate-only credential is not refused by that beneficiary check. The
+separate Project `contribution` map also has an operator-authority check for
+changed offers. Neither rule creates a credential-less loopback exception;
+normal request authentication runs first. See the
+[inference design](../design/inference-fleet.md) for the authority decision.
 
 ---
 
- ## Orchestration model launch behavior
+## Orchestration model launch behavior
 
-`POST /api/orchestration/chat` accepts model controls only inside the canonical
-Environment + Agent `target`. They are capability-gated before adapter readiness
-or model discovery is invoked. A launch is either
-Station-resolved with an honest `catalog-pending` selector that becomes
-`catalog-accepted` only after adapter catalog validation, deliberately
-engine-selected with no Station-invented model id, or unavailable with a stable
-reason. Adapters without a model-lifecycle capability declaration receive an explicit
-`capability-absent` omission plan;
-their explicit model overrides fail closed. `modelId` is a request, not a runtime
-observation: session read models keep typed requested/applied facts separate from
-an engine's independently reported model. `appliedModel` is present only after a
-real adapter apply boundary; ACP `session.configured.model` echoes from the earlier
-metadata-only projection never
-become applied. `reportedModel` is never derived from either fact.
-Bound continuation at `POST /api/orchestration/chat/:conversationId/continue`
-accepts no target or model replacement. Unsupported lifecycle overrides
-return `model-override-unsupported` and create no adapter dispatch or
-effective-model receipt. Bedrock/Ollama resume and omitted turns retain the
-accepted session model; an explicit replacement is catalog-validated. ACP model
-overrides are currently unsupported, including automatic recovery of those
-metadata-only model echoes.
+`POST /api/orchestration/chat` carries model selection under
+`target.model: {override?, options?}`, alongside the Agent and Environment target.
+The [route schema](../../src-server/routes/orchestration/orchestration.ts),
+[capability planner](../../packages/contracts/src/provider.ts), and
+[model-launch owner](../../src-server/services/orchestration/model-launch-planning.ts)
+separate requested selection from adapter acceptance.
+
+A plan is `station-resolved`, `engine-selected`, or `unavailable`.
+Station-resolved selectors begin as `catalog-pending`; the adapter marks them
+`catalog-accepted` only after validation. An adapter without a model-launch
+declaration can accept omission as `capability-absent`, but cannot thereby
+claim explicit override support. The orchestration start path checks its plan
+before readiness/discovery; actual selector validation remains adapter-owned.
+
+`POST /api/orchestration/chat/:conversationId/continue` keeps the persisted
+Agent, Environment, and workspace binding. It accepts an optional **object**
+`model: {override?, options?}` for the next turn; legacy scalar model values are
+ignored by this schema. The
+[continuation caller](../../src-server/tools/station-control-delegation.ts)
+rebuilds the target from the authorized conversation binding and forwards that
+model choice. Whether it can apply to an existing Session or requires another
+lifecycle boundary depends on the engine. Unsupported lifecycle overrides have
+the typed `model-override-unsupported` refusal; this is not permission to invent
+an applied model after an unsuccessful request.
+
+The [session projection](../../src-server/services/orchestration/orchestration-session-state.ts)
+keeps `requestedModel`, `appliedModel`, and independently reported model facts
+separate. Old `session.configured.model` echoes alone are not apply receipts.
+A later effective-model boundary also prevents an older reported model from
+being presented as current.
+
+Bedrock and Ollama declare catalog-validated start/resume/per-turn overrides.
+ACP now supports a fresh-start override **when that Session advertises a model
+configuration option and `setConfigOption` returns the requested current
+value**. Its adapter records the verified selection then. ACP does not declare
+new resume/per-turn override support; restating an already retained selector is
+handled separately from requesting a different model. See the
+[ACP apply boundary](../../src-server/providers/adapters/acp-adapter.ts),
+[Bedrock adapter](../../src-server/providers/adapters/bedrock-adapter.ts), and
+[Ollama adapter](../../src-server/providers/adapters/ollama-adapter.ts).
 
 ## Bedrock Models
 
+The [Bedrock routes](../../src-server/routes/connections/bedrock.ts) use the
+shared [model catalog](../../src-server/providers/llm/bedrock-models.ts).
+Catalog discovery is evidence of a selector, not proof that an account can
+complete inference on it.
+
 ### List Available Models
-```http
-GET /bedrock/models
-```
 
-Returns all foundation-model selectors that AWS marks `ON_DEMAND` plus `ACTIVE` inference-profile selectors whose complete returned model-ARN set resolves to one streaming, text-capable foundation model. Profile capability fields are copied from that AWS foundation-model evidence. The route omits relation-unknown or multi-model profiles, does not infer regional relationships, and does not suppress an on-demand selector merely because a related profile exists.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-      "modelArn": "arn:aws:bedrock:...",
-      "modelName": "Claude 3.5 Sonnet",
-      "providerName": "Anthropic",
-      "inputModalities": ["TEXT", "IMAGE"],
-      "outputModalities": ["TEXT"],
-      "responseStreamingSupported": true,
-      "customizationsSupported": [],
-      "inferenceTypesSupported": ["ON_DEMAND"]
-    }
-  ]
-}
-```
-
-**Used by**: `ModelsContext.tsx`, `AppDataContext.tsx`, model selector
-
----
+`GET /bedrock/models` returns `{success: true, data: models}`. It includes
+streaming, text-output foundation models with `ON_DEMAND` support and active
+inference profiles whose complete model-ARN set resolves to one such foundation
+model. Ambiguous/unresolved profile relationships are omitted. Profile rows
+carry their own selector/ARN/name plus `isInferenceProfile`, `profileType`, and
+`status`; their capability fields come from the matched foundation model.
 
 ### Get Model Pricing
-```http
-GET /bedrock/pricing?region=us-east-1
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "anthropic.claude-3-5-sonnet-20240620-v1:0": {
-      "inputTokenPrice": 0.003,
-      "outputTokenPrice": 0.015
-    }
-  }
-}
-```
+`GET /bedrock/pricing?region=us-east-1` returns `{success: true, data: prices}`,
+where `prices` is an **array**, not a map keyed by model ID. Rows include
+`modelId`, optional provider/input/output price values, `region`, and `feature`.
+The catalog groups returned AWS price dimensions by model and feature. The
+numeric fields copy the returned USD price-per-unit value; this parser does
+not normalize its unit, so the field names alone are not proof of a per-token
+or per-1,000-token rate.
 
-**Used by**: Cost calculations, analytics
-
----
+The region falls back through stored app config, `AWS_REGION`, and `us-east-1`;
+an invalid supplied region returns 400 before lookup. Missing catalog or lookup
+failure returns 500. Model/profile/pricing caches expire after 15 minutes;
+pricing uses a bounded regional cache and paginated reads. Route JSON output is
+also size-bounded. The catalog source contains the exact budgets.
 
 ### Validate Model ID
-```http
-GET /bedrock/models/:modelId/validate
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "isValid": true
-  }
-}
-```
-
-**Used by**: Model validation in forms
-
----
+`GET /bedrock/models/:modelId/validate` returns
+`{success: true, data: {modelId, isValid}}`. It calls selector resolution: a base
+ID with exactly one eligible profile can validate by resolving to that profile.
+An ambiguous match does not validate. This is catalog validation, not an
+inference smoke.
 
 ### Get Model Info
-```http
-GET /bedrock/models/:modelId
-```
 
-Accepts either a launchable foundation-model selector or an evidence-backed inference-profile selector returned by `GET /bedrock/models`. Detail lookup and list membership use the same bounded launchability projection.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "modelName": "Claude 3.5 Sonnet",
-    "providerName": "Anthropic",
-    ...
-  }
-}
-```
-
-**Used by**: Model details, capabilities checking
+`GET /bedrock/models/:modelId` returns `{success: true, data: model}` for an
+**exact selector in the projected list**, otherwise 404. Unlike validation, this
+lookup does not substitute a profile for a base ID. Use a selector returned by
+`GET /bedrock/models` for a predictable detail lookup.
 
 ---
 
 ## Analytics
 
+The [analytics routes](../../src-server/routes/operations/analytics.ts) read
+[UsageAggregator](../../src-server/analytics/usage-aggregator.ts). This retained
+summary is separate from the monitoring event stream and from authoritative
+per-invocation receipts. An unavailable aggregator returns a 500 error.
+
 ### Get Usage Statistics
-```http
-GET /api/analytics/usage
-```
 
-**Response**:
-```json
-{
-  "data": {
-    "totalMessages": 1000,
-    "totalTokens": 50000,
-    "totalCost": 2.50,
-    "byAgent": {
-      "my-agent": {
-        "messages": 500,
-        "tokens": 25000,
-        "cost": 1.25
-      }
-    },
-    "byDay": [
-      {
-        "date": "2025-12-08",
-        "messages": 100,
-        "tokens": 5000,
-        "cost": 0.25
-      }
-    ]
-  }
-}
-```
-
-**Used by**: `AnalyticsContext.tsx`, analytics dashboard
-
----
+`GET /api/analytics/usage` returns `{success: true, data: stats}` with lifetime,
+Agent, model, and date aggregates. The date map is `byDate`, not `byDay`.
+Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
+fields retain their existing aggregate scope. Do not relabel those other fields
+as totals for the selected window.
 
 ### Get Achievements
-```http
-GET /api/analytics/achievements
-```
 
-**Response**:
-```json
-{
-  "data": [
-    {
-      "id": "first-message",
-      "title": "First Message",
-      "description": "Sent your first message",
-      "unlocked": true,
-      "unlockedAt": "2025-12-08T12:00:00Z"
-    }
-  ]
-}
-```
-
-**Used by**: `AnalyticsContext.tsx`, achievements display
-
----
+`GET /api/analytics/achievements` returns
+`{success: true, data: achievements}` from the aggregator. The achievement
+schema and unlock rules belong to that owner, not a fixed list in this page.
 
 ### Rescan Analytics
-```http
-POST /api/analytics/rescan
-```
 
-Triggers a full rescan of all conversation data to rebuild analytics.
-
-**Response**:
-```json
-{
-  "data": { /* updated stats */ },
-  "message": "Full rescan completed"
-}
-```
-
-**Used by**: `AnalyticsContext.tsx`, analytics management
-
----
+`POST /api/analytics/rescan` returns
+`{success: true, data: stats, message: "Full rescan completed"}`. It scans
+Agent file-memory transcripts and folds available orchestration usage, excluding
+Session IDs already counted in file memory. It merges the rescan with retained
+stats rather than resetting every lifetime counter to zero. An unavailable
+orchestration source is not a measured empty source; inspect coverage metadata.
 
 ## Monitoring
 
+These [routes](../../src-server/routes/operations/monitoring.ts) expose different
+inputs: active-Agent maps, an in-memory metrics list, and persisted/live
+monitoring events. They are not interchangeable measures of the whole Station.
+
 ### Get System Stats
-```http
-GET /monitoring/stats
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "agents": [
-      {
-        "slug": "my-agent",
-        "name": "Station Agent",
-        "status": "idle",
-        "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-        "conversationCount": 10,
-        "messageCount": 100,
-        "cost": 5.00,
-        "healthy": true
-      }
-    ],
-    "summary": {
-      "totalAgents": 1,
-      "activeAgents": 0,
-      "runningAgents": 0,
-      "totalMessages": 100,
-      "totalCost": 5.00
-    }
-  }
-}
-```
-
-**Used by**: `MonitoringContext.tsx`, monitoring dashboard
-
----
+`GET /monitoring/stats` returns `{success: true, data: {agents, summary}}`.
+Rows come from the active managed-Agent map. `healthy` checks for a model and
+memory adapter; it is not a fresh model completion. Personal mode can include
+cached conversation/message counts. The legacy `cost`, `activeAgents`, and
+`runningAgents` values here are currently zero placeholders, so they must not
+be presented as measured spend or activity. Hosted mode omits the personal
+history counts and cost fields.
 
 ### Get Historical Metrics
-```http
-GET /monitoring/metrics?range=today
-```
 
-**Query Parameters**:
-- `range`: `today` | `week` | `month` | `all`
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "range": "today",
-    "metrics": [
-      {
-        "agentSlug": "my-agent",
-        "messageCount": 50,
-        "conversationCount": 5,
-        "totalCost": 2.50
-      }
-    ]
-  }
-}
-```
-
-**Used by**: `MonitoringContext.tsx`, metrics visualization
-
----
+`GET /monitoring/metrics?range=today` groups the runtime's in-memory metrics by
+Agent and returns `{success: true, data: {range, metrics}}`.
+`today`, `week`, and `month` mean trailing 24 hours, 7 days, and 30 days;
+`all` or an unrecognized value applies no start cutoff. This is not a query of
+all durable history. Hosted mode returns an empty metrics list through this
+legacy path.
 
 ### Get/Stream Events (SSE)
+
 ```http
-GET /monitoring/events?start=2025-12-08T00:00:00Z&end=2025-12-08T23:59:59Z&userId=default-user
+GET /monitoring/events?start=2026-09-01T00:00:00Z&end=2026-09-02T00:00:00Z&limit=100
+GET /monitoring/events
 ```
 
-**Query Parameters**:
-- `start`: ISO timestamp (optional, for historical)
-- `end`: ISO timestamp (optional, for historical)
-- `userId`: User ID filter (default: `default-user`)
+A nonempty `start` or `end` selects historical JSON:
+`{success: true, data: events, truncated}`. Without a time bound, the route
+opens SSE. Historical bounds accept epoch milliseconds or parseable date text;
+send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
-**Response** (historical):
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "type": "message",
-      "timestamp": "2025-12-08T12:00:00Z",
-      "agentSlug": "my-agent",
-      "conversationId": "conv-123",
-      "messageCount": 1
-    }
-  ]
-}
-```
+Historical filters are `agent`, `tool`, `engine`, `conversation`, and
+`tools=true`. `limit` is optional and capped at 5,000; without it there is no
+route-level result-count cap. Results are ordered by event timestamp, and a
+limit selects the most recent matching rows. `truncated` reports actual drops.
+These dimension/limit options are implemented in the historical branch, not
+as live SSE subscription filters.
 
-**Response** (streaming SSE):
-```
-data: {"type":"connected","timestamp":"2025-12-08T12:00:00Z"}
+The user filter defaults to the resolved local user alias, with legacy `userId`
+or `x-user-id` inputs where allowed. A principal-scoped station-control request
+has a fixed owner and cannot replace it. Session/tenant visibility is also
+filtered by the runtime-supplied authority. User-filter text is not a substitute
+for those checks.
 
-data: {"type":"message","agentSlug":"my-agent","conversationId":"conv-123"}
-
-data: {"type":"heartbeat","timestamp":"2025-12-08T12:00:30Z"}
-```
-
-**Used by**: `MonitoringContext.tsx`, real-time monitoring
+SSE sends GenAI monitoring records, including an initial record with
+`station.system.type: "connected"` and a heartbeat every 30 seconds. It does
+not use the old `{type: "message"}` event example. Content is redacted before
+historical or streaming output. See the [monitoring guide](../guides/monitoring.md)
+for event keys and producer limits.
 
 ---
 
 ## Agent Invocation
 
-### 🟢 ✅ Silent Invocation (No Memory)
+These [routes](../../src-server/routes/agents/invoke.ts) execute against Station's
+active managed Agent map. An external-engine Agent being listed in the catalog
+does not make it callable through this map; use orchestration for its lifecycle.
+The [request schemas](../../src-server/routes/schemas/schema-definitions/runtime.ts)
+distinguish `input` on named invoke from `prompt` on global/legacy stream invoke.
+
+<a id="silent-invocation-no-memory"></a>
+
+### Named Invocation
+
 ```http
 POST /agents/:slug/invoke
 ```
 
-Invoke agent without loading conversation history. Used for dashboard data fetching and utility tasks.
-
-**Request Body**:
 ```json
-{
-  "prompt": "What's the weather today?",
-  "silent": true,
-  "model": "anthropic.claude-3-haiku-20240307-v1:0",
-  "tools": ["files_read_file"]
-}
+{ "input": "Summarize the supplied text: ...", "tools": [] }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "response": "The weather is sunny...",
-  "usage": {
-    "inputTokens": 100,
-    "outputTokens": 50
-  }
-}
-```
+Optional fields are `model`, `tools`, and `schema`. `silent` is not an admitted
+control. The [owner](../../src-server/routes/agents/invoke-agent.ts) calls the
+existing Agent's `generateText`; the route does not itself guarantee that the
+Agent's memory implementation is disabled. A supplied tool list filters the
+Agent's loaded tools by runtime name; it does not load a new integration.
 
-**Error** (authentication):
-```json
-{
-  "success": false,
-  "error": "authentication failed"
-}
-```
-Status: `401`
+The JSON response contains `success`, `response`, `usage`, `runId`, and any
+returned steps/tool calls/tool results/reasoning. With `schema`, the route adds a
+JSON instruction to the prompt and tries `JSON.parse` on the result. It does
+not validate the parsed object against that schema; a parse failure leaves the
+original text in `response`.
 
-**Status**: In use  
-**Used by**: 
-- Dashboard widgets, background data fetching
-- `station-layout/CRM.tsx` (activity description generation)
-- `AgentEditorView.tsx` (prompt generation with `default` agent)
-
-**Tip**: Use the `default` agent for simple text generation without tools:
-```bash
-POST /agents/default/invoke
-{
-  "prompt": "Generate a professional email subject line",
-  "silent": true
-}
-```
-
----
+The durable native-invocation record is separate from a conversation transcript.
+An indeterminate or partially completed invocation returns a coded 409 with run
+identity; observe that run before retrying. Unavailable record storage returns
+503. A 2xx response is not a claim that a caller's requested JSON shape was
+validated.
 
 ### Raw Tool Call (No LLM)
+
 ```http
 POST /agents/:slug/tools/:toolName
 ```
 
-Execute a tool directly without LLM processing.
-
-**Request Body**: Tool arguments
-```json
-{
-  "startDate": "2025-12-08",
-  "endDate": "2025-12-15"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "response": { /* tool result */ },
-  "debug": {
-    "toolDuration": 150.5,
-    "totalDuration": 152.3
-  }
-}
-```
-
-**Used by**: Direct tool invocations, testing
-
----
+The body is the tool's arguments. The
+[tool owner](../../src-server/routes/agents/invoke-agent.ts) resolves an existing
+loaded tool, executes it under the captured runtime configuration, and returns
+`{success: true, response, metadata: {toolDuration, totalDuration}}`. Durations
+are rounded milliseconds. MCP text content may be JSON-decoded by the result
+unwrapper. Tool errors, including station-control failure envelopes, are checked
+before success is returned. Unknown Agent/tool identities return 404.
 
 ### Streaming Invocation
+
 ```http
 POST /agents/:slug/invoke/stream
 ```
 
-Invoke agent with streaming response and optional structured output.
+Despite the retained path name, this handler currently returns **buffered JSON,
+not SSE**. Its body uses `prompt`, optional `model`, `tools`, `maxSteps`, and
+`schema`:
 
-**Request Body**:
 ```json
-{
-  "prompt": "List files in the documents folder",
-  "silent": true,
-  "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-  "tools": ["files_list_directory"],
-  "maxSteps": 10,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "files": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "size": { "type": "number" }
-          }
-        }
-      }
-    }
-  }
-}
+{ "prompt": "Summarize the supplied text: ...", "tools": [], "maxSteps": 5 }
 ```
 
-**Response** (SSE stream):
-```
-data: {"type":"text-delta","text":"Looking"}
-
-data: {"type":"tool-call","toolName":"files_list_directory"}
-
-data: {"type":"tool-result","result":{...}}
-
-data: {"type":"finish","text":"Here are your files..."}
-```
-
-**Used by**: Streaming responses with structured output
+With an explicit tools array, it builds a temporary Agent with the selected
+loaded tools. With a schema on that branch, it asks for JSON and parses the
+text; this is not JSON Schema validation. Without a tools array it calls the
+existing Agent's `generateObject` or `generateText`. Both branches return
+`{success: true, response, usage, runId}`. Schema behavior therefore depends on
+the branch and framework, rather than a universal validated-output guarantee.
+See [Custom Chat Stream](#custom-chat-stream) and orchestration for actual chat
+streaming.
 
 ---
 
@@ -1954,1851 +1296,1005 @@ GET /api/attachments/:ref
 
 The bytes behind an attachment a transcript is showing, where `:ref` is the
 `sha256-<64 hex>` content reference persisted on the turn's `attachments`
-(station#3374/#3385). Authenticated at the `orchestration:read` pairing tier.
+(see [attachment storage](config.md#chat-attachments)). The route requires the
+`orchestration:read` pairing tier.
 
 The response deliberately **does not name the image's type**: the store is
 addressed by bytes alone and holds no MIME type, and two attachments with
 different declared names can share one digest. The declared type lives on the
 attachment metadata in the event, and the client applies it when it builds the
-Blob. Serving inert bytes under `nosniff` also means a direct navigation
-downloads rather than renders.
+Blob. The response uses `application/octet-stream` and `nosniff` to request
+inert handling rather than serve the caller-supplied MIME type as active content.
 
 | status | meaning |
 |---|---|
-| `200` | `application/octet-stream`, `ETag: "<ref>"`, `Cache-Control: private, max-age=3600`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cross-Origin-Resource-Policy: same-origin` |
+| `200` | `application/octet-stream`, `ETag: "<ref>"`, `Cache-Control: private, no-cache`, `Vary: Authorization, Cookie`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cross-Origin-Resource-Policy: same-origin` |
 | `400` | `:ref` is not a `sha256-<64 lowercase hex>` reference — refused before it reaches any path |
-| `404` | no such blob: never written, or reclaimed by retention. The transcript renders its chip without a preview |
+| `404` | no readable binding for this caller, or bytes absent/reclaimed. The response does not reveal which case applies; the transcript keeps its attachment chip without a preview |
 
-**Used by**: `FilePartPreview` (fetch → object URL), the chat dock's retry
-recovery.
+Every fetch reauthorizes a readable conversation binding; knowing the digest
+is insufficient. ETag is emitted, but this handler does not implement an
+authorization-skipping 304 path. See the [handler](../../src-server/routes/orchestration/attachments.ts),
+[preview consumer](../../src-ui/src/components/chat/FilePartPreview.tsx), and
+[retry recovery](../../src-ui/src/components/chat-dock/retry-attachments.ts).
 
 ---
 
 ## Model Capabilities
 
 ### Get Model Capabilities
-```http
-GET /api/models/capabilities
-```
 
-This is a **Bedrock-only** projection of `ListFoundationModels`: it is empty
-without AWS credentials and carries no row for a Claude Code, Codex, ACP, or
-Ollama model. A missing row means the catalog has nothing to say about that
-model, never that the model rejects images — `useModelImageSupport` keeps that
-distinction as a three-state answer (station#3344), and the response envelope
-carries the provenance it needs to (station#3373).
-
-Full description, including `source` and `complete`:
-[Standalone Model Capability Routes](#standalone-model-capability-routes) below.
-
-**Used by**: `ModelCapabilitiesContext.tsx`, the chat composer's attachment gate
+`GET /api/models/capabilities` is the Bedrock-only capability projection described
+under [Standalone Model Capability Routes](#standalone-model-capability-routes).
+An absent model row is unknown; it does not show that a Claude Code, Codex, ACP,
+or Ollama model rejects an attachment. The current
+[UI helper](../../src-ui/src/contexts/ModelCapabilitiesContext.tsx) preserves an
+unknown result for an unmatched model.
 
 ---
 
 ## Error Handling
 
-All endpoints follow a consistent error response format:
+There is no universal response envelope across these retained route families.
+Many handlers return `{success: true, data}`, invocation returns `response`,
+some provider-facing reads return plain objects, and fleet routes use
+`manifest`/`completion`/`refusal`. Read each family's contract.
 
-**Success**:
-```json
-{
-  "success": true,
-  "data": { /* response data */ }
-}
-```
+The [runtime error boundary](../../src-server/runtime/bootstrap/runtime-http.ts)
+returns unexpected failures as a generic 500 with
+`{success: false, error: {code: "internal_error", correlationId}}`. A typed
+`RouteError` keeps its status and bounded message, with optional `code`,
+`details`, and a correlation ID. Legacy handlers that catch errors locally can
+still return a string `error`; a message substring is not a universal API error
+code. Authentication, origin, scope, membership, and operation-specific refusals
+also have their own shapes.
 
-**Error**:
-```json
-{
-  "success": false,
-  "error": "Error message"
-}
-```
-
-**HTTP Status Codes**:
-- `200`: Success
-- `201`: Created
-- `400`: Bad Request (validation error)
-- `401`: Unauthorized (authentication error)
-- `404`: Not Found
-- `500`: Internal Server Error
-
-**Authentication Errors** (Status `401`):
-Triggered when error message contains:
-- `authentication failed`
-- `status code 403`
-- `Form action URL not found`
-
----
+Clients must check HTTP status and the family's body/stream result. Treat 202
+as acceptance with pending work when the response says so, 409 indeterminate
+receipts as requiring observation, and a failed health result as different
+from a failed HTTP request. Never retry a mutation solely because its response
+was lost.
 
 ## Frontend Usage Summary
 
-### Contexts Using API Endpoints
+The current public entry point is the [SDK reference](sdk.md). Its source routes
+lead from query hooks and clients to their handlers; the former Context-name
+inventory here no longer described current consumers.
 
-| Context | Endpoints Used |
-|---------|---------------|
-| `AgentsContext` | `/api/agents`, `/agents/:slug`, `/agents` (POST/PUT/DELETE) |
-| `LayoutsContext` | removed during project-layout convergence |
-| `ConversationsContext` | `/agents/:slug/conversations`, `/agents/:slug/conversations/:id/messages`, `/agents/:slug/tools` |
-| `StatsContext` | `/agents/:slug/conversations/:id/stats` |
-| `ConfigContext` | `/config/app` (GET/PUT) |
-| `ModelsContext` | `/bedrock/models` |
-| `AppDataContext` | `/bedrock/models` |
-| `AnalyticsContext` | `/api/analytics/usage`, `/api/analytics/achievements`, `/api/analytics/rescan` |
-| `MonitoringContext` | `/monitoring/stats`, `/monitoring/events` |
-| `ModelCapabilitiesContext` | `/api/models/capabilities` |
-| `WorkflowsContext` | `/agents/:slug/workflows/files` |
+- [SDK client](../../packages/sdk/src/client/index.ts): instance-scoped HTTP APIs.
+- [SDK query domains](../../packages/sdk/src/queries.ts): cache keys and query/mutation hooks.
+- [API-base provider](../../src-ui/src/contexts/ApiBaseContext.tsx): selected Station and transport binding.
+- [Chat dock](../../src-ui/src/components/chat-dock/ChatDock.tsx): current orchestration-based chat consumer.
 
-### Components Using Direct API Calls
-
-- **ChatDock**: Uses the custom `/api/agents/:slug/chat` streaming endpoint
-- **Station Layout**: `/agents/:slug/tools/:toolName`
-- **Agent Editor**: Integration management endpoints
-- **Settings View**: Configuration endpoints
+The legacy imperative SDK functions and direct `fetch` callers do not all share
+the instance client's error/transport behavior. Their individual reference
+entries describe those limits.
 
 ---
 
 ## Auth & Users
 
-> **New section** — routes from `src-server/routes/system/auth.ts`
+These [provider-backed routes](../../src-server/routes/system/auth.ts) are
+mounted under `/api/auth` and `/api/users`. Provider authentication status and
+user-directory identity are separate from the HTTP request's paired/account
+principal and route authority.
 
 ### Get Auth Status
-```http
-GET /auth/status
-```
 
-Returns current authentication status and resolved user identity.
-
-**Response**:
-```json
-{
-  "authenticated": true,
-  "user": {
-    "alias": "jdoe",
-    "name": "Jane Doe",
-    "email": "jdoe@example.com"
-  }
-}
-```
-
----
+`GET /api/auth/status` combines the configured auth provider's status with
+`user` from the user-identity provider. The identity is process-cached and may
+be enriched asynchronously; this is not the request-authority observation API.
+For that distinction see [the SDK authority reader](sdk.md).
 
 ### Renew Credentials
-```http
-POST /auth/renew
-```
 
-Triggers credential renewal via the configured auth provider.
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Credentials renewed"
-}
-```
-
----
+`POST /api/auth/renew` calls the configured provider's `renew()` and returns its
+result. A thrown renewal error returns `{success: false, error}` with 500.
+It is not a generic paired-device credential rotation endpoint.
 
 ### Terminal Auth Renew
-```http
-POST /auth/terminal
-```
 
-Alias for `/auth/renew` — triggers credential renewal (used for terminal-based auth flows).
-
-**Response**: Same as `/auth/renew`
-
----
+`POST /api/auth/terminal` calls the same provider renewal method and returns the
+same provider-defined result shape.
 
 ### Get Badge Photo
-```http
-GET /auth/badge-photo/:id
-```
 
-Returns a JPEG badge/profile photo for the given user ID. Requires the configured auth provider to support `getBadgePhoto`.
-
-**Response**: `image/jpeg` binary  
-**Cache-Control**: `public, max-age=86400`  
-**Error**: `404` if not found or provider does not support photos
-
----
+`GET /api/auth/badge-photo/:id` returns JPEG bytes when the auth provider has a
+photo. The handler sets `Cache-Control: public, max-age=86400`. Missing support
+or bytes returns 404; a provider fetch failure returns 502.
 
 ### Search Users
-```http
-GET /users/search?q=<query>
-```
 
-Search the user directory by name or alias.
-
-**Query Parameters**:
-- `q`: Search string (required; returns `[]` if empty)
-
-**Response**:
-```json
-[
-  { "alias": "jdoe", "name": "Jane Doe", "email": "jdoe@example.com" }
-]
-```
-
----
+`GET /api/users/search?q=<query>` returns the directory provider's result array.
+An empty query returns `[]`. A caught provider failure also returns `[]` with
+200, so this legacy response cannot distinguish a failed search from no matches.
 
 ### Lookup User by Alias
-```http
-GET /users/:alias
-```
 
-Look up a specific user by their alias.
-
-**Response**:
-```json
-{ "alias": "jdoe", "name": "Jane Doe", "email": "jdoe@example.com" }
-```
-
-**Error** (`404`):
-```json
-{ "alias": "jdoe", "name": "jdoe", "error": "User not found" }
-```
-
----
+`GET /api/users/:alias` returns the directory provider's result. A thrown lookup
+failure returns 404 with `{alias, name: alias, error}`; its message is the
+formatted failure, not necessarily the literal `User not found`.
 
 ## Branding
 
-> **New section** — routes from `src-server/routes/system/branding.ts`
-
 ### Get Branding Config
-```http
-GET /branding
-```
 
-Returns resolved branding configuration from the active branding provider.
+`GET /api/branding` reads the active
+[branding provider](../../src-server/routes/system/branding.ts):
 
-**Response**:
 ```json
 {
-  "name": "Station",
-  "logo": null,
-  "theme": null,
-  "welcomeMessage": null
+  "success": true,
+  "data": { "name": "Station", "logo": null, "theme": null, "welcomeMessage": null }
 }
 ```
 
-Fields are `null` when the provider does not implement the optional method.
+The name is provider-supplied. An absent optional logo/theme/welcome method
+produces `null`; other returned values belong to the provider contract.
 
----
+`theme` is the white-label override surface: flat `--k-*` keys that are
+expanded into both modes, and optional `dark` / `light` objects that override
+per mode. The route passes it through unvalidated. The
+[UI validation](../../src-ui/src/lib/branding-theme.ts) applies it only if
+every key is one of `--k-brand`, `--k-brand-contrast`, `--k-action`,
+`--k-action-contrast` or `--k-focus`, every value is `#rgb`/`#rrggbb`, and
+every check from the "White-label overrides" section in
+[`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
+(the package's `validateBrandOverride`) and Station's stricter text checks
+pass in both modes; otherwise it applies none of it and keeps the default.
+The rules and a worked provider are in
+[examples/custom-branding](../../examples/custom-branding/README.md).
 
 ## Events (SSE)
 
-> **New section** — routes from `src-server/routes/orchestration/events.ts`
-
 ### Subscribe to Real-Time Events
+
 ```http
 GET /events
 ```
 
-Opens a Server-Sent Events stream for all real-time server events. On connect, replays the current ACP connection state so clients don't miss events that fired before they subscribed.
+The [event relay](../../src-server/routes/orchestration/events.ts) subscribes to
+the server event bus, sends the current ACP status, then drains events queued
+during that initial read. It sends a named `ping` every 30 seconds.
+This is a live connection-state/cache-invalidation stream, not durable Session
+history replay with a resume cursor.
 
-**Response** (SSE stream):
-```
-event: acp:status
-data: {"connected":true,"connections":[{"id":"acp-1","status":"connected"}]}
-
-event: system:status-changed
-data: {"source":"config"}
-
-event: ping
-data: 
-```
-
-A `ping` keepalive is sent every 30 seconds.
-
----
+Only events admitted by the broadcast-safety policy or the relevant scoped
+notification, approval, plugin, draft, navigation, and answer-evidence gate are
+relayed. A listener does not receive every internal event. Paired-device
+currentness is checked before writes, and disconnect cleanup releases the
+listener's lease and subscription. See [server event keys](../../packages/contracts/src/runtime-events.ts)
+for the payload vocabulary.
 
 ## File System
 
-> **New section** — routes from `src-server/routes/projects/fs.ts`
-
 ### Browse Directories
+
 ```http
-GET /fs/browse?path=<path>
+GET /api/fs/browse?path=~
 ```
 
-Lists directories (not files) at the given path. Used by the UI directory picker.
+The [directory picker handler](../../src-server/routes/projects/fs.ts) lists
+directories, not regular files. `path` defaults to `~` and is resolved on the
+server's platform. On Windows, the server-emitted `\\` navigation level lists
+present drive roots.
 
-**Query Parameters**:
-- `path`: Absolute path or `~` for home directory (default: `~`). On a Windows
-  host, `\\` (the server-emitted parent of every drive root) lists the
-  machine's present drives.
-
-**Response**:
 ```json
 {
-  "path": "/path/to/projects",
-  "parent": "/path/to",
-  "selectable": true,
-  "entries": [
-    { "name": "Documents", "path": "/path/to/projects/Documents", "isDirectory": true },
-    { "name": "Downloads", "path": "/path/to/projects/Downloads", "isDirectory": true }
-  ]
-}
-```
-
-- `entries[].path` is the entry's full path, canonical for the server's
-  platform (backslash-joined on Windows; drive entries carry their root, e.g.
-  `C:\`).
-- `parent` is where the picker's `..` navigates, derived server-side so
-  clients never re-encode path semantics; `null` marks the top of the
-  hierarchy (POSIX `/`, and the Windows drive listing).
-- `label` optionally names the location for display (the Windows drive
-  listing reports `"This PC"`); clients fall back to `path`.
-- `selectable` is `false` only for navigation-only levels (the Windows drive
-  listing), which must not be selected as a folder.
-
-Entries are sorted: non-dotfiles first, then dotfiles, each group alphabetically.
-
-**Errors** — one status and message per cause (station#3158); the response never
-echoes the requested path:
-
-| Status | `error` | Cause |
-|--------|---------|-------|
-| `404` | `Folder not found` | `ENOENT` — nothing at that path |
-| `403` | `Permission denied reading this folder` | `EACCES`/`EPERM` — it exists, Station cannot read it |
-| `400` | `That path is a file, not a directory` | `ENOTDIR` |
-| `500` | `Folder could not be read` | Anything else; the cause is logged server-side |
-
----
-
-## Insights
-
-> **New section** — routes from `src-server/routes/operations/insights.ts`
-
-### Get Usage Insights
-```http
-GET /insights?days=14
-```
-
-Aggregates monitoring event logs to produce tool usage, hourly activity, agent usage, and model usage statistics.
-
-**Query Parameters**:
-- `days`: Number of days to look back (default: `14`)
-- `agent`, `tool`, `engine`: exact-match filters (station#3075). `engine` reads
-  `gen_ai.provider.name`, added in station#3074 — events written before it
-  carry no engine and are excluded by that filter rather than guessed at.
-- `limit`: keep the top N buckets by rank, server-side (cap 500)
-
-Scope notes, because the filters interact with the other dimensions:
-`tool=` filters the whole scan, so `totalChats`/`agentUsage`/`modelUsage` go
-to zero for a tool-filtered request — those are "not asked", not "none".
-`engine=` yields an empty `modelUsage` structurally, because the
-agent-complete event that carries the model does not carry a provider.
-`tool=` also cannot reach the `(unnamed)` bucket, which is a derived absence
-rather than a value on the event.
-
-When any filter or limit is applied, the response echoes it under `applied`,
-so a filtered rollup cannot be mistaken for a whole-corpus one.
-
-**Response**:
-```json
-{
+  "success": true,
   "data": {
-    "toolUsage": {
-      "files_read_file": { "calls": 42, "errors": 1 },
-      "(unnamed)": { "calls": 3, "errors": 0 }
-    },
-    "hourlyActivity": [0, 0, 0, 0, 0, 0, 2, 5, 12, 18, 20, 15, 10, 8, 14, 16, 12, 9, 6, 4, 2, 1, 0, 0],
-    "agentUsage": {
-      "my-agent": { "chats": 30, "tokens": 45000 }
-    },
-    "modelUsage": {
-      "anthropic.claude-3-5-sonnet-20240620-v1:0": 28
-    },
-    "totalChats": 30,
-    "totalToolCalls": 42,
-    "totalErrors": 1,
-    "days": 14
+    "path": "/path/to/projects",
+    "parent": "/path/to",
+    "selectable": true,
+    "entries": [
+      { "name": "Documents", "path": "/path/to/projects/Documents", "isDirectory": true }
+    ]
   }
 }
 ```
-`totalOutcomeUnknown` (and `outcomeUnknown` per tool) counts results whose
-producer reported no terminal status. They are in `totalToolCalls` but are
-neither successes nor failures, so an error rate computed without them
-flatters itself.
+
+`parent` is server-derived; `null` marks the top. `label` can name a navigation
+level (Windows uses `This PC`). `selectable: false` identifies a navigation-only
+level. Entry paths use the server platform's separators. Non-dot directories
+sort before dot directories, alphabetically within each group.
+
+| Status | Error | Cause |
+| --- | --- | --- |
+| 404 | `Folder not found` | Missing path |
+| 403 | `Permission denied reading this folder` | Filesystem access denied |
+| 400 | `That path is a file, not a directory` | Non-directory path |
+| 400 | `Folder path is too long` | Filesystem path-length refusal |
+| 400 | `Folder path is not valid` | Invalid path argument, such as a NUL byte |
+| 500 | `Folder could not be read` | Other read failure; detail remains in server logs |
+
+These error bodies use `{success: false, error}` and do not echo the requested
+path. The API's authentication and operation authority still apply.
+
+## Insights
+
+### Get Usage Insights
+
+```http
+GET /api/insights?days=14
+```
+
+The [insights owner](../../src-server/routes/operations/insights.ts) streams
+monitoring NDJSON files and returns `{success: true, data}`. `data` contains
+`toolUsage`, a 24-bucket `hourlyActivity` array, `agentUsage`, `modelUsage`,
+`totalChats`, `totalToolCalls`, `totalErrors`, `totalOutcomeUnknown`,
+`totalUnresolved`, and `days`.
+
+- `days` defaults to 14. It is currently parsed as an integer rather than
+  validated against a closed set of windows.
+- `agent`, `tool`, and `engine` are exact filters. Engine reads
+  `gen_ai.provider.name`; an event without that field does not match.
+- A positive `limit` retains the top buckets (cap 500); it does not cap the
+  scanned events or recompute totals from just the displayed buckets.
+- Applied filters/limit are echoed in `data.applied`. Hours use the server's
+  local time. Health probes are excluded.
+
+Chat counts deduplicate observed trace IDs, with a separate count for completed
+`no-session` events. Tool calls count start records; errors, unresolved outcomes,
+and unknown outcomes count end records. They are not a guaranteed joined
+population: a retained end record can have no matching retained start.
+`agentUsage.tokens` is currently initialized to zero and never accumulated by
+this route; it is not measured token usage.
+
+Filtering applies before aggregation. A tool filter excludes ordinary chat
+records, so chat/model aggregates normally disappear. The current
+[Agent-complete emitter](../../src-server/monitoring/emitter.ts) carries model
+but no provider, so its model counts disappear under an engine filter; this is
+a producer limitation, not evidence that the engine used no model. The route
+also accepts other persisted event producers, so it cannot promise this absence
+for every possible record.
+
+Malformed lines and unreadable files are logged and skipped; this response has
+no completeness field for those skipped inputs. A result is a rollup of what
+was read, not certification that every event was available. `(unnamed)` is the
+bucket for a missing tool name and remains distinct from a literal `unknown`.
 
 ### The rows behind the rollup
 
-They live on `GET /monitoring/events` (historical branch, i.e. with `start`
-and/or `end`), which now accepts `agent`, `tool`, `engine`, `conversation`,
-`tools=true` and `limit`.
-
-`limit` is **opt-in**: omit it and you get every matching row. It caps at
-5000, and its semantics are a tail — the most recent N **by timestamp**.
-Rows are returned oldest-first, and that ordering is derived from each row's
-own timestamp rather than from the order the daily log files were enumerated
-(`readdir` guarantees no order, and an OTLP backfill persists client-supplied
-timestamps, so write order and timestamp order genuinely disagree). The order
-does not change depending on whether you pass a limit. `truncated: true` says
-rows were actually dropped, not merely that the cap was reached.
-
-The route does not invent a default cap, and that is deliberate: an earlier
-version applied the MCP tool's 500-row default here, at a route the Monitoring
-view and `station monitoring events` also use. Neither passes a limit, neither
-reads `truncated`, so a month-long range silently became its most recent 500
-rows — and the view builds its conversation autocomplete from that array, so
-filtering for an older conversation reported it did not exist. A consumer that
-needs a bound sets one.
-
-A `start` or `end` that does not parse is a `400`, not a wider window. Epoch
-milliseconds and ISO 8601 are both accepted; epoch *seconds* parse as a 1970
-timestamp, which is why an unparseable bound must not silently fall back.
-
-Deliberately NOT a second endpoint under `/api/insights` (station#3076): that
-handler already applies the two authorization layers these rows require — the
-per-user filter inside `queryEventsFromDisk` and the tenant predicate in
-`filterMonitoringEvents` — and an export that re-derives an authorization
-check is one that eventually gets it wrong. A first attempt here did exactly
-that and returned other users' rows.
-
-Also reachable as the `read_monitoring_events` MCP tool, which reads a
-different store from `read_logs`.
-
-The `(unnamed)` bucket counts tool calls whose producer reported no name
-(station#3073). It is deliberately distinct from a tool literally named
-`unknown`, which older events — written when the name was substituted at
-write time — still carry as their own bucket.
-
+Use the historical branch of [GET /monitoring/events](#getstream-events-sse)
+with `start` or `end` and the desired dimensions. It applies the existing user
+and Session/tenant visibility checks and supports bounded tail reads; the
+`read_monitoring_events` MCP tool uses that route too. These are monitoring
+records, not the server log lines returned by `read_logs`.
 
 ---
 
 ## Standalone Model Capability Routes
 
-> **New section** — routes from `src-server/routes/connections/models.ts`
->
-> **Note**: These standalone routes remain available, but new integrations should use `/bedrock/models` and `/bedrock/pricing` from `bedrock.ts`.
+The [standalone owner](../../src-server/routes/connections/models.ts) is distinct
+from the shared `/bedrock` catalog. Do not assume it has the same pagination,
+cache, selector resolution, pricing normalization, or failure contract.
 
 ### Get Model Capabilities
+
 ```http
 GET /api/models/capabilities
 ```
 
-Lists all ACTIVE and LEGACY **Bedrock** foundation models with capability flags. Results are cached for 1 hour, keyed by the region in effect.
+The handler calls Bedrock `ListFoundationModels`, keeps ACTIVE/LEGACY rows, and
+maps input/output modalities to `supportsImages`, `supportsVideo`,
+`supportsAudio`, and streaming/lifecycle fields. Its one-hour cache is keyed by
+the effective region. Region uses current app config before `AWS_REGION` and the
+default; the runtime supplies Bedrock auth separately.
 
-Scope, stated on the response rather than left to the path (station#3373):
-
-- `source: 'bedrock'` — the one catalogue projected here. There is no row for a
-  Claude Code, Codex, ACP, or Ollama model, so a model absent from `data` is not
-  evidence that it lacks a capability.
-- `complete` — whether that catalogue was actually enumerated. `complete: false`
-  means `data` is **unknown**, not empty. Read an absent row as "unsupported"
-  only when `complete` is `true`.
-
-**Response**:
 ```json
-{
-  "success": true,
-  "source": "bedrock",
-  "complete": true,
-  "data": [
-    {
-      "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-      "modelName": "Claude 3.5 Sonnet",
-      "provider": "Anthropic",
-      "inputModalities": ["TEXT", "IMAGE"],
-      "outputModalities": ["TEXT"],
-      "supportsStreaming": true,
-      "supportsImages": true,
-      "supportsVideo": false,
-      "supportsAudio": false,
-      "lifecycleStatus": "ACTIVE"
-    }
-  ]
-}
+{ "success": true, "source": "bedrock", "complete": true, "data": [] }
 ```
 
-**No AWS credentials** (`200`): `{ "success": true, "data": [], "source": "bedrock", "complete": false, "warning": "AWS credentials not configured" }` — the catalogue could not be read.
+`complete: true` means this Bedrock catalog fetch succeeded, including a cached
+successful fetch. It is not a cross-provider catalog or proof of live model
+execution. Credential-classified failures return 200 with `data: []`,
+`complete: false`, and an AWS-credentials warning. Other failures return 500.
+Never interpret a missing row as unsupported merely because `complete` is true.
 
-**Error** (`500`): `{ "success": false, "error": "..." }` for any other failure.
-
----
+The current image-support UI helper matches IDs directly or by suffix and
+returns `unknown` when no row matches. For a matched row it treats any of the
+image/video/audio flags as `yes`; otherwise a nonempty modality list produces
+`no`, and an absent/empty list remains `unknown`. That is the helper's current
+attachment-support interpretation, not a promise that every provider accepts
+all attachment media.
 
 ### Get Model Pricing (Standalone Route)
-```http
-GET /api/models/pricing/:modelId?region=us-east-1
-```
 
-Fetches per-token pricing for a specific model from the AWS Pricing API.
+`GET /api/models/pricing/:modelId?region=us-east-1` returns
+`{success: true, data: {modelId, region, inputTokenPrice, outputTokenPrice, currency}}`.
+The region defaults through current app config, environment, and `us-east-1`.
 
-**Path Parameters**:
-- `modelId`: Bedrock model ID
-
-**Query Parameters**:
-- `region`: AWS region (default: `AWS_REGION` env or `us-east-1`)
-
-**Response**:
-```json
-{
-  "data": {
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "region": "us-east-1",
-    "inputTokenPrice": 0.003,
-    "outputTokenPrice": 0.015,
-    "currency": "USD"
-  }
-}
-```
+This handler makes one AWS Pricing `GetProducts` request with `MaxResults: 100`,
+then matches model-name text and reads the first price dimension in each
+matching item. It does not follow pagination or normalize the unit; unmatched
+input/output values remain null. It is not an exhaustive price quote or the
+same implementation as `/bedrock/pricing`.
 
 ---
 
 ## Plugins
 
-> **New section** — routes from `src-server/routes/plugins/plugins.ts`
+[Plugin route composition](../../src-server/routes/plugins/plugins.ts) mounts
+these handlers under `/api/plugins`. Installation, visibility, permissions,
+selected code, retained data, and runtime activation have separate owners.
+The [Agent Plugins reference](agent-plugins.md) covers the package format;
+[installation lifecycle](../design/plugin-installation-lifecycle.md) covers
+retained generations and recovery.
 
 ### List Installed Plugins
-```http
-GET /plugins
-```
 
-Returns the installed plugins **the calling principal can see**, with manifest
-info, bundle status, git metadata, and permission state.
+`GET /api/plugins` returns `{plugins}` after projecting the installed inventory
+for the calling principal. The instance operator sees the installed set;
+other principals see its intersection with their visibility grants. An unresolved
+principal returns 400; unreadable visibility, grants, or installation inventory
+returns 503 instead of an empty success.
 
-Installation is instance-wide, but the list is a per-principal projection
-(#2067): the operator receives every installed plugin, and anybody else
-receives only the ones an operator has granted them sight of. A plugin outside
-the caller's projection is ABSENT from the array — there is no `visible: false`
-flag, because a flag would be a second copy of the projection that a client
-could reassemble an inventory from. A caller this Station cannot attribute to a
-principal gets `400` with the principal-unresolved code, never a default list.
-
-**Response**:
-```json
-{
-  "plugins": [
-    {
-      "name": "my-plugin",
-      "displayName": "My Plugin",
-      "version": "1.0.0",
-      "description": "A plugin",
-      "hasBundle": true,
-      "layout": { "slug": "my-layout" },
-      "agents": [{ "slug": "assistant" }],
-      "providers": [],
-      "links": [],
-      "git": { "hash": "abc1234", "branch": "main", "remote": "https://github.com/org/my-plugin.git" },
-      "permissions": {
-        "declared": ["network.fetch"],
-        "granted": ["network.fetch"],
-        "missing": []
-      }
-    }
-  ]
-}
-```
-
----
+Rows include manifest metadata, `installationReadiness`, bundle/settings
+availability, git observations when readable, and permission state. Rejected
+installed entries can still appear with their rejection. `hasBundle` and a
+listed provider declaration are not proof that its runtime contribution is
+active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
+shows the complete current projection.
 
 ### Revoke Plugin Permissions
+
 ```http
-DELETE /plugins/:name/grant
+DELETE /api/plugins/:name/grant
 ```
-
-The grant-store withdrawal commits before runtime reconciliation begins. New
-per-call use stops immediately. Lifecycle permissions additionally retire the
-exact installed plugin generation's server module, operational-event
-subscriptions, provider registrations/adapters, and engine connections.
-
-`200` means reconciliation reached a terminal `completed`, `superseded`, or
-`incomplete` result. `202` means the durable withdrawal succeeded but existing
-work is still `winding-down`; its operation id and generation identify that
-owned continuation. An `incomplete` result names bounded cleanup stages and can
-be retried with the same idempotent DELETE.
-
-Trusted approvals use the same reconciliation service. After an approval is
-terminal, `GET /plugins/host-approvals/:id` retains its `reconciliation`
-projection—including status, operation id, generation, and bounded effect or
-failure stage names—alongside `approval.status`. An approved consent record
-therefore does not erase a still-winding or incomplete withdrawal caused by
-grant rebinding.
 
 ```json
-{
-  "success": true,
-  "revoked": ["providers.register"],
-  "granted": [],
-  "reconciliation": {
-    "status": "completed",
-    "operationId": "8f3f...",
-    "generation": 4,
-    "installationGeneration": "sha256:...",
-    "effects": ["provider-retirement", "adapter-retirement", "engine-connections"]
-  }
-}
+{ "permissions": ["network.fetch"] }
 ```
 
----
+The body names permissions to withdraw. The grant store commits withdrawal before
+runtime reconciliation. Lifecycle permissions can additionally retire the
+captured generation's server module, subscriptions, providers/adapters, and
+engine connections. The response contains `success`, `revoked`, `granted`, and
+`reconciliation`.
+
+`winding-down` returns 202. A terminal `completed`, `superseded`, or `incomplete`
+reconciliation returns 200, so HTTP success alone does not prove all cleanup
+completed. An unavailable grant store returns 503. The
+[permission routes](../../src-server/routes/plugins/plugin-public-routes.ts)
+and [reconciliation service](../../src-server/services/plugins/plugin-grant-reconciliation.ts)
+own those results. Host-approval reads retain reconciliation separately from
+approval status; approving consent does not erase pending cleanup.
 
 ### Plugin Visibility Directory (operator only)
-```http
-GET /plugins/visibility
-```
 
-Every principal this instance has a record of, and the plugins each has been
-granted sight of. The directory is the trusted device registry's own list
-(`DevicePairingService.listKnownPrincipals`) plus the operator's row; a revoked
-device stays listed, carrying `revoked: true`, so its grants can still be
-removed.
+`GET /api/plugins/visibility` returns `{success: true, data: {principals}}`.
+Its directory comes from known device/person principals in the trusted device
+registry plus the operator row; it is not an inventory of every account or
+principal the application could know. A principal with any active device is not
+reported revoked solely because another device was revoked.
 
-Authorization is the request's own resolved principal, re-checked in the
-handler: a caller who is not the instance operator gets `403`, and a caller who
-cannot be resolved at all gets `400`. The body's fields are never consulted as
-authority.
-
-The operator's row reports `plugins: []` as recorded. That is not a rendering
-gap: the operator sees every installed plugin because the projection derives
-it, so writing the installed set into the grant column would display a record
-that does not exist.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "principals": [
-      { "id": "human:local:operator", "display": "Operator", "revoked": false, "plugins": [], "operator": true },
-      { "id": "human:device:laptop", "display": "Laptop", "revoked": false, "plugins": ["notes"], "operator": false }
-    ]
-  }
-}
-```
-
----
+Each row carries its recorded plugin grants and an `operator` flag. The operator's
+blanket sight is derived by the visibility service, not stored as an enumerated
+list of every installed plugin.
 
 ### Grant or Revoke Plugin Visibility (operator only)
+
 ```http
-POST /plugins/visibility/grants
-DELETE /plugins/visibility/grants
+POST /api/plugins/visibility/grants
+DELETE /api/plugins/visibility/grants
 ```
 
-Body: `{ "principalId": "human:device:laptop", "plugin": "notes" }`.
-
-`principalId` is the TARGET of the change, never the authority for it. Both
-verbs answer `403` to a non-operator caller before the body is read, and `400`
-when `principalId` or `plugin` could never name a principal or a canonical
-plugin. Grants are written through the store's serialized per-path updater, so
-two grants issued concurrently cannot lose each other.
-
-Visibility is a listing and composition projection, not execution authority.
-Hiding a plugin from a person does not revoke anything the plugin may do —
-that remains the plugin permission grant state, which every bundle delivery and
-every invocation rechecks on its own.
-
-**Response**:
 ```json
-{ "success": true, "data": { "principalId": "human:device:laptop", "plugins": ["notes"] } }
+{ "principalId": "human:device:laptop", "plugin": "notes" }
 ```
 
----
+`principalId` is the target, not caller authority. The
+[handlers](../../src-server/routes/plugins/plugin-visibility-routes.ts) require
+the resolved instance operator and validate the request. Non-operator callers
+with a valid body receive 403; unresolved principals or invalid inputs receive
+400. The [service](../../src-server/services/plugins/plugin-visibility-service.ts)
+serializes its read/modify/write and returns the target's updated grant list as
+`{success: true, data: {principalId, plugins}}`.
+
+Visibility controls listing and composition. It does not grant a plugin runtime
+permission or revoke an already granted execution capability.
 
 ### Which routes return plugin identity
 
-The acceptance criterion behind #2067 is about ENUMERATION, not about one
-route: a collaborator must not be able to learn what is installed on this
-instance. `GET /plugins` was the obvious enumerator; four more were found on
-the same read tier afterwards, and five more plus the event stream after
-that. The dispositions are written down in
-`src-server/routes/plugins/plugin-identity-enumeration.ts`. Each is driven
-against its real handler — most in that file's paired test, the Pane
-catalogue and layout-picker rows in
-`src-server/routes/projects/__tests__/pane-visibility.routes.test.ts` and the
-Home-role rows in
-`src-server/routes/plugins/__tests__/plugin-home-role-routes.test.ts`, each
-citation checked to name a file that exists. And because a written inventory is only as good as the thing that
-checks it, `scripts/plugin-identity-enumeration-scan.mjs` fails the pre-push
-gate when a handler returns plugin identity and has neither a disposition nor
-a written exclusion. That scan states its own blind spots in its docblock;
-read them before trusting it as complete.
+The [route inventory](../../src-server/routes/plugins/plugin-identity-enumeration.ts)
+and [scanner](../../scripts/plugin-identity-enumeration-scan.mjs) record three
+current dispositions. The scanner is structural and has documented exclusions;
+it is not proof that every possible response path was executed.
 
-| Route | Disposition |
+| Surface | Current disposition |
 | --- | --- |
-| `GET /plugins` | projected — a plugin outside the caller's projection is absent from the array |
-| `GET /projects/:slug/panes` | projected — contributions, descriptors, instances and availability for an unseen plugin are all dropped (see "Discovery only" below) |
-| `GET /projects/layouts/available` | projected — the layout picker |
-| `GET /registry/layouts` | projected |
-| `GET /registry/layouts/installed` | projected |
-| `GET /projects/:slug/layouts` | projected with residual — the stored `config.plugin` is dropped; the rest of a row is the project's own record |
-| `GET /projects/:slug/layouts/:layoutSlug` | projected with residual — the live plugin read, the catalog backfill, `config.plugin`, `catalogContribution` and the plugin's global actions are all withheld |
-| `GET /plugins/home-role/candidates` | projected — a user-facing picker, so a collaborator chooses from what they can see |
-| `GET /plugins/home-role` | projected — a holder the caller cannot see is reported as `none` |
-| `GET /plugins/check-updates` | operator only |
-| `POST /plugins/reload` | operator only |
-| `GET /registry/plugins` | operator only |
-| `GET /registry/plugins/installed` | operator only |
-| `GET /registry/agents/installed` | operator only |
-| `GET /registry/integrations/installed` | operator only |
+| `/api/plugins`, Project Pane catalog, layout pickers, Registry layouts, Home-role candidates/holder | Projected for the calling principal |
+| Project layout list/detail | Projected with retained user-record text |
+| Plugin update checks/reload, Registry plugin available/installed lists, Registry Agent/integration installed lists | Instance operator only |
 
-Projected routes answer everybody and narrow the answer. Operator-only routes
-refuse a non-operator outright, because they are maintenance surfaces whose
-actions are operator actions anyway — a projected half-answer there would
-still enumerate while answering a question the caller cannot act on.
+[Project layout reads](../../src-server/routes/projects/projects.ts) withhold a
+hidden plugin's binding, live package merge, catalog attribution, global actions,
+and skills. The user's stored layout name, slug, description, or component
+strings can remain; this is not a claim that the entire response contains no
+plugin-authored text. Apply/from-plugin operations check visibility before
+installed/enabled state.
 
-**`projected-with-residual`** is the third disposition, and the two layout
-READ routes are why it exists (#2090/#2103). For a caller who cannot see the
-owning plugin they perform no live `plugins/<name>` read and no catalog
-backfill, and they withhold `config.plugin`, `catalogContribution` and the
-plugin's global actions and skills — so a hidden plugin and a name nobody
-ever installed answer identically, which is what closes the enumeration
-question. What they cannot do is satisfy the plain `projected` contract, that
-the response body names no ungranted plugin at all: these routes answer about
-the PROJECT's own stored record, whose component ids are plugin-namespaced by
-convention, whose `name` and `description` the catalog parser falls back to
-the plugin manifest's (and finally to the plugin name itself), and whose
-`slug` is plugin-authored and IS the route address.
+The [Pane-reference owner](../../src-server/services/layouts/layout-pane-reference.ts)
+can attach response-only `paneReferences: {unavailableTabIds}`. It names affected
+stored tabs without claiming a cause, source, or remedy. Field presence matters
+even when the array is empty: it indicates a withheld binding. The
+[layout view](../../src-ui/src/views/layout-workspace-shape.ts) carries the verdict
+to the renderer. This can conservatively mark multiple plugin-component tabs
+when the record does not identify which plugin owns each component. Portable
+Kit references follow their Kit lifecycle rather than a fictitious installed
+plugin directory.
 
-Calling them `projected` would have put them under a whole-body string
-assertion they cannot satisfy and that a fixture can be chosen to dodge;
-excusing them in the scan would have dropped them out of the enumerated list
-and out of any executable coverage, leaving a prose citation. So they are
-rows, and their test names the exact strings that must be absent for a
-collaborator and present for the operator — the stored binding, the catalog
-attribution, the `plugins/<name>` source, the contribution version, and the
-tab only the live merge could have produced — and then asserts the residual
-is still there rather than pretending otherwise.
+Plugin event frames on `/events` use the same projection; update-available lists
+reach the operator only. The Home-role slot frame has a reserved name and marker
+and names no installed plugin. See the [event gate](../../src-server/routes/plugins/plugin-identity-enumeration.ts)
+and [relay](../../src-server/routes/orchestration/events.ts).
 
-`POST /projects/:slug/layouts/apply` and `POST
-/projects/:slug/layouts/from-plugin` refuse a plugin the caller cannot see
-with the message an id nobody has already gets; the apply check runs before
-the installed-and-enabled check, so "exists here, disabled" is not
-distinguishable from "does not exist".
-
-**The event stream.** The six `plugins:*` channels
-(`installed`, `removed`, `updated`, `settings-changed`, `grants-changed`,
-`updates-available`) were `broadcast`, meaning `GET /events` relayed them to
-every listener unconditionally — so a collaborator holding the stream open
-watched the inventory change by name. They are `scoped` now, which in that
-relay means denied unless a named gate passes them, and the gate is the same
-projection. `plugins:updates-available` carries a list rather than one name
-and reaches the operator only, matching its route. The Home-role
-`grants-changed` frame is exempt because it names no plugin — it reports the
-one instance-level Home slot — and the exemption requires the grants-changed
-channel plus a payload marker no plugin frame sets, with the sentinel name
-reserved in BOTH manifest readers so no plugin can be installed under it.
-The two axes are independent on purpose: a plugin installed under such a name
-before the reservation existed still cannot ride the exemption, because it
-cannot produce the marker.
-
-**Discovery, and the reference half beside it.** A plugin outside the
-caller's projection is dropped from the Pane catalogue entirely. That is
-discovery — "what could I add?". The other half, a layout that ALREADY names
-such a pane, is #2090 and is now answered: the layout read routes consult
-`src-server/services/layouts/layout-pane-reference.ts` and attach a
-response-only `paneReferences` verdict, and the host renders that tab as
-unavailable instead of resolving a component it cannot load and asserting
-`Plugin layout component "X" is not installed or registered.` — a cause the
-server never derived and that is false.
-
-The verdict carries NO reason, NO source and NO action: only the ids of the
-layout's own tabs that cannot be shown. The server cannot tell a plugin this
-person cannot see from one that was never installed — the visibility
-predicate reads a grant list, not the install tree — and that
-indistinguishability is exactly what keeps the read from being an existence
-oracle, so a reason code would give it back. It is therefore NOT a
-`WorkspacePaneAvailability`: the `pane-not-available-to-viewer` reason stamps
-`source: "visibility"` and its copy names an operator and Settings. That
-reason code still has no producer and its precedence is still kept as a
-contract; see `packages/contracts/src/workspace-pane-availability.ts`.
-
-The verdict's PRESENCE is also a signal: a response carrying it has had its
-plugin binding withheld, which is why `unavailableTabIds` may be empty and
-why absence of the whole field — not an empty array — is what means nothing
-was withheld.
-
-Two earlier implementations were tried and removed: one was an existence
-oracle (a project member can seed guessed descriptor ids); the other could
-not work, because a saved layout names a pane by `component` and no
-descriptor id is persisted for a producer to find, and the client catalogue
-builds its entries exclusively from `descriptors` so a descriptor-free entry
-would have been discarded anyway.
-
-**What is not closed.** `GET /plugins/:name/bundle.js`, `bundle.css` and
-`permissions` are addressed by name and reveal no other plugin, but a 200
-against a 404 is a weak existence oracle for a caller who can already guess an
-exact plugin name. Gating asset delivery on the projection is a separate
-change with its own UI path to prove; the exclusion is recorded with that
-reasoning in the scan.
-
-A portable Kit pane is deliberately NOT subject to this projection. Its pane
-carries `origin: "plugin"` with the Kit's contribution ref, because the
-provenance union has no Kit origin to name, but that ref has no
-`plugins/<name>` directory, never appears in `GET /plugins`, and an operator
-has no way to grant it. Kit visibility belongs to the Kit lifecycle record and
-is a separate question.
-
----
+Addressed bundle, permission, and plugin-server routes are separate from catalog
+projection. Their responses can reveal whether a guessed exact name is present;
+the scanner records this as a residual limitation. Hiding a catalog entry is not
+a guarantee that every addressed asset responds identically for hidden and
+missing packages.
 
 ### Preview Plugin (Pre-install Validation)
+
 ```http
-POST /plugins/preview
+POST /api/plugins/preview
 ```
 
-Fetches a plugin from a git URL or local path, validates it, and returns manifest, components, conflicts, and dependencies — without installing.
-
-For a registry entry, send `registryId`; the host resolves its source and claim.
-When a selected registry policy verifies the claim, preview also returns
-`registryTrustRevision` for the root and each verified dependency. Return those
-opaque values in the corresponding install consent. They bind the reviewed
-claim, signing key, and applied policy; request bodies cannot supply trust keys
-or a verified claim. Required signatures are scoped to that registry, while
-unrelated unsigned local sources remain supported.
-
-Trust refusal is HTTP 409 with `code: "registry-trust-refused"`, a closed `reason`
-(such as `stale-review`, `missing-claim`, `signature-mismatch`, or
-`continuity-change`), and a bounded message. A stale review needs another
-preview. Continuity changes and unavailable receipts retain data and require
-the separately reviewed remedy; they are not automatically retried or migrated.
-See [registry trust policy](../design/registry-trust-policy.md) for the supported
-local profile, execution fences, and tenant/hosted limits.
-
-Dependencies with unsupported lifecycle features return HTTP 400 with
-`code: "unsupported-plugin-dependency"` and `valid: false`, without a digest or
-permission approval payload. Preview and install use the same support policy;
-preview does not grant or expand permissions. Registry-backed local dependencies
-resolve relative transitive sources from the registry source directory under the
-same allowed sibling-root containment rules as installation.
-
-**Request Body**:
 ```json
-{
-  "source": "https://github.com/org/my-plugin.git"
-}
+{ "source": "/absolute/path/to/plugin" }
 ```
 
-**Response**:
-```json
-{
-  "valid": true,
-  "manifest": { "name": "my-plugin", "version": "1.0.0", "agents": [], "providers": [] },
-  "components": [
-    { "type": "agent", "id": "my-plugin:assistant" },
-    { "type": "layout", "id": "my-layout" }
-  ],
-  "conflicts": [],
-  "dependencies": [],
-  "git": { "hash": "abc1234", "branch": "main" }
-}
-```
+Alternatively send `registryId` so the host resolves the registry source and
+claim. The [preview handler](../../src-server/routes/plugins/plugin-install-routes.ts)
+stages source, validates it, reports components/conflicts/dependencies, and
+cleans the staged directory without installing it. `valid: true` also carries
+`contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
+observed `installationRevision`, `existingDataScope`, and permission/dependency
+consent information. When an open install proposal names the source, preview
+copies a local folder without its `.git` entries, refuses a local Git repository
+URL, and reports `gitMetadata: "excluded"`. A folder once installed that way
+stays stripped: Station records it in `plugin-source-staging.json`, so later
+previews exclude its git metadata after the proposal resolves or the plugin is
+uninstalled. An unreadable record fails closed.
 
-**Error** (`400`/`500`):
-```json
-{ "valid": false, "error": "Not a valid plugin: plugin.json not found", "components": [], "conflicts": [] }
-```
-
----
+A source-fetch refusal can be HTTP 200 with `valid: false`; inspect the body.
+Invalid manifests/context or unsupported dependencies return 400; a missing
+registry entry returns 404; changed registry source or trust refusal returns 409.
+A trust refusal includes a closed reason such as stale review or a missing
+claim. Request data cannot supply trusted signing keys or declare itself
+verified. See [registry trust policy](../design/registry-trust-policy.md).
 
 ### Install Plugin
+
 ```http
-POST /plugins/install
+POST /api/plugins/install
 ```
 
-Installs a plugin from a git URL or local path, including agents, layout config, providers, tools, and dependencies.
+The body contains `source`, optional `skip`, and a **required** `consent` object
+from the reviewed preview. Consent carries `contentDigest`, `permissions`,
+`grantRevision`, applicable `registryTrustRevision`, and approved dependency IDs
+and their individual approval records. `dataPolicy` and `expectedInstallation`
+cover preserve/reset and the observed installed generation. Do not construct
+fake revisions or reuse a preview after its source changes; use the
+[SDK install flow](sdk.md).
 
-**Request Body**:
-```json
-{
-  "source": "https://github.com/org/my-plugin.git",
-  "skip": ["agent:my-plugin:assistant"]
-}
-```
+This route uses the [person-approval predicate](../../src-server/routes/plugins/plugin-person-approval.ts):
+internal agent tools and unconfirmed person-device callers cannot install
+directly. An Agent can propose work for a person to complete. Normal request
+scope and other admission rules still apply.
 
-- `source`: Git URL (supports `#branch` suffix) or local path
-- `skip`: Optional array of component IDs to exclude (e.g. `"agent:<slug>"`, `"layout:<slug>"`, `"provider:<type>"`, `"tool:<id>"`)
+The successful result carries plugin/tools/dependencies and permission state.
+`permissions.dependencies` reports the installed transitive graph's remaining
+approval needs, not merely the preview's requirements. Older responses can omit
+it, which means unknown. A persisted install awaiting activation returns 202
+with `success: false` and `configurationActivation`, or a pending lifecycle
+receipt. It is not complete solely because the HTTP request was accepted.
 
-**Response**:
-```json
-{
-  "success": true,
-  "plugin": { "name": "my-plugin", "displayName": "My Plugin", "version": "1.0.0", "hasBundle": true },
-  "tools": [{ "id": "my-tool", "status": "installed" }],
-  "dependencies": [{ "id": "dep-plugin", "status": "installed" }],
-  "permissions": {
-    "autoGranted": ["network.fetch"],
-    "pendingConsent": [],
-    "dependencies": [{ "id": "dep-plugin", "pendingConsent": [] }]
-  }
-}
-```
-
-`permissions.dependencies` reports current missing permissions for the actual
-installed transitive dependency graph, after installation and grant binding.
-Unlike preview consent requirements, an already-granted permission is absent
-from this pending list. Older servers may omit it; clients must then report
-dependency approval status as unknown rather than infer it from preview.
-
-A parent or dependency content/permission approval mismatch returns HTTP 400
-with structured `consent.reason`, `consent.required`, and `consent.consented`.
-This does not claim that no earlier dependency effects occurred: completed
-compensation may precede the refusal. Failed compensation is not a simple
-consent refusal and may leave retained dependency state (HTTP 500 for cleanup
-failure, or the existing HTTP 409 for a diagnosed content-lock cycle).
-
----
+Consent echoes the preview's `gitMetadata`. When an open install proposal names
+the source, or Station previously installed it without its git metadata, and the
+approving preview kept git metadata, install returns 409 with
+`consent.reason: "git-metadata"`; preview again and install from that preview.
+Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
+conflicts return 409, and unexpected/compensation failure can return 500.
+A dependency refusal is not a promise that no earlier staged/dependency effect
+occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
+records compensation and retained-state limits.
 
 ### Check for Plugin Updates
-```http
-GET /plugins/check-updates
-```
 
-**Operator only (#2067).** This enumerates every installed plugin's name and
-version, and runs `git fetch` in each plugin directory on the way. Acting on
-the result is operator work, so a non-operator is refused with `403` rather
-than served a projected half-list — see "Which routes return plugin identity"
-below. A caller this Station cannot attribute gets `400`.
-
-Checks all installed plugins for available updates via git fetch (git-installed) or registry version comparison. Registry-installed plugins report the installed plugin name in `name`; when a registry entry id differs from the installed manifest name, callers should use the reported installed name as the route target.
-
-**Response**:
-```json
-{
-  "updates": [
-    {
-      "name": "my-plugin",
-      "currentVersion": "1.0.0",
-      "latestVersion": "newer commit available",
-      "source": "git"
-    }
-  ]
-}
-```
-
----
+`GET /api/plugins/check-updates` is operator-only. It reads installed names and
+checks git/registry update sources. Results use the installed manifest name as
+`name`, even when a registry entry ID differs. A caught top-level check failure
+currently returns 200 with `{updates: []}`; that legacy result cannot prove
+there were no available updates.
 
 ### Update Plugin
-```http
-POST /plugins/:name/update
-```
 
-Updates a plugin via `git pull` (git-installed) or registry reinstall. Registry-installed plugins may be addressed by either their installed plugin name or their registry entry id; filesystem, build, prompt, and integration ownership use the installed manifest identity, while the registry provider receives its registry id. A plugin name is immutable across an update. Station snapshots the installed generation, synchronizes its owned agent definitions, activates providers, and reloads runtime agents as one configuration mutation. If validation, build, provider activation, runtime reload, or retired-adapter cleanup fails, the prior plugin files, agents, and provider source are restored or the response remains explicitly activation-pending; a removed provider is never reported as fully activated while its cleanup is unconfirmed.
+`POST /api/plugins/:name/update` uses the person-approval predicate and resolves
+the installed identity/current generation. A managed installation selects new
+retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
+of its selected bytes. Its update path supplies no new operator consent, so
+changes requiring a preview decision must be completed through preview/install.
+Missing update source or managed update refusal returns 409; pending lifecycle
+or activation returns 202.
 
-**Response**:
-```json
-{
-  "success": true,
-  "plugin": { "name": "my-plugin", "version": "1.1.0" }
-}
-```
-
----
+The legacy path can still use git/registry update with a backup and restoration
+on failure. Do not treat either path's response as proof that unmanaged child
+processes or remote work ended. The
+[lifecycle handler](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
+contains the current identity, compensation, and activation branches.
 
 ### Remove Plugin
-```http
-DELETE /plugins/:name
-```
 
-Removes a plugin, its agents, layout config, and permission grants. Conversation memory is preserved. Removal is not reported as complete until runtime agent maps have reloaded and retired provider adapters have confirmed cleanup. A durable file removal whose runtime reload is still pending returns HTTP `202` with `success: false` and a `configurationActivation` receipt.
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/plugins/:name` also requires person approval. It resolves the
+installed manifest identity, withdraws owned contributions/grants, and reconciles
+runtime state while preserving conversation memory. Managed package removal
+retains code/data for its lifecycle owner; it is not immediate disk reclamation.
+A pending activation returns 202 with `success: false` and its receipt. Inspect
+the outcome before retrying or declaring cleanup complete.
 
 ### Serve Plugin Bundle (JS)
-```http
-GET /plugins/:name/bundle.js
-```
 
-Serves the compiled JavaScript bundle for a plugin. Returns `404` if no bundle exists.
-
-**Response**: `application/javascript`
-
----
+`GET /api/plugins/:name/bundle.js` returns JavaScript with `Cache-Control: no-cache`
+when the [bundle reader](../../src-server/routes/plugins/plugin-bundles.ts) can
+capture current, contained bytes. Unavailable/missing bytes return 404.
 
 ### Serve Plugin Bundle (CSS)
-```http
-GET /plugins/:name/bundle.css
-```
 
-Serves the compiled CSS bundle for a plugin. Returns empty `200` if no CSS exists.
-
-**Response**: `text/css`
-
----
+`GET /api/plugins/:name/bundle.css` returns text/css for present bytes. The current
+handler returns an empty 200 when its reader returns no CSS, including unavailable
+reads. That result is not proof of a complete CSS-free installation.
 
 ### Get Plugin Permissions
-```http
-GET /plugins/:name/permissions
-```
 
-Returns declared and granted permissions for a plugin.
-
-**Response**:
-```json
-{
-  "declared": ["network.fetch", "fs.read"],
-  "granted": ["network.fetch"]
-}
-```
-
----
+`GET /api/plugins/:name/permissions` returns `declared`, `granted`,
+`contentBinding`, and `withheld` for the captured installation. Missing runtime
+artifact returns 404; unreadable grants return 503.
 
 ### Grant Plugin Permissions
-```http
-POST /plugins/:name/grant
-```
 
-Grants one or more permissions to a plugin.
-
-**Request Body**:
-```json
-{ "permissions": ["fs.read"] }
-```
-
-**Response**:
-```json
-{ "success": true, "granted": ["fs.read"] }
-```
-
----
+`POST /api/plugins/:name/grant` accepts `{permissions: [...]}` for declared,
+grantable permissions. Trusted permissions require the isolated host approval
+channel and are refused here with 403. An accepted response can include
+`granted`, `withdrawn`, and reconciliation: binding a new decision can withdraw
+old permissions, so a grant request is not necessarily an additive-only effect.
+Winding reconciliation returns 202.
 
 ### Plugin Fetch Proxy (Scoped)
-```http
-POST /plugins/:name/fetch
-```
 
-Server-side HTTP proxy for a plugin. Requires the plugin to have the `network.fetch` permission grant.
-
-**Request Body**:
-```json
-{
-  "url": "https://api.example.com/data",
-  "method": "GET",
-  "headers": { "Authorization": "Bearer <token>" },
-  "body": null
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "status": 200,
-  "contentType": "application/json",
-  "body": "{\"key\":\"value\"}"
-}
-```
-
-**Error** (`403`): Plugin does not have `network.fetch` permission.
-
----
+`POST /api/plugins/:name/fetch` is currently disabled. It checks the named
+`network.fetch` grant, then returns 403 because plugin execution identity is not
+yet verifiable. A grant does not make this endpoint an operational HTTP proxy.
 
 ### Unscoped Plugin Fetch Proxy
-```http
-POST /plugins/fetch
-```
 
-Server-side HTTP proxy with no permission check. It has the same request/response shape as the scoped variant above; new integrations must use the scoped route.
-
----
+`POST /api/plugins/fetch` returns 403 requiring a named route. The development CLI
+proxy is a separate implementation; neither production route provides the
+successful proxy response previously shown here.
 
 ### Reload Plugin Providers
-```http
-POST /plugins/reload
-```
 
-Clears and reloads all plugin providers from disk. Useful after manual plugin changes.
-
-**Response**:
-```json
-{ "success": true, "loaded": 3 }
-```
-
----
+`POST /api/plugins/reload` is operator-only. It reconciles installation
+projections, quiesces server modules/subscriptions, prepares and publishes the
+provider generation, and reconciles Agent state. A pending projection or runtime
+activation returns 202 with `success: false`. Completed responses include
+`loaded`; a failed quiescence/reload returns 500. It is not a raw unconditional
+"clear and reload everything" action.
 
 ### Get Plugin Providers
-```http
-GET /plugins/:name/providers
-```
 
-Returns provider declarations for a plugin with their enabled/disabled state.
-
-**Response**:
-```json
-{
-  "providers": [
-    { "type": "auth", "module": "dist/auth-provider.js", "layout": null, "enabled": true }
-  ]
-}
-```
-
----
+`GET /api/plugins/:name/providers` returns `{providers}` with declared `type`,
+`module`, retained legacy `layout`, and `enabled` from provider overrides.
+`enabled` here is configuration, not proof of runtime activation.
 
 ### Get Plugin Overrides
-```http
-GET /plugins/:name/overrides
-```
 
-Returns the current provider override config for a plugin (e.g. which providers are disabled).
-
-**Response**:
-```json
-{ "disabled": ["auth"] }
-```
-
----
+`GET /api/plugins/:name/overrides` returns `{disabled: [...]}` from the override
+record for the current captured package.
 
 ### Update Plugin Overrides
-```http
-PUT /plugins/:name/overrides
-```
 
-Updates provider override config for a plugin.
-
-**Request Body**:
-```json
-{ "disabled": ["auth"] }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
+`PUT /api/plugins/:name/overrides` accepts `{disabled: [...]}`, preserves other
+stored overrides, and returns `{success: true}` after saving. This handler does
+not itself reload providers. Current-artifact checks can return 409, including
+when a change was saved before currentness was lost; reload and inspect before
+retrying. See [config handlers](../../src-server/routes/plugins/plugin-config-routes.ts).
 
 ---
 
 ## Registry
 
-> **New section** — routes from `src-server/routes/plugins/registry.ts`
+The [registry routes](../../src-server/routes/plugins/registry.ts) are mounted
+under `/api/registry`. Catalogs and mutation results depend on registered
+providers; a list entry is not proof of successful installation or activation.
+Plugin-backed Agent entries use the full plugin lifecycle when resolved as such.
 
 ### List Available Agents (Registry)
-```http
-GET /registry/agents
-```
 
-Lists agents available in the configured agent registry provider.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-agent", "version": "1.0.0", "description": "..." }] }
-```
-
----
+`GET /api/registry/agents` returns `{success: true, data}` from the Agent registry
+provider's available catalog.
 
 ### List Installed Agents (Registry)
-```http
-GET /registry/agents/installed
-```
 
-Lists agents currently installed via the registry.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-agent", "version": "1.0.0" }] }
-```
-
----
+`GET /api/registry/agents/installed` returns that provider's installed rows under
+`{success: true, data}` and requires the instance operator.
 
 ### Install Agent from Registry
-```http
-POST /registry/agents/install
-```
 
-**Request Body**:
-```json
-{ "id": "my-agent" }
-```
-
-**Response**:
-```json
-{ "success": true, "message": "Installed" }
-```
-
----
+`POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
+When the ID resolves to a plugin, it uses the plugin install/consent path below.
+Otherwise it calls the Agent registry provider and returns its result. A
+successful provider result triggers ACP-mode refresh, whose failure is currently
+caught separately; it is not a universal runtime-activation receipt.
 
 ### Uninstall Agent from Registry
-```http
-DELETE /registry/agents/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/registry/agents/:id` likewise resolves a plugin-backed entry through
+plugin removal, or calls the Agent registry provider. Plugin lifecycle pending
+results retain their activation semantics; a plain provider result is not the
+same receipt.
 
 ### List Available Integrations (Registry)
-```http
-GET /registry/integrations
-```
 
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-tool", "version": "1.0.0", "description": "..." }] }
-```
-
----
+`GET /api/registry/integrations` returns `{success: true, data}` after the route's
+ID filtering, first-ID deduplication, and display-text cleanup.
 
 ### List Installed Integrations (Registry)
-```http
-GET /registry/integrations/installed
-```
 
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-tool", "version": "1.0.0" }] }
-```
-
----
+`GET /api/registry/integrations/installed` is operator-only and returns the
+integration registry provider's installed catalog.
 
 ### Install Integration from Registry
-```http
-POST /registry/integrations/install
-```
 
-Installs an integration and auto-generates its `integration.json` from provider metadata.
-
-**Request Body**:
-```json
-{ "id": "my-tool" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /api/registry/integrations/install` accepts `{id}`. After successful provider
+installation, an available ToolDef is saved **disabled**. An existing
+credential-binding configuration can refuse replacement with 409. Provider
+installation success does not prove connection, enablement, or Agent attachment.
 
 ### Uninstall Integration from Registry
-```http
-DELETE /registry/integrations/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/registry/integrations/:id` returns the provider's uninstall result.
+After provider success it attempts to delete the local definition; that deletion
+error is currently caught, so success is not proof that local cleanup completed.
 
 ### Sync Integration Registry
-```http
-POST /registry/integrations/sync
-```
 
-Triggers a sync of the integration registry provider.
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /api/registry/integrations/sync` awaits provider sync and returns
+`{success: true}`.
 
 ### List Available Skills (Registry)
-```http
-GET /registry/skills
-```
 
-Lists skills available in the configured registry provider.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-skill", "description": "..." }] }
-```
-
----
+`GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
+keeping the first occurrence. No registered providers gives an empty list.
 
 ### Install Skill from Registry
-```http
-POST /registry/skills/install
-```
 
-**Request Body**:
-```json
-{ "id": "my-skill" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
+result. It attempts a Skill reload after success; a caught reload failure does
+not change the install result.
 
 ### Uninstall Skill from Registry
-```http
-DELETE /registry/skills/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/registry/skills/:id` returns SkillService's removal result and uses
+the same reload behavior. Package-owned read-only Skills retain their owner's
+mutation rules.
 
 ### List Available Plugins (Registry)
-```http
-GET /registry/plugins
-```
 
-Lists plugins available in the configured registry provider.
-
-**Operator only (#2067).** Every row carries an `installed` flag, so this is
-the instance's plugin inventory restated against a catalog. Installing is
-operator work; a non-operator is refused with `403`.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-plugin", "version": "1.0.0", "description": "..." }] }
-```
-
----
+`GET /api/registry/plugins` is operator-only and returns
+`{success: true, data}` with catalog installation status.
 
 ### List Installed Plugins (Registry)
-```http
-GET /registry/plugins/installed
-```
 
-**Operator only (#2067).** This is the instance plugin inventory with a
-registry shape around it; a non-operator is refused with `403`.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-plugin", "version": "1.0.0" }] }
-```
-
----
+`GET /api/registry/plugins/installed` filters the same availability projection to
+installed entries; it is also operator-only.
 
 ### Install Plugin from Registry
-```http
-POST /registry/plugins/install
-```
 
-Installs a plugin from the configured plugin registry providers. If multiple plugin registry providers claim the same plugin id, Station rejects the install as ambiguous instead of selecting the first provider.
+`POST /api/registry/plugins/install` resolves the registry ID to a unique source
+and uses the full plugin transaction. Its body can carry the same preview
+consent, skip list, data policy, and expected installation as source installation.
+Ambiguous registry ownership is refused rather than resolved by choosing the
+first provider.
 
-**Request Body**:
-```json
-{ "id": "my-plugin" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+Unlike direct `/api/plugins/install`, this compatibility path can construct a
+`no-operator-decision` request when consent is absent. The
+[consent owner](../../src-server/services/plugins/plugin-install-consent.ts)
+permits that only when there are neither consent-requiring permissions nor
+undisclosed contributions. A UI/Agent/dependency-bearing package cannot use that
+absence as approval. Person, scope, current content/grant revision, registry trust,
+and activation checks still apply. Prefer preview and an explicit decision.
 
 ### Uninstall Plugin from Registry
-```http
-DELETE /registry/plugins/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
+`DELETE /api/registry/plugins/:id` resolves installed identity and uses the full
+person-gated removal transaction. Pending runtime activation returns 202 with
+`success: false` and `configurationActivation`; normal completion returns 200.
 
 ---
 
 ## Scheduler
 
-> **New section** — routes from `src-server/routes/operations/scheduler.ts`
+The [scheduler routes](../../src-server/routes/operations/scheduler.ts) call
+[SchedulerService](../../src-server/services/scheduling/scheduler-service.ts),
+which aggregates registered providers and routes job operations to their owner.
+This personal scheduler surface returns 404 in hosted mode. Typed invalid
+schedules return 400, conflicts 409, unavailable durable storage 503, and other
+thrown failures 500.
 
 ### List Scheduler Providers
-```http
-GET /scheduler/providers
-```
 
-Returns registered scheduler provider names (used to populate UI dropdowns).
-
-**Response**:
-```json
-{ "success": true, "data": ["cron", "eventbridge"] }
-```
-
----
+`GET /scheduler/providers` returns `{success: true, data}` where each row has
+`id`, `displayName`, `capabilities`, and `formFields`. It is not an array of
+provider-name strings.
 
 ### Subscribe to Scheduler Events (SSE)
-```http
-GET /scheduler/events
-```
 
-Opens a Server-Sent Events stream for real-time scheduler job events. Sends a `ping` keepalive every 30 seconds.
-
-**Response** (SSE stream):
-```
-data: {"type":"job-started","target":"my-job","timestamp":"..."}
-
-event: ping
-data: 
-```
-
----
+`GET /scheduler/events` relays serialized scheduler events and sends named
+`ping` keepalives every 30 seconds. The provider/event owner determines the event
+payload; a live frame is not a durable completed-run receipt.
 
 ### Scheduler Webhook Receiver
-```http
-POST /scheduler/webhook
-```
 
-Receives webhook events from external scheduler providers and broadcasts them to SSE subscribers.
-
-**Request Body**: Any JSON event payload from the scheduler provider.
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /scheduler/webhook` accepts JSON and broadcasts it through SchedulerService,
+returning `{success: true}`. Invalid JSON returns 400. This is an authenticated
+route under the scheduler policy, not a public arbitrary-event ingress or an
+instruction to execute a job.
 
 ### List Scheduled Jobs
-```http
-GET /scheduler/jobs
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    { "target": "my-job", "schedule": "0 9 * * 1-5", "enabled": true, "lastRun": "..." }
-  ]
-}
-```
-
----
+`GET /scheduler/jobs` returns `{success: true, data: jobs}`. Rows use the
+[SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
+job `name` and provider-neutral schedule information. Provider read failures
+propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
-```http
-GET /scheduler/stats
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { "totalJobs": 5, "enabledJobs": 4, "lastRunAt": "..." }
-}
-```
-
----
+`GET /scheduler/stats` returns `{success: true, data: {providers, summary}}`.
+Summary includes total jobs, total recorded runs, and a rounded success-rate
+percentage derived from provider job statistics (zero when no runs exist).
 
 ### Get Scheduler Status
-```http
-GET /scheduler/status
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { "running": true, "provider": "cron" }
-}
-```
-
----
+`GET /scheduler/status` returns `{success: true, data: {providers}}`. Each entry
+contains the provider's status plus its ID and display name; this is not one
+universal `{running, provider}` object.
 
 ### Preview Cron Schedule
+
 ```http
-GET /scheduler/jobs/preview-schedule?cron=<expr>&count=5&timezone=<iana>
+GET /scheduler/jobs/preview-schedule?cron=0%209%20*%20*%20*&count=5&timezone=America%2FDenver
 ```
 
-Returns the next N scheduled run times for a cron expression.
-
-**Query Parameters**:
-- `cron`: Cron expression (required)
-- `count`: Number of upcoming runs to return (default: `5`)
-- `timezone`: IANA zone the expression is written in (optional). Omitted means
-  UTC, which is how the scheduler evaluates a schedule with no zone — so a
-  preview of a ZONED job must send this or it describes different instants from
-  the ones the job will fire at.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": ["2025-07-15T09:00:00Z", "2025-07-16T09:00:00Z"]
-}
-```
-
----
+`cron` is required, count defaults to 5, and timezone is optional. The shared
+schedule validator rejects invalid expressions/zones; the service uses
+Ephemeris to return ISO timestamps under `{success: true, data}`. An omitted
+zone uses the scheduler's UTC interpretation. Include a zoned job's timezone
+when previewing it.
 
 ### Get Job Logs
-```http
-GET /scheduler/jobs/:target/logs?count=20
-```
 
-Returns recent run logs for a specific job.
-
-**Query Parameters**:
-- `count`: Number of log entries to return (default: `20`)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    { "runAt": "2025-07-14T09:00:00Z", "status": "success", "outputPath": "/path/to/output.log" }
-  ]
-}
-```
-
----
+`GET /scheduler/jobs/:target/logs?count=20` returns `{success: true, data}` from
+the owning provider. `providerId` can select the provider explicitly; count
+defaults to 20. These are provider run-log records, not arbitrary server log
+files.
 
 ### Read Run Output
+
+The old `/scheduler/runs/output` path is not registered. Use:
+
 ```http
-POST /scheduler/runs/output
+POST /api/runs/output
 ```
 
-Reads the content of a run output file by its log path.
-
-**Request Body**:
-```json
-{ "path": "/path/to/output.log" }
-```
-
-**Response**:
-```json
-{ "success": true, "data": { "content": "Job output text..." } }
-```
-
----
+Send the **RunOutputRef returned by the run**, with `source`, `providerId`,
+`runId`, `artifactId`, and `kind`; do not send a filesystem path.
+[RunService](../../src-server/services/orchestration/run-service.ts) currently
+reads scheduled output on this path. SchedulerService resolves the reference
+back to the recorded run/artifact and asks that provider to read it. Hosted
+scheduled output is unavailable. A readable result is
+`{success: true, data: {content}}`; a missing supported result returns 404,
+while typed storage failure returns 503. Other malformed/unresolvable references
+can reach the handler's 500 error path.
 
 ### Create Job
+
 ```http
 POST /scheduler/jobs
 ```
 
-**Request Body**: Job configuration. `prompt` and `name` are required. Schedule
-may use the compatible `cron` string or the provider-neutral union:
-
-```json
-{ "schedule": { "kind": "cron", "expr": "0 9 * * *", "timezone": "America/Denver" } }
-{ "schedule": { "kind": "every", "everyMs": 300000 } }
-{ "schedule": { "kind": "at", "timeMs": 1800000000000, "deleteAfterRun": true } }
-```
-
-**Response**:
-```json
-{ "success": true, "data": { "output": "Job created" } }
-```
-
----
-
-### Update Job
-```http
-PUT /scheduler/jobs/:target
-```
-
-**Request Body**: Updated job options, including the same `schedule` union.
-
-**Response**:
-```json
-{ "success": true, "data": { "output": "Job updated" } }
-```
-
----
-
-### Run Job Now
-```http
-POST /scheduler/jobs/:target/run
-```
-
-Triggers an immediate run of a scheduled job.
-
-**Response**:
 ```json
 {
-  "success": true,
-  "data": {
-    "output": "Scheduler job completed.",
-    "receipt": {
-      "outcome": "completed",
-      "message": "Scheduler job completed.",
-      "runId": "schedule:built-in:daily-report:run-1"
-    }
-  }
+  "name": "daily-summary",
+  "prompt": "Summarize the project status.",
+  "agent": "station",
+  "schedule": { "kind": "cron", "expr": "0 9 * * *", "timezone": "America/Denver" }
 }
 ```
 
-`data.output` is retained for older clients. New clients can use the additive
-receipt to observe the canonical run. A `409` with
-`code: "scheduler_run_indeterminate"` means provider work may have started;
-it is not safe to retry automatically. A receipt is omitted rather than
-guessed if an older server cannot provide a nonempty `runId`.
+`name` and `prompt` are required. Use either legacy `cron` or the `schedule`
+union, not both. Other schedule variants are `{kind: "every", everyMs}` and
+`{kind: "at", timeMs, deleteAfterRun?}`. The
+[request schemas](../../src-server/routes/schemas/schema-definitions/scheduler.ts)
+apply prompt limits and schedule validation. The response is
+`{success: true, data: {output}}`, where output is the provider's result text;
+it is not proof that a future run completed.
 
----
+### Update Job
+
+`PUT /scheduler/jobs/:target` accepts supported partial job options, including
+that schedule union, and returns `{success: true, data: {output}}`.
+
+### Run Job Now
+
+`POST /scheduler/jobs/:target/run` awaits the service's manual-run result.
+Current receipts distinguish `completed`, `failed`, `refused`, `deferred`, and
+`indeterminate`. The response retains `data.output` for older clients and adds
+`data.receipt` only when it has a nonempty canonical run ID.
+
+Completed runs return 200. Deferred and indeterminate runs return 409 with their
+respective codes; failed/refused outcomes return 422. An indeterminate result
+means work may have started: inspect its run rather than automatically replaying
+the request.
 
 ### Enable Job
-```http
-PUT /scheduler/jobs/:target/enable
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`PUT /scheduler/jobs/:target/enable` returns `{success: true}` after provider
+enablement. It does not mean the job has run.
 
 ### Disable Job
-```http
-PUT /scheduler/jobs/:target/disable
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`PUT /scheduler/jobs/:target/disable` returns `{success: true}` after disabling
+future scheduling through the provider. It is not an in-flight cancellation
+receipt.
 
 ### Delete Job
-```http
-DELETE /scheduler/jobs/:target
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
-These twelve operator operations are also available through
-`@kontourai/station-sdk/client`, `station schedule`, and station-control MCP.
-The SSE event stream and inbound webhook are deliberately HTTP-only transport
-surfaces.
-
----
+`DELETE /scheduler/jobs/:target` returns `{success: true}` after provider removal.
+Use the [SDK scheduler client](../../packages/sdk/src/client/scheduler.ts),
+`station schedule`, or corresponding station-control tools for supported
+operator operations. SSE and webhook retain their separate HTTP transport roles.
 
 ### Open File with System Handler
-```http
-POST /scheduler/open
-```
 
-Opens a file using the OS default application (`open` on macOS, `xdg-open` on Linux, `start` on Windows).
-
-**Request Body**:
-```json
-{ "path": "/path/to/file.log" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+The former `POST /scheduler/open` route is not registered. Scheduled output is
+now opened in the [job-detail preview](../../src-ui/src/components/scheduler/JobDetail.tsx)
+using its RunOutputRef and `/api/runs/output`; this does not ask the server to
+open an arbitrary path in an OS application.
 
 ## System
 
-> **New section** — routes from `src-server/routes/system/system.ts`
+The [system factory](../../src-server/routes/system/system.ts) mounts status,
+update, and resource-posture handlers under `/api/system`. These are server
+observations, not physical native-window or device verification.
 
 ### Get System Status
-```http
-GET /system/status
-```
 
-Fast readiness check: resolves AWS credentials, checks ACP connections, detects installed CLIs, and aggregates onboarding prerequisites from all registered providers.
+`GET /api/system/status` returns a plain status object. It includes prerequisites
+and `prerequisitesState`, configured/detected providers, CLI observations,
+external-engine readiness, capability summaries, recommendation, build/server
+identity when available, and device presentation.
 
-**Response**:
-```json
-{
-  "prerequisites": [
-    { "id": "aws-sso", "label": "AWS SSO Login", "met": true, "source": "my-plugin" }
-  ],
-  "bedrock": {
-    "credentialsFound": true,
-    "verified": null,
-    "region": "us-east-1"
-  },
-  "acp": {
-    "connected": true,
-    "connections": [{ "id": "acp-1", "status": "connected" }]
-  },
-  "clis": {
-    "kiro-cli": true,
-    "claude": false
-  },
-  "externalEngines": [
-    {
-      "engineId": "codex",
-      "engineConnectionId": "codex",
-      "name": "Codex",
-      "detected": true,
-      "ready": true,
-      "source": "codex-cli"
-    }
-  ],
-  "ready": true
-}
-```
+Prerequisite discovery is cached for 60 seconds and refreshed asynchronously under
+a 2-second budget. `pending`, `ready`, and `stale` describe that cache. Some
+legacy boolean probes collapse failure/timeout to false, so false alone is not
+always an observed absence. The broad top-level `ready` is an OR of detected or
+configured paths; it is not proof that the user's chosen Agent/model can finish
+a chat turn. Use the more specific readiness and model evidence.
 
-`engineId` selects engine capability truth. `engineConnectionId` is the
-separate public Agent Apps identity used for navigation; clients must not
-derive either value from the other or from the Adapter-private runtime ID.
-
----
+`engineId` selects engine capability semantics; `engineConnectionId` identifies
+a public Agent App connection. Do not derive one from the other. See the
+[status owner](../../src-server/routes/system/system-status-routes.ts).
 
 ### Verify Bedrock Credentials
-```http
-POST /system/verify-bedrock
-```
 
-Heavier check — actually calls `ListFoundationModels` to confirm credentials work.
+`POST /api/system/verify-bedrock` (also `/api/system/verify-managed-runtime`)
+performs `ListFoundationModels` with an AWS SDK Bedrock client. Its optional
+body region wins over app-config region, then `us-east-1`. This legacy probe
+uses the SDK's default credential resolution; it does not reproduce every
+selected Model connection's auth mode.
 
-**Request Body** (optional):
-```json
-{ "region": "us-west-2" }
-```
-
-**Response**:
-```json
-{ "verified": true, "region": "us-east-1" }
-```
-
-**Error**:
-```json
-{ "verified": false, "error": "UnrecognizedClientException: ..." }
-```
-
----
+The response is plain `{verified: true, region}` or `{verified: false, error}`.
+A caught verification failure still returns 200. Successful listing proves that
+request worked, not a completed inference turn or universal account model access.
 
 ### Check for Core App Update
-```http
-GET /system/core-update
-```
 
-Checks the app's git repository for upstream commits.
+`GET /api/system/core-update` branches on
+[install provenance](../../src-server/routes/system/install-provenance.ts):
+source checkout, desktop bundle, prebuilt archive, or unknown. Read
+`installKind`, `applyMethod`,
+server identity, provenance issue, and unavailable reason as well as
+`updateAvailable`.
 
-**Response**:
-```json
-{
-  "currentHash": "abc1234",
-  "remoteHash": "def5678",
-  "branch": "main",
-  "behind": 3,
-  "ahead": 0,
-  "updateAvailable": true
-}
-```
-
-When no upstream is configured:
-```json
-{ "currentHash": "abc1234", "branch": "main", "behind": 0, "ahead": 0, "updateAvailable": false, "noUpstream": true }
-```
-
----
+For a source checkout, the handler fetches upstream and compares commits. If no
+upstream is set, it can fetch the current branch from origin and set its tracking
+branch; this GET is not a filesystem-inert observation. No usable upstream
+returns `noUpstream: true`. A failed check can return 200 with `error` and
+`updateAvailable: false`; that is not proof the installation is current.
+Desktop bundles check their recorded channel source; unknown provenance cannot
+check or apply an update reliably. A prebuilt archive fetches the signed public
+manifest its install records and verifies it against the pinned keys for its
+ring (`releaseCheck`: `verified`, `unreachable`, `unverified`, or
+`not-recorded`). Its `applyMethod` is `service-update` only when the fixed
+service launcher supervises this server (`installKind: "archive-service"`);
+otherwise it is `station-upgrade` (update on the host) or `reinstall`.
 
 ### Apply Core App Update
-```http
-POST /system/core-update
-```
 
-On a source checkout, runs `git pull --ff-only`, installs dependencies through
-the repository's owned lifecycle (`npm run dependencies:install`, the same step
-`station upgrade` runs), builds through the checkout's own `station build`, emits
-a `core:updated` event, and restarts the server under a detached health
-watchdog. A pulled tree without the owned dependency lifecycle fails closed
-(`500`) before anything is installed, built, or restarted.
+`POST /api/system/core-update` also branches on provenance. A source checkout
+refuses supervised execution (`service-managed` or `supervised`) and conflicting
+live sibling instances before update work. Otherwise it pulls fast-forward,
+checks the repository-owned dependency lifecycle, installs dependencies, builds,
+and schedules restart with a health watchdog. A missing installer/build failure
+returns 500 **after the pull may already have landed**; it does not roll back the
+checkout or claim all dependency effects were undone.
 
-**Response**:
-```json
-{ "success": true, "restarting": true, "hash": "def5678", "restart": { "expectedHash": "def5678", "expectedInstanceId": "default", "deadlineAt": "..." } }
-```
+A successful source response includes `restarting: true`, hash, and an expected
+instance/build/deadline receipt. It is not restart completion. Read
+`GET /api/system/core-update/restart-status` for the recorded outcome.
 
-A supervised server refuses with `409` before any git or build work, because
-its supervisor would restart it mid-update. The code is `service-managed` under
-the installed launchd/systemd service, and `supervised` when only a supervisor
-PID is present (the Windows service, the desktop, a development harness), whose
-remedy does not presume the service:
-
-```json
-{ "success": false, "selfUpdateUnavailableCode": "service-managed", "error": "... Stop the service with \"station service stop\", run \"station upgrade\", then start it again with \"station service start\" ..." }
-```
-
-`GET /system/core-update` reports the same refusal up front as
-`selfUpdateUnavailableCode` with the remedy in
-`selfUpdateUnavailableReason`, so clients do not offer an apply the server
-will refuse.
-
----
+The retained desktop-bundle apply path is macOS-only and requires the recorded
+source checkout, matching origin, and owned installer. It starts that installer
+detached and returns 202 with `updating: true` and a log path. That is initiation,
+not installation or relaunch proof. A launcher-supervised archive writes an
+update request and returns 202 with `serviceUpdate: {requestId}`; the service
+stages, trials, and may roll back the release afterward, so 202 is not update
+proof. It returns 409 when another update is in flight or needs an operator,
+when no newer verified release this host and launcher can run is found, or for
+any other archive. `GET /api/system/core-update/service-update` reads that
+install's progress from its runtime files, or `{state: "unavailable"}` when the
+server is not launcher-supervised. Unknown/ineligible provenance returns 409.
+See the [update owner](../../src-server/routes/system/system-update-routes.ts)
+for exact result branches.
 
 ### Get Server Capabilities
-```http
-GET /system/capabilities
-```
 
-Returns the server's runtime and available voice/context provider capabilities.
-
-**Response**:
-```json
-{
-  "runtime": "voltagent",
-  "voice": {
-    "stt": [
-      { "id": "webspeech", "name": "WebSpeech (Browser)", "clientOnly": true, "visibleOn": ["all"], "configured": true }
-    ],
-    "tts": [
-      { "id": "webspeech", "name": "WebSpeech (Browser)", "clientOnly": true, "visibleOn": ["all"], "configured": true }
-    ]
-  },
-  "context": {
-    "providers": [
-      { "id": "geolocation", "name": "Geolocation", "visibleOn": ["mobile"] },
-      { "id": "timezone", "name": "Timezone", "visibleOn": ["all"] }
-    ]
-  },
-  "scheduler": true
-}
-```
-
----
+`GET /api/system/capabilities` returns the runtime label, WebSpeech STT/TTS
+hints, geolocation/timezone context hints, `scheduler: true`, and deployment
+capabilities. The voice/context entries here are fixed declarations in the
+status handler, not live browser permission/API probes or discovery of every
+registered voice provider. Their `configured: true` does not prove a particular
+device can record or play audio.
 
 ### Discovery Beacon
-```http
-GET /system/discover
-```
 
-Open-CORS endpoint that LAN clients can probe to detect a Station server without credentials.
-
-**Response** (CORS: `*`):
-```json
-{
-  "station": true,
-  "name": "Project Station",
-  "port": 3141
-}
-```
+`GET /api/system/discover` is a retained beacon-shaped **authenticated read**
+under the current system route policy. Its handler sets a wildcard CORS header,
+but the runtime's origin and credential gates run first; it is not the public
+Station handshake. The body is `{station: true, name: "Project Station", port}`,
+with port derived from the request URL and a historic 3141 fallback when absent.
+Use the public well-known handshake for credential-free Station discovery.
 
 ---
 
 ## Global Routes
 
 ### Global Invoke (No Agent Context)
+
 ```http
 POST /invoke
 ```
 
-Lightweight multi-turn invocation without a named agent. Supports tool calling and structured output.
-
-**Request Body**:
 ```json
-{
-  "prompt": "What is 2+2?",
-  "schema": { "type": "object", "properties": { "answer": { "type": "number" } } },
-  "tools": ["calculator"],
-  "maxSteps": 5,
-  "model": "anthropic.claude-3-5-sonnet-20240620-v1:0"
-}
+{ "prompt": "What is 2+2?", "tools": [], "maxSteps": 5 }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "response": "4"
-}
-```
+The [global owner](../../src-server/routes/agents/invoke-global.ts) builds a
+temporary Agent with selected tools from the runtime's global registry. The
+body also accepts `schema`, `model`, `structureModel`, and `system`. Model
+selection is `model` → configured `invokeModel` → `defaultModel`; structured
+formatting uses `structureModel` → configured `structureModel` → resolved invoke
+model. Both are resolved through Station's model-selection path.
+
+Without a schema, the JSON response carries text, usage, step count, and a
+`runId`. With a schema, a second, tool-free Agent formats the first result using
+`generateObject`; the response includes the primary run ID and
+`relatedRunIds` for that formatting pass. If the first pass completes but
+formatting does not, the route returns a partial 409 receipt rather than
+pretending the whole operation never ran. This is a separate implementation
+from the named-invoke prompt-and-parse behavior above.
 
 ---
 
@@ -3807,7 +2303,16 @@ Lightweight multi-turn invocation without a named agent. Supports tool calling a
 POST /tool-approval/:approvalId
 ```
 
-Approve or reject a pending tool call.
+Resolve a pending tool call using the request-bound Session read authority and
+client origin. Knowing an approval ID alone is not sufficient. The
+[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
+cannot resolve an authorized pending request.
+
+The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
+uses orchestration for parts carrying an approval thread ID, including the exact
+request-event identity. It falls back to this retained registry route only when
+that thread ID is absent. This endpoint is not a universal responder for every
+external-engine approval.
 
 **Request Body**:
 ```json
@@ -3823,172 +2328,142 @@ Approve or reject a pending tool call.
 }
 ```
 
-**Used by**: `useToolApproval.ts`, `ToolApprovalHandler.ts`
 
 ---
 
 ### Global Conversation Lookup
-```http
-GET /api/conversations/:id
-```
 
-Looks up a conversation by ID across all agents and projects.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "conv-123",
-    "agentSlug": "my-agent",
-    "title": "Conversation Title"
-  }
-}
-```
-
----
+`GET /api/conversations/:id` returns `{success: true, data}` or 404 when not found.
+The [lookup handler](../../src-server/routes/chat/conversations.ts) checks personal
+Project storage, then file-memory adapters, then the authorized orchestration
+reader. Hosted mode skips the two personal storage branches. File-memory Agent
+attribution comes from the stored resource ID, with the adapter key as fallback;
+response shape can also include Project and fork-provenance fields.
 
 ## Additional System Routes
 
 ### Get Runtime Info
-```http
-GET /api/system/runtime
-```
 
-Returns the current runtime type.
-
-**Response**:
-```json
-{ "runtime": "voltagent" }
-```
-
----
+`GET /api/system/runtime` returns `{runtime}` for the server's implementation
+framework. It is not an inventory of external engines.
 
 ### List Skills
-```http
-GET /api/system/skills
-```
 
-Returns available skills.
-
----
+`GET /api/system/skills` returns `{success: true, data}` from SkillService, or an
+empty list when that service is not supplied to this handler.
 
 ### Get Terminal Port
-```http
-GET /api/system/terminal-port
-```
 
-Returns the terminal WebSocket port.
-
----
+`GET /api/system/terminal-port` returns `{success: true, port}` with the runtime
+base port plus 1. It reports the configured number, not proof the listener is
+bound or that this caller can open a terminal.
 
 ### Get Voice Port
-```http
-GET /api/system/voice-port
-```
 
-Returns the Voice WebSocket port (mirrors `/api/system/terminal-port`; see
-`docs/reference/cli.md#accessing-station-remotely-198`).
-
----
+`GET /api/system/voice-port` returns the analogous configured base plus 2.
+Provider/device capability and WebSocket admission are separate from this
+number. Both handlers are in the [status owner](../../src-server/routes/system/system-status-routes.ts).
 
 ## UI Commands
 
 ### Dispatch UI Command
+
 ```http
 POST /api/ui
 ```
 
-Dispatches a command to the frontend via the event bus.
-
-**Request Body**:
 ```json
-{
-  "command": "navigate",
-  "payload": { "path": "/settings" }
-}
+{ "command": "navigate", "payload": { "path": "/settings" } }
 ```
 
-**Response** (delivered — personal-mode deployment):
-```json
-{ "success": true }
-```
+The [UI command handler](../../src-server/routes/projects/ui-commands.ts) accepts
+a local absolute navigation path and emits `ui:navigate`. Invalid paths and
+unknown commands return 400. Hosted mode refuses navigation with 403, as does a
+request whose derived audience is explicitly unavailable.
 
-Delivery is best-effort even on success: `{success: true}` means the command
-was accepted and broadcast, not that a connected client received it — with no
-client listening, this is still `true`.
-
-**Response** (refused — hosted multi-tenant deployment, 403): `navigate`
-carries no destination identity to route it to one tenant's connections, so a
-hosted deployment refuses the command outright rather than broadcasting it to
-every tenant.
-```json
-{
-  "success": false,
-  "error": "Navigation commands are not delivered in hosted multi-tenant mode: /events has no destination identity to route ui:navigate to one tenant's connections, so it is denied rather than broadcast to every tenant."
-}
-```
-
-**Response** (invalid path, 400):
-```json
-{ "success": false, "error": "Invalid navigation path" }
-```
+In personal mode, a principal-scoped agent command addresses that principal's
+clients; an unrestricted operator command can address the personal listeners.
+The [event relay](../../src-server/routes/orchestration/events.ts) applies that
+audience. `{success: true}` means the event was accepted, not that a client
+received it or changed its screen. With no listener, acceptance can still succeed.
 
 ---
 
 ## Additional Analytics
 
 ### Clear Usage Data
+
 ```http
 DELETE /api/analytics/usage
 ```
 
-Clears all usage analytics data.
-
-**Response**:
-```json
-{
-  "data": {},
-  "message": "Usage data cleared"
-}
-```
-
-**Used by**: `UsageStatsPanel.tsx`
+Returns `{success: true, message: "Usage stats reset"}` after resetting the
+existing aggregate stats file to `{}`. It does not delete conversations,
+monitoring logs, or invocation receipts; later updates/rescans can rebuild
+statistics from retained sources. See the
+[aggregator reset](../../src-server/analytics/usage-aggregator.ts).
 
 ---
 
 ## Independent Review Evidence
 
-Independent review runs one to eight selected reviewer Agents over an exact Git range. The server resolves both revisions to commit SHAs, resolves host-authoritative actor identities, provisions a detached read-only workspace, validates each finding against the reviewed head, and returns a durable request status. Reviewer findings are evidence input only: the completed receipt never represents approval, rejection, pass, fail, or gate completion.
+The [review routes](../../src-server/routes/evidence/reviews.ts) submit and read
+independent-review evidence for an exact Project Git range. Explicit reviewer
+lists contain one to eight entries; the contract also supports
+`selection: {kind: "repo-map"}` with an empty reviewer list for owner-resolved
+selection. Do not mix the two forms.
 
 ```http
 POST /api/projects/:projectSlug/reviews
-Content-Type: application/json
+```
 
+```json
 {
-  "requestId": "018f4d95-7c1a-7c4d-a3f4-62d53ed0d1b8",
+  "requestId": "review-operation-id",
   "mode": "initial",
   "target": {
     "kind": "git-range",
-    "projectSlug": "station",
+    "projectSlug": "project-slug",
     "baseRevision": "origin/main",
     "headRevision": "HEAD"
   },
-  "implementerAgentSlug": "terra",
+  "implementerAgentSlug": "implementer-agent",
   "reviewers": [{
     "reviewerId": "reviewer-1",
-    "executorAgentSlug": "sol",
-    "lens": {
-      "id": "failure-totality",
-      "instructions": "Review durable effects and exact outcomes."
-    }
+    "executorAgentSlug": "reviewer-agent",
+    "lens": { "id": "correctness", "instructions": "Review incorrect behavior and missing failure handling." }
   }]
 }
 ```
 
-The caller-generated `requestId` is the durable idempotency key. `201` returns a completed status whose `result` contains `{receipt, attachment, cleanup}`; `202` returns the same request in `running` state. Rejected and indeterminate statuses are durable and never authorize automatic retry. `attachment` reports whether optional Flow evidence was attached; `cleanup` truthfully reports completed, retained, or unavailable workspace cleanup. The canonical SDK bounds each HTTP request to 30 seconds, recovers an ambiguous submission through the status endpoint, and polls until terminal; an explicit caller deadline or AbortSignal still wins.
+The [module](../../src-server/services/evidence/review-evidence-module.ts) resolves
+host-authoritative actor identities and Git revisions, provisions an exact
+[detached worktree](../../src-server/services/evidence/git-review-workspace-source.ts),
+and validates finding locations against the reviewed head. Read-only access is
+an execution policy enforced through the
+[review executor](../../src-server/services/evidence/orchestration-review-executor.ts)
+and supported engine boundary, not a property inferred from the directory name.
+The current runtime composition requests the executor's default Codex provider
+and carries each reviewer's Agent slug as attribution; the request is not a
+promise to dispatch arbitrary reviewer engines.
 
-Delta mode adds `delta: {priorReceiptId, claimedFindingIds}` and requires every claimed prior finding to be assessed exactly once. Read operations are:
+`requestId` is the durable idempotency identity. The envelope is
+`{success: true, data: status}` for recorded outcomes: completed uses 201, running
+202, rejected 400, and indeterminate 409. A completed `result` contains
+`receipt`, optional Flow-evidence attachment disposition, and cleanup result.
+Reviewer findings remain evidence input; the receipt is not approval, pass,
+exception, or gate completion. A cleanup result can retain the workspace when
+shutdown was not confirmed.
+
+The [SDK helper](../../packages/sdk/src/client/reviews.ts) defaults each HTTP
+request to 30 seconds. After submission failure it reads status; if that read
+also fails, it retries the same request ID once. It polls a running status every
+500 ms and honors the caller's AbortSignal. This is a per-request timeout, not a
+30-second deadline for the whole review. Terminal rejected/indeterminate status
+is surfaced as a typed error, not a new automatic review with another ID.
+
+Delta mode adds `delta: {priorReceiptId, claimedFindingIds}`; every claimed prior
+finding must receive exactly one assessment. Reads are:
 
 ```http
 GET /api/projects/:projectSlug/reviews
@@ -3997,77 +2472,84 @@ GET /api/projects/:projectSlug/reviews/:receiptId
 GET /api/review-evidence
 ```
 
-Receipts and request outcomes are immutable protected evidence. Station never silently evicts them; Project admission fails at the configured protected-capacity bound. Aggregate inventory uses bounded receipt references and returns only the newest 512 receipts.
+The [protected store](../../src-server/services/evidence/review-receipt-store.ts)
+refuses identity collisions and capacity exhaustion rather than evicting old
+evidence. The aggregate selects up to the newest 512 receipt references across
+at most 256 Project slugs. Unreadable Projects appear in `unavailableProjects`;
+Projects whose workspace is missing contribute no receipts. Use the returned
+coverage, not an empty receipt array alone, when assessing availability.
 
 ## Architecture Notes
 
 ### Custom Endpoint Registration
 
-Custom endpoints are registered via `configureApp` callback in `honoServer()`:
-
-```typescript
-server: honoServer({
-  port: this.port,
-  configureApp: (app) => {
-    // Custom routes registered here
-    app.get('/api/agents', async (c) => { /* ... */ });
-    app.post('/agents', async (c) => { /* ... */ });
-  }
-})
-```
+[Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts
+Station's Hono handlers and supplies their service dependencies. The framework
+server also has its own routes. Follow the composition call and the specific
+handler together; a relative path inside a route factory is not its public URL.
 
 ### Authentication
 
-When authentication is configured, custom routes inherit the same authentication behavior as the core runtime. See your auth provider documentation for details.
+[HTTP security](../../src-server/runtime/bootstrap/runtime-http.ts) is installed
+before the public/custom handlers, with a route-classification gate and the
+[external surface policy](../../src-server/security/pairing-route-scopes.ts).
+Authentication-provider identity, paired-device scope, account membership,
+Session ownership, and operator authority answer different questions. A valid
+credential does not by itself authorize every operation. See
+[endpoints](endpoints.md) for the route/auth authorities and
+[deployment authentication](../guides/deployment-authentication.md) for identity.
 
 ### CORS
 
-CORS is configured to allow localhost origins and any origins specified in `ALLOWED_ORIGINS` environment variable:
-
-```typescript
-app.use('*', cors({
-  origin: (origin) => {
-    if (!origin) return origin;
-    if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
-      return origin;
-    }
-    const allowed = process.env.ALLOWED_ORIGINS?.split(',') || [];
-    return allowed.includes(origin) ? origin : null;
-  },
-  credentials: true,
-}));
-```
+The running Station uses the exact browser origins assembled by
+[resolveStationBrowserOrigins](../../src-server/security/station-browser-origins.ts):
+configured additions, its bound-port loopback origins, native shell origins, and
+specific bound-host origins. The CLI adds its UI listener origins. Other origins
+are refused before route dispatch. This is not the permissive helper used when
+HTTP security is absent, and it does not allow every localhost port. Origin
+admission does not replace authentication or scope. See
+[environment settings](env-vars.md#server).
 
 ---
 
-
 ## Bind a paired device to its verified person
 
-`POST /api/pairing/requests/:requestId/confirm` accepts an optional JSON body:
+```http
+POST /api/pairing/requests/:requestId/confirm
+```
 
 ```json
 { "bindVerifiedIdentity": true }
 ```
 
-The operator must deliberately select this option. The pending device request
-must carry server-verified Tailscale identity; the server derives its subject.
-Only a current operator credential or a verified local-grant operator may bind
-it. Ordinary paired-device approval authority, an internal proxy token or a
-self-declared subject is insufficient. Hosted binding is unavailable until the
-device store is tenant-bound (`409 person_binding_unavailable`). Invalid fields/types return `400`; insufficient
-operator authority returns `403`. Bodyless approval preserves device-only access. A binding approval returns
-`personBindingApproved: true`; clients must require that acknowledgment because
-older servers can accept an ordinary approval without understanding the option.
+This explicitly approves a **verified Tailscale-person binding** for a pending
+Device request. The [confirmation route](../../src-server/runtime/routes/runtime-routes.ts)
+requires a current operator credential or a qualifying local-grant credential;
+ordinary paired-device approval, UI-bootstrap locality, or an internal token
+alone cannot approve this binding. The request must have server-verified
+Tailnet identity. The server chooses the subject; the body cannot supply one.
 
-The existing one-time exchange persists `device.principalBinding` together with
-the credential. Its provider, subject, approval time, approval id and approving
-principal record explicit consent; they grant no Project membership or added
-wire scope. The binding lasts with the device grant and is removed from active
-authority by revoking that device. Two approved devices for the same verified
-subject resolve to the same person over direct connections. A conflicting live
-identity is refused. Existing grants/history are not relabeled automatically.
+Invalid fields/types return 400 and insufficient authority returns 403. This
+verified-person binding is unavailable in hosted mode (409
+`person_binding_unavailable`). Ordinary personal Device requests can still be
+approved without a body and remain device-only. Account/relay enrollment that
+requires an account binding cannot use that ordinary path. The separate
+`bindAccountIdentity` option is mutually exclusive with `bindVerifiedIdentity`.
 
-Use the host pairing panel's **Recognize this device as …** checkbox or
-`station environment access approve <request-id> --bind-person` on the Station
-computer for this flow. See [Project membership and enrollment](../design/project-membership.md)
-for the accepted pilot contract and the remaining shared-Project work.
+A successful binding response includes `personBindingApproved: true`; callers
+must require that acknowledgement. The subsequent one-time exchange persists
+the binding with the Device credential, including provider/subject and approval
+provenance. A Tailscale-person binding changes identity resolution; it does not
+add wire scope or Project membership, or relabel existing history.
+
+The [principal owner](../../src-server/runtime/bootstrap/orchestration-request-principal.ts)
+uses that approved binding on direct requests and rejects a conflicting live
+identity. Devices bound to the same provider/subject resolve to the same person;
+revoking a Device removes that grant from active authority.
+
+The [pairing panel](../../packages/connect/src/react/DevicePairingPanel.tsx) offers
+**Recognize this device as …**, and
+`station environment access approve <request-id> --bind-person` carries the same
+explicit choice through the [CLI owner](../../packages/cli/src/commands/environment.ts).
+See [Project membership and enrollment](../design/project-membership.md) for the
+separate account-binding and membership paths.

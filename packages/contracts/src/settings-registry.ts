@@ -334,19 +334,10 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Knowledge stores (preview)',
-    help: 'Turning this on changes nothing yet; it exists for Station development.',
-    // K2 store-layer work: registers the KnowledgeStoreProvider seam alongside
-    // the namespace-based knowledge path. No consumer gates on this flag yet
-    // (K3+ work) — no read path is rewired and no data moves until an explicit
-    // future migration, which is why the description can truthfully say the
-    // toggle changes nothing today.
+    help: 'Create the read-only conversation-history Knowledge root at personal Station startup.',
     description:
-      'Groundwork for Station’s next knowledge storage system. Turning this on changes nothing yet — it exists for Station development.',
-    // …and why it is not rendered: a Settings control whose own description
-    // says it changes nothing is a switch that persists and does nothing.
-    // It stays settable through `station config set` for the Station
-    // development the description names; the row returns when a consumer
-    // gates on it.
+      'When enabled, personal Station startup registers root:conversations if absent. Other Knowledge routes do not depend on this flag. Turning it off does not remove an existing root; hosted mode does not register this projection.',
+    // Kept out of the Settings UI; this does not disable the bootstrap consumer.
     userFacing: false,
     defaultValue: false,
   }),

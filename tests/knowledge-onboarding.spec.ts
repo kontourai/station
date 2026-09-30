@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
  * `tests/first-run-zero-provider.spec.ts`'s style): the Obsidian-vault-connect
  * honest-validation-failure path (`ErrorState` rendering the adapter's own
  * `reason` string verbatim, never a generic message), Settings-owned creation,
- * and the absence of the retired global knowledge overlay.
+ * and an empty registry leaving the app toolbar usable.
  */
 
 const CHAT_READY_STATUS = JSON.stringify({
@@ -38,27 +38,6 @@ const CHAT_READY_STATUS = JSON.stringify({
       ready: true,
       source: 'knowledge-onboarding-mock-runtime',
     },
-  },
-});
-
-// Mirrors tests/first-run-zero-provider.spec.ts's ZERO_PROVIDER_STATUS.
-const UNCONFIGURED_STATUS = JSON.stringify({
-  ready: false,
-  acp: { connected: false, connections: [] },
-  clis: {},
-  prerequisites: [],
-  providers: {
-    configuredChatReady: false,
-    configured: [],
-    detected: { ollama: false, bedrock: false },
-  },
-  recommendation: {
-    code: 'unconfigured',
-    type: 'connections',
-    actionLabel: 'Open Connections',
-    title: 'No usable AI path is configured yet',
-    detail:
-      'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
   },
 });
 
@@ -160,7 +139,7 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
     ).toBeDisabled();
   });
 
-  test('an empty knowledge registry does not mount a global overlay or block the app toolbar', async ({
+  test('an empty knowledge registry does not block the app toolbar', async ({
     page,
   }) => {
     await mockKnowledgeReadRoutes(page, {
@@ -170,7 +149,6 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
 
     await page.goto('/');
 
-    await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
     await openHeaderSettings(page);
     await expect(page).toHaveURL(/\/settings/);
   });
@@ -210,9 +188,7 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
       });
   });
 
-  test('Settings shows an existing personal root while the global overlay stays absent', async ({
-    page,
-  }) => {
+  test('Settings shows an existing personal root', async ({ page }) => {
     await mockKnowledgeReadRoutes(page, {
       status: CHAT_READY_STATUS,
       roots: [PERSONAL_ROOT],
@@ -220,26 +196,9 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
 
     await page.goto('/settings?section=knowledge');
 
-    await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
     await expect(page.getByText('/mock/knowledge/personal')).toBeVisible({
       timeout: 10_000,
     });
     await expect(page.getByText(/Personal knowledge is on/)).toBeVisible();
-  });
-
-  test('removing the knowledge overlay does not remove the chat-rescue setup launcher', async ({
-    page,
-  }) => {
-    await mockKnowledgeReadRoutes(page, {
-      status: UNCONFIGURED_STATUS,
-      roots: [],
-    });
-
-    await page.goto('/');
-
-    await expect(page.getByTestId('setup-launcher')).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
   });
 });

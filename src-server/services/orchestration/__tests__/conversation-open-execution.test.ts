@@ -43,6 +43,7 @@ test('opening a durable conversation observes its current Claude child and recor
     provider: 'codex',
     status: 'closed',
     model: 'gpt-predecessor',
+    resumeCursor: { cursor: 'predecessor-vendor-secret' },
     createdAt: '2026-09-01T00:00:00Z',
     updatedAt: '2026-09-01T00:01:00Z',
   });
@@ -75,6 +76,7 @@ test('opening a durable conversation observes its current Claude child and recor
     provider: 'claude',
     status: 'ready',
     model: 'opus-current',
+    resumeCursor: { cursor: 'child-vendor-secret' },
     createdAt: '2026-09-01T00:02:00Z',
     updatedAt: '2026-09-01T00:03:00Z',
   });
@@ -111,7 +113,16 @@ test('opening a durable conversation observes its current Claude child and recor
       model: 'opus-current',
     },
   });
-  expect(JSON.stringify(result)).not.toContain('resumeCursor');
+  // Both Sessions hold a vendor resume cursor; neither may reach the client.
+  expect(store.readSessions().map((session) => session.resumeCursor)).toEqual(
+    expect.arrayContaining([
+      { cursor: 'predecessor-vendor-secret' },
+      { cursor: 'child-vendor-secret' },
+    ]),
+  );
+  const serialized = JSON.stringify(result);
+  expect(serialized).not.toContain('vendor-secret');
+  expect(serialized).not.toContain('resumeCursor');
   await expect(
     service.resolveConversationOpen(
       root,
@@ -155,14 +166,19 @@ test('an initial native launch plan is not relabeled as current model-connection
     undefined,
   );
   const accepted = await service.resolveConversationOpen(threadId, authority);
-  expect(accepted).toMatchObject({
-    status: 'resolved',
-    execution: {
-      provider: 'station-agent',
-    },
-  });
-  if (accepted?.status === 'resolved')
-    expect(accepted.execution).not.toHaveProperty('modelConnectionId');
+  // The execution carries only the Session's own facts: the launch plan's
+  // connection and model are not relabeled as its engine connection or
+  // accepted model.
+  const execution = {
+    sessionId: threadId,
+    agentId: 'station',
+    provider: 'station-agent',
+    model: 'native-model',
+  };
+  expect(accepted).toMatchObject({ status: 'resolved' });
+  expect(accepted?.status === 'resolved' && accepted.execution).toEqual(
+    execution,
+  );
   store.appendEvent({
     eventId: 'native-pending',
     threadId,
@@ -183,8 +199,9 @@ test('an initial native launch plan is not relabeled as current model-connection
   });
   const pending = await service.resolveConversationOpen(threadId, authority);
   expect(pending?.status).toBe('resolved');
-  if (pending?.status === 'resolved')
-    expect(pending.execution).not.toHaveProperty('modelConnectionId');
+  expect(pending?.status === 'resolved' && pending.execution).toEqual(
+    execution,
+  );
 });
 
 test('#2309: an open resolution carries the conversation activity read with the current child', async () => {

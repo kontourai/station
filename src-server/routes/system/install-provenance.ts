@@ -1,7 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import type { UpdateProvenanceIssue } from '@kontourai/station-contracts/system-status';
 import { resolveGitInfo } from '@kontourai/station-shared/git';
+import {
+  type PackagedReleaseManifest,
+  packagedReleaseVersion,
+  readPrebuiltArchiveRelease,
+  resolveInstallerOwnedArchiveVersion,
+} from '@kontourai/station-shared/prebuilt-archive';
 import { execGit } from '../../utils/git-exec.js';
 
 export const NIGHTLY_SOURCE_STAMP_FILENAME = 'station-nightly-source.json';
@@ -31,7 +37,11 @@ const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/;
  */
 const STAMP_WALK_LIMIT = 3;
 
-export type InstallKind = 'source-checkout' | 'desktop-bundle' | 'unknown';
+export type InstallKind =
+  | 'source-checkout'
+  | 'desktop-bundle'
+  | 'archive'
+  | 'unknown';
 
 /**
  * Where the server module legitimately lives inside a real source checkout:
@@ -82,6 +92,22 @@ export type InstallProvenance =
       sha: string;
     }
   | ({ installKind: 'desktop-bundle'; stampPath: string } & NightlySourceStamp)
+  | {
+      /**
+       * A prebuilt Station archive (#2675): the server runs from its
+       * `dist-server/`, and the archive root carries the builder's marker
+       * and a valid release manifest.
+       */
+      installKind: 'archive';
+      archiveRoot: string;
+      release: PackagedReleaseManifest;
+      version: string;
+      /**
+       * The install.sh install this archive is a version directory of
+       * (`<installRoot>/versions/<version>`), or null for any other copy.
+       */
+      installRoot: string | null;
+    }
   | {
       installKind: 'unknown';
       detail: string;
@@ -158,8 +184,9 @@ export function readNightlySourceStamp(
 }
 
 /**
- * Classify what kind of install this server is running from: a git source
- * checkout, a stamped desktop bundle, or an install with no provenance at all.
+ * Classify what kind of install this server is running from: a prebuilt
+ * release archive, a git source checkout, a stamped desktop bundle, or an
+ * install with no provenance at all.
  * The old behavior — `resolveGitInfo` throwing "Not a git repository" straight
  * into the update UI — is what this replaces (archive#1624).
  */
@@ -167,6 +194,24 @@ export function resolveInstallProvenance(
   moduleDir: string,
   { resolveGit = resolveGitInfo }: { resolveGit?: typeof resolveGitInfo } = {},
 ): InstallProvenance {
+  // A prebuilt archive names itself: the builder's marker plus a valid
+  // release manifest at the root whose dist-server/ this module is (and no
+  // checkout there). The same resolver the CLI uses decides it.
+  if (basename(moduleDir) === 'dist-server') {
+    const archiveRoot = dirname(moduleDir);
+    const release = readPrebuiltArchiveRelease(archiveRoot);
+    if (release) {
+      return {
+        installKind: 'archive',
+        archiveRoot,
+        release,
+        version: packagedReleaseVersion(release),
+        installRoot:
+          resolveInstallerOwnedArchiveVersion(archiveRoot)?.installRoot ?? null,
+      };
+    }
+  }
+
   // The build stamp wins over git resolution: a bundle built INSIDE a git
   // checkout (src-desktop/target/…/Station Nightly.app) still resolves a git
   // toplevel — the surrounding repo, not the bundle — and classifying it
@@ -227,7 +272,7 @@ export function resolveInstallProvenance(
  * Map a stamp ref (`origin/main`) to the refspec `git ls-remote` matches
  * (`refs/heads/main`). Already-qualified refs pass through.
  */
-export function refspecFromStampRef(ref: string): string {
+function refspecFromStampRef(ref: string): string {
   const name = ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
   return name.startsWith('refs/') ? name : `refs/heads/${name}`;
 }
@@ -269,7 +314,7 @@ export async function fetchChannelLatestSha(
  * writes the stamp's `repository`: SSH forms become anonymous https, and a
  * trailing `.git` is insignificant for identity comparison.
  */
-export function normalizeOriginUrl(originUrl: string): string {
+function normalizeOriginUrl(originUrl: string): string {
   return originUrl
     .trim()
     .replace(/^ssh:\/\/git@([^/:]+)(?::\d+)?\//, 'https://$1/')

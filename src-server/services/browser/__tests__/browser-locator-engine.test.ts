@@ -83,14 +83,14 @@ describe('the locator engine source', () => {
     };
     // Exact (no range), a runtime dependency, and the same release the test
     // runner uses.
-    expect(manifest.dependencies['playwright-core']).toBe('1.62.1');
+    expect(manifest.dependencies['playwright-core']).toBe('1.63.0');
     const installed = JSON.parse(
       readFileSync(require.resolve('playwright-core/package.json'), 'utf8'),
     ) as { version: string };
     const runner = JSON.parse(
       readFileSync(require.resolve('@playwright/test/package.json'), 'utf8'),
     ) as { version: string };
-    expect(installed.version).toBe('1.62.1');
+    expect(installed.version).toBe('1.63.0');
     expect(runner.version).toBe(installed.version);
     // A different injected script (a bump, a patched install) fails here
     // until someone reviews it and moves this digest on purpose.
@@ -105,7 +105,7 @@ describe('the locator engine source', () => {
       ),
     );
     expect(createHash('sha256').update(source).digest('hex')).toBe(
-      'fc43c7ab27d27b4e2241190a6f7a990089328dc95ca29785eb54ed59159f6315',
+      '94103308b4f5791976b53543f5812be61ffb988574f7a51f412f87ab0ad60a85',
     );
   });
 });

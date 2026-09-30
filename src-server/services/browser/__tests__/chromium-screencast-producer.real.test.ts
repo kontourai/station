@@ -20,6 +20,7 @@ import {
   type LiveSurfaceEntry,
   LiveSurfaceRegistry,
 } from '../../live-surface/registry.js';
+import { createLocalBrowserHostResolver } from '../browser-host.js';
 import { BrowserLiveSurfaces } from '../browser-live-surfaces.js';
 import { BrowserSessionRegistry } from '../browser-session-registry.js';
 import {
@@ -160,16 +161,18 @@ describe('Browser live surface against a real installed Chromium', () => {
     });
     sessions = new BrowserSessionRegistry({
       stationHome: home,
-      createHost: () =>
-        new ChromiumServerHost({
-          executablePath: chromium,
-          egressPolicy: {
-            listeners: () => listeners,
-            interfaceAddresses: localInterfaceAddresses,
-            reach: { kind: 'operator' },
-          },
-          launchTimeoutMs: 120_000,
-        }),
+      hostResolver: createLocalBrowserHostResolver(
+        () =>
+          new ChromiumServerHost({
+            executablePath: chromium,
+            egressPolicy: {
+              listeners: () => listeners,
+              interfaceAddresses: localInterfaceAddresses,
+              reach: { kind: 'operator' },
+            },
+            launchTimeoutMs: 120_000,
+          }),
+      ),
     });
     surfaces = new LiveSurfaceRegistry({ dispatchTimeoutMs: 10_000 });
     binder = new BrowserLiveSurfaces({

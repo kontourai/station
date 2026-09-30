@@ -1,10 +1,18 @@
 # Android Build Guide
 
-Station ships as an Android APK built with [Tauri v2](https://tauri.app/) mobile support.
+Station's Android client is built with [Tauri v2](https://tauri.app/) mobile
+support. This guide describes the checked-in build paths. A successful compile,
+packaged-artifact check, emulator launch, physical-device journey and Play
+delivery are separate evidence; this documentation review did not run them.
 
 ## Architecture
 
-The Android build wraps the same web UI (Vite + React) in an Android WebView via Tauri. The native layer is minimal — Tauri generates the Android project at build time.
+The Android build wraps the shared Vite/React UI in an Android WebView.
+The Rust host and maintained Kotlin/plugin bridges supply native credentials,
+pairing, media permissions, window geometry and other platform capabilities.
+Tauri generates the Android project; repository bootstrap scripts restore the
+owned customizations after generation. Android connects to a Station server;
+it does not embed the desktop Node server.
 
 ### Key directories
 
@@ -34,31 +42,34 @@ their existing cloud-backup and device-transfer exclusions.
 
 ## CI Pipeline
 
-**This section describes `.github/workflows/build-android.yml`, which is a
-`workflow_dispatch`-only debug verification check — it has no tag trigger and
-produces an unsigned debug APK/AAB.** The real, signed Android *release*
+**This section describes [build-android.yml](../../.github/workflows/build-android.yml),
+a debug verification lane triggered manually or by path-filtered `main`
+pushes. It has no tag or pull-request trigger and produces debug APK/AAB
+artifacts, not upload-key-signed release artifacts.** The signed Android release
 build/sign/upload pipeline is the `android` job in
 `.github/workflows/release.yml`, triggered by pushing a `v*` tag; see
 [Native release operations](./native-releases.md) and
 [Mobile store distribution](./mobile-release.md) for that path, including the
-actual release-signing secrets (`ANDROID_KEYSTORE_BASE64` and friends — not
-`TAURI_SIGNING_PRIVATE_KEY`, which signs the desktop *updater* payload, not
-Android).
+OIDC/Secret Manager signing boundary. `TAURI_SIGNING_PRIVATE_KEY` signs desktop
+updater payloads; it is not the Android upload key.
 
 ### Pipeline steps
 
 1. **Setup** — the Node version in `.nvmrc`, Rust with Android targets, and the Java/SDK/NDK versions pinned in the workflow
 2. **Build frontend** — `npm run dependencies:ci`, then the SDK, Connect, and desktop resources
-3. **Tauri Android Init** — `npx tauri android init` generates `gen/android/`
-4. **Stage build provenance** — `node scripts/write-android-build-manifest.mjs`
-   writes `station-build.json` into the generated project's asset source set,
-   after init (which would otherwise replace it) and before the build that
-   packages it.
-5. **Apply native bootstrap** — `node scripts/apply-android-native-bootstrap.mjs`
+3. **Tauri Android Init** — runs from `src-desktop` with the base and Dev
+   overlays, `--ci` and `--skip-targets-install`. Running discovery from the
+   repository root can select an experimental Tauri app instead.
+4. **Apply native bootstrap** — `node scripts/apply-android-native-bootstrap.mjs`
    restores credential initialization and the window-inset bridge in the
    generated namespace. The channel icon and network-policy helpers also run
    before compilation. See the workflow for their exact ordering.
-6. **Build debug APK** — `npx tauri android build --debug --apk --aab`
+5. **Stage build provenance** — `node scripts/write-android-build-manifest.mjs`
+   writes `station-build.json` into the generated project's asset source set,
+   after init (which would otherwise replace it) and before the build that
+   packages it.
+6. **Build debug APK/AAB** — runs from `src-desktop` with the same overlays
+   and `tauri android build --debug --apk --aab`.
 
    The workflow sets the 16 KB page-alignment linker flags directly via
    `RUSTFLAGS` (an environment `RUSTFLAGS` replaces target rustflags instead of
@@ -73,7 +84,7 @@ Android).
 
 ### Triggers
 
-- **Manual dispatch only.** This workflow has no tag or push trigger.
+- Manual dispatch and path-filtered pushes to `main`; no tag or PR trigger.
 
 ## Status Bar / Safe Area
 
@@ -104,11 +115,17 @@ keyboard twice. Native dimensions are scaled to CSS pixels, and malformed or
 older bridge payloads fall back to browser geometry. The keyboard inset is
 separate from the system-bar `--safe-bottom` value.
 
-On the CSS side, `--safe-top` carries the inset, the toolbar pads itself down by it, and `--app-toolbar-total-height` (inset + nominal height) is what every fixed overlay anchors to. Raw `env(safe-area-inset-*)` must not be consumed directly — always read `var(--safe-*)` so the Android bridge override reaches the surface.
+On the CSS side, `--safe-top` carries the inset and the toolbar pads itself down
+by it. Fixed overlays should anchor to `--app-toolbar-total-height` (inset plus
+nominal height). Read `var(--safe-*)` rather than raw `env(safe-area-inset-*)`
+so the Android bridge override reaches the surface. This is the shared rule,
+not a claim that every current overlay was physically verified.
 
 Getting that wrong is not theoretical: overlays that offset by `--app-toolbar-height` alone landed `--safe-top` too high, which rendered the mobile coding tabs *above* the header and put the fixed tab strip over the header controls, so the overflow menu could not be tapped at all. Desktop never showed it, because the inset is 0 there.
 
-If the native patch is ever added, `--safe-top` becomes 0 and the CSS follows automatically — but decide deliberately rather than assuming one layer already handles it, which is what this section used to imply.
+If native layout policy changes, recheck both bridge geometry and CSS offsets
+on the target device. Do not assume adding native padding makes the reported
+inset zero or that both layers can consume the same inset without duplication.
 
 The CSS layer also defines safe area variables as a belt-and-suspenders approach (primarily for iOS PWA support):
 
@@ -124,7 +141,8 @@ The CSS layer also defines safe area variables as a belt-and-suspenders approach
 ### Prerequisites
 
 - Android Studio (for SDK, NDK, emulator)
-- Java 17+
+- Node 24 and the managed pnpm version from `package.json`
+- Java 17, matching the verification workflow
 - Rust with Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 - NDK 27: install via Android Studio SDK Manager or `sdkmanager "ndk;27.0.12077973"`
 
@@ -134,43 +152,60 @@ The CSS layer also defines safe area variables as a belt-and-suspenders approach
 # Set NDK path
 export NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
 
-# Build frontend
-npm ci
-cd packages/sdk && npm run build && cd ../..
-cd packages/connect && npm run build && cd ../..
-npm run build:ui
+# Install through the managed workspace boundary
+npm run dependencies:ci
 
-# Initialize Android project
-npx tauri android init
+# Initialize the actual app, with its Dev pairing identity
+npm run tauri -- android init --ci --skip-targets-install --config tauri.android.dev.conf.json
 
-# Build debug APK (carries the 16 KB page-alignment linker flags)
-npm run build:android
+# Restore the maintained inputs after initialization
+node scripts/write-native-client-build-manifest.mjs --refresh
+node scripts/apply-android-channel-icons.mjs dev
+node scripts/apply-android-native-bootstrap.mjs
+node scripts/apply-android-pairing-scheme.mjs dev
+node scripts/apply-android-network-policy.mjs
+node scripts/write-android-build-manifest.mjs
 
-# Confirm the packaged libraries' ELF p_align — the build passes either way.
-# This does not cover APK ZIP-entry alignment (zipalign -P 16); see #890.
+# Build in src-desktop through the owning wrapper, with 16 KB linker flags
+STATION_CLIENT_BUILD_REUSE=1 \
+RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" \
+  npm run tauri -- android build --debug --apk --config tauri.android.dev.conf.json
+
+# Check ELF alignment/congruence and stored native-library ZIP data offsets.
+# A successful compilation alone proves neither.
 node scripts/check-android-16kb-alignment.mjs \
   src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
 
 The APK will be at `src-desktop/gen/android/app/build/outputs/apk/universal/debug/`.
+The repository also exposes `build:android` and `build:android:arm64` in
+[package.json](../../package.json). The expanded recipe above makes app-directory
+selection explicit and includes the network-policy helper used by CI.
+Tauri's `beforeBuildCommand` builds the native-client frontend; a standalone
+`build:ui` is not a substitute for that provenance/build sequence.
+This recipe was source-reviewed, not built in this audit. Keep generated
+customizations under their script owners and inspect regeneration changes.
 
 ## Build provenance: what commit is on this device?
 
-Every APK carries `assets/station-build.json` — the same `{ sha, branch, builtAt }`
-artifact, produced by the same derivation, that the desktop bundle has carried
+The maintained build paths stage `assets/station-build.json` — the source-derived
+artifact that the desktop bundle has carried
 at `Station.app/Contents/Resources/dist-server/station-build.json` since
 station#1085. `npm run build:android` stages it via
-`node scripts/write-android-build-manifest.mjs` before packaging, and both CI
-Android jobs stage it immediately after `tauri android init`.
+`node scripts/write-android-build-manifest.mjs` before packaging, and CI
+Android workflows stage it after `tauri android init`. The writer can return
+without a stamp when neither checkout nor valid release provenance exists;
+the artifact reader, not the staging command alone, establishes its presence.
 
-It exists because `versionName` never changes, so it was the *only* version
-signal a live device had: you could neither confirm a phone was current nor
-avoid overwriting a build newer than yours (station#3592).
+The original rationale was a static `versionName` that could not identify the
+installed commit (archive#3592). Current release workflows set version identity
+as well; the stamp records source revision and build time. It is not a digest
+of every compiled input or proof that a working tree was clean.
 
 ### Read it back off a connected device
 
 ```bash
-pkg=io.kontourai.station.debug   # release builds: io.kontourai.station
+pkg=io.kontourai.station.debug   # select the exact installed channel package
 adb pull "$(adb shell pm path "$pkg" | tr -d '\r' | sed 's/^package://')" /tmp/station-device.apk
 node scripts/read-android-build-provenance.mjs /tmp/station-device.apk
 ```
@@ -187,11 +222,12 @@ node scripts/read-android-build-provenance.mjs \
   src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
 
-Not yet covered: the running app does not display or serve its own build sha.
-Unlike the desktop shell — which spawns a bundled Node server that reports
-provenance over its local endpoint — the Android app is a WebView client of a
-*remote* Station server, so there is no local endpoint of its own to expose it
-on; surfacing it in-app is separate work.
+Settings → System now shows **Installed app build** from the native capability
+report, separately from the connected server's build. The owner chain is
+[`build.rs`](../../src-desktop/build.rs) → native capability report →
+[`InstalledAppBuildProvenance`](../../src-ui/src/views/settings/BuildProvenance.tsx).
+Missing provenance remains unavailable. A displayed revision/build timestamp
+does not establish upload, installation time, or provider acceptance.
 
 ### Run on emulator
 
@@ -201,8 +237,12 @@ adb devices
 
 # Install and launch
 adb install src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
-adb shell am start -n io.kontourai.station/.MainActivity
+adb shell am start -n io.kontourai.station.debug/io.kontourai.station.MainActivity
 ```
+
+That component is for the base Dev build. For a channel APK, derive the
+package and launchable activity from `aapt dump badging` as the emulator
+workflow does; do not launch Stable after installing another channel.
 
 ## Testing
 
@@ -213,7 +253,10 @@ Android-specific tests run via `.github/workflows/android-test.yml`:
   public Playwright installer, then runs `npm run test:android`. That public
   launcher owns the isolated Station instance, build, ports, reports, and
   cleanup for the Pixel 7 viewport tests in `tests/android/`.
-- **Emulator smoke test** — installs APK on Android 34 emulator, verifies app launches without crash
+- **Emulator smoke test** — installs the exact selected APK on an Android 34
+  emulator, launches its artifact-derived component, checks process presence
+  after five seconds and scans crash output. It does not exercise pairing,
+  credentials, capture, background behavior or a complete user journey.
 
 Run Playwright mobile tests locally:
 
@@ -228,14 +271,12 @@ This file's `build-android.yml` workflow never produces a signed release
 build. The signed release APK/AAB is built and signed in a different
 workflow — the `android` job of `.github/workflows/release.yml`, triggered by
 a `v*` tag push — using the Android upload keystore, not the Tauri updater
-key:
-- `ANDROID_KEYSTORE_BASE64` — base64-encoded upload keystore file
-- `ANDROID_KEYSTORE_PASSWORD` — keystore password
-- `ANDROID_KEY_ALIAS` — signing key alias within the keystore
-- `ANDROID_KEY_PASSWORD` — signing key password
-
-These are GitHub Environment secrets on the protected `native-release`
-environment, not repository-level secrets. See
+key. The protected `native-release` job authenticates through Google workload
+identity, fetches the keystore and password from Secret Manager, and supplies
+`TAURI_ANDROID_KEYSTORE_PATH`, `TAURI_ANDROID_KEYSTORE_PASSWORD`,
+`TAURI_ANDROID_KEY_ALIAS` and `TAURI_ANDROID_KEY_PASSWORD` to the generated
+signing configuration. The alias comes from `ANDROID_UPLOAD_KEY_ALIAS`.
+Do not infer that the older four GitHub-secret recipe still owns this path. See
 [Native release operations](./native-releases.md) for the full secret set and
 [Mobile store distribution](./mobile-release.md) for how to also push that
 signed build to Play's internal testing track.

@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
+import { domainToASCII } from 'node:url';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { sniffChatImageMimeType } from '@kontourai/station-contracts/chat-attachment';
+import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   RequestOpenedEvent,
@@ -240,7 +242,11 @@ export function mapServerRequestToEvent(
         requestId,
         method: 'request.opened',
         requestType: 'approval',
-        title: extractString(payload.command) ?? 'Approve command execution',
+        // #2911: every approval surface renders the title (strip card name,
+        // toast, inbox row, a delegating agent's snapshot), so it names what
+        // is being allowed: the host for a managed-network prompt, input to a
+        // running process for a stdin write, otherwise the command.
+        title: commandApprovalTitle(payload),
         description: extractString(payload.reason) ?? undefined,
         payload,
       };
@@ -312,14 +318,22 @@ export function resolveApprovalOutcome(
   result: unknown;
 } {
   switch (method) {
-    case 'item/permissions/requestApproval':
+    // #2909: `PermissionsRequestApprovalResponse` is `{permissions, scope}`
+    // with no decision field, so the granted profile IS the answer. A denial
+    // grants the empty profile (every `GrantedPermissionProfile` field is
+    // optional). Its scope is `turn`, matching Codex's own denial (the
+    // default, empty profile with scope Turn): an empty grant has nothing to
+    // remember for the session.
+    case 'item/permissions/requestApproval': {
+      const granted = decision === 'accept' || decision === 'acceptForSession';
       return {
         decision,
         result: {
-          permissions: payload.permissions ?? {},
+          permissions: granted ? (payload.permissions ?? {}) : {},
           scope: decision === 'acceptForSession' ? 'session' : 'turn',
         },
       };
+    }
     case 'item/commandExecution/requestApproval':
     case 'item/fileChange/requestApproval':
       return { decision, result: { decision } };
@@ -372,6 +386,185 @@ function isEmptyElicitationSchema(schema: unknown): boolean {
   return schema.minProperties === undefined || schema.minProperties === 0;
 }
 
+/**
+ * Every `commandExecution` title fits in this many code points, so no
+ * downstream cut (the delegation snapshot keeps 200) can remove the part that
+ * matters: a host's registrable domain or a command's tail.
+ */
+const MAX_COMMAND_APPROVAL_TITLE_LENGTH = 200;
+/**
+ * Room for the host in a network title. A longer host keeps its END, where
+ * the registrable domain is (`…aaaa.evil.example`), behind a leading "…".
+ */
+const MAX_TITLE_HOST_LENGTH = 120;
+const MAX_TITLE_PROTOCOL_LENGTH = 16;
+const ELLIPSIS = '\u2026';
+
+/**
+ * The title of a `commandExecution` approval. A noun phrase, because each
+ * surface wraps it in its own sentence ("Use …" on the card, "… wants to use
+ * …" on the toast). The title is also the only text a delegating agent's
+ * snapshot carries.
+ *
+ * - Network prompt (any non-null `networkApprovalContext`): "network access
+ *   to <host> (<protocol>) for: <command>", or "network access to an unnamed
+ *   host" when no host survives. Never the plain command title: the prompt
+ *   is about the network.
+ * - Stdin write: "input to a running command[: <command>]". Codex's stdin
+ *   approvals refer to the existing parent command, so the bare command
+ *   would read as approval to START it.
+ * - Otherwise the command.
+ *
+ * Host, protocol and command are engine-supplied text: each is made one
+ * line and stripped of control and format characters (bidi overrides and
+ * isolates, zero-width characters). The whole title is bounded; a cut
+ * command ends in "…". Only the title is rewritten: the payload keeps the
+ * raw command.
+ */
+function commandApprovalTitle(payload: Record<string, unknown>): string {
+  const command = displayText(payload.command);
+  if (payload.networkApprovalContext != null) {
+    const context = isRecord(payload.networkApprovalContext)
+      ? payload.networkApprovalContext
+      : {};
+    const target = `network access to ${hostLabel(displayText(context.host))}${protocolLabel(displayText(context.protocol))}`;
+    return withCommand(target, ' for: ', command);
+  }
+  if (payload.kind === 'writeStdin') {
+    return withCommand('input to a running command', ': ', command);
+  }
+  return command
+    ? keepStart(command, MAX_COMMAND_APPROVAL_TITLE_LENGTH)
+    : 'Approve command execution';
+}
+
+/**
+ * The hosts shown bare, all ASCII: dot-separated labels of letters, digits,
+ * hyphen and underscore with an optional trailing dot (which covers IPv4 and
+ * punycode), or a bracketed IPv6 address whose zone is ASCII. No character
+ * in them can pass for the title's own separators (spaces, brackets, colons,
+ * quotes) or be invisible.
+ */
+const BARE_HOST_SYNTAX =
+  /^(?:\[[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.-]+)?\]|[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.?)$/;
+const PROTOCOL_SYNTAX = /^[A-Za-z0-9]+$/;
+/**
+ * A Unicode host name as `domainToASCII` is given it: labels of letters,
+ * marks, digits, hyphen and underscore, separated by `.` or an IDNA dot
+ * (`。．｡`), with an optional trailing dot, and nothing else. Node's
+ * `domainToASCII` parses like a URL hostname setter and silently stops at a
+ * URL delimiter (`/ ? # \\ @ :`), so it must never see one.
+ */
+const UNICODE_HOST_SYNTAX =
+  /^[\p{L}\p{M}\p{N}_-]+(?:[.\u3002\uFF0E\uFF61][\p{L}\p{M}\p{N}_-]+)*[.\u3002\uFF0E\uFF61]?$/u;
+/** Printable ASCII outside a host label's `[A-Za-z0-9_.-]`. */
+const ASCII_NON_LABEL = /[ -,/:-@[-^`{-~]/;
+/**
+ * Code points kept of an unrecognised host before escaping, "…" included.
+ * Escaping at most doubles each kept code point, so the quoted text is at
+ * most 1 + 49 × 2 = 99 code points, and even beside an unrecognised
+ * protocol the command keeps 30 of the title's 200.
+ */
+const MAX_QUOTED_HOST_RAW_LENGTH = 50;
+/**
+ * Quote marks and their lookalikes, each escaped with a backslash in a
+ * quoted host (as a double or single quote) so none can pass for the
+ * closing delimiter.
+ */
+const DOUBLE_QUOTE_LIKE =
+  '"\u201C\u201D\u201E\u201F\u2033\u2036\uFF02\u05F4\u02BA\u02DD\u02EE\u3003\u301D\u301E\u301F';
+const SINGLE_QUOTE_LIKE =
+  '\u2018\u2019\u201A\u201B\u2032\u2035\uFF07\u02B9\u02BB\u02BC\u02BD';
+const QUOTED_HOST_ESCAPES = new RegExp(
+  `[\\\\${DOUBLE_QUOTE_LIKE}${SINGLE_QUOTE_LIKE}]`,
+  'gu',
+);
+
+function escapeQuotedHostChar(char: string): string {
+  if (char === '\\') return '\\\\';
+  return DOUBLE_QUOTE_LIKE.includes(char) ? '\\"' : "\\'";
+}
+
+/**
+ * The host as the title shows it.
+ * - An ASCII host matching `BARE_HOST_SYNTAX` is shown bare, cut from the
+ *   left so its registrable domain stays.
+ * - A host in `UNICODE_HOST_SYNTAX` (with no ASCII outside label characters)
+ *   is shown as `domainToASCII` gives it (punycode, with invisible code
+ *   points mapped away) when that result is itself a bare host.
+ * - Anything else is quoted as "an unrecognised host": cut from the left
+ *   FIRST, then backslashes, quotes and quote lookalikes escaped in one
+ *   pass, so no cut can split an escape and nothing inside can pass for the
+ *   closing quote.
+ */
+function hostLabel(host: string | undefined): string {
+  if (!host) return 'an unnamed host';
+  if (BARE_HOST_SYNTAX.test(host)) return keepEnd(host, MAX_TITLE_HOST_LENGTH);
+  if (UNICODE_HOST_SYNTAX.test(host) && !ASCII_NON_LABEL.test(host)) {
+    const ascii = domainToASCII(host);
+    if (ascii && BARE_HOST_SYNTAX.test(ascii))
+      return keepEnd(ascii, MAX_TITLE_HOST_LENGTH);
+  }
+  const escaped = keepEnd(host, MAX_QUOTED_HOST_RAW_LENGTH).replace(
+    QUOTED_HOST_ESCAPES,
+    escapeQuotedHostChar,
+  );
+  return `an unrecognised host "${escaped}"`;
+}
+
+function protocolLabel(protocol: string | undefined): string {
+  if (!protocol) return '';
+  return PROTOCOL_SYNTAX.test(protocol)
+    ? ` (${keepStart(protocol, MAX_TITLE_PROTOCOL_LENGTH)})`
+    : ' (unrecognised protocol)';
+}
+
+/** `lead` + `separator` + as much of `command` as fits the title bound. */
+function withCommand(
+  lead: string,
+  separator: string,
+  command: string | undefined,
+): string {
+  if (!command) return lead;
+  const room =
+    MAX_COMMAND_APPROVAL_TITLE_LENGTH - codePoints(lead + separator).length;
+  return `${lead}${separator}${keepStart(command, room)}`;
+}
+
+function codePoints(text: string): string[] {
+  return Array.from(text);
+}
+
+/** At most `max` code points, keeping the start; a cut ends in "…". */
+function keepStart(text: string, max: number): string {
+  const points = codePoints(text);
+  if (points.length <= max) return text;
+  const kept = points
+    .slice(0, Math.max(0, max - 1))
+    .join('')
+    .trimEnd();
+  return `${kept}${ELLIPSIS}`;
+}
+
+/** At most `max` code points, keeping the end; a cut starts with "…". */
+function keepEnd(text: string, max: number): string {
+  const points = codePoints(text);
+  if (points.length <= max) return text;
+  const kept = points
+    .slice(points.length - (max - 1))
+    .join('')
+    .trimStart();
+  return `${ELLIPSIS}${kept}`;
+}
+
+/** Engine-supplied text made one visible line, unbounded (callers bound). */
+function displayText(value: unknown): string | undefined {
+  const text = extractString(value);
+  return text
+    ? sanitizeUntrustedDisplayText(text, Number.POSITIVE_INFINITY) || undefined
+    : undefined;
+}
+
 export function mapApprovalResolutionStatus(
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
 ): RequestResolvedEvent['status'] {
@@ -388,9 +581,12 @@ export function mapApprovalResolutionStatus(
  * Tool-level session-grant identity for an inbound Codex approval request.
  * Mirrors `deriveToolName`'s vocabulary (`shell_exec`/`apply_patch`) so a
  * Station-side `acceptForSession` grant covers the whole tool, not the one
- * call the engine asked about: Codex's `commandExecution`/`fileChange`
- * wire responses carry no session scope, and `mcpServer/elicitation/request`
- * degrades `acceptForSession` to a one-call `accept`. Returns null for
+ * call the engine asked about. `resolveApprovalOutcome` passes the user's
+ * decision to Codex unchanged for `commandExecution`/`fileChange`
+ * (`acceptForSession` included); this grant is Station's own, and only it
+ * lets a later, different call through without a prompt.
+ * `mcpServer/elicitation/request` degrades `acceptForSession` to a one-call
+ * `accept` on the wire. Returns null for
  * methods with no stable tool identity (nothing is granted or remembered).
  */
 export function deriveApprovalToolName(
@@ -398,12 +594,34 @@ export function deriveApprovalToolName(
   payload: Record<string, unknown>,
 ): string | null {
   switch (method) {
+    // #2911: a request that asks for more than "run this command" never
+    // matches or mints a tool grant, so it always prompts. The user's own
+    // decision still reaches Codex unchanged (`acceptForSession` included),
+    // so whatever Codex remembers for the session is Codex's call.
+    // - `networkApprovalContext` asks to reach a host through the managed
+    //   network proxy; a `shell_exec` grant would cover every host.
+    // - `kind: 'writeStdin'` writes to an already-running process (a shell,
+    //   a REPL, a sudo prompt): a grant would allow any later input to any
+    //   process, and the request carries neither the input nor the process,
+    //   so it can be neither shown nor narrowed.
+    // - Only a kind Station knows as "start a command" (absent on older
+    //   servers, or `command`) is `shell_exec`; an unknown kind fails closed.
+    // - `grantRoot` asks to allow writes under a root "for the remainder of
+    //   the session" (codex app-server types). An auto-accept under an
+    //   `apply_patch` grant would answer it without the user seeing it.
     case 'item/commandExecution/requestApproval':
-      return 'shell_exec';
+      if (payload.networkApprovalContext != null) return null;
+      return payload.kind === undefined || payload.kind === 'command'
+        ? 'shell_exec'
+        : null;
     case 'item/fileChange/requestApproval':
-      return 'apply_patch';
+      return payload.grantRoot != null ? null : 'apply_patch';
+    // #2911: a permissions request is an escalation, not a tool. Its
+    // `acceptForSession` reply already carries `scope: 'session'`, so Codex
+    // remembers that grant itself; a Station-side grant would only matter for
+    // a DIFFERENT (possibly broader) request, which must prompt.
     case 'item/permissions/requestApproval':
-      return 'permissions';
+      return null;
     case 'mcpServer/elicitation/request': {
       const serverName = extractString(payload.serverName) ?? 'server';
       return `mcp/${serverName}`;

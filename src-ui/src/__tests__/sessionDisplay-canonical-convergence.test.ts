@@ -173,58 +173,67 @@ describe('A2: no naming path can return a raw thread id', () => {
   }
 });
 
+/**
+ * archive#1462/#1463 and archive#3227 A3: Home computed its own project
+ * answer (`session.projectSlug || 'No project'`), which called an ambiguous
+ * session project-less and dropped a cross-machine caveat the sessions list
+ * showed one click away. Each attributable shape is pinned twice: to its
+ * literal copy, and to the canonical `sessionProjectLabel` every other surface
+ * reads.
+ */
 describe('A3: Home attributes a project the way the contract requires', () => {
-  test('an ambiguous session names its candidates instead of reading "No project"', () => {
-    const ambiguous = session({
-      controlMode: 'read-only-attached',
-      projectAttribution: { state: 'ambiguous', candidates: ['alpha', 'beta'] },
-    });
-    // `packages/contracts/src/orchestration.ts` forbids exactly the string
-    // Home used to render here: "no project" when the truth is "too many".
-    expect(homeRow(ambiguous).projectLabel).toBe('ambiguous (alpha, beta)');
-    expect(homeRow(ambiguous).projectLabel).toBe(
-      sessionProjectLabel(ambiguous),
-    );
-  });
-
-  test('a bounded candidate list still counts what it omitted on a Home row', () => {
-    const truncated = session({
-      controlMode: 'read-only-attached',
-      projectAttribution: {
-        state: 'ambiguous',
-        candidates: ['alpha', 'beta'],
-        omittedCandidates: 4,
-      },
-    });
-    expect(homeRow(truncated).projectLabel).toBe(
+  const attributable: Array<[string, OrchestrationSessionSummary, string]> = [
+    [
+      // `packages/contracts/src/orchestration.ts` forbids exactly the string
+      // Home used to render here: "no project" when the truth is "too many".
+      'an ambiguous session names its candidates instead of reading "No project"',
+      session({
+        controlMode: 'read-only-attached',
+        projectAttribution: {
+          state: 'ambiguous',
+          candidates: ['alpha', 'beta'],
+        },
+      }),
+      'ambiguous (alpha, beta)',
+    ],
+    [
+      'a bounded candidate list still counts what it omitted on a Home row',
+      session({
+        controlMode: 'read-only-attached',
+        projectAttribution: {
+          state: 'ambiguous',
+          candidates: ['alpha', 'beta'],
+          omittedCandidates: 4,
+        },
+      }),
       'ambiguous (alpha, beta, and 4 more)',
-    );
-  });
-
-  test('a cross-machine slug join keeps its caveat on a Home row', () => {
-    // NOTE the shape: the server sets a session's top-level `projectSlug`
-    // FROM `delegation.projectSlug` when there is one, so both are present.
-    // Home read only the top-level one, so it showed the slug but SILENTLY
-    // DROPPED the caveat — the row asserted a verified binding that this
-    // Station cannot prove, while the sessions list one click away said the
-    // name match was unverified.
-    const delegated = session({
-      projectSlug: 'station',
-      delegation: {
-        taskId: 'task-1',
+    ],
+    [
+      // NOTE the shape: the server sets a session's top-level `projectSlug`
+      // FROM `delegation.projectSlug` when there is one, so both are present.
+      // Home read only the top-level one, so it showed the slug but SILENTLY
+      // DROPPED the caveat.
+      'a cross-machine slug join keeps its caveat on a Home row',
+      session({
         projectSlug: 'station',
-        projectSlugJoin: 'unverified-cross-machine',
-      },
-    });
-    expect(homeRow(delegated).projectLabel).toBe(
+        delegation: {
+          taskId: 'task-1',
+          projectSlug: 'station',
+          projectSlugJoin: 'unverified-cross-machine',
+        },
+      }),
       'station (unverified name match)',
-    );
-  });
-
-  test('a settled local binding gains no caveat', () => {
-    expect(homeRow(session({ projectSlug: 'station' })).projectLabel).toBe(
+    ],
+    [
+      'a settled local binding gains no caveat',
+      session({ projectSlug: 'station' }),
       'station',
-    );
+    ],
+  ];
+
+  test.each(attributable)('%s', (_name, subject, expected) => {
+    expect(homeRow(subject).projectLabel).toBe(expected);
+    expect(sessionProjectLabel(subject)).toBe(expected);
   });
 
   test('only a session with nothing known folds to Home’s own copy', () => {

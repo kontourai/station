@@ -1,9 +1,13 @@
 # pnpm workspace installation
 
-> Status: implementation proposal; local evidence and hosted delivery remain
-> separate. [Issue #516](https://github.com/kontourai/station/issues/516) owns the
-> migration and worktree disk problem. Check its linked pull requests for live
-> status. The [development guide](../guides/development.md) owns setup commands.
+> **Reading status: implemented installation design with a delivery checklist.**
+> [Workspace settings](../../pnpm-workspace.yaml), the
+> [managed installer](../../scripts/dependency-lifecycle.mjs), and
+> [lock reader](../../scripts/lib/pnpm-lockfile.mjs) implement the pnpm boundary.
+> The checklist below records the required evidence; it is not a new proof of
+> every platform, relocated artifact, disk-saving measurement, or hosted release.
+> [Issue #516](https://github.com/kontourai/station/issues/516) retains the migration
+> history. The [development guide](../guides/development.md) owns setup commands.
 
 ## Problem
 
@@ -53,7 +57,9 @@ Native frozen installation supplements these checks. Frozen installation alone
 did not reject an imported unsatisfied peer in a local probe.
 
 Advisory policy uses one registry response with separate full and production
-closures for root, SDK, and Shared. It retains severity and residual policy.
+closures for root, SDK, and Shared. Root includes all managed workspace
+importers; SDK and Shared each select their own importer. The policy retains
+its severity and residual requirements.
 Release inventories follow the locked production graph, including workspace
 links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of

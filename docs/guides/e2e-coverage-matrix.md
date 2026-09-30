@@ -1,6 +1,6 @@
 # E2E Coverage Matrix
 
-Snapshot of the primary app surface and its current Playwright coverage. The
+Reading map for the primary app surfaces and their Playwright evidence. The
 full coverage gate is `npm run verify:e2e:full`; it runs the promoted product,
 first-run, Starter clean-install, live smoke, extended, screenshot, and Android
 buckets. The
@@ -12,9 +12,9 @@ cross-surface suite through `scripts/run-e2e-suite.mjs` against a temporary
 top-level and Android Playwright spec must be assigned to exactly one bucket:
 `product`, `first-run`, `starter-clean-install`, `smoke-live`, `extended`,
 `screenshot`, `quarantine`, or `android`. Product, first-run, Starter
-clean-install, smoke-live, extended, and screenshot buckets are run through
-`scripts/run-e2e-suite.mjs`; Android remains a separate Playwright project.
-CI's Full Playwright Coverage job and the local `npm run verify` gate both use
+clean-install, smoke-live, extended, screenshot, and Android buckets are run
+through `scripts/run-e2e-suite.mjs`; Android selects a separate Playwright project.
+[Extended CI](../../.github/workflows/ci-extended.yml)'s Full Playwright Coverage job and the local `npm run verify` gate both use
 the full contract, so new specs must update this manifest before they can stay
 green.
 
@@ -27,17 +27,31 @@ down with replacement, or remove as vacuous.
 
 ## Core Nav
 
-| Surface | Current specs | Coverage level | Main gaps |
-|---|---|---|---|
-| Home / continuity rail | `task-first-home`, `root-route-restore`, Android `navigation`, `mobile-chat-composer` | full | Deterministic desktop + Pixel 7 coverage owns task continuation, guided start/project actions, concrete identity, one Advanced disclosure, deep links, root loading/retry/stale restore, overflow, touch geometry, and composer reachability |
-| Projects | `project-lifecycle`, `project-forms`, `project-architecture`, coding-layout specs | full | Create, settings edit, delete, restore/navigation, unsaved guard, and failed-save error coverage are promoted; project-agent scoping contracts are covered at the route/contract layer |
-| Agents | `agents`, `default-agent-workflow`, `builtin-runtime-workflow`; `acp-project-context` remains extended for ACP-specific context checks | full | Managed and connected create/edit/delete, tab shape, unsaved guard, failed-save error, runtime option persistence, chat/runtime flows, and ACP connection context are covered |
-| Skills | `skills` | full | The one guidance-authoring lane. Product coverage includes create/edit/delete, duplicate, markdown import, guarded navigation, duplicate-destination errors, source labeling, command skills (the switch pair, derived variable chips, counters, test run), and the retired `/playbooks` path landing on the Skills tab |
-| Registry | `registry`, `skills` | full | Registry tabs cover Agents, Skills, Integrations, and Plugins with detail preview, search empty state, install/remove, installed-state reflection, action failure messaging, and plugin install/remove promotion; system endpoint contracts are covered below the browser layer |
-| Connections | `connections-crud`, `connect-modal`, `connect-reconnect-banner`, parts of `settings`, runtime/provider chat specs | full | CRUD lane exists for provider, runtime, and tool-server flows; remaining work is maintenance, not missing ownership |
-| Plugins | `plugin-update`, `plugin-system`, `plugin-preview` | full | Preview, install/remove API, bundle serving, update success/failure, detail metadata, settings persistence, provider toggles, changelog expansion, and selected-plugin remove recovery are promoted |
-| Schedule | `schedule`, `schedule-runs` | full | Hermetic CRUD coverage includes add, edit, duplicate, run, filter, enable/disable, delete, run history, and output deep links |
-| Monitoring | `monitoring` | full | Hermetic history coverage includes sidebar stats, active and historical agents, metrics, event type filters, free-text search, agent/conversation/tool/trace chips, time-range fetching, and clear/reset empty state |
+This table routes to representative browser assertions. It is not a claim that
+any surface has complete coverage or that the latest run passed. Specs combine
+real application calls with fixture responses; inspect the named test and its
+intercepts before extending its evidence to a backend or provider.
+
+| Surface | Current spec owners | What to inspect |
+| --- | --- | --- |
+| Home / continuity rail | `task-first-home`, `root-route-restore`, Android `mobile-layout`, `mobile-chat-composer` | Continuation, first steps, deep links, loading/retry state, mobile geometry, and composer reachability; many Home responses are mocked |
+| Projects | `project-lifecycle`, `project-forms`, `project-architecture`, `coding-layout-plan-panel` | Create/edit/delete, layout selection, unsaved guards, failed saves, and phone-sized form containment |
+| Agents | `agents-pane`, `agents-readiness-board`, `agents-editor-gates`, `agents-editor-roundtrip`, `agents-copy-existing`, `agents-new-model-turn`, `agents-new-cli-turn`, `agents-new-muse-echo-turn`, `default-agent-workflow` | Separate browsing, readiness, editing, copying, and engine-specific turn journeys; `agents.spec.ts` is no longer the owner |
+| Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, and the retired playbook redirect |
+| Registry | `registry`, `skills` | Tabs including Layouts, preview, search, install/remove, enable/disable, and action failures |
+| Connections | `connections-crud`, `connect-modal`, `connect-remote-auth-recovery`, `connect-reconnect-banner` | Model/runtime/tool-server setup, manual consent, connection repair, keyboard focus, and phone-sized dialogs |
+| Plugins | `plugin-update`, `plugin-preview`, `plugin-pane-sdk-context`, `minimal-workspace-example`, `bundled-plugin-registry-lifecycle` | Update success/failure, permission denial, installed plugin panes rendering, settings, removal, and dialog containment |
+| Schedule | `schedule`, `schedule-runs` | CRUD, explicit run, filter/toggle, keyboard sorting, run history, output, and exact-run deep links |
+| Monitoring | `monitoring` | Fixture history, event/search filters, chips, time ranges, and sidebar/metric rendering; this does not establish telemetry producer completeness |
+
+The [manifest](../../tests/e2e-manifest.mjs) assigns each spec's bucket and
+execution class. The [coverage runner](../../scripts/run-e2e-coverage.mjs) runs
+all seven non-quarantine buckets, records per-bucket results, and treats a
+successful exit with no executed tests as `EMPTY`, not coverage. A timed-out
+bucket and an account-disabled scenario remain distinct from passed evidence.
+The runner requires POSIX process-group settlement. Its `android` bucket uses
+the separate browser project; a bucket name alone is not an installed Android
+app or physical-device receipt.
 
 ## Assessment
 
@@ -54,9 +68,9 @@ down with replacement, or remove as vacuous.
   specs cannot silently fall out of a bucket.
 - The primary product surfaces now have surface-owned workflow lanes instead of
   relying on shell-only checks.
-- Regressions can still slip through when newly added specs are not assigned to
-  a manifest bucket or when feature work changes a UI contract without updating
-  the owning lane.
+- Manifest validation refuses unassigned specs. Regressions can still slip
+  through an assigned test with weak assertions, an untested failure case, or
+  feature work that changes a UI contract without updating its owning lane.
 
 ## Priority Lanes
 
@@ -82,4 +96,7 @@ For each primary product surface, prefer one named Playwright lane with a clearl
    - one user-visible success assertion
    - one failure-path assertion
 
-The matrix should declare which tier each surface is targeting in the current phase instead of assuming `full` everywhere.
+These tiers are authoring targets. Assign one only after checking the actual
+assertions and the retained run; a spec filename or manifest entry is not
+enough to label an entire surface `full`. The table above deliberately records
+concrete owners and claim boundaries instead.

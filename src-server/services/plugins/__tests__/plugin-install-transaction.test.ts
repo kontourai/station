@@ -47,7 +47,6 @@ import {
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PluginContentLockCycleError,
-  pluginContentLockCycleMessage,
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
 import {
@@ -65,7 +64,7 @@ import {
   readRegistryPluginAvailability,
   recoverInstalledPlugin,
   removeDependencyTreesCreatedByThisInstall,
-  resolvePluginRegistrySource,
+  resolvePluginRegistryInstall,
   restorePluginDurableState,
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
@@ -931,12 +930,13 @@ describe('dependency approval from the real preview route', () => {
   });
 });
 
-describe('resolvePluginRegistrySource', () => {
+describe('resolvePluginRegistryInstall', () => {
   test('rejects duplicate plugin ids across registry providers before install selection', async () => {
     getPluginRegistryProviders.mockReturnValue([
       {
         source: 'curated',
         provider: {
+          registryKey: 'curated-key',
           listAvailable: vi
             .fn()
             .mockResolvedValue([{ id: 'demo-plugin', source: '/tmp/a' }]),
@@ -945,6 +945,7 @@ describe('resolvePluginRegistrySource', () => {
       {
         source: 'workspace',
         provider: {
+          registryKey: 'workspace-key',
           listAvailable: vi
             .fn()
             .mockResolvedValue([{ id: 'demo-plugin', source: '/tmp/b' }]),
@@ -952,12 +953,49 @@ describe('resolvePluginRegistrySource', () => {
       },
     ]);
 
-    await expect(resolvePluginRegistrySource('demo-plugin')).rejects.toThrow(
+    await expect(resolvePluginRegistryInstall('demo-plugin')).rejects.toThrow(
       /ambiguous across multiple plugin registry providers/,
     );
   });
 
-  test('resolves a single provider plugin id', async () => {
+  test('resolves a single provider plugin id with its registry key', async () => {
+    getPluginRegistryProviders.mockReturnValue([
+      {
+        source: 'curated',
+        provider: {
+          registryKey: 'curated-key',
+          listAvailable: vi
+            .fn()
+            .mockResolvedValue([{ id: 'demo-plugin', source: '/tmp/a' }]),
+        },
+      },
+    ]);
+
+    await expect(resolvePluginRegistryInstall('demo-plugin')).resolves.toEqual({
+      source: '/tmp/a',
+      registryKey: 'curated-key',
+    });
+  });
+
+  test('an id no provider claims is not installable from a registry', async () => {
+    getPluginRegistryProviders.mockReturnValue([
+      {
+        source: 'curated',
+        provider: {
+          registryKey: 'curated-key',
+          listAvailable: vi
+            .fn()
+            .mockResolvedValue([{ id: 'other-plugin', source: '/tmp/a' }]),
+        },
+      },
+    ]);
+
+    await expect(resolvePluginRegistryInstall('demo-plugin')).resolves.toBe(
+      null,
+    );
+  });
+
+  test('refuses a provider without a stable source identity', async () => {
     getPluginRegistryProviders.mockReturnValue([
       {
         source: 'curated',
@@ -969,8 +1007,8 @@ describe('resolvePluginRegistrySource', () => {
       },
     ]);
 
-    await expect(resolvePluginRegistrySource('demo-plugin')).resolves.toBe(
-      '/tmp/a',
+    await expect(resolvePluginRegistryInstall('demo-plugin')).rejects.toThrow(
+      "Plugin registry provider for 'demo-plugin' does not expose a stable source identity",
     );
   });
 
@@ -979,6 +1017,7 @@ describe('resolvePluginRegistrySource', () => {
       {
         source: 'curated',
         provider: {
+          registryKey: 'curated-key',
           resolveSource: vi.fn().mockResolvedValue('/tmp/a'),
           listAvailable: vi
             .fn()
@@ -987,9 +1026,10 @@ describe('resolvePluginRegistrySource', () => {
       },
     ]);
 
-    await expect(resolvePluginRegistrySource('demo-plugin')).resolves.toBe(
-      '/tmp/a',
-    );
+    await expect(resolvePluginRegistryInstall('demo-plugin')).resolves.toEqual({
+      source: '/tmp/a',
+      registryKey: 'curated-key',
+    });
   });
 
   test('treats omitted list source as no claim when resolveSource is authoritative', async () => {
@@ -997,15 +1037,17 @@ describe('resolvePluginRegistrySource', () => {
       {
         source: 'curated',
         provider: {
+          registryKey: 'curated-key',
           resolveSource: vi.fn().mockResolvedValue('/tmp/a'),
           listAvailable: vi.fn().mockResolvedValue([{ id: 'demo-plugin' }]),
         },
       },
     ]);
 
-    await expect(resolvePluginRegistrySource('demo-plugin')).resolves.toBe(
-      '/tmp/a',
-    );
+    await expect(resolvePluginRegistryInstall('demo-plugin')).resolves.toEqual({
+      source: '/tmp/a',
+      registryKey: 'curated-key',
+    });
   });
 
   test('rejects conflicting source claims from one provider', async () => {
@@ -1013,6 +1055,7 @@ describe('resolvePluginRegistrySource', () => {
       {
         source: 'curated',
         provider: {
+          registryKey: 'curated-key',
           resolveSource: vi.fn().mockResolvedValue('/tmp/a'),
           listAvailable: vi
             .fn()
@@ -1021,7 +1064,7 @@ describe('resolvePluginRegistrySource', () => {
       },
     ]);
 
-    await expect(resolvePluginRegistrySource('demo-plugin')).rejects.toThrow(
+    await expect(resolvePluginRegistryInstall('demo-plugin')).rejects.toThrow(
       /ambiguous within plugin registry provider/,
     );
   });
@@ -4294,21 +4337,6 @@ describe('a refused plugin content lock survives installPluginFromSource', () =>
     expect(existsSync(join(pluginsDir, 'shared-lib', 'plugin.json'))).toBe(
       true,
     );
-  });
-
-  test('the message does not claim the request changed nothing', () => {
-    // A refusal partway down a dependency list leaves dependencies installed
-    // and then rolled back, which is changed-and-reverted, not unchanged. The
-    // lock layer cannot see either, so it says neither.
-    const message = pluginContentLockCycleMessage(
-      new PluginContentLockCycleError([
-        join('/home', 'plugins', 'app'),
-        join('/home', 'plugins', 'shared-lib'),
-        join('/home', 'plugins', 'app'),
-      ]),
-    );
-    expect(message).not.toMatch(/nothing was changed/i);
-    expect(message).toContain('app and shared-lib');
   });
 });
 

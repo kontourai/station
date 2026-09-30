@@ -9656,7 +9656,11 @@ describe('OrchestrationService', () => {
     // (forgetLiveUserSession losing policyThreads) stayed green under the
     // whole suite — so both the call sites' declared subsets AND the seam
     // docblock's table are derived from the source and compared to each
-    // other: ONE truth, no third transcription to rot. Same genre as
+    // other: ONE truth, no third transcription to rot. Only the
+    // evictCollidingAttachedAliases ownerCache flag also has a behavioural
+    // observer (its eviction test reads the owner afterwards); the policy
+    // binding cache has no public read, so this gate stays until every
+    // site has one. Same genre as
     // orchestration-source-invariants.test.ts (read its header before
     // extending this — the docblock never writes the call form, which is why
     // the call-site regex cannot match its own rationale). A site changing
@@ -9669,12 +9673,40 @@ describe('OrchestrationService', () => {
         join(__dirname, '..', 'orchestration-service.ts'),
         'utf8',
       );
+      const lines = source.split('\n');
+      const MEMBER =
+        /^ {2}(?:(?:private|public|protected|static|async|readonly|override)\s+)*(constructor|[A-Za-z_]\w*)\s*(?:<[^>]*>)?\(/;
+      // A site is keyed by its enclosing class member, or, for the dep
+      // closures handed to a collaborator in the constructor, by that
+      // collaborator's class. The docblock row is keyed by the first segment
+      // of its caller label. Keys, not source order, pair them, so moving a
+      // method does not change the verdict.
+      const callerOf = (offset: number): string => {
+        const line = source.slice(0, offset).split('\n').length - 1;
+        for (let index = line; index >= 0; index -= 1) {
+          const member = MEMBER.exec(lines[index] ?? '');
+          if (!member) continue;
+          if (member[1] !== 'constructor') return member[1]!;
+          for (let inner = line; inner > index; inner -= 1) {
+            const collaborator = /new (\w+)\(/.exec(lines[inner] ?? '');
+            if (collaborator) return collaborator[1]!;
+          }
+          return 'constructor';
+        }
+        throw new Error(`no enclosing member for offset ${offset}`);
+      };
       const sites = [
         ...source.matchAll(
           /forgetThreadState\(\s*[^,)]+,\s*\{([^}]*)\}\s*,?\s*\)/g,
         ),
-      ].map((match) =>
-        [...match[1].matchAll(/(\w+):\s*true/g)].map((flag) => flag[1]).sort(),
+      ].map(
+        (match) =>
+          [
+            callerOf(match.index ?? 0),
+            [...match[1]!.matchAll(/(\w+):\s*true/g)]
+              .map((flag) => flag[1])
+              .sort(),
+          ] as const,
       );
       const FLAG_COLUMNS = [
         'policyThreads',
@@ -9686,11 +9718,23 @@ describe('OrchestrationService', () => {
         ...source.matchAll(
           /^\s*\* \| ([A-Za-z.]+) \| (yes|—) \| (yes|—) \| (yes|—) \| (yes|—) \|$/gm,
         ),
-      ].map((row) =>
-        FLAG_COLUMNS.filter((_flag, index) => row[index + 2] === 'yes').sort(),
+      ].map(
+        (row) =>
+          [
+            row[1]!.split('.')[0]!,
+            FLAG_COLUMNS.filter(
+              (_flag, index) => row[index + 2] === 'yes',
+            ).sort(),
+          ] as const,
       );
       expect(docblockRows).toHaveLength(7);
-      expect(sites).toEqual(docblockRows);
+      expect(sites).toHaveLength(7);
+      // Unique keys on both sides, so the maps below cannot merge two sites.
+      expect(new Set(sites.map(([caller]) => caller)).size).toBe(7);
+      expect(new Set(docblockRows.map(([caller]) => caller)).size).toBe(7);
+      expect(Object.fromEntries(sites)).toEqual(
+        Object.fromEntries(docblockRows),
+      );
     });
   });
 
@@ -12797,47 +12841,6 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'bedrock' },
     });
     expect(started).toEqual(expect.objectContaining({ threadId }));
-  });
-
-  test('monitoring drop-log fires once per unconfigured thread and re-arms after attribution (slice 8 G4 guard)', () => {
-    // C18 closed as already-resolved (no extraction); this pins its ONLY
-    // untested behavior — the log-once dedupe and the re-arm delete —
-    // which had zero coverage repo-wide ("Monitoring dropped turn" matched
-    // only the write site).
-    const debug = vi.fn();
-    const g4Service = new RawOrchestrationService({
-      adapterRegistry: createRegistry([bedrock]),
-      eventBus: new EventBus(),
-      eventStore,
-      logger: { debug, warn: vi.fn() },
-    });
-    const internals = g4Service as unknown as {
-      monitoringContextFor(threadId: string): unknown;
-      monitoringUnconfiguredThreads: Set<string>;
-    };
-    expect(internals.monitoringContextFor('g4-unconfigured')).toBeNull();
-    expect(internals.monitoringContextFor('g4-unconfigured')).toBeNull();
-    expect(
-      debug.mock.calls.filter(
-        ([message]) =>
-          message === 'Monitoring dropped turn for unconfigured session',
-      ),
-    ).toHaveLength(1);
-    // Attribution arrives: the set entry is deleted so a LATER unconfigured
-    // drop would log again rather than being swallowed forever.
-    eventStore.appendEvent({
-      eventId: 'g4-configured',
-      provider: 'bedrock',
-      threadId: 'g4-unconfigured',
-      createdAt: '2026-08-01T00:00:00.000Z',
-      method: 'session.configured',
-      sessionId: 'g4-unconfigured',
-      metadata: { userId: 'g4-user', agentSlug: 'station' },
-    } as CanonicalRuntimeEvent);
-    expect(internals.monitoringContextFor('g4-unconfigured')).not.toBeNull();
-    expect(internals.monitoringUnconfiguredThreads.has('g4-unconfigured')).toBe(
-      false,
-    );
   });
 
   test('gives undeclared adapters an explicit legacy omission plan but fails overrides closed', async () => {
@@ -16734,12 +16737,10 @@ describe('OrchestrationService', () => {
     expect(claude.startSession).not.toHaveBeenCalled();
   });
 
-  test('the internal skipModelOptionSupportCheck flag is not part of the public HTTP-reachable dispatch contract (review r1 HIGH fix)', async () => {
-    // Proves the bypass mechanism works when explicitly invoked (as
-    // runConnectionSmoke does internally) while the ordinary two-argument
-    // call every route uses stays fully enforced — see
-    // `dispatchWithReceipt`'s docblock for why a client-supplied JSON body
-    // has no channel to populate this third argument.
+  test('the internal model-option bypass works when explicitly invoked', async () => {
+    // The mechanism runConnectionSmoke relies on. The ordinary two-argument
+    // call stays enforced (the test above); that a request body cannot
+    // populate this third argument is owned by the /commands route test.
     const bypassed = await service.dispatch(
       {
         type: 'startSession',
@@ -17564,6 +17565,66 @@ describe('OrchestrationService', () => {
     },
   );
 
+  test.each([
+    ['a device grant records that device beside the host stamp', true],
+    ['a grant naming no grantor is refused, and nothing is adopted', false],
+  ] as const)('#1796 H1: %s', async (_label, named) => {
+    const tag = named ? 'named' : 'anonymous';
+    const sourceThreadId = `external:claude:grantor-${tag}`;
+    const projectRoot = join(tmp, `grantor-project-${tag}`);
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({
+      slug: `grantor-project-${tag}`,
+      workingDirectory: projectRoot,
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: `vendor-grantor-${tag}`,
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    const adopt = service.dispatch(
+      { type: 'adoptSession', sourceThreadId },
+      {
+        fullAccessGrant: fullAccessGrantForTesting(
+          named ? { kind: 'device', deviceId: 'device-1' } : null,
+        ),
+      },
+    );
+    if (!named) {
+      await expect(adopt).rejects.toThrow(/must name who granted it/);
+      expect(claude.adoptSession).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            adoptedFromThreadId: sourceThreadId,
+          }),
+        }),
+        expect.anything(),
+      );
+      return;
+    }
+    await adopt;
+    expect(claude.adoptSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confinement: 'host',
+        metadata: expect.objectContaining({
+          adoptedFromThreadId: sourceThreadId,
+          stationConfinement: 'host',
+          stationConfinementGrantor: { kind: 'device', deviceId: 'device-1' },
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   test('adopts an attached source into a new writable child without mutating the source', async () => {
     const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');
@@ -18280,6 +18341,18 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-22T00:00:01.000Z',
       updatedAt: '2026-07-22T00:00:01.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'alias-owner-configured',
+      provider: 'claude',
+      threadId: aliasThreadId,
+      createdAt: '2026-07-22T00:00:00.500Z',
+      method: 'session.configured',
+      sessionId: aliasThreadId,
+      metadata: { userId: 'alias-owner' },
+    } as CanonicalRuntimeEvent);
+    const aliasOwner = personalReadAuthority('alias-owner');
+    // The read caches the alias's owner before eviction runs.
+    expect(service.canUserReadSession(aliasThreadId, aliasOwner)).toBe(true);
 
     service.initialize();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -18288,6 +18361,9 @@ describe('OrchestrationService', () => {
     expect(sessions.map((session) => session.threadId)).not.toContain(
       aliasThreadId,
     );
+    // Eviction forgets the cached owner with the row, so the evicted id
+    // reads as nobody's rather than as its former owner's.
+    expect(service.canUserReadSession(aliasThreadId, aliasOwner)).toBe(false);
     expect(
       eventStore.readSessions().map((session) => session.threadId),
     ).not.toContain(aliasThreadId);
@@ -19186,23 +19262,27 @@ describe('OrchestrationService', () => {
       timeoutMs: 1_000,
     });
     expect(result).toMatchObject({ ok: true });
-    const smokeCalls = invalidate.mock.calls.filter(([threadId]) =>
-      String(threadId).startsWith('station-smoke-claude-'),
-    );
-    // >= 1, not === 1: publishCanonicalEvent ALSO invalidates on
-    // session.started/configured (a real adapter emits those), and pinning
-    // an exact count would false-pass a dropped tail invalidation the
-    // moment the fixture grows one (review round 1). The ORDERING pin
-    // below is what proves the tail pair: the smoke's own invalidation
-    // runs after its deleteThread.
-    expect(smokeCalls.length).toBeGreaterThanOrEqual(1);
     const smokeDelete = deleteSpy.mock.calls.findIndex(([threadId]) =>
       String(threadId).startsWith('station-smoke-claude-'),
     );
     expect(smokeDelete).toBeGreaterThanOrEqual(0);
-    const lastInvalidate = invalidate.mock.invocationCallOrder.at(-1);
+    const smokeThreadId = deleteSpy.mock.calls[smokeDelete]?.[0];
     const smokeDeleteOrder = deleteSpy.mock.invocationCallOrder[smokeDelete];
-    expect(lastInvalidate).toBeGreaterThan(smokeDeleteOrder ?? Infinity);
+    // Only the smoke thread's own invalidations count, and one of them must
+    // follow its deleteThread. publishCanonicalEvent ALSO invalidates on
+    // session.started/configured, before the delete, so presence alone or
+    // "the last invalidation of any thread" would pass without the tail one.
+    const smokeInvalidationOrders = invalidate.mock.calls.flatMap(
+      ([threadId], index) =>
+        threadId === smokeThreadId
+          ? [invalidate.mock.invocationCallOrder[index]!]
+          : [],
+    );
+    expect(
+      smokeInvalidationOrders.some(
+        (order) => order > (smokeDeleteOrder ?? Infinity),
+      ),
+    ).toBe(true);
     deleteSpy.mockRestore();
     invalidate.mockRestore();
   });
@@ -20215,44 +20295,54 @@ describe('OrchestrationService', () => {
   });
 
   test('shares one bounded cleanup grace between ownership detection and cleanup', async () => {
-    claude.startSession.mockImplementationOnce((input) => {
-      const now = new Date().toISOString();
-      claude.sessions.set(input.threadId, {
-        provider: 'claude',
-        threadId: input.threadId,
-        status: 'ready',
-        createdAt: now,
-        updatedAt: now,
+    vi.useFakeTimers();
+    try {
+      claude.startSession.mockImplementationOnce((input) => {
+        const now = new Date().toISOString();
+        claude.sessions.set(input.threadId, {
+          provider: 'claude',
+          threadId: input.threadId,
+          status: 'ready',
+          createdAt: now,
+          updatedAt: now,
+        });
+        return new Promise<ProviderSession>(() => {});
       });
-      return new Promise<ProviderSession>(() => {});
-    });
-    vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 8));
-      return true;
-    });
-    claude.stopSession.mockImplementationOnce(
-      () => new Promise<void>(() => {}),
-    );
-    const boundedService = new OrchestrationService({
-      adapterRegistry: createRegistry([bedrock, claude]),
-      eventBus,
-      eventStore,
-      adapterStopTimeoutMs: 10,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
+      vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 8));
+        return true;
+      });
+      claude.stopSession.mockImplementationOnce(
+        () => new Promise<void>(() => {}),
+      );
+      const boundedService = new OrchestrationService({
+        adapterRegistry: createRegistry([bedrock, claude]),
+        eventBus,
+        eventStore,
+        adapterStopTimeoutMs: 10,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
 
-    const result = await boundedService.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+      const resultPromise = boundedService.runConnectionSmoke({
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 20,
+      });
+      // Past both candidate deadlines, so a regression settles rather than
+      // hangs: one shared 10 ms grace ends at 20 + 10 = 30, while a fresh
+      // grace for the stop after the 8 ms ownership check would end at
+      // 20 + 8 + 10 = 38.
+      await vi.advanceTimersByTimeAsync(50);
+      const result = await resultPromise;
 
-    expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
-    expect(result.durationMs).toBeGreaterThanOrEqual(20);
-    expect(result.durationMs).toBeLessThan(100);
-    expect(claude.stopSession).toHaveBeenCalledOnce();
+      expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+      expect(result.durationMs).toBe(30);
+      expect(claude.stopSession).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('arms internal-stop suppression when a timed-out smoke is cleaned through adapter ownership (slice 9 I6 guard)', async () => {
@@ -22525,8 +22615,8 @@ describe('OrchestrationService', () => {
   // BEHAVIOURALLY bit-identical to folding the full log — dropping
   // `turn.completed`, `runtime.error`, or `session.exited` from the literal
   // would still pass a spy assertion built the same way. This is the
-  // differential proof: append one event of EVERY canonical method (all 27
-  // — `packages/contracts/src/runtime-events.ts`'s `CanonicalRuntimeEvent`
+  // differential proof: append one event of EVERY canonical method (the whole
+  // `packages/contracts/src/runtime-events.ts`'s `CanonicalRuntimeEvent`
   // union), fold `listEvents` (the full log) and `listEventsByMethods`
   // narrowed to `ACTIVE_TURN_FOLD_METHODS` through the SAME
   // `activeTurnIdForEvents`, and assert the results agree — CHECKED AFTER
@@ -22549,15 +22639,15 @@ describe('OrchestrationService', () => {
   //
   // Independent review, delta round: everything above proves the 5 methods
   // in `ACTIVE_TURN_FOLD_METHODS` are NECESSARY — it does not prove the
-  // other 22 are SAFE TO OMIT while a turn is actually open, because the
+  // others are SAFE TO OMIT while a turn is actually open, because the
   // first pass only ever fired them before any `turn.started`, where
   // `activeTurnId` is already `undefined` on both sides and any divergence
   // is unobservable. Proven live by injection: adding a 6th method to
   // `nextActiveTurnId`'s branches (`session.stop-settled` closing the turn)
   // WITHOUT adding it to `ACTIVE_TURN_FOLD_METHODS` — exactly the future
   // change these comments warn about — passed every test in this file,
-  // including this one, at 332/332 green. The remedy below replays all 22
-  // no-ops a SECOND time, this time while `turn-open` is live, so a 6th
+  // including this one, at 332/332 green. The remedy below replays every
+  // no-op a SECOND time, this time while `turn-open` is live, so a 6th
   // fold-relevant method the narrowed query excludes now diverges from the
   // full log observably (`fromNarrowed` keeps reporting the turn open,
   // `fromFullLog` does not) instead of firing into a state neither side is
@@ -22572,54 +22662,52 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-08-20T00:00:00.000Z',
     });
 
-    // The 22 methods `nextActiveTurnId` treats as pass-through no-ops —
-    // every canonical method NOT in `ACTIVE_TURN_FOLD_METHODS`. Typed as
-    // `CanonicalRuntimeEvent['method'][]`, not a bare `as const` string
-    // array, so a typo (e.g. 'tool.complete') is a compile error here at
-    // zero runtime cost — a better guard than the fixed-length assertion
-    // below, which only catches a WRONG COUNT, not a wrong NAME.
-    //
-    // What it does NOT catch: a 28th canonical method this list fails to
-    // grow into. A `readonly T[]` accepts any SUBSET, so a missing member
-    // typechecks, and the count assertion stays 22 on both sides — proven
-    // by adding a 28th union member and getting zero new tsc errors.
-    // Coverage would silently decay to 27-of-28. Real exhaustiveness needs
-    // a mapped-type construction, deliberately not added: the typo guard
-    // is worth having on its own, and a comment claiming protection the
-    // types do not provide is worse than no comment.
-    const NON_FOLD_METHODS: readonly CanonicalRuntimeEvent['method'][] = [
-      'session.started',
-      'session.configured',
-      'session.state-changed',
-      'session.stop-settled',
-      'content.text-delta',
-      'content.reasoning-delta',
-      'tool.started',
-      'tool.progress',
-      'tool.completed',
-      'request.opened',
-      'request.resolved',
-      'runtime.warning',
-      'token-usage.updated',
-      'flow.run-attached',
-      'flow.gate-verdict',
-      'policy.hooks-attached',
-      'policy.stop-verdict',
-      'platform.mutation',
-      'workflow.state-changed',
-      'plan.updated',
-      'extension.notification',
-      'conversation.forked',
-    ];
-    // 22 no-ops + the 5 fold-relevant methods = all 27 canonical methods.
-    // Deliberately a fixed literal, NOT `27 - ACTIVE_TURN_FOLD_METHODS.length`
-    // — that form was tried first and self-defeated the differential proof
-    // below: shrinking `ACTIVE_TURN_FOLD_METHODS` (the exact injection this
-    // test exists to catch) also shrinks the expected side of THIS
-    // assertion, so it fails here on a count mismatch instead of failing
-    // below on an actual fold divergence, and the failure message stops
-    // naming which method or turn was affected.
-    expect(NON_FOLD_METHODS.length).toBe(22);
+    // Every canonical method, classified by hand as fold-relevant or a
+    // pass-through no-op for `nextActiveTurnId`. A `Record` over the method
+    // union makes tsc demand an entry for each member, so a new canonical
+    // method fails to compile here until someone classifies it, and a typo
+    // is an excess-key error. The classification is written independently
+    // of `ACTIVE_TURN_FOLD_METHODS` on purpose: deriving it from that set
+    // would shrink the expected side whenever the production set shrinks,
+    // which is the exact injection the differential below exists to catch.
+    const METHOD_ROLE: Record<
+      CanonicalRuntimeEvent['method'],
+      'fold' | 'non-fold'
+    > = {
+      'session.started': 'non-fold',
+      'session.configured': 'non-fold',
+      'session.state-changed': 'non-fold',
+      'session.stop-settled': 'non-fold',
+      'session.approval-mode-set': 'non-fold',
+      'session.exited': 'fold',
+      'turn.started': 'fold',
+      'turn.completed': 'fold',
+      'turn.aborted': 'fold',
+      'runtime.error': 'fold',
+      'content.text-delta': 'non-fold',
+      'content.reasoning-delta': 'non-fold',
+      'tool.started': 'non-fold',
+      'tool.progress': 'non-fold',
+      'tool.completed': 'non-fold',
+      'request.opened': 'non-fold',
+      'request.resolved': 'non-fold',
+      'request.delivery': 'non-fold',
+      'runtime.warning': 'non-fold',
+      'token-usage.updated': 'non-fold',
+      'flow.run-attached': 'non-fold',
+      'flow.gate-verdict': 'non-fold',
+      'policy.hooks-attached': 'non-fold',
+      'policy.stop-verdict': 'non-fold',
+      'platform.mutation': 'non-fold',
+      'workflow.state-changed': 'non-fold',
+      'plan.updated': 'non-fold',
+      'extension.notification': 'non-fold',
+      'conversation.forked': 'non-fold',
+      'child-work.updated': 'non-fold',
+    };
+    const NON_FOLD_METHODS = (
+      Object.keys(METHOD_ROLE) as CanonicalRuntimeEvent['method'][]
+    ).filter((method) => METHOD_ROLE[method] === 'non-fold');
 
     let seq = 0;
     let ts = Date.parse('2026-08-20T00:00:00.000Z');
@@ -22697,7 +22785,7 @@ describe('OrchestrationService', () => {
     assertFoldsAgree('turn-open');
 
     // Replay every non-fold-relevant method a SECOND time, now while
-    // `turn-open` is genuinely live — this is what proves the 22 are safe
+    // `turn-open` is genuinely live — this is what proves the rest are safe
     // to OMIT, not just that the 5 are necessary (the first pass above only
     // fired them before any turn existed, where excluding one is
     // unobservable on either side). If `nextActiveTurnId` ever gains a 6th

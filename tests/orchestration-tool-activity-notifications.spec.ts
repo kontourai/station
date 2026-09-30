@@ -77,53 +77,43 @@ test.describe('Orchestration Tool Activity Notifications', () => {
     });
   });
 
-  test('suppresses foreground success toasts and shows background success toasts', async ({
+  // #2505: only a failed tool call toasts; a successful one stays on its
+  // tool row. The success is emitted first, so once the failure's toast is
+  // on screen the success has been processed too, and a single card proves
+  // it raised none.
+  test('a failed background tool call toasts and a successful one does not', async ({
     page,
   }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
-    await emitMockOrchestrationEvent(page, 'orchestration:event', {
-      event: {
-        provider: 'codex',
-        threadId: 'session-1',
-        createdAt: '2026-04-05T12:00:07.000Z',
-        method: 'tool.completed',
-        turnId: 'turn-1',
-        itemId: 'tool-1',
-        toolCallId: 'tool-1',
-        toolName: 'shell_exec',
-        status: 'success',
-        output: {
-          output: 'foreground',
-          exitCode: 0,
+    for (const [index, outcome] of [
+      { status: 'success', output: { output: 'routine', exitCode: 0 } },
+      { status: 'error', error: 'Permission denied' },
+    ].entries()) {
+      await emitMockOrchestrationEvent(page, 'orchestration:event', {
+        event: {
+          provider: 'codex',
+          threadId: 'session-2',
+          createdAt: `2026-04-05T12:00:0${7 + index}.000Z`,
+          method: 'tool.completed',
+          turnId: `turn-${index + 1}`,
+          itemId: `tool-${index + 1}`,
+          toolCallId: `tool-${index + 1}`,
+          toolName: 'shell_exec',
+          ...outcome,
         },
-      },
-    });
+      });
+    }
 
-    await expect(page.getByText('Tool Activity')).toHaveCount(0);
-
-    await emitMockOrchestrationEvent(page, 'orchestration:event', {
-      event: {
-        provider: 'codex',
-        threadId: 'session-2',
-        createdAt: '2026-04-05T12:00:08.000Z',
-        method: 'tool.completed',
-        turnId: 'turn-2',
-        itemId: 'tool-2',
-        toolCallId: 'tool-2',
-        toolName: 'shell_exec',
-        status: 'success',
-        output: {
-          output: 'background',
-          exitCode: 0,
-        },
-      },
-    });
-
-    await expect(page.getByText('Tool Activity')).toBeVisible();
-    await expect(page.getByText('dev-agent finished shell exec')).toBeVisible();
-    await expect(page.getByText('background')).toBeVisible();
+    // Every card, including ones a stack collapses behind the newest.
+    const toasts = page.locator('[data-testid^="toast-card"]');
+    await expect(page.getByTestId('toast-card')).toContainText(
+      'dev-agent failed shell exec',
+    );
+    await expect(toasts).toHaveCount(1);
+    await expect(toasts).toContainText('Tool Activity');
+    await expect(toasts).toContainText('Permission denied');
   });
 });

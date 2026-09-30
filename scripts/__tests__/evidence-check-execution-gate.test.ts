@@ -71,7 +71,10 @@ function baseScripts() {
     // Mirrors the real script, whose body names `npm run lint:check` —
     // style-standard's lane-root reachability in the execution mapping.
     'lint:check': pass,
-    'verify:static:raw': `${pass} && npm run lint:check`,
+    // Mirrors the real verify:static:bootstrap step that runs
+    // `npm run docs:truth:gate` — documentation-truth's reachability.
+    'docs:truth:gate': pass,
+    'verify:static:raw': `${pass} && npm run lint:check && npm run docs:truth:gate`,
     'ci:fast': pass,
     'ci:fast:raw': pass,
     'test:prepush': pass,

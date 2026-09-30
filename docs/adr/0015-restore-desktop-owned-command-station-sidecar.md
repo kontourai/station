@@ -79,6 +79,9 @@ The following cannot be proven without real signed packaged builds:
 - OS-level service install/handoff and reboot persistence.
 - Tray delivery in a live webview.
 
+The [2026-09-29 evidence addendum](#evidence-addendum-2026-09-29-2957)
+records which of these items were later executed on packaged builds.
+
 ### Known test gap
 
 The teardown idempotency guard (an `AtomicBool` swap) and its service-mode
@@ -87,6 +90,78 @@ requires a Tauri `AppHandle`. The guard matters because a normal quit fires
 both `WindowEvent::Destroyed` and `RunEvent::Exit`. The reachable half is
 covered by a test that spawns two real children and proves the owned sidecar is
 reaped while an attached service is not signalled.
+
+## Evidence addendum (2026-09-29, #2957)
+
+This addendum records packaged-build runs against the NOT_VERIFIED list above.
+It does not change the decision. **EXECUTED** means the result was observed on
+the named build; **NOT_VERIFIED** means no run established it.
+
+### Builds and hosts
+
+- **macOS:** `nightly-desktop` asset
+  `station-0.1.11-nightly.2463.2-macos-aarch64.app.tar.gz` (SHA-256
+  `e2527e5cb38be4cc219c258ba9beb5c270128b7b3bba9406863d7ca76e4d4cb7`). It was
+  built from `0690c93997c7` at 2026-09-29T12:47:27Z and run on macOS 26.7
+  arm64. `codesign` reports Developer ID Application (team `U7KHF2QAC4`);
+  `spctl` reports `accepted, source=Notarized Developer ID`; the ticket is
+  stapled. The bundle ran from an unpacked copy, not `/Applications`.
+- **Windows:** `nightly-desktop` asset
+  `station-0.1.11-nightly.2463.2-windows-x86_64-setup.exe` (SHA-256
+  `957d2bd6fdfba0ab4f97f75752e8a07ba76f3f39ec64a9bc3a1757703f061a6d`). It was
+  installed per-user with `/S` on Windows 11 Pro x64. **This installer is not
+  Authenticode-signed** (`Get-AuthenticodeSignature`: `NotSigned`): the
+  nightly signs Windows only when a certificate secret is configured. Every
+  Windows result below is therefore an unsigned-build result.
+- **MSI, Linux (deb/rpm), and AppImage:** no such artifact has been published.
+  Only the tagged release workflow builds them, and no tagged release has
+  completed (#1243).
+
+Except where a row says otherwise, each run used an isolated, empty
+`STATION_HOME`. macOS runs launched through LaunchServices (`open`). Windows
+runs launched through an interactive-session scheduled task. Only the
+PATH-resolution runs scrubbed the launch environment; the other runs
+inherited the launching shell's environment. The claims rest on the author's
+retained run logs, process listings, and screenshots. Those are not
+published, because they contain local paths and unrelated desktop content.
+
+### Results
+
+| NOT_VERIFIED item | macOS (signed, notarized) | Windows NSIS (unsigned) |
+| --- | --- | --- |
+| Resource-directory resolution | **EXECUTED**: sidecar ran `<bundle>/Contents/Resources/dist-server/command-station.js` | **EXECUTED**: sidecar ran `%LOCALAPPDATA%\Station Nightly\dist-server\command-station.js` |
+| PATH-resolved `node` from GUI launchers | **EXECUTED** for `open` with a scrubbed environment (`PATH=/usr/bin:/bin:/usr/sbin:/sbin`), a proxy for Finder and Dock: the login-shell probe recovered a version-manager `node`. A Finder or Dock launch itself is NOT_VERIFIED. The rejection path is **EXECUTED**: a login shell reporting a node-free PATH produced the "Check that Node 24 is installed" dialog, started no backend, and exited only on **Exit** | **EXECUTED** for a scheduled-task launch (registry-derived user environment): `node` resolved to the version manager's `node.exe`. Explorer is NOT_VERIFIED: that launch used the default root and was refused before any `node` lookup (see findings) |
+| `Info.nightly.plist` port injection | **EXECUTED**: in the scrubbed-environment run, the launch environment had no port and the app process carried `STATION_DESKTOP_PORT=38141` and `STATION_DESKTOP_CHANNEL=nightly` from `LSEnvironment`. The listener port alone cannot prove this, because the channel default is also 38141 | Not applicable (no plist). The generated channel default placed the sidecar on 38141 |
+| Clean-home first launch reaches an interactive UI | **EXECUTED**: empty home, sidecar claim, registry `type: sidecar` upsert, interactive Home view. Quit reaped the sidecar and emptied the registry | NOT_VERIFIED (UI not observed; the console session was covered by a full-screen shell). Native readiness epoch 1 timed out at 30 s. The sidecar's first ticket arrived about 51 s after its claim, when the epoch had already failed (`phase=Failed`). Server logs show pairing requests from about 51 s, then event streams and focus reports from about 68 s. The log does not attribute their origin, so a late UI recovery is plausible but unconfirmed |
+| OS service install/handoff | **EXECUTED** with a nightly portable install and `station service install --instance=<test>` against a desktop-initialized home: a live `type: service` entry made the desktop spawn no sidecar, and quitting the desktop left the LaunchAgent's process running. The tray showed `Status: Not installed`. It only reports a service bound to a saved profile, and this run never bound one (`station setup local` was not run; the home's `local` profile still named the earlier sidecar). That stale profile pointed at the service's port, and the service refused its credential ("approval needed"). The desktop's service-owner status text was not observed, so reporting the owner is NOT_VERIFIED | NOT_VERIFIED |
+| Reboot persistence | NOT_VERIFIED (no reboot was run). Proxy, **EXECUTED**: `launchctl bootout` then `bootstrap` of the installed plist brought the service back on its port without a kickstart (`KeepAlive=true`; no `RunAtLoad` key) | NOT_VERIFIED |
+| Tray delivery in a live webview | **EXECUTED**: the status menu showed `Status: Running · Local server: built into desktop app`; its **Connections…** item navigated the live webview from Home to Connections | NOT_VERIFIED |
+| MSI, Linux, AppImage (all items) | NOT_VERIFIED: no artifact exists (#1243) | NOT_VERIFIED |
+
+### Findings outside the original list
+
+- **Abrupt desktop death.** On Windows, the sidecar watchdog logged the
+  missing supervisor about 14 s after the kill, measured from the sidecar's
+  last client-stream close because the log has no kill timestamp. Graceful
+  shutdown then logged a provider-adapter cleanup failure. The test script's
+  own clock found the process still alive 91 s after it issued the kill. The
+  final log line came about 100 s after detection, not within the 20 s
+  force-exit this ADR records. On macOS, the
+  same `kill -9` test ended the sidecar 7 s after the kill. On both platforms,
+  the dead desktop's `type: sidecar` registry entry remained afterwards,
+  because only the supervisor removes it. Whether the next launch recovers
+  that entry is NOT_VERIFIED. All of these are single runs.
+- **Shared roots without saved metadata refuse first launch.** A shared root
+  containing only earlier `instances/dev` homes, or a portable-install root,
+  refuses first launch with "saved Station metadata is missing from an
+  initialized or in-progress shared root; restore profiles.json". On Windows
+  that refused launch still created an empty `config` directory in the root.
+- **Discarded runs.** Two early macOS no-node runs exited while the refusal
+  dialog was showing, with no dismissal by the author. Other local sessions
+  were operating Station on the same machine at the time, and the cause was
+  not determined. An isolated re-run held the dialog for more than 20 s, and
+  it exited only after **Exit**. The two early runs are not counted as
+  evidence.
 
 ## References
 

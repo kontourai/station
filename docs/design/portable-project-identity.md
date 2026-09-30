@@ -1,5 +1,15 @@
 # Design: portable Project identity — remote-keyed resources, per-Station bindings
 
+> **Reading status: staged Project identity design with a historical migration survey.**
+> [Project identity contracts](../../packages/contracts/src/project-identity.ts),
+> [resource resolver](../../src-server/services/projects/project-resource-resolver.ts),
+> [session-directory adapter](../../src-server/services/projects/project-session-directory.ts),
+> and [execution-offer routes](../../src-server/routes/projects/project-contribution-routes.ts)
+> are current owners. The dated consumer inventory, proposed shapes, and
+> unimplemented collaboration requirements below are not one current-state
+> inventory. An identity, binding, or prepared directory does not itself grant
+> membership or execution authority; physical fleet qualification remains separate.
+
 > Current implementation note: new engine starts resolve the primary resource
 > through `project-session-directory.ts` in runtime composition. An explicit
 > local binding overrides legacy `workingDirectory`; missing, drifted or
@@ -1257,7 +1267,7 @@ returning one of the four states — not a rules language.
 | Term | Means | Notes |
 |---|---|---|
 | **Member** | A person in the project or channel | May back nothing and still be first-class (§4.1) |
-| **Station** | One machine running Station | Backing is a property of a Station, never of a member |
+| **Station** | An application instance; one physical machine may run several | An instance's contribution is distinct from a person's membership; see [Station topology](station-topology.md) |
 | **Contribution** | An explicit, per-space, default-none offer of named resources by a Station | The consent layer. One noun across fleet and project, one schema across scopes (§4.2) |
 | **Binding** | The private local realization of a manifest resource on one Station | Never leaves the machine (§3.5) |
 | **Requirement** | A project-declared floor an offer is checked against | Sketched only (§4.4) |

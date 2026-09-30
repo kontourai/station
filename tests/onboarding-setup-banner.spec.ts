@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const SEED_STORAGE = `
@@ -11,6 +11,19 @@ const SEED_STORAGE = `
   ]));
   window.localStorage.setItem('station-connect-connections-active', 'c1');
 `;
+
+/**
+ * Opens Home and waits for the system status read the launcher decides on,
+ * so an absent launcher is the status's answer rather than a page that has
+ * not asked yet.
+ */
+async function gotoWithStatusRead(page: Page): Promise<void> {
+  const status = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/system/status',
+  );
+  await page.goto('/');
+  await status;
+}
 
 test.describe('Onboarding Setup Launcher', () => {
   test('shows generic setup guidance when only vectordb providers are configured', async ({
@@ -157,11 +170,11 @@ test.describe('Onboarding Setup Launcher', () => {
       }),
     );
 
-    await page.goto('/');
-    await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
+    await gotoWithStatusRead(page);
     await expect(page.getByRole('button', { name: 'Toggle menu' })).toBeVisible(
       { timeout: 10000 },
     );
+    await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
   });
 
   test('quick-start proof reaches a chat-capable first-run path', async ({
@@ -374,8 +387,8 @@ test.describe('Onboarding Setup Launcher', () => {
       }),
     );
 
-    await page.goto('/');
-
+    await gotoWithStatusRead(page);
+    await expect(page.locator('.app-toolbar')).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
   });
 

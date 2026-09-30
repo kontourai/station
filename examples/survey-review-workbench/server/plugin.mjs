@@ -3,15 +3,15 @@
  *
  * Persists review-session event logs per project (Survey's
  * `ReviewSessionEventStore` contract, server-backed), seeds example sessions
- * from Survey's published example data, and projects completed reviews into
+ * from Survey's published example data, and projects resolved review items into
  * Surface trust bundles written to the project workspace.
  *
  * Storage layout:
  * - Review sessions (Station-owned state, shared per project):
  *   `<projectHomeDir>/projects/<projectSlug>/plugin-data/survey-review-workbench/review-sessions/<sessionName>.json`
  *   Each file holds `{ name, snapshot, events, updatedAt }` — the pre-decision
- *   queue snapshot plus the append-only event log, which is the auditable
- *   input Survey's replay helpers expect.
+ *   queue snapshot plus the event array Survey's replay helpers consume.
+ *   PUT replaces the array; this adapter does not enforce append-only history.
  * - Trust bundles (hand-off artifact for the trust panel):
  *   `<workspace>/.station/trust-bundles/survey-<sessionName>.json` where
  *   `<workspace>` is the project's `workingDirectory`. When the project has
@@ -263,9 +263,8 @@ export function register(app, context) {
   });
 
   // Save a session's event log. Body: { snapshot?, events, expectedEventCount? }.
-  // `expectedEventCount` implements the optimistic-concurrency check from
-  // Survey's `ReviewSessionPersistenceRequest`: it is the caller's belief
-  // about how many events were already stored before this save.
+  // A numeric `expectedEventCount` checks the caller's count against this
+  // read. Read/check/write is not serialized across concurrent requests.
   app.put('/projects/:projectSlug/review-sessions/:sessionName', async (c) => {
     const projectSlug = c.req.param('projectSlug');
     const sessionName = c.req.param('sessionName');

@@ -5,7 +5,6 @@ import {
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
-  approvalModeLabel,
   resolveEffectiveApprovalMode,
 } from '../utils/approvalMode';
 
@@ -39,13 +38,7 @@ describe('adapterDefaultApprovalMode', () => {
   });
 });
 
-describe('approvalModeLabel', () => {
-  test('every option in APPROVAL_MODE_OPTIONS round-trips through its own label', () => {
-    for (const option of APPROVAL_MODE_OPTIONS) {
-      expect(approvalModeLabel(option.value)).toBe(option.label);
-    }
-  });
-
+describe('APPROVAL_MODE_OPTIONS copy', () => {
   test('the never option label and copy never use the word "safe" and are legible about full access', () => {
     const never = APPROVAL_MODE_OPTIONS.find(
       (option) => option.value === 'never',

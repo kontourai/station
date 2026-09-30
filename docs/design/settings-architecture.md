@@ -1,5 +1,15 @@
 # Settings Architecture: scope-first settings for Station
 
+> **Reading status: evolving settings design with a historical problem inventory.**
+> The July audit and numbered slices retain their original context. Current
+> [SettingsView](../../src-ui/src/views/SettingsView.tsx),
+> [catalog](../../src-ui/src/views/settings/settings-catalog.ts),
+> [server setting registry](../../packages/contracts/src/settings-registry.ts),
+> and [device store](../../src-ui/src/lib/device-settings-store.ts) own the
+> rendered controls and persistence. A scope label or generated catalog does
+> not prove that every setting's consumer, save failure, or migration was
+> rechecked in this review.
+
 Status: incremental implementation (2026-07-30). Research base: comparative review of four reference
 agent-tooling products' settings systems, plus a full audit of Station's current
 settings surface at `73381430`. The separate attributed research record is not
@@ -30,12 +40,12 @@ written down (§4.1) and audited against every existing surface. Remaining
 longer-term architecture: the naming/cross-links slice (#5) and the
 plumbing-debt slice (#6).
 
-**Two of slice 3's surfaced fields have since moved.** `knowledgeStores` is
-`userFacing: false` and no longer rendered: its own registry description says
-turning it on changes nothing today, so the row was a control that persisted
-and did nothing. It stays settable through `station config set` until a
-consumer gates on it. `defaultChatFontSize` and `workspaceCheckpoints` went
-the other way and gained Station-configuration rows.
+**Some fields have since moved.** `knowledgeStores` is `userFacing: false`
+and has no Settings row, but it has a current consumer: personal startup can
+register the read-only `root:conversations` Knowledge root. Ordinary Knowledge
+routes do not depend on it, and disabling it does not remove an existing root.
+The earlier description of the flag as inert is obsolete.
+`defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
 ## 1. The problem
 
@@ -182,19 +192,18 @@ tool servers. The hub is close to right already; the revamp only renames the thr
 
 ## 4. Mechanism: the settings registry
 
-One declarative registry (the §2 registry pattern, adapted) is the single source of truth:
+The registry records each setting's descriptor and presentation. For example,
+the current AWS region entry is:
 
 ```ts
 defineSetting({
-  key: 'logLevel',
-  scope: 'station',            // station | defaults | device | (entity scopes stay in their own contracts)
-  schema: z.enum(['debug', 'info', 'warn', 'error']),
-  default: 'info',
-  label: 'Log level',
-  help: 'Station writes server log entries at this severity and above, and drops quieter ones.',
-  description: '…',
-  envFallback: 'STATION_LOG_LEVEL',   // optional: env var consulted when nothing is stored
-  secret: false,
+  key: 'region',
+  scope: 'defaults',
+  descriptor: { kind: 'string', pattern: '^[a-z]{2}-[a-z]+-[0-9]{1}$' },
+  label: 'AWS region',
+  help: 'Station picks this AWS region for Bedrock models when an agent does not name its own.',
+  description: 'Default AWS region for Bedrock (e.g. us-east-1).',
+  envFallback: 'AWS_REGION',
 })
 ```
 
@@ -214,8 +223,9 @@ first renders it.
 encoding) and remains what `views/settings/registry-row.tsx` renders and what
 `settings-catalog.ts` searches. Four keys nothing reads — `gitRemote`,
 `defaultEmbeddingProvider`, `defaultEmbeddingModel`, `defaultVectorDbProvider`
-— are `userFacing: false` for the same reason `knowledgeStores` is: a row for
-a key nothing reads is a control that persists and does nothing. Their `help`
+— are `userFacing: false`: a row for a key nothing reads is a control that
+persists and does nothing. Unlike those keys, `knowledgeStores` has the startup
+consumer described above. Their `help`
 sentences say exactly that rather than describing behavior that does not
 exist.
 
@@ -283,7 +293,7 @@ today. It is defense in depth against a future narrowing of the project
 family's tier and the place the coupling is written down — not a claim that
 project updates are authorized more narrowly than they were.
 
-Derived from the registry, so they can never drift:
+Registry-derived surfaces and checks intended to detect drift:
 - the typed `PUT /config/app` request schema (replacing `z.record(z.unknown())`),
 - defaults (no parallel defaults object),
 - the Settings UI rows for scalar settings (form-from-schema;
@@ -330,12 +340,12 @@ One rule, everywhere a setting is edited:
   tool-details / font-size / dock-mode controls onto the same rule (§3 S4,
   §6 slice 4) — the one place a single control still reset on reload instead
   of saving immediately.
-- **Batched Save/Discard is reserved for multi-field forms that compose one
-  server-side document written by a single request**, where saving one field
+- **Batched Save/Discard is reserved for related fields in server-side forms**,
+  where saving one field
   mid-edit would leave the document in a state the user did not intend. The
   live instance is `/settings`'s Station (S1) + Defaults (S2) draft
-  (`SettingsView.tsx`'s `config`/`hasChanges`/`useUnsavedGuard`, one `PUT
-  /config/app`); entity editors (agent/project/skill) follow the
+  (`SettingsView.tsx`'s `config`/`hasChanges`/`useUnsavedGuard`); entity editors
+  (agent/project/skill) follow the
   same rule for their own multi-field server documents. This never applies
   to S3 device settings — nothing in that scope round-trips to the server —
   or to a single S1/S2 field edited in isolation.
@@ -343,6 +353,14 @@ One rule, everywhere a setting is edited:
   cross-field validation dependency, save immediately; if committing that one
   field mid-edit could leave a larger document half-intended, batch it behind
   Save/Discard.
+
+The current Settings Save action can issue three independent writes: ordinary
+fields use `PUT /config/app`, log level uses the revisioned
+`/config/app/log-level` endpoint, and project overrides use `PUT /projects/:slug`.
+The [shared log-level client](../../packages/sdk/src/app-config.ts) first reads
+the revision, then sends `If-Match` and an `Idempotency-Key`. Settings settles
+the writes separately and reports failures; this is not one atomic transaction
+across Station and Project documents.
 
 **Audit (slice 4).** Every existing single-control setting across `/settings`
 and the chat dock already followed immediate-save; ChatSettingsPanel's
@@ -454,15 +472,18 @@ slice.
    remains accepted. Effective-value chain work, the peer-credentials UI home,
    and `/providers` alias removal remain separate (the alias is owned by the
    concurrent routing lane).
-6. **Plumbing debt.** `station config set` via live route (#175); wire the config
-   watcher's events to the subscribers that S1 edits need (#983, scoped to what
-   the settings surfaces consume).
+6. **Plumbing debt.** The [CLI config command](../../packages/cli/src/commands/config.ts)
+   now writes through the live route by default and requires explicit `--offline`
+   for direct file writes. The watcher/subscriber question from #983 remains
+   separate from that completed write-path change and needs its own current
+   caller review.
 
 **Save-model and device-store convergence shipped (station#2679).** `/settings`
 now exposes exactly two behaviors by scope: the Station + Defaults server
 document is drafted behind Save/Discard (including `logLevel`), while This
 device controls persist immediately through the versioned envelope. The
-log-level-only revision key and queue UI were removed. All legacy raw device
+separate log-level draft and queue UI were removed; the server write still uses
+the revisioned endpoint described above. The enumerated legacy device
 preference keys migrate read-old/write-new/delete-old through the envelope;
 theme and accent retain read-only pre-React compatibility reads so first paint
 survives an upgrade before the migration constructor runs. An exact static

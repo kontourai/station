@@ -63,6 +63,7 @@ import {
   continueDelegatedTask,
   continueExecutionMessage,
   type DelegatedCapabilityDelivery,
+  type DelegatedTaskDecision,
   type DelegatedTaskEventPage,
   type DelegatedTaskFollowUpHandle,
   type DelegatedTaskHandle,
@@ -100,7 +101,7 @@ import {
   WAIT_MAX_TIMEOUT_SECONDS,
   waitOnDelegatedTask,
 } from './delegate-wait.js';
-import { explainRequestFailure } from './errors.js';
+import { explainFullAccessRefusal, explainRequestFailure } from './errors.js';
 import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
@@ -423,6 +424,44 @@ function providerQuotaLines(reason: DelegatedTaskReason): string[] {
   return lines;
 }
 
+/**
+ * #2880: the recorded decision and its delivery, stated separately and never
+ * stronger than the engine reported. "Acknowledged" is the engine closing the
+ * request after Station's reply; it is not a claim the decision was applied.
+ */
+function formatDecisionLine(decision: DelegatedTaskDecision): string {
+  const recorded = `Decision on ${decision.requestId}: ${decision.status} (recorded)`;
+  const waited =
+    decision.waitedMs !== undefined
+      ? ` after ${formatDecisionWait(decision.waitedMs)}`
+      : '';
+  switch (decision.delivery) {
+    case 'acknowledged':
+      return `${recorded}, acknowledged by the engine${waited}${
+        decision.engineStatus && decision.engineStatus !== decision.status
+          ? `; the engine reported: ${decision.engineStatus}`
+          : ''
+      }`;
+    case 'awaiting-acknowledgement':
+      return `${recorded}, not yet acknowledged by the engine`;
+    case 'unacknowledged':
+      return decision.reason === 'invalid-reply'
+        ? `${recorded}, not sent: Station refused a reply the engine would not accept; the engine is still waiting`
+        : `${recorded}, not yet acknowledged by the engine${waited}; Station has not re-sent it`;
+    case 'in-process':
+      return `${recorded}, consumed by Station's own engine`;
+    case 'closed-by-engine':
+      // No decision was recorded: the engine closed the request first.
+      return `Request ${decision.requestId}: closed by the engine before Station answered`;
+    default:
+      return `${recorded}; this engine does not report delivery`;
+  }
+}
+
+function formatDecisionWait(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${Math.round(ms / 1000)} s`;
+}
+
 function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   const lines = [
     `Task ${snapshot.taskId}: ${snapshot.status}${
@@ -456,6 +495,12 @@ function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   }
   if (snapshot.transitionReason) {
     lines.push(`Transition: ${snapshot.transitionReason}`);
+  }
+  for (const decision of snapshot.earlierUnacknowledgedDecisions ?? []) {
+    lines.push(formatDecisionLine(decision));
+  }
+  if (snapshot.lastDecision) {
+    lines.push(formatDecisionLine(snapshot.lastDecision));
   }
   if (snapshot.pendingRequest) {
     lines.push(
@@ -540,7 +585,12 @@ function handleDelegateFailure(
 ): never {
   const message = error instanceof Error ? error.message : String(error);
   const transportMessage = explainRequestFailure(error, resolvedApiBase);
-  console.error('Error:', transportMessage ?? message);
+  console.error(
+    'Error:',
+    transportMessage ??
+      explainFullAccessRefusal(error, resolvedApiBase) ??
+      message,
+  );
   process.exit(transportMessage ? 2 : 3);
 }
 

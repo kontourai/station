@@ -1,9 +1,9 @@
 # Settings deep links
 
-Every settings control in Station has a stable id and a URL that opens
-Settings scrolled to and highlighting that one control. This reference
-describes the URL shape, the endpoint that enumerates every control, and the
-rule for answering a question with one of them.
+The Settings catalog assigns stable ids and deep links to its controls. A
+link opens the owning section and attempts to reveal the control. Platform
+restrictions and delayed rendering can prevent that reveal. This reference
+explains the URL, catalog endpoint, and how to use its results.
 
 ## The URL shape
 
@@ -25,7 +25,7 @@ asked for:
 - A `highlight` that is not in the catalog is **not recoverable**. Settings
   strips it from the URL and announces "That Settings target is no longer
   available." — nothing is highlighted, and the page stays where the `view`
-  put it. Control ids are therefore never renamed.
+  put it. Keep control ids stable when changing labels or sections.
 - A `view` that is not a section id falls back to the **overview**. When the
   link also carries a real `highlight`, that fallback is invisible: the
   healing below moves the page to the section the control is in now. When it
@@ -56,9 +56,20 @@ Moves so far:
   `/developer/config` path now redirects to `/settings` with no `view` at all,
   because a redirect cannot choose one of six.
 
+### Platform and rendering limits
+
+A mobile-only or desktop-only target opened on another platform produces an
+unavailable announcement and removes `highlight`. For a supported target,
+Settings clears its local search filter, opens the current section, and waits
+up to five seconds for the row to mount. A missing row produces a timeout
+announcement. A successful reveal opens an enclosing disclosure, scrolls to
+the row, and pulses it for 1.4 seconds; it focuses an editable control or the
+row only if the user has not moved focus elsewhere. Each outcome removes
+`highlight`, so copy the catalog route when sharing the link.
+
 ## `GET /api/settings/registry`
 
-Returns every control, its deep link, and, where one exists, the
+Returns the catalog entries, their deep links, and, where one exists, the
 one-sentence consequence of setting it.
 
 **Scope**: `orchestration:read`. The response carries no stored configuration
@@ -117,9 +128,8 @@ configures:
    A neighbouring control offered as if it were the answer costs more than an
    honest "there isn't one".
 3. **Never invent an id.** Every id you use must come from this endpoint. A
-   fabricated `highlight` produces a page that opens, looks right, and
-   highlights nothing — the failure is invisible to the person who followed
-   the link and invisible to you.
+   fabricated `highlight` cannot identify a control and instead produces an
+   unavailable-target announcement.
 
 `scope` is worth reading before answering: a `device` control changes only the
 browser or app in front of the person asking, and a `station` control changes
@@ -132,8 +142,16 @@ text as it arrives” applies each canonical text delta immediately. “Reveal t
 at a steady pace” smooths paint cadence. “Show text at action boundaries” holds
 text and reasoning only in this device's chat projection, then reveals it before
 the next tool event, approval request or resolution, terminal event, or error.
-It also spills before accepting a delta that would take the local buffer past
-24,000 characters, and flushes on a mode change or stream interruption.
+Once its lazy-loaded buffer is ready, it spills before accepting a delta
+that would take one thread past 24,000 JavaScript string units (UTF-16 code
+units), or after 4,096 held events. A larger single delta passes through.
+The buffer also caps held threads at 64 and total text at 96,000 string units.
+Events arriving while that module loads pass through immediately.
+
+Leaving buffered mode flushes held text. A transient stream interruption
+schedules a flush; a terminal authority interruption drops the held projection.
+Changing chat ownership also drops that owner's held text, so it cannot appear
+in a successor chat.
 
 Buffered display does not suppress or rewrite the server's durable event stream.
 Replay capture and another connected device continue to receive canonical events

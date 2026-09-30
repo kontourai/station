@@ -3,7 +3,6 @@ import {
   formatAverageTokens,
   getContextBreakdownEntries,
   getContextWindowColor,
-  getModelStatsEntries,
 } from '../components/conversation-stats/utils';
 
 describe('conversation stats utils', () => {
@@ -27,35 +26,6 @@ describe('conversation stats utils', () => {
       { label: 'System Prompt', value: 10 },
       { label: 'User Messages', value: 20 },
       { label: 'Assistant Messages', value: 30 },
-    ]);
-  });
-
-  test('returns model stats entries in object order', () => {
-    expect(
-      getModelStatsEntries({
-        modelA: {
-          inputTokens: 1,
-          outputTokens: 2,
-          totalTokens: 3,
-          contextTokens: 4,
-          turns: 5,
-          toolCalls: 6,
-          estimatedCost: 7,
-        },
-      }),
-    ).toEqual([
-      [
-        'modelA',
-        {
-          inputTokens: 1,
-          outputTokens: 2,
-          totalTokens: 3,
-          contextTokens: 4,
-          turns: 5,
-          toolCalls: 6,
-          estimatedCost: 7,
-        },
-      ],
     ]);
   });
 

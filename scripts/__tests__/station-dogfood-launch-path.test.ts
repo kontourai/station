@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -15,6 +14,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { BuiltinACPConnectionRegistryProvider } from '../../src-server/providers/llm/defaults.js';
 
 import {
   captureLoginShellPath,
@@ -128,23 +128,36 @@ describe('Station dogfood client launch path', () => {
 
   it('keeps the installer allowlist aligned with provider command definitions', () => {
     const repoRoot = path.resolve(import.meta.dirname, '../..');
-    const defaults = readFileSync(
-      path.join(repoRoot, 'src-server/providers/llm/defaults.ts'),
-      'utf8',
+    const acpCommands = new Set(
+      new BuiltinACPConnectionRegistryProvider(
+        () => false,
+        () => true,
+      )
+        .listAvailable()
+        .map((entry) => entry.command),
     );
-    const claude = readFileSync(
-      path.join(repoRoot, 'src-server/providers/adapters/claude-adapter.ts'),
-      'utf8',
-    );
-    const codex = readFileSync(
-      path.join(repoRoot, 'src-server/providers/adapters/codex-adapter.ts'),
-      'utf8',
-    );
-    for (const command of ['kiro-cli', 'cursor-agent', 'opencode']) {
-      expect(defaults).toContain(`command: '${command}'`);
+    // The two first-party adapters declare their CLI command in source only.
+    const adapterDeclarations: Record<string, [string, RegExp]> = {
+      claude: [
+        'src-server/providers/adapters/claude-adapter.ts',
+        /= 'claude';/,
+      ],
+      codex: [
+        'src-server/providers/adapters/codex-adapter.ts',
+        /command: 'codex'/,
+      ],
+    };
+    for (const command of SUPPORTED_CLIENT_COMMANDS) {
+      if (acpCommands.has(command)) continue;
+      const declaration = adapterDeclarations[command];
+      expect(
+        declaration,
+        `${command} has no provider definition`,
+      ).toBeDefined();
+      expect(readFileSync(path.join(repoRoot, declaration[0]), 'utf8')).toMatch(
+        declaration[1],
+      );
     }
-    expect(claude).toContain("const CLAUDE_CLI_COMMAND = 'claude';");
-    expect(codex).toContain("command: 'codex'");
   });
 
   it(
@@ -294,7 +307,9 @@ describe('Station dogfood client launch path', () => {
     ).toThrow(/expected Station-owned root/);
   });
 
-  it('restores prior plist bytes, shim targets, entries, and modes after a post-mutation failure', () => {
+  // Plist rollback belongs to ops/dogfood/install-macos.zsh and is proven by
+  // station-dogfood-reconcile/installer-static-launchd-rollback.behavior.ts.
+  it('restores prior shim targets, entries, and modes after a post-mutation failure', () => {
     const root = fixtureRoot();
     const supportBin = path.join(root, 'support', 'bin');
     mkdirSync(supportBin, { recursive: true, mode: 0o700 });
@@ -303,38 +318,20 @@ describe('Station dogfood client launch path', () => {
     const oldClaude = executable(targets, 'old-claude', 'old-claude');
     const newCodex = executable(targets, 'new-codex', 'new');
     const shim = path.join(supportBin, 'clients');
-    const plist = path.join(root, 'agent.plist');
-    const plistSnapshot = path.join(root, 'agent.plist.snapshot');
     const shimSnapshot = path.join(root, 'clients.snapshot');
-    const oldPlist = '<key>PATH</key><string>/old/clients:/usr/bin</string>\n';
-    writeFileSync(plist, oldPlist, { mode: 0o600 });
     materializeClientShims(
       shim,
       { codex: oldCodex, claude: oldClaude },
       { expectedParent: supportBin },
     );
     snapshotClientShims(shim, shimSnapshot);
-    copyFileSync(plist, plistSnapshot);
-
-    expect(() => {
-      materializeClientShims(
-        shim,
-        { codex: newCodex },
-        { expectedParent: supportBin },
-      );
-      writeFileSync(
-        plist,
-        '<key>PATH</key><string>/new/clients:/usr/bin</string>\n',
-        { mode: 0o644 },
-      );
-      throw new Error('injected after shim and plist mutation');
-    }).toThrow(/injected/);
+    materializeClientShims(
+      shim,
+      { codex: newCodex },
+      { expectedParent: supportBin },
+    );
 
     restoreClientShims(shimSnapshot, shim);
-    copyFileSync(plistSnapshot, plist);
-    chmodSync(plist, statSync(plistSnapshot).mode & 0o777);
-    expect(readFileSync(plist, 'utf8')).toBe(oldPlist);
-    expect(statSync(plist).mode & 0o777).toBe(0o600);
     expect(statSync(shim).mode & 0o777).toBe(0o700);
     expect(realpathSync(path.join(shim, 'codex'))).toBe(realpathSync(oldCodex));
     expect(realpathSync(path.join(shim, 'claude'))).toBe(

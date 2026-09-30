@@ -12,9 +12,11 @@ import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-even
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
+  UnacknowledgedDecision,
   UnsentMessageRecord,
 } from '../types';
 import {
@@ -25,6 +27,7 @@ import {
 export type { UnsentMessageRecord } from '../types';
 
 import {
+  type FullAccessRefusalNotice,
   migratedApprovalPick,
   withoutLegacyApprovalMode,
 } from '../utils/approvalMode';
@@ -109,6 +112,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** #2915: see `MessagePart.approvalSessionGrant`. */
+  approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -165,6 +170,8 @@ export type ChatMessage = {
 export type EphemeralMessage = ChatMessage & {
   action?: { label: string; handler: () => void };
   terminalSession?: boolean;
+  /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
+  fullAccessRefusal?: FullAccessRefusalNotice;
   id?: string;
   timestamp?: number;
   /** archive#1292: the one flag every ephemeral-notice reader checks. Always
@@ -509,6 +516,13 @@ export type ChatUIState = {
   defaultModelSource?: EffectiveModelSource;
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
+  /**
+   * #2880: recorded decisions the engine has reported NOT acknowledged
+   * (`request.delivery` `unacknowledged`). A later `acknowledged` for the
+   * same request removes it, and the list empties when the session ends or
+   * the chat moves to another execution. Not persisted: live-stream state.
+   */
+  unacknowledgedDecisions?: UnacknowledgedDecision[];
   approvalToasts?: Map<string, string>;
   /**
    * why the last drain of `queuedMessages` failed, kept as a
@@ -1346,13 +1360,12 @@ export function createEphemeralMessageState(
     agentSlug: string,
     conversationId: string,
   ) => BackendTimestampMessage[],
-  backendConversationId?: string,
+  conversationId: string,
 ): ChatUIState | null {
   if (!chat) {
     return null;
   }
   const current = chat.ephemeralMessages || [];
-  const conversationId = backendConversationId ?? chat.conversationId ?? '';
   const backendMessages =
     chat.agentSlug && conversationId
       ? getBackendMessages(chat.agentSlug, conversationId)

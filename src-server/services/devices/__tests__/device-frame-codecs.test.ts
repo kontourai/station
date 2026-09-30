@@ -3,11 +3,9 @@ import {
   annexBHasIdr,
   DeviceFrameProtocolError,
   JpegStreamSplitter,
-  jpegSize,
   MjpegMultipartParser,
   multipartBoundary,
   parseSemuPacket,
-  pngSize,
 } from '../device-frame-codecs.js';
 
 /**
@@ -203,22 +201,6 @@ describe('JPEG stream splitter (ffmpeg image2pipe output)', () => {
     expect(splitter.push(concat(text('noise'), images[1]!))).toEqual([
       images[1],
     ]);
-  });
-});
-
-describe('image sizes', () => {
-  test('jpegSize reads the Start-of-Frame', () => {
-    expect(jpegSize(jpeg(1179, 2556))).toEqual({ width: 1179, height: 2556 });
-    expect(jpegSize(text('not a jpeg'))).toBeNull();
-  });
-
-  test('pngSize reads the IHDR', () => {
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDWQAAAAASUVORK5CYII=',
-      'base64',
-    );
-    expect(pngSize(new Uint8Array(png))).toEqual({ width: 1, height: 1 });
-    expect(pngSize(text('nope'))).toBeNull();
   });
 });
 

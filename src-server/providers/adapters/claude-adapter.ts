@@ -40,6 +40,11 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
+import {
+  sessionGrantPermissionUpdates,
+  type ToolRequestSessionGrant,
+  toolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import type {
   PreToolPolicyDecision,
   StagedPreToolPolicyEvaluator,
@@ -106,6 +111,7 @@ import {
   type ClaudeMessageState,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
+  reportClaudePermissionMode,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -165,6 +171,11 @@ type PendingRequest = {
   toolName: string;
   /** The SDK agent id when a subagent, not the main thread, asked (#2316). */
   agentId?: string;
+  /**
+   * What a session answer grants (#2915, #2916). The same computation decides
+   * whether the approval surfaces offer it.
+   */
+  sessionGrant: ToolRequestSessionGrant;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -585,11 +596,19 @@ type ClaudeSessionRecord = {
   childWork?: ClaudeChildWorkState;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
-  /** Tracks the live SDK permission mode so sendTurn only calls
-   * `setPermissionMode` when the resolved approvalMode actually changes.
-   * `undefined` until Station sent a mode or the engine's `system/init`
-   * reported one (station#1950: omit-the-knob inherits Claude settings). */
+  /** The engine's live permission mode, as Station last sent it or the
+   * engine reported it (`system/init`, a `status` mode change, a forwarded
+   * `setMode`). `undefined` until one of those (station#1950:
+   * omit-the-knob inherits Claude settings). Turn metadata reports it. */
   currentPermissionMode?: PermissionMode;
+  /**
+   * #2915/#2916: the mode Station last REQUESTED (at spawn or through
+   * `setPermissionMode`), kept apart from `currentPermissionMode`, which
+   * follows the engine's own reports. A turn applies the posture only when
+   * it differs from this request, never merely because the engine moved
+   * (into plan mode, say): only the plan's review ends plan mode.
+   */
+  requestedPermissionMode?: PermissionMode;
   /**
    * Whether this live process was spawned with
    * `allowDangerouslySkipPermissions: true` — the SDK requires that flag be
@@ -796,17 +815,8 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
   ) => unknown;
   /**
-   * Fallback when {@link createInProcessStationControl} is absent: mints a
-   * `bearer-exposed` caller token for the stdio child's env. Absent (most
-   * unit tests), the child runs exactly as before and reports no caller.
-   */
-  mintStationControlCallerToken?: (
-    threadId: string,
-    tenantExecutionContext?: TenantExecutionContext,
-  ) => string;
-  /**
-   * Revokes whichever station-control credential the session was given
-   * (in-process or stdio). Called when the session stops or fails to start.
+   * Revokes the station-control credential the session was given. Called
+   * when the session stops or fails to start.
    */
   revokeStationControlCallerToken?: (threadId: string) => void;
   /**
@@ -1008,6 +1018,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   readonly metadata = {
+    // #2880: the protocol has no acknowledgement of a decision; delivery is
+    // not reported.
+    approvalAcknowledgement: 'none' as const,
     displayName: 'Claude Code',
     description: 'Claude Code integration with approvals and reasoning events.',
     capabilities: [
@@ -1362,6 +1375,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       lastSessionState: 'idle',
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
+      requestedPermissionMode: permissionMode,
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
@@ -1574,7 +1588,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.bypassRefusalWarned = false;
     if (
       targetPermissionMode &&
-      targetPermissionMode !== record.currentPermissionMode
+      targetPermissionMode !== record.requestedPermissionMode
     ) {
       if (
         targetPermissionMode === 'bypassPermissions' &&
@@ -1609,8 +1623,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           });
         }
       } else {
-        await record.query.setPermissionMode(targetPermissionMode);
-        record.currentPermissionMode = targetPermissionMode;
+        // The engine may already run in it (a forwarded acceptEdits the
+        // server then recorded as Auto); the request is recorded either way.
+        if (targetPermissionMode !== record.currentPermissionMode) {
+          await record.query.setPermissionMode(targetPermissionMode);
+          record.currentPermissionMode = targetPermissionMode;
+        }
+        record.requestedPermissionMode = targetPermissionMode;
       }
     }
 
@@ -2025,16 +2044,41 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
-    if (decision === 'acceptForSession') {
+    const grant = pending.sessionGrant;
+    // #2916 / #2915: where no session grant is offered (a plan exit, or an
+    // escalation with no directory to forward), the answer is for this one
+    // call: nothing is minted and no suggestion is forwarded.
+    const effectiveDecision =
+      decision === 'acceptForSession' && grant === 'none' ? 'accept' : decision;
+    // #2915: only a tool grant mints a Station tool grant. An edit-mode grant
+    // forwards the engine's acceptEdits mode change alone, and a folder grant
+    // its directory suggestions alone (the approved directory is then the
+    // engine's state); neither mints anything.
+    if (effectiveDecision === 'acceptForSession' && grant === 'tool') {
       record.approvedTools.add(pending.toolName);
     }
-    pending.resolve(
-      mapClaudeDecisionToPermissionResult(
-        decision,
-        pending.toolInput,
-        pending.suggestions,
-      ),
+    const result = mapClaudeDecisionToPermissionResult(
+      effectiveDecision,
+      pending.toolInput,
+      pending.suggestions &&
+        sessionGrantPermissionUpdates(grant, pending.suggestions),
     );
+    // #2915: a forwarded mode change is Station's own request and now the
+    // engine's mode. Both records follow it, so a turn whose posture differs
+    // (Auto was not recorded, or Ask was picked since) sends that posture.
+    if (result.behavior === 'allow') {
+      for (const update of result.updatedPermissions ?? []) {
+        if (update.type !== 'setMode') continue;
+        record.requestedPermissionMode = update.mode;
+        reportClaudePermissionMode(
+          record,
+          update.mode,
+          (event) => this.publish(event),
+          this.provider,
+        );
+      }
+    }
+    pending.resolve(result);
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -2049,6 +2093,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : decision === 'decline'
             ? 'denied'
             : 'cancelled',
+      acknowledgement: this.metadata.approvalAcknowledgement,
     });
   }
 
@@ -2501,15 +2546,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 ),
             }
           : {}),
-        ...(this.options.mintStationControlCallerToken
-          ? {
-              callerToken: () =>
-                this.options.mintStationControlCallerToken!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
-            }
-          : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
       },
     );
@@ -2723,7 +2759,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // Checked after agent autoApprove (authored policy stays first) and
         // before publishing, so granted tools never re-prompt. Denies are
         // never cached here — only `acceptForSession` populates the set.
-        if (record.approvedTools.has(toolName)) {
+        // #2915: the grant covers calls to the tool, never a request that
+        // reaches beyond it (a path outside the session's directories, a
+        // directory widening, a rule-forced ask): that one always prompts.
+        const sessionGrant = toolRequestSessionGrant({
+          toolName,
+          suggestions: options.suggestions,
+          blockedPath: options.blockedPath,
+          matchedAskRule: options.matchedAskRule,
+          permissionMode: record.currentPermissionMode,
+        });
+        if (record.approvedTools.has(toolName) && sessionGrant === 'tool') {
           return { behavior: 'allow', updatedInput: toolInput };
         }
         const requestId = crypto.randomUUID();
@@ -2748,6 +2794,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             blockedPath: options.blockedPath,
             displayName: options.displayName,
             suggestions: options.suggestions,
+            // #2915: surfaces compute the session grant they offer from this
+            // payload, as the adapter does from the same fields.
+            ...(options.matchedAskRule
+              ? { matchedAskRule: options.matchedAskRule }
+              : {}),
+            ...(record.currentPermissionMode
+              ? { permissionMode: record.currentPermissionMode }
+              : {}),
             // Subagent tool calls (Agent tool workers) come through this same
             // callback, so their approvals already propagate to Station; the
             // SDK's agent id is the only signal that the request belongs to
@@ -2763,6 +2817,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolInput,
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
+            sessionGrant,
           });
           // #2316: the SDK aborts this callback when the call it gates is
           // abandoned; the request is then settled, never left answerable.

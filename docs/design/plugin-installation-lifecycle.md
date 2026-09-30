@@ -1,5 +1,13 @@
 # Plugin installation lifecycle
 
+> **Reading status: current managed installation contract with dated qualification records.**
+> [Installation service](../../src-server/services/plugins/plugin-installation-service.ts),
+> [local adapter](../../src-server/services/plugins/plugin-installation-local.ts),
+> and [installer](../../src-server/services/plugins/plugin-install-transaction.ts)
+> own the behavior below. The retained-generation path and legacy directory
+> path are distinct. Historical process and Windows receipts retain their
+> stated scope; they are not fresh whole-application or hosted verification.
+
 Status: working implementation design. Owns the package lifecycle slice of
 #1409 and #344; the [personal and hosted topology](conversation-state.md#36-two-implementations-of-one-contract)
 and existing permission/composition owners remain authoritative.
@@ -127,7 +135,10 @@ by startup or a catalog read.
 
 ## Local-first and hosted behavior
 
-Local installation works without a server or account. A hosted adapter may
+The local adapter requires no hosted control plane or registry account for a
+local source. The public Station CLI still sends install operations to the
+selected Station runtime; it is not a serverless installation command.
+A hosted adapter may
 replace artifact transport and installation-state persistence while preserving
 the same expected-revision, admission, retention and failure semantics. It
 must declare unsupported capabilities, such as stable snapshots or terminal
@@ -137,6 +148,17 @@ This change does not replicate authorization through a multi-writer cache,
 introduce last-write-wins grant synchronization, or publish a hosted adapter.
 Organization policy remains evaluated by its owning authority; offline local
 scope does not become authority for an enterprise-managed installation.
+
+Git-based update discovery uses the package's own repository metadata; an
+enclosing Station checkout is not its update source. Local registry-directory
+sources refuse Git metadata, using the shared metadata-name rule during source
+inspection/copying. A local folder named by an open install proposal is also
+copied without Git metadata, and a local Git repository URL is refused as a
+proposed source. Station records such a folder in the home's
+`plugin-source-staging.json`, so later previews and reinstalls keep stripping
+it after the proposal resolves. Install refuses an approval whose preview
+staged it differently. These source checks do not grant execution or deletion
+authority. See the current [plugin guide](../guides/plugins.md).
 
 ## Bounded live state and durable retention
 
@@ -215,10 +237,11 @@ The local acquisition owner scopes it to the host, canonical source, and registr
 owner when applicable. A changed or missing historical origin refuses data
 continuity with a migration-needed outcome; it does not reset or copy data.
 This token does not authenticate a publisher. Registry signatures and trusted
-publisher changes must remain governed by the registry claim/pin owner, whose
-production integration is tracked in [#1521](https://github.com/kontourai/station/issues/1521).
-Until that acceptance is met, acquisition-origin continuity does not establish
-signer-bound data ownership or curated registry trust.
+publisher changes belong to the registry claim/pin owner. The current local
+[applied registry trust policy](registry-trust-policy.md) now verifies and binds
+registry claims, while changed claims, signing principals, or applied policy
+epochs require reviewed continuity. Acquisition-origin continuity alone still
+does not establish signer identity or curated registry trust.
 
 The selected generation records pending activation before host effects. The
 existing runtime configuration owner verifies the declared resources and commits

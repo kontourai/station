@@ -1,24 +1,9 @@
 /**
- * Compile step: raw transcript -> extraction agent -> compiled record with a
- * provenance link back to the raw record (`s203-knowledge-meeting-notes`
- * plan, Wave 1 Task 3).
- *
- * The extraction prompt wording (`EXTRACTION_PROMPT_PREFIX`) is vendored
- * VERBATIM from `examples/meeting-transcription/src/MeetingTranscriptionModal
- * .tsx`'s `handleSend` (read-only precedent — never forked/reworded), per
- * the plan's explicit instruction: "reuse it verbatim so the compile step's
- * behavior is provably the same capability already dogfooded, just now
- * writing to a Kit record instead of dumping into chat."
- *
- * The compile call goes through the SDK's `invokeAgent()` function directly
- * (not the `useAgentInvokeMutation` hook, whose `mutationFn` drops
- * `options` entirely — verified in `packages/sdk/src/query-domains/
- * workspace.ts`) against a plugin-contributed agent (`agents/compile/
- * agent.json`, `plugin.json`'s `agents` field — the same additive
- * agent-contribution mechanism `examples/demo-layout` already uses for its
- * "assistant" agent). This is the existing chat/model seam
- * (`POST /agents/:slug/invoke`, `schema` option already supported by that
- * route per `src-server/routes/invoke-agent.ts`) — no new model plumbing.
+ * Compile text through the contributed Agent with a requested JSON schema, then
+ * shape a compiled record linked to the caller-supplied raw record ID.
+ * The shared prompt wording is not evidence of equivalent live behavior.
+ * This helper does not fetch the raw record or verify that its body matches the
+ * submitted text. CaptureModal owns the later, separate record write.
  */
 
 import type {

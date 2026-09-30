@@ -52,7 +52,8 @@ npm run audit:policy
 ```
 
 The command obtains one `pnpm audit --json` registry response and derives full
-and production reachability separately from each selected importer in the lock.
+and production reachability from the lock. The root view combines all managed
+workspace importers; SDK and Shared each use their own importer closure.
 It preserves critical/high blocking and exact production residual policy.
 Run locally it covers all three scopes. In CI, pull-request, push and
 merge-queue runs cover the scopes whose dependency inputs the change touched
@@ -66,7 +67,7 @@ records must resolve through an acyclic `via` graph to concrete advisory
 identities, and the normalized blocking metadata counts must match the records. Audit
 subprocess signals and operational exit statuses also fail closed.
 
-Each actual audit attempt retains bounded, structured phase diagnostics under
+The retained legacy npm audit runner records bounded phase diagnostics under
 `.kontourai/verification-output/dependency-audit/`. Separate started and terminal
 facts distinguish interrupted work from settled children; retries keep distinct
 identities. Completed npm phase timings, bulk response status/duration, actual
@@ -80,7 +81,12 @@ may leave them in the operating system's temporary directory, outside upload
 roots. CI and scheduled scans retain the bounded diagnostics even after failure.
 This instrumentation does not change scan scopes, concurrency, retries,
 deadlines, or the advisory floor. Missing diagnostic storage is reported without
-changing the audit outcome.
+changing the audit outcome. The current root manifest selects the pnpm branch
+in [`collectAudits`](../../scripts/dependency-advisory-policy.mjs), whose
+[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) uses bounded owned-process
+capture and a 240-second deadline. It does not call the npm phase-diagnostics
+adapter. Do not expect structured npm phase files from the normal pnpm audit
+or interpret their absence as a completed phase.
 
 ## Local CodeQL SARIF policy
 
@@ -104,12 +110,20 @@ using it in a review:
 npm run codeql:sarif:check -- --input=/absolute/path/to/codeql.sarif
 ```
 
-The local policy rejects empty, malformed, truncated, synthetic, or failed
+The local policy rejects empty, malformed, truncated, rule-free, or failed
 analysis evidence; it requires an identified CodeQL run, rule inventory,
 valid rule references, result messages, and severity resolved from the result
-or its referenced rule. Any nonempty CodeQL result blocks the workflow and
-prints a bounded rule/severity/message summary to the job log. A clean completed
-scan may legitimately have an empty result list.
+or its referenced rule. Structural evidence failures and unbaselined error-level
+results block. Exact error entries in `scripts/codeql-error-baseline.json` are
+reported as baselined; warning/note results are advisory. A nonempty result list
+therefore need not fail. Stale baseline entries fail on main pushes but warn on
+PR/merge-group checks, which read the protected base baseline. The owner is
+[`codeql-sarif-policy.mjs`](../../scripts/codeql-sarif-policy.mjs). A clean
+completed scan may legitimately have an empty result list.
+
+These checks validate the supplied evidence's structure and findings. A valid
+local file is not proof that a trusted CodeQL execution produced it; the hosted
+workflow separately owns capture and protected-base enforcement.
 
 GitHub ingestion is **NOT_VERIFIED**. Rust analysis is also **NOT_VERIFIED**:
 this foundation initializes only `javascript-typescript` and does not build or
@@ -118,12 +132,14 @@ repository security-alert state from this workflow.
 
 ## Hosted dependency review
 
-For pull requests, the same base-controlled workflow also calls GitHub's
+For pull requests and merge groups, the same base-controlled workflow also calls GitHub's
 `actions/dependency-review-action` directly on a disposable `ubuntu-22.04`
 runner. It has read-only contents permission, checks high and critical
 dependency changes (`fail-on-severity: high`), disables license checks and
 warn-only behavior, and never checks out or executes candidate code. It does
 not use secrets, caches, artifacts, persistent runners, or PR comments.
+Merge-group review supplies its explicit base/head SHAs; a PR uses the action's
+PR context. Workflow presence and local tests do not establish a hosted result.
 
 The capability is not assumed to be available merely because the workflow is
 present: if GitHub dependency review is unavailable for the repository or its
@@ -139,7 +155,7 @@ Capture both the complete development graph and production reachability:
 npm run audit:policy
 ```
 
-This reports each selected importer's full graph and production closure from
+This reports each selected view's full graph and production closure from
 one registry snapshot. Registry advisory data changes over time; use the
 executable report rather than copying historical totals into automation.
 
@@ -261,6 +277,11 @@ The final 2026-07 policy run reports no unaccepted critical/high advisory in
 root, SDK, or shared. No exception was required.
 
 ## 2026-08 production residual inventory
+
+This section preserves the **2026-08-08 npm intake**, including then-current
+versions, controls and recheck date. It is not today's pnpm graph, advisory
+inventory or active exception approval. Use the current policy output and
+exception file for current disposition.
 
 The 2026-08-08 root `npm audit --omit=dev --json` snapshot has zero critical
 or high findings, 18 propagated moderate records, and six propagated low

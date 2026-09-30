@@ -17,30 +17,25 @@ function createCtx(overrides: Record<string, unknown> = {}) {
 }
 
 describe('generateConversationTitle (station#1566)', () => {
-  test('returns null immediately when structureModel is empty', async () => {
-    const ctx = createCtx({ appConfig: { structureModel: '' } });
+  test.each([
+    ['empty', { structureModel: '' }],
+    ['absent', {}],
+  ])(
+    'returns null without building a model when structureModel is %s',
+    async (_label, appConfig) => {
+      const ctx = createCtx({ appConfig });
 
-    const title = await generateConversationTitle({
-      ctx,
-      firstUserText: 'How do I deploy this?',
-      assistantText: 'Here is how you deploy it.',
-    });
+      const title = await generateConversationTitle({
+        ctx,
+        firstUserText: 'How do I deploy this?',
+        assistantText: 'Here is how you deploy it.',
+      });
 
-    expect(title).toBeNull();
-    expect(ctx.framework.createModel).not.toHaveBeenCalled();
-  });
-
-  test('returns null immediately when structureModel is absent', async () => {
-    const ctx = createCtx({ appConfig: {} });
-
-    const title = await generateConversationTitle({
-      ctx,
-      firstUserText: 'How do I deploy this?',
-      assistantText: 'Here is how you deploy it.',
-    });
-
-    expect(title).toBeNull();
-  });
+      expect(title).toBeNull();
+      expect(ctx.framework.createModel).not.toHaveBeenCalled();
+      expect(ctx.framework.createTempAgent).not.toHaveBeenCalled();
+    },
+  );
 
   test('returns a post-processed title on the success path', async () => {
     const generateObject = vi.fn().mockResolvedValue({

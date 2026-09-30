@@ -1,10 +1,20 @@
 # Placement: regions, surfaces, layouts, panes, pane hosts
 
-Status: **accepted direction with an implemented core** (owner decisions on
-station#928, 2026-09-01 through 2026-09-04). It describes `main` once the
-2026-09-04 placement batch has landed: the docked-capability pins, #1446 and
-#1420 are delivered by sibling pull requests that merge before this record. The two placement layers below
-ship today, and so does the "arrangement" record. The "region occupant is a
+> **Reading status: current placement model plus a dated implementation log.**
+> [Region model](../../src-ui/src/regions/region-model.ts),
+> [persistence parser](../../src-ui/src/regions/region-arrangement-record.ts),
+> [provider](../../src-ui/src/contexts/RegionModelContext.tsx), and
+> [region pane host](../../src-ui/src/workspace-panes/RegionPaneHost.tsx) are the
+> current owners. Later dated amendments supersede earlier slice limitations.
+> The measurements, screenshots, and device statements below belong to their
+> recorded work. The current claims were traced through their source and
+> callers; this review does not renew historical bundle measurements, screenshots,
+> browser gesture measurements or physical-device results.
+
+Status: **accepted direction with an implemented core**. The dated sections
+record the decisions and sequence of the placement work. Read later amendments
+where an earlier slice says a capability is absent. The current source has both
+placement layers and the arrangement record. The "region occupant is a
 pane host" shape is implemented through its fourth slice (#2045, slice 1 of
 the tabbed-dock epic #2044; #2046 parts 2a and 2b; #2047 and #2048, slices 3
 and 4): each dock region holds a SET of surfaces — its panes, in tab order,
@@ -61,7 +71,7 @@ grab moves the whole region. No surface reads its own placement (pinned by
 ### `main`
 
 `main` is the primary area: the route outlet at `/`, and the routed view on
-every other route. Four rules make it a region rather than a special case
+every other route. These rules make it a region rather than a special case
 (#928 slice C2a, owner decisions of 2026-09-05):
 
 - **Surfaces declare where they may be placed.** `RegisteredSurface.regions`
@@ -93,9 +103,10 @@ every other route. Four rules make it a region rather than a special case
   (`regionSurface: 'home'`) therefore reveals Home by placing it, rather than
   navigating to `/` and showing whatever occupies `main`.
 - **`main` has no toolbar control on any device** (it is always visible;
-  since #2143 the toolbar is per DOCK region). A pane reaches it through its
-  tab's "Move to Main" (a surface that declares `main`, so Activity), which
-  needs a tab: a region holding two or more panes while the strip renders
+  since #2143 the toolbar is per DOCK region). A surface that declares `main`
+  (Activity) reaches it through **Move to Main**,
+  available from a tab or the bar's separate **Move Activity** control
+  (#2160). The tab route needs two or more panes while the strip renders
   (`RegionChromeBar`'s `showStrip`, gated on `isMobile` — the 768px layout,
   or a short coarse viewport — not on the pointer alone; a wide coarse tablet
   is bottom-only and still gets the strip, so its one dock's tabs offer
@@ -136,7 +147,8 @@ the contracts vocabulary (`supportedRegions`, composition `role`) describes
 positions inside this tree.
 
 The layers meet at one seam: a dock region IS a pane host. `RegionShells`
-mounts one `RegionPaneHost` per occupied dock region — the region's
+mounts one `RegionPaneHost` per occupied or visible-empty dock region — the
+region's
 `DockShell` around the region's chrome bar (`RegionChromeBar`: placement
 grab, tab strip, maximize, visibility) and a `dock`-presentation
 `WorkspacePaneHost` holding the region's document, `ambient:<region>`
@@ -163,7 +175,7 @@ region adopts it.
 |---|---|---|
 | **Region** | a fixed shell slot: `main`, `left`, `right`, `bottom` | `REGION_IDS`, `RegionState` |
 | **Surface** | a thing registered to occupy a region: id, title, icon, optional chord, the regions it declares, default region | `REGION_SURFACE_REGISTRY`, `RegisteredSurface` |
-| **Layout** | a project's named view the sidebar navigates between (Coding, Tasks, Session board, a plugin's) | `LayoutConfig` server record; `type` selects the renderer |
+| **Layout** | a project's named view the sidebar navigates between (Coding, Tasks, Session board, a plugin's) | `LayoutConfig` server record; renderer resolution considers type and plugin contribution |
 | **Pane** | the smallest addressable UI unit; what plugins contribute | `WorkspacePaneDescriptor`, `WorkspacePaneInstance` |
 | **Pane host** | a tree of panes arranged as splits and tab groups, inside a region or a layout | `WorkspacePaneHost`, `WorkspacePaneHostDocumentV1` |
 | **Arrangement** | the user's placement choices: which surfaces in which region and in what order, which of them is selected, each region's size and visibility, which region (at most one) is maximized, each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D, `maximized` added by slice iii (#1385), `panes` and the selection by #2046 2a, written by the tab strip since 2b |
@@ -172,9 +184,8 @@ region adopts it.
 
 Words that were retired, and why:
 
-- **"Surface" for a navigable destination.** The app-shell registry of twenty
-  destinations (fourteen distinct routes; Settings and Guidance sections share
-  theirs) used the same noun as the region occupants. #928's acceptance
+- **"Surface" for a navigable destination.** The app-shell destination registry
+  (Settings and Guidance sections share routes) used the same noun as the region occupants. #928's acceptance
   criteria, the toolbar's accessible labels and the `?surface=` deep link all
   mean region occupant, so that meaning won and the route registry became the
   destination registry. `?surface=activity` keeps its name: it names a region
@@ -205,7 +216,7 @@ map; anything not listed is a label.
 | `REGION_SURFACE_PANES` (#2045; #2047) | surface id → the canonical `WorkspacePaneInstance` under the dock's context (`instance({ projectId })` — a coding pane is the dock project's and has no instance without one; Chat, Activity, Agents and Device ignore the context, Device because a device list is the Station host's fact rather than a Project's — #1969), plus `descriptorId` and the entry's constant `instanceId` | `RegionPaneHost`: the region's document is its panes' entries in tab order under the dock's project (an unsuppliable pane keeps its tab and renders "Choose a project for this dock"), and a persisted or opened pane is admitted only when `regionSurfaceOfPane` names a surface in the region's `panes` AND it binds the dock's project (an opened pane bound to another project is refused; a persisted one is re-bound by the catalog match); the empty region's chooser (`RegionEmptyChooser`, #2154) lists registry surfaces and enables a row only where the entry's `instance(context)` is non-null — no prefix family is a registry key, so an instance-keyed pane is never a row (`regionSurfaceOfDescriptor` is read by the inventory pin alone since the dock catalog was retired); `useOpenInRegion` folds an instance to its surface; `region-surface-panes.test.ts` pins the keys to the registry's dock-capable surfaces both ways and every entry's descriptor to what a dock can bind (`{ project, source, workspace }`, stated in that pin; see below). Since #2049 `RegionShells` decides "mount a host" from `resolveRegionSurface`, not from the registry alone — so what makes that sufficient is this pin PLUS `region-instance-panes.test.ts`, which pins the id-keyed resolver and this module's occurrence minter to admit exactly the same instance ids |
 | `RegisteredSurface.exposure` (#2047) | absent (`shell`) or `catalog` | `useRegionSurfaceMenu` (`surfaceList`: a catalog-only surface has no chord and no unplaced Show row; a placed one keeps its folded Show/Hide row, which reads `region.panes`) — a region's chooser (#2154) is a catalog-only surface's only offer, and since #2155 the toolbar offers nothing at all; `?surface=<id>` is a command and reveals either kind |
 | `INSTANCE_SURFACE_PREFIXES` / `resolveRegionSurface` (#2049; #2157 adds `board:` and `layout:`; #90 D9 adds `browser-preview:`, a Browser pane attached to one session) | an id PREFIX (`pr:`, `file-preview:`, `browser-preview:`, `board:`, `layout:`) → a `RegisteredSurface`-shaped description: title, icon, the dock regions it may take, `exposure: 'catalog'`, and the `pane:builtin:…` descriptor id its occurrences carry (named as a STRING — this table is in the entry chunk and may import no pane contract) | THE id-keyed lookup: `surfaceMayOccupy`, the record parser's `parseSurfaceEntry`, the provider's `openSurfaceInRegion` and `toggleSurface`, `RegionShells`' mount rule, `RegionPaneHost`'s tab titles and placeholder titles, `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId`, the landmark), `useRegionSurfaceMenu`'s folded rows, `DockShell`'s landmark; `RegionEmptyChooser` (#2154) lists `model.surfaces`, which holds none of them, so no route to the chooser — a region's "+", its empty body, or a hold on its toolbar toggle (#2155) — can offer them. `region-instance-panes.test.ts` pins each prefix to the minting half in `region-surface-panes.ts` (which also holds each family's renderer source, `INSTANCE_SURFACE_SOURCE_FILES`, kept out of the entry chunk because only that test reads it); `docked-capability-derivation.test.ts` pins each `descriptorId` to a built-in descriptor that exists and declares `docked`. These surfaces are never registry keys — there is no blank occurrence to register — so `model.surfaces` (the SHELL's inventory: what the toolbar may offer, what a chord toggles) holds none of them |
-| `MarkdownLinkContext` (#2049) | the conversation a rendered message belongs to: its project slug and id, the DOCK's project slug, whether this device folds to one region, and the `setLayout` route a preview took before | `ChatMarkdownAnchor` (inside `MarkdownRenderer`'s lazy chunk) — the ONLY reader, and the absence of a provider is the default: a document view, a shared answer and a system event have no conversation, so their anchors stay plain anchors. Provided by `ChatDock` alone |
+| `MarkdownLinkContext` (#2049) | the conversation a rendered message belongs to: its project slug and id, the dock project, project roots and session directory/thread, and the `setLayout` fallback for a project file | `ChatMarkdownAnchor` (inside `MarkdownRenderer`'s lazy chunk) — the ONLY reader, and the absence of a provider is the default: a document view, a shared answer and a system event have no conversation, so their anchors stay plain anchors. Provided by `ChatDock` alone |
 | `RegionState.panes` (surface ids, tab order; #2046 2a) | surface ids | `occupiedRegion`, `occupiedDockRegion`, `chatRegion`, `firstFreeDockRegion`, `foldedDockRegion` (a surface behind another's tab is still IN its region; a region with no panes is free), `placeSurface` (joins a dock region's panes, replaces `main`'s, removes the surface from the region it leaves), `removeRegionPane` (a closed tab: the surface leaves and is placed nowhere), `moveRegionPanes` (the region bar's placement: every pane, in order, moves), `dockMirrorDiff` (a region holding Chat, selected or not, is Chat's region; Chat leaving every region reads as the dock closing), the record writer (one pane → `surface`, two or more → `pane-host`), `RegionPaneHost` (the document is DERIVED from it; a mount reconciles a persisted document that lacks a pane), the tab strip (`RegionChromeBar`, #2046 2b: one tab per pane in this order; a reorder writes it back), `DockShell` and `useDockShellChrome` (a region whose panes include Chat is Chat's shell — `#chat-dock`, the "Dock" landmark, the `dock.maximize` registration, the persisted snap key and the project binding's cleanup — whichever tab it shows; D3), `DockShellChrome.regionPanes` (Chat's mobile overflow sheet lists the region's other panes from it), and `useRegionSurfaceMenu` (a segment for a region the surface already holds is a select, and claims no displacement; the folded menu's rows are per region, in this order) |
 | `RegionState.occupant` (the SELECTED pane, a member of `panes` or null) | surface ids | every pre-2a reader keeps its meaning for a one-pane region: `useDockShellChrome` (`surfaceTitle`, `surfaceShortcutId` and `canMaximize` name the pane the region SHOWS, so the region bar's visibility control reads "Hide Activity" while Activity's tab is selected; a non-Chat region's landmark takes the same title — and an EMPTY region, having no pane to be named after, names itself: "Right region", with `canMaximize` false, #2153), `RegionShells` (a host mounts for a registered selected pane, or — #2153 — for a VISIBLE region with no pane at all), `MainRegionSurface`, `ProjectSidebar`, `useRegionSurfaceMenu` (a surface is SEEN only when its region is visible and it is the selected pane; the picker reads Hidden otherwise, and the folded menu's row for the selected pane is the region's Hide), `toggleSurface` (only the selected pane's toggle hides its region; a pane behind selects), `revealSurface`/`showSurface` (select the pane's tab), `selectRegionPane`/the provider's `selectPane` (what a tab click writes), the record's `selected`, the tab strip (the pressed tab), the `dock` host (the one pane it mounts, as the strip's `tabpanel`), and `RegionPaneHost`, which makes the controller's active pane follow it (`focusExisting`) |
 | `RegisteredSurface.regions` | `main`, `left`, `right`, `bottom` | `placeSurface` via `surfaceMayOccupy` (refuses an undeclared region), `RegionModelContext.placeSurface` (a refused placement does not navigate), the region chooser (#2154 lists the surfaces declaring the region; `useRegionSurfaceMenu` lists dock toggles only) and a tab's move menu (`RegionChromeBar`, #2143: the regions the pane declares, minus its own) |
@@ -219,9 +230,9 @@ Two facts that follow from the map and are easy to get wrong:
 
 - **Nothing reads `supportedRegions` to decide where a pane renders.** It gates
   whether a pane fits a slot; the user, the registry and the composition
-  builders decide where. The dock catalog (#2047) is a reader of exactly that
-  kind: `docked` decides whether a pane is offered in a region's "+", and the
-  region is the one whose "+" was pressed. Do not add a reader that picks a
+  builders decide where. The retired dock catalog (#2047) was a reader of exactly
+  that kind: `docked` decided whether a pane was offered in a region's "+";
+  the current chooser reads registered surfaces instead. Do not add a reader that picks a
   region from it without a decision on #928.
 - **Compatibility is context supply, not region words.** The "can this pane
   live here" check is `workspacePaneModesSatisfiableBy` against the contexts a
@@ -270,16 +281,17 @@ Two facts that follow from the map and are easy to get wrong:
   Precedence at load, highest first: a URL deep link, for Chat only —
   `dockSlotPlacement` places Chat there through `placeSurface` (joining the
   panes the region holds), `dock=open` shows it, and `maximize=true`
-  maximizes Chat's region (restoring any other); each of the three selects
-  Chat's tab in the region it acts on, since 2b (2a review: they are Chat's
-  links, and a region showing another pane's tab is not what they named);
+  maximizes Chat's region (restoring any other). A placement, open or maximize
+  that changes the stored state selects Chat's tab. A URL value that merely
+  repeats the record's current placement, visibility or maximize is treated
+  as a reload and preserves the record's selected tab;
   the same holds for the inbound `dock=open` and `maximize` a
   `focusSession` reveal writes later; then the
   record, when it differs from the registry default, for every surface's
   placement, size, visibility and maximize, Chat's included; then the legacy dock seed
   (`chatDockHeight`/`chatDockWidth`, the `dockSlotPlacement` device setting),
-  which is all a pre-record device has. A record equal to the default is one
-  the device has never written and reads as absent, which is what carries a
+  which is all a pre-record device has. A record equal to the default is
+  treated as absent, even if it was explicitly written, which carries a
   pre-record device's dock position through the upgrade. Sizes render from
   the record: a shell seeds its own region's size and falls back to the
   legacy keys only without a region model (`useDockShellChrome`). A record
@@ -296,10 +308,11 @@ Two facts that follow from the map and are easy to get wrong:
   the later regions' panes, a region left with nothing reading as empty and
   keeping the visibility the record stored (#2153), while an
   instance-keyed id (`isInstanceSurface`: a pull request, a file preview, a
-  Board, a Layout) is kept in every region that names it — a shape nothing in
-  this build writes, because `placeSurface` still vacates the region a pane
-  leaves, and which the parser accepts anyway so the release already deployed
-  can READ what the next one will write (#2159 slice A; slice B is the
+  Board, a Layout) is kept in every region that names it — a shape ordinary
+  placement does not create, because `placeSurface` still
+  vacates a prior region. The parser and record writer can preserve duplicates
+  supplied by existing storage. This was introduced so an earlier release can
+  read the planned later placement shape (#2159 slice A; slice B is the
   placement change). That ordering is what makes slice B revertable for a
   release window: reverting it leaves duplicates in records already on disk,
   and this parser still reads both copies rather than dropping one and
@@ -443,7 +456,7 @@ region (`firstFreeDockRegion`: the requested one when empty, else `right`,
 `bottom`, `left` — #2156) else joining the requested one — a closed dock
 leaves it unplaced.
 
-The four forks of the 2a plan, as taken (each reversible on its own):
+The five decisions of the 2a plan, as taken (each reversible on its own):
 
 - **D1 — collapsed bar: header only.** A collapsed region is the bar alone,
   at the unchanged `--chat-dock-header-height` (38/53px); the strip hides
@@ -454,8 +467,9 @@ The four forks of the 2a plan, as taken (each reversible on its own):
   occupied dock region contributes its panes in tab order: the selected
   pane's row is the region's Hide/Show, a pane behind a tab gets a Show row
   that selects it (2a's toggle). Then the `main` occupant's "Move … to the
-  dock" and a Show row per unplaced dock surface. A coarse device renders
-  no strip; from Chat, its mobile overflow sheet lists the region's other
+  dock" and a Show row per unplaced dock surface. A phone-sized layout renders
+  no strip; a wide coarse-pointer tablet can still render it. On a phone,
+  Chat's mobile overflow sheet lists the region's other
   panes ("Switch to Activity") from `DockShellChrome.regionPanes`, and the
   toolbar's `⋯` rows are the way back. The app toolbar gains no control.
 - **D3 — `#chat-dock`, the "Dock" landmark, `dock.maximize` (⌘M), the
@@ -493,7 +507,7 @@ still mounts its host on the pending-time document, and the deferred
 reconcile restores the full set once the read settles). The "+" was not
 offered without a project (until #2154, whose chooser lists a projectless
 dock's coding rows disabled with the reason). The "+" lives in the region bar's actions
-cluster beside maximize, fine pointer only, and renders for a one-pane region;
+cluster beside maximize, outside the mobile layout, and renders for a one-pane region;
 its catalog as #2047 shipped it (`RegionPaneCatalog`, over `ProjectWorkspacePaneModal` — retired by #2154 for the registry-driven `RegionEmptyChooser`) listed the
 panes declaring `docked` for the dock project, a `docked` pane needing a
 context the dock cannot supply listed disabled with the resolver's reason
@@ -592,6 +606,9 @@ that holds Chat (`chatRegion`, else the folded region, else `bottom`),
 maximized on a phone-sized viewport (`useIsMobile`) so it reads full screen.
 Chat's region is never hidden and Chat's tab stays in it. `main` keeps its
 own rule, and so does an explicit `bottom` (the user placing a pane, #2158).
+If Chat has been unplaced, the model uses the folded region or Bottom and
+does not add Chat. Closing then restores that region's previous selection;
+the usual “Back to Chat” journey assumes Chat was present.
 Chat links follow: `MarkdownLinkContext` no longer carries the fold, so a
 pull request or path link on a phone opens its pane, and `openPathInMain` is
 only the fallback when the model refuses.
@@ -696,8 +713,9 @@ reported them, while the tool count, which Station counts itself, prints its
 real zero. The Chat header's "Background tasks — N running" row places the
 pane where a side dock region exists and opens the sheet where it does not,
 and the dialog semantics go with the sheet. It is not declared to the server
-catalog, so a region's "+" does not list it — Activity's precedent, for
-Activity's reason.
+catalog. That kept it out of the original
+dock catalog; the later registry-driven chooser (#2154) does list Agents and
+Activity.
 
 **Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
 renders child work — engine subagents and Station delegates — from the
@@ -710,8 +728,10 @@ model and engine subagents from a window-wide registry
 (`contexts/child-work-global-store.ts`) fed before the chat guard, so a
 delegate started from the CLI with no chat open appears. Tool calls keep
 `TaskRow`, and `BackgroundTasksSheet` is unchanged. A Stop renders only from
-a wired `subagentControl` cell (or a delegate's own interrupt); until Claude's
-cell is wired, Claude's per-chat Stop stays on the `TaskRow` path.
+a wired `subagentControl` cell (or a delegate's own interrupt). Claude's
+current cell is wired to `provider-task-stop`, so
+its running child work now uses that control. The legacy `TaskRow` bridge
+remains for an engine whose control cell is not wired.
 
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
@@ -738,10 +758,10 @@ region set, so two simulators side by side waits for an instance-keyed Device
 family riding the #2049 prefix mechanism. Which device is selected is bounded
 pane STATE, not pane identity — the selected target is what the pane reads,
 not what it is — which is the same distinction that keeps a routed session id
-out of Activity's instance. The "+" stays project-scoped
-(`RegionPaneHost` gates it on `projectSlug !== null`), so a Station with no
-project cannot reach a pane that needs no project; that limitation is #2047's
-and is documented here rather than widened by this slice.
+out of Activity's instance. The original "+" was project-scoped. The later
+#2154 chooser removed that restriction: Device can be offered without a
+Project, while project-dependent coding panes remain disabled until a Project
+is selected.
 
 ## A Board or a Layout as a pane (#2157)
 
@@ -770,7 +790,7 @@ not offered by the region's "+": there is no blank occurrence).
 
 **Title.** The tab shows the Layout's `name` — the same word the pill shows —
 resolved by `RegionPaneHost` from the SDK's metadata LISTS
-(`LayoutPaneTitles`: `usePersonalLayoutsQuery`, `useProjectsQuery` +
+(`LayoutPaneTitles`: `usePersonalLayoutsQuery`, `useScopedProjectsQuery` +
 `useProjectLayoutsQuery`), mounted only while the region holds such a pane
 and reading no record, so the host chunk gains no layout renderer. Until the
 list resolves, and for an id the list no longer carries, the tab shows the
@@ -905,14 +925,17 @@ adds NO sidebar entry point; #2158 adds the context menu, and #2175 the drag.
 `layout:` id the way it reads a retired surface — dropped on parse, dropped
 on its next write — and the tab is lost. The stale-tab story above covers it.
 
-**Still direction.** More instance-keyed families ride the #2049 prefix
-mechanism as their own change (a second terminal, Browser Preview): a prefix
+**Extension rule.** More instance-keyed families can ride the #2049 prefix
+mechanism as their own change (for example, a second terminal): a prefix
 entry naming a descriptor that declares `docked`, the minting half in
 `region-surface-panes.ts`, a `RegionBuiltinPane` map entry, and the pins in
 `region-instance-panes.test.ts` and `docked-capability-derivation.test.ts`.
 The Device pane (#1969) rides the #2047 path instead (descriptor with
 `docked`, registry entry with `exposure: 'catalog'`, inventory entry,
-renderer, the four lockstep pins) — done, see above. A `?surface=pr:…` deep link stays
+renderer, the four lockstep pins) — done, see above. Browser Preview now has
+a `browser-preview:<nonce>` family; `openBrowserSessionInRegion` stores its
+Project/session binding before placement and reuses an existing matching
+occurrence. A `?surface=pr:…` deep link stays
 IGNORED: materialising a pane from a URL is a new entry point nobody asked
 for.
 
@@ -1055,8 +1078,8 @@ one arrangement, and no control at all that said whether a region was open
   (#2160) — one `moveTargets` derivation, one open menu, whichever trigger
   opened it. That is the route a LONE pane has: it reaches every region it
   declares, `main` included, without first acquiring a tab, where the bar's
-  ⋮⋮ grab moves the whole region and offers dock edges only. Fine pointer
-  only, like the "+"; and the button is absent when the selected pane has
+  ⋮⋮ grab moves the whole region and offers dock edges only. Like the "+", the
+  button appears outside the mobile layout and is absent when the selected pane has
   nowhere to go.
 - **`main` has no toolbar control and no tab.** It is always visible and
   renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
@@ -1087,9 +1110,9 @@ direction of 2026-09-15 settles it: **Bottom is Chat's.** Terminal joins it
 (`coding:terminal`'s `defaultRegion` moves from `right` to `bottom` — a
 terminal belongs under the conversation that is driving it), Files stays on
 the left (`coding:file-browser`), and everything else that is not Home
-defaults to the right: Activity, Agents, Device, Diff, and the four
-instance-keyed families (`pr:`, `file-preview:`, and #2157's `board:` and
-`layout:`). Home's only placement is
+defaults to the right: Activity, Agents, Device, Diff, and the five
+instance-keyed families (`pr:`, `file-preview:`, `browser-preview:`, `board:`
+and `layout:`). Home's only placement is
 `main`. The table is pinned in `region-model.test.ts`, so a later change to
 any entry is an argued edit rather than a drift.
 
@@ -1122,9 +1145,9 @@ could open and then fill — it was a side effect of a surface being somewhere.
 
 **Owner decision, recorded on #2153: closing a region's LAST tab leaves the
 region visible.** It empties, and stays open showing its chrome bar over a
-placeholder that names it ("Nothing in the Right region yet"). Hiding is the
-chevron's and the toolbar toggle's act — the two controls that are named for
-it — and nothing else writes a region's visibility. A MOVE is different: a
+placeholder that names it ("Nothing in the Right region yet"). The chevron and
+toolbar toggle explicitly show or hide a region. Model operations also change
+visibility when moving, revealing or folding panes. A MOVE is different: a
 region a surface LEAVES by placement (`placeSurface`'s vacate, the ⋮⋮ grab's
 `moveRegionPanes`) hides when it empties, because the user is putting that
 content somewhere else, and an empty placeholder left behind would be a
@@ -1250,8 +1273,11 @@ goes in this region" standing beside the region's own chooser.
   past 8px, or a `contextmenu` (a right-click, and the keyboard's context-menu
   key, which browsers deliver as the same event with no pointer sequence),
   opens #2154's chooser anchored under the toggle. `contextmenu` is prevented,
-  so the control opens its own panel rather than the browser's. On a coarse
-  pointer the hold is the only route, which is why it exists. The click that
+  so the control opens its own panel rather than the browser's. These individual
+  toggles render only when the device offers side regions;
+  coarse-pointer devices use the folded menu. The shared gesture handler also
+  handles touch sequences, but that does not create a toggle on a folded
+  device. The click that
   the hold's release still produces is SUPPRESSED — exactly one — or the
   gesture would open the panel and toggle the region under it. The toggle does
   not announce the panel with `aria-haspopup`: its primary act is the toggle,
@@ -1282,8 +1308,9 @@ goes in this region" standing beside the region's own chooser.
      back on the release, so the release returns to the control that began the
      gesture — which is what consumes the click-suppression flag, and what
      keeps `pointermove` arriving once the pointer leaves the 32px box, so a
-     press dragged away cancels. Where an engine has no capture (jsdom, or a
-     refused id) `pointerleave` supplies that second job.
+     press dragged away cancels. When the capture method is absent,
+     `pointerleave` cancels the timer. The
+     handler does not catch an exception from an available capture method.
 
   The capture makes the dragged-away press an ACTIVATION unless it is
   suppressed, and that is the one place this design had to follow the browser
@@ -1384,8 +1411,9 @@ from a broken one (#2155 review M3).
   layout used to unmount every region, and a typeless plugin layout defaulted
   to `'chat'` (#1446). The shell now asks which renderer the layout resolves
   to, from the same facts `ProjectLayoutRenderer` dispatches on.
-- **A producer reproducing the model's placement rules.** Every reveal goes
-  through `useShowSurface` / the model's `showSurface` (#1420); the toolbar is
+- **A producer reproducing the model's placement rules.** Shell reveals use
+  `useShowSurface` / the model's `showSurface`; pane openers use the same
+  provider's `openSurfaceInRegion` (#1420, #2048); the toolbar is
   not allowed its own copy.
 
 ## Related records

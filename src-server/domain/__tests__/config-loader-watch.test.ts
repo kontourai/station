@@ -13,12 +13,31 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type FSWatcher, watch } from 'chokidar';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { FSWatcher } from 'chokidar';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  ConfigLoader,
   isAgentOrIntegrationConfigPath,
   isWatchedConfigPath,
 } from '../config-loader.js';
+
+// A pass-through, not a fake: the real chokidar watches the real filesystem.
+// It only records what the loader asked for and hands back the loader's own
+// watcher, so the guards below test Station's watch form rather than a copy.
+const chokidarCalls = vi.hoisted(
+  () => [] as Array<{ args: unknown[]; watcher: FSWatcher }>,
+);
+vi.mock('chokidar', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('chokidar')>();
+  return {
+    ...actual,
+    watch: (...args: Parameters<typeof actual.watch>) => {
+      const watcher = actual.watch(...args);
+      chokidarCalls.push({ args, watcher });
+      return watcher;
+    },
+  };
+});
 
 function makeHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'config-watch-spec-'));
@@ -164,6 +183,7 @@ describe('isAgentOrIntegrationConfigPath (station#983 scoped advance)', () => {
 describe('config watch roots', () => {
   let root: string;
   let agentDir: string;
+  let loader: ConfigLoader;
   let watcher: FSWatcher;
   const seen: Array<[string, string]> = [];
 
@@ -173,10 +193,9 @@ describe('config watch roots', () => {
     agentDir = join(root, 'agents', 'writer');
     mkdirSync(agentDir, { recursive: true });
 
-    watcher = watch(
-      [join(root, 'config'), join(root, 'agents'), join(root, 'integrations')],
-      { persistent: true, ignoreInitial: true, depth: 1 },
-    );
+    loader = new ConfigLoader({ projectHomeDir: root, watchFiles: true });
+    expect(chokidarCalls).toHaveLength(1);
+    watcher = chokidarCalls[0]!.watcher;
     watcher.on('add', (path) => seen.push(['add', path]));
     watcher.on('change', (path) => seen.push(['change', path]));
     await new Promise<void>((ready) => watcher.on('ready', () => ready()));
@@ -186,9 +205,28 @@ describe('config watch roots', () => {
   // loaded parallel run it does not reliably finish inside vitest's default
   // 10s hook budget. The timeout here is chosen rather than inherited.
   afterAll(async () => {
-    await watcher?.close();
+    if (loader) {
+      await loader.dispose();
+      await loader.whenWatcherClosed();
+    }
     if (root) rmSync(root, { recursive: true, force: true });
   }, 60_000);
+
+  // The form itself: directory roots at depth 1, never a glob. chokidar v4
+  // resolves a glob to an empty watched set without erroring.
+  it('the loader watches the three config directories at depth 1, not glob patterns', () => {
+    const [roots, options] = chokidarCalls[0]!.args as [
+      string[],
+      { depth?: number },
+    ];
+    expect(roots).toEqual([
+      join(root, 'config'),
+      join(root, 'agents'),
+      join(root, 'integrations'),
+    ]);
+    expect(options.depth).toBe(1);
+    for (const watched of roots) expect(watched).not.toMatch(/[*?[\]{}]/);
+  });
 
   // Half one of the glob guard, and the half that matters: it needs no
   // notification at all, so it holds on every host including a archive#970 one. A glob

@@ -1,5 +1,18 @@
 # The plugin authority model: contributions, loci, and where consent belongs
 
+> **Reading status: historical August 2026 threat analysis and recommendations.**
+> The body preserves that assessment, including its then-open fixes. Current
+> [bundle loading](../../src-ui/src/core/PluginRegistry.ts) uses nonce-free
+> same-origin script URLs; the cross-origin inline path still receives a nonce.
+> [Lifecycle routes](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
+> now send managed updates through the installer and rebind legacy grants when
+> content changes. [Permission derivation](../../src-server/services/plugins/plugin-permissions.ts)
+> still covers fewer contribution kinds than the install consent boundary.
+> Read [plugins](../guides/plugins.md) and the
+> [installation lifecycle](plugin-installation-lifecycle.md) for current usage.
+> This dated comparison is not a current exploit report or a fresh audit of
+> every contribution, framework, or external product mentioned below.
+
 Status: design note, 2026-08-25. Written while shaping station#4220 (one plugin
 format, user-chosen runtime) and station#4190 (dogfood the iframe tier).
 

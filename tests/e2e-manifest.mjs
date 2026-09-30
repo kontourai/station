@@ -317,6 +317,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
     'tests/toolbar-reachability.spec.ts',
@@ -422,8 +423,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/plugin-rejection-visibility.spec.ts',
     // Seeds exact historical/current-child events only in the managed temporary home.
     'tests/workspace-search-exact-message.spec.ts',
-    'tests/plugin-system.spec.ts',
-    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
@@ -465,7 +464,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "UX audit E1 (reports/agents-lane/DESIGN.md §2/§5): the Agents rail as a readiness board against a live Station — the engines band above the authored band, a non-ready row printing the server's own unavailableReason verbatim with exactly one fixing verb mapped from unavailableFix.kind, and a Ready row whose Chat action opens the shared New Chat picker onto a real composer. The non-ready row is seeded by binding an agent to an engine connection that does not exist, so the state is an observation rather than a mocked string. Desktop plus a 390x844 variant asserting the same one verb, a 44px repair target and no horizontal document scroll.",
+      "UX audit E1 (reports/agents-lane/DESIGN.md §2/§5): the Agents rail as a readiness board against a live Station — the engines band above the authored band, a non-ready row printing the server's own unavailableReason verbatim with exactly one fixing verb mapped from unavailableFix.kind and never identifying the missing engine by its connection id (archive#3742), and a Ready row whose Chat action opens the shared New Chat picker onto a real composer. The non-ready row is seeded by binding an agent to an engine connection that does not exist, so the state is an observation rather than a mocked string. Desktop plus a 390x844 variant asserting the same one verb, a 44px repair target and no horizontal document scroll.",
     exceptions: [],
   },
   {
@@ -690,6 +689,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#4287: exercises the shell CSP rather than asserting its header string. Serves the production-built UI through the lifecycle static server with the real bootstrap derivation, proves no nonce carrier is reachable from page code (window global, script .nonce IDL, nonce attribute), and proves a remote script minted from what page code CAN scrape is refused by script-src — paired with a control that lifts the nonce out of the response header and shows the same remote script then executes, so the refusal is the leak being closed and not a URL the policy would have refused anyway. Also proves the API-base bootstrap both runs and removes its own nonce-bearing element. jsdom enforces no CSP and never loads an external script, so this is only falsifiable in a real browser.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/branding-theme-boot.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#2836: the white-label branding theme's first paint. Both server answers are held — GET /api/branding, and the branding section of GET /api/boot, answered as an error section so its seed cannot stand in. The built app must carry the cached, re-validated theme inline on <html> from before the first render (main.tsx pre-render path), keep it until the live answer is released, then apply that answer (BrandingThemeBridge); a hostile cached copy must never write anything. An in-page MutationObserver records every inline value, so an early clear is an observed failure rather than a timing window. Unit tests cover the helpers; only the built app proves main.tsx calls them.",
     exceptions: [],
   },
   {
@@ -1098,6 +1107,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/authenticated-request-canary.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'E2E harness authentication',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The suite authentication canary against the live instance: the authenticatedRequest fixture credential is accepted on an operator route (GET /api/pairing/requests) and an ordinary Playwright request context with no credential is refused 401. Without it, every spec that seeds through authenticatedRequest would still pass against a server started with authentication off or a fixture that leaked its bearer into the ambient context. API-only by design: the harness server exists only in an E2E run.',
+    exceptions: [],
+  },
+  {
     path: 'tests/connections-crud.spec.ts',
     bucket: 'product',
     surface: 'Connections',
@@ -1154,7 +1173,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "The three gate facts no sibling Agents spec can see, against the real API rather than mocked routes: the Create gate and the model picker giving ONE answer with the connections query deliberately delayed past the starting-point click, which is the state-dependent disagreement station#3743 records; the required system prompt marked and gating Create instead of refusing after submit (station#3741); and an unavailable engine named rather than identified by its connection id (station#3742). agents-new-model-turn owns the ready-connection wait and its inline repair, agents-editor-roundtrip the mobile sticky footer, agents-readiness-board the rail's readiness sentence.",
+      "The two gate facts no sibling Agents spec can see, against the real API rather than mocked routes: the Create gate and the model picker giving ONE answer with the connections query deliberately delayed past the starting-point click, which is the state-dependent disagreement archive#3743 records; and the required system prompt marked and gating Create instead of refusing after submit (archive#3741). agents-new-model-turn owns the ready-connection wait and its inline repair, agents-editor-roundtrip the mobile sticky footer, agents-readiness-board the rail's readiness sentence and that an unavailable engine is never identified by its connection id (archive#3742).",
     exceptions: [],
   },
   {
@@ -1281,25 +1300,6 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin preview lane.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/plugin-system.spec.ts',
-    bucket: 'product',
-    surface: 'Plugins',
-    tierTarget: 'full',
-    primary: true,
-    rationale: 'Promoted plugin system lane.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/plugin-dependency-lifecycle.spec.ts',
-    bucket: 'product',
-    surface: 'Plugins',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
     exceptions: [],
   },
   {

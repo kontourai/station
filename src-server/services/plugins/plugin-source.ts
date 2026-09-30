@@ -28,7 +28,10 @@ import {
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
-import { endsAsGitName } from '../../utils/git-metadata-name.js';
+import {
+  endsAsGitName,
+  isGitMetadataName,
+} from '../../utils/git-metadata-name.js';
 import type { Logger } from '../../utils/logger.js';
 import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
@@ -516,8 +519,12 @@ export async function fetchPluginSource(
    * operator. A local tree is copied with every `.git` entry left out, and
    * local git is never cloned. An operator's own `station install <path>`
    * keeps its `.git`, which the update route relies on.
+   *
+   * `excludeGitMetadata`: a source someone other than the operator proposed
+   * (#2719). A local tree is copied the same way and, like a dependency, is
+   * never a local git repository; a remote clone has its `.git` removed.
    */
-  options: { dependency?: boolean } = {},
+  options: { dependency?: boolean; excludeGitMetadata?: boolean } = {},
 ): Promise<{ tempDir: string; tempName: string } | { error: string }> {
   try {
     assertSupportedPluginSource(source);
@@ -570,7 +577,21 @@ export async function fetchPluginSource(
           'A plugin dependency cannot be a local git repository; name it by its remote URL',
       };
     }
-    const cloneArgs = ['clone', '--depth', '1'];
+    if (options.excludeGitMetadata && isLocalGitSource(url)) {
+      rmSync(tempDir, { recursive: true, force: true });
+      return {
+        error:
+          'A proposed plugin install cannot be a local git repository; propose a plain folder or a remote git URL',
+      };
+    }
+    // A proposed source is checked out as macOS and Windows git would: git
+    // refuses a tree holding a path any filesystem may resolve as `.git`
+    // (`.g<U+200C>it`, `git~1`, ...) on every platform, not only where these
+    // default on. So the only git metadata a clone holds is its own `.git`.
+    const protectDotGit = options.excludeGitMetadata
+      ? ['-c', 'core.protectHFS=true', '-c', 'core.protectNTFS=true']
+      : [];
+    const cloneArgs = [...protectDotGit, 'clone', '--depth', '1'];
     if (branch) cloneArgs.push('--branch', branch);
     cloneArgs.push(url, tempDir);
     // A local path (`/path/to/plugin.git`) is a supported plugin source, and
@@ -585,13 +606,26 @@ export async function fetchPluginSource(
       rmSync(tempDir, { recursive: true, force: true });
       mkdirSync(tempDir, { recursive: true });
       try {
-        await execGit(['clone', '--depth', '1', url, tempDir], {
-          timeout: 30000,
-          hardening,
-        });
+        await execGit(
+          [...protectDotGit, 'clone', '--depth', '1', url, tempDir],
+          {
+            timeout: 30000,
+            hardening,
+          },
+        );
       } catch (cloneError: unknown) {
         rmSync(tempDir, { recursive: true, force: true });
         return { error: `Failed to clone: ${errorMessage(cloneError)}` };
+      }
+    }
+    // A proposed remote source is staged without git metadata, as its
+    // preview says. A clone's only repository is its top-level `.git`: the
+    // protections above refuse a `.git` path anywhere in the tree, and this
+    // clone does not fetch submodules. Every spelling is still removed.
+    if (options.excludeGitMetadata) {
+      for (const name of readdirSync(tempDir)) {
+        if (isGitMetadataName(name))
+          rmSync(join(tempDir, name), { recursive: true, force: true });
       }
     }
   } else {
@@ -607,7 +641,8 @@ export async function fetchPluginSource(
       // Async on purpose: `cpSync` aborts the process on an unreadable
       // directory (see `copyPluginTree`).
       await copyPluginTree(source, tempDir, {
-        excludeGitMetadata: options.dependency === true,
+        excludeGitMetadata:
+          options.dependency === true || options.excludeGitMetadata === true,
       });
     } catch (error: unknown) {
       // A copy that fails part-way (an unreadable file or directory, a FIFO)

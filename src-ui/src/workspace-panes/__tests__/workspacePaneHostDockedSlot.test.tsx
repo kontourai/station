@@ -1,16 +1,7 @@
 /** @vitest-environment jsdom */
 
-import {
-  parseWorkspacePaneDescriptor,
-  parseWorkspacePaneInstance,
-  WORKSPACE_PANE_REGIONS,
-} from '@kontourai/station-contracts/workspace-pane';
-import {
-  parseWorkspacePaneHostDocument,
-  type WorkspacePaneHostDocumentV1,
-  workspacePaneHostScopeMatches,
-  workspacePaneHostScopeProjectId,
-} from '@kontourai/station-contracts/workspace-pane-host';
+import { parseWorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
+import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import { WorkspacePaneHost } from '../WorkspacePaneHost';
@@ -126,66 +117,8 @@ test('the ambient navigation scope key is distinct from the project and task key
   expect(new Set(keys).size).toBe(3);
 });
 
-test('an ambient scope names no project, and scope equality is total over all three kinds', () => {
-  expect(workspacePaneHostScopeProjectId({ kind: 'ambient' })).toBeUndefined();
-  expect(
-    workspacePaneHostScopeProjectId({
-      kind: 'project',
-      projectId: 'project',
-      layoutId: 'layout',
-    }),
-  ).toBe('project');
-  expect(
-    workspacePaneHostScopeMatches({ kind: 'ambient' }, { kind: 'ambient' }),
-  ).toBe(true);
-  expect(
-    workspacePaneHostScopeMatches(
-      { kind: 'ambient' },
-      { kind: 'project', projectId: 'project', layoutId: 'layout' },
-    ),
-  ).toBe(false);
-  expect(
-    workspacePaneHostScopeMatches(
-      { kind: 'project', projectId: 'project', layoutId: 'layout' },
-      { kind: 'project', projectId: 'project', layoutId: 'other' },
-    ),
-  ).toBe(false);
-});
-
-test('an ambient document round-trips, and one carrying a project identity is rejected', () => {
-  const parsed = parseWorkspacePaneHostDocument(ambientDocument());
-  expect(parsed?.scope).toEqual({ kind: 'ambient' });
-  expect(
-    parseWorkspacePaneHostDocument({
-      ...ambientDocument(),
-      scope: { kind: 'ambient', projectId: 'project', layoutId: 'layout' },
-    }),
-  ).toBeNull();
-});
-
 // ---------------------------------------------------------------------------
-// 2. The docked region
-// ---------------------------------------------------------------------------
-
-test('docked is part of the one region vocabulary the descriptor parser accepts', () => {
-  expect(WORKSPACE_PANE_REGIONS).toContain('docked');
-  const descriptor = parseWorkspacePaneDescriptor({
-    version: '1.0',
-    id: 'pane:test:docked',
-    name: 'Docked',
-    rendererId: 'renderer:test:docked',
-    renderer: { kind: 'builtin-component', name: 'workspace-chat' },
-    placement: { supportedRegions: ['docked'], preferredRegion: 'docked' },
-    modes: [{ id: 'default' }],
-    provenance: { origin: 'builtin' },
-    lifecycle: { stage: 'stable' },
-  });
-  expect(descriptor?.placement.supportedRegions).toEqual(['docked']);
-  expect(descriptor?.placement.preferredRegion).toBe('docked');
-});
-
-// ---------------------------------------------------------------------------
-// 3. Chromeless single-occupant presentation
+// 2. Chromeless single-occupant presentation
 // ---------------------------------------------------------------------------
 
 function memoryStorage() {

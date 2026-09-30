@@ -1,8 +1,15 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { DAILY_DRIVER_PROFILES } from '../daily-driver-profiles.mjs';
 import { runDailyDriverScenarioQualification } from '../daily-driver-scenario-qualification.mjs';
 import { createDailyDriverScenarioObservation } from '../lib/daily-driver-scenario-observation.mjs';
+
+const { spawnSync } = vi.hoisted(() => ({ spawnSync: vi.fn() }));
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawnSync,
+}));
 
 const SOURCE_REVISION = 'b'.repeat(40);
 const cleanCheckout = () => {};
@@ -298,25 +305,75 @@ describe('daily-driver scenario qualification wrapper', () => {
     ).rejects.toThrow(/timed out after 900000ms/);
   });
 
+  it('launches each focused product run with its own spec, grep, and remaining budget', async () => {
+    const root = '/checkout';
+    vi.stubEnv('PW_BASE_URL', 'http://inherited.example');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    spawnSync.mockImplementation(() => {
+      vi.advanceTimersByTime(1_000);
+      return { status: 0, signal: null };
+    });
+    try {
+      await runDailyDriverScenarioQualification({
+        root,
+        makeTemp: () => '/tmp/station-daily-driver-scenarios-spawn-test',
+        removeTemp() {},
+        assertCheckoutClean: cleanCheckout,
+        resolveRevision: () => SOURCE_REVISION,
+        listFiles: () => ['all-scenarios.json'],
+        readFile: () => JSON.stringify(observationArtifact()),
+      });
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
+    expect(
+      spawnSync.mock.calls.map(([command, args]) => [command, args]),
+    ).toEqual(
+      [
+        [
+          'tests/daily-driver-scenarios.spec.ts',
+          'daily-driver scenario qualification',
+        ],
+        [
+          'tests/daily-driver-switching.spec.ts',
+          'Agent handoff uses the Continue-with dialog',
+        ],
+      ].map(([spec, grep]) => [
+        process.execPath,
+        [
+          resolve(root, 'scripts/run-e2e-suite.mjs'),
+          '--suite=product',
+          `--spec=${spec}`,
+          `--grep=${grep}`,
+        ],
+      ]),
+    );
+    const options = spawnSync.mock.calls.map(
+      ([, , callOptions]) => callOptions,
+    );
+    for (const callOptions of options) {
+      expect(callOptions).toMatchObject({
+        cwd: root,
+        stdio: 'inherit',
+        killSignal: 'SIGTERM',
+      });
+      expect(callOptions.env).not.toHaveProperty('PW_BASE_URL');
+      expect(callOptions.env).toMatchObject({
+        STATION_DAILY_DRIVER_SCENARIO_OBSERVATION_DIR:
+          '/tmp/station-daily-driver-scenarios-spawn-test',
+        STATION_DAILY_DRIVER_SCENARIO_SOURCE_REVISION: SOURCE_REVISION,
+      });
+    }
+    // The second run gets only what the first left of the shared budget.
+    expect(options.map(({ timeout }) => timeout)).toEqual([900_000, 899_000]);
+  });
+
   it('does not expose a caller-supplied observation path through its public executable', () => {
     const source = readFileSync(
       new URL('../daily-driver-scenario-qualification.mjs', import.meta.url),
       'utf8',
     );
     expect(source).not.toContain('process.argv');
-    expect(source).toContain("'scripts/run-e2e-suite.mjs'");
-    expect(source).toContain('`--suite=$' + '{PRODUCT_SUITE}`');
-    expect(source).toContain('for (const run of QUALIFICATION_RUNS)');
-    expect(source).toContain('`--spec=$' + '{run.spec}`');
-    expect(source).toContain('`--grep=$' + '{run.grep}`');
-    expect(source).toContain("grep: 'daily-driver scenario qualification'");
-    expect(source).toContain(
-      "grep: 'Agent handoff uses the Continue-with dialog'",
-    );
-    expect(source).toContain('const { PW_BASE_URL: _inheritedBaseUrl');
-    expect(source).not.toContain('node_modules/@playwright/test/cli.js');
-    expect(source).toContain("stdio: 'inherit'");
-    expect(source).toContain('timeout: remainingMs');
-    expect(source).toContain("killSignal: 'SIGTERM'");
   });
 });

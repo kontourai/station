@@ -53,7 +53,7 @@ function Probe() {
   }, [value]);
   useChatDockActiveChatSync({
     activeChat,
-    agentCatalogKey: '__agent:claude',
+    agentCatalogKey: 'claude',
     agentsLoaded: true,
     apiBase: '/api',
     sessions: [],

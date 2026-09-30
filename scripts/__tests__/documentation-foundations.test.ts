@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { renderInline } from '../build-github-pages.mjs';
 
 const read = (file: string) => readFileSync(file, 'utf8');
 
@@ -32,8 +33,20 @@ function interfaceFields(text: string, name: string): string[] {
 }
 
 describe('documentation foundations', () => {
+  it('preserves external Markdown targets while routing local Pages documents to HTML', () => {
+    const external =
+      'https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md';
+    const html = renderInline(
+      `[Source](${external}) [Section](${external}#start-a-task) [Local](../guides/testing.md#tests)`,
+    );
+    expect(html).toContain(`href="${external}"`);
+    expect(html).toContain(`href="${external}#start-a-task"`);
+    expect(html).toContain('href="../guides/testing.html#tests"');
+  });
+
   it('binds getting-started channel facts and review route to their current source owners', () => {
     const guide = read('docs/user/getting-started.md');
+    const starterGuide = read('docs/guides/starter-work.md');
     const installer = read('install.sh');
     const { channels } = JSON.parse(read('config/channel-ports.json')) as {
       channels: Record<string, { instanceDirectory: string; uiPort: number }>;
@@ -56,12 +69,14 @@ describe('documentation foundations', () => {
     expect(installer).toContain(
       `station_home="\${STATION_HOME:-$station_root/instances/$runtime_channel}"`,
     );
-    // #2065 retired the global `/review-queue` destination: Review is a layout
-    // kind, and the href the Starter mints is derived by the contract.
+    expect(guide).toContain(
+      'https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md',
+    );
+    // The guide routes to Starters, whose Review link comes from the contract.
     const reviewHref = decodeURIComponent(
       projectReviewLayoutHref('<slug>', { receipt: '...' }),
     );
-    expect(guide).toContain(`\`${reviewHref}\``);
+    expect(starterGuide).toContain(`\`${reviewHref}\``);
   });
 
   it('keeps product-law authoring explanatory while linking its generated reference', () => {

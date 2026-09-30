@@ -30,7 +30,7 @@ function makeRoot(dirs: Array<[string, number]>): string {
   return root;
 }
 
-function writeDeadLease(root: string, instance: string, _outputDirs: string[]) {
+function writeDeadLease(root: string, instance: string) {
   const leases = join(root, '.kontourai/e2e-runs');
   mkdirSync(leases, { recursive: true });
   writeFileSync(
@@ -59,10 +59,7 @@ describe('sweepInterruptedBuildDirs', () => {
       ['dist-server-e2e-product-1785033082727-131nrj', 24],
       ['dist-ui-e2e-product-1785033082727-131nrj', 24],
     ]);
-    writeDeadLease(r, 'e2e-product-1785033082727-131nrj', [
-      'dist-server-e2e-product-1785033082727-131nrj',
-      'dist-ui-e2e-product-1785033082727-131nrj',
-    ]);
+    writeDeadLease(r, 'e2e-product-1785033082727-131nrj');
     expect(sweepInterruptedBuildDirs(r)).toBe(2);
     expect(
       existsSync(join(r, 'dist-ui-e2e-product-1785033082727-131nrj')),
@@ -70,13 +67,14 @@ describe('sweepInterruptedBuildDirs', () => {
   });
 
   it('never touches a concurrently running sibling suite', () => {
-    // A sibling's directories are seconds old, far inside the threshold. This
-    // is what makes an age-based sweep safe to run while other suites are live.
+    // A sibling's directories are seconds old, far inside the threshold. Both
+    // leases read as dead, so only the age guard keeps the young sibling.
     const r = makeRoot([
       ['dist-ui-e2e-audit-live', 0],
       ['dist-ui-e2e-product-old', 24],
     ]);
-    writeDeadLease(r, 'e2e-product-old', ['dist-ui-e2e-product-old']);
+    writeDeadLease(r, 'e2e-audit-live');
+    writeDeadLease(r, 'e2e-product-old');
     expect(sweepInterruptedBuildDirs(r)).toBe(1);
     expect(existsSync(join(r, 'dist-ui-e2e-audit-live'))).toBe(true);
     expect(existsSync(join(r, 'dist-ui-e2e-product-old'))).toBe(false);
@@ -90,7 +88,7 @@ describe('sweepInterruptedBuildDirs', () => {
       ['node_modules', 48],
       ['dist-ui-e2e-product-stale', 48],
     ]);
-    writeDeadLease(r, 'e2e-product-stale', ['dist-ui-e2e-product-stale']);
+    writeDeadLease(r, 'e2e-product-stale');
     expect(sweepInterruptedBuildDirs(r)).toBe(1);
     for (const keep of [
       'dist-ui',
@@ -153,7 +151,7 @@ describe('sweepInterruptedBuildDirs', () => {
 
   it('retains a forged filename-to-instance binding', () => {
     const r = makeRoot([['dist-ui-e2e-product-forged', 48]]);
-    writeDeadLease(r, 'e2e-product-different', []);
+    writeDeadLease(r, 'e2e-product-different');
     const leaseDirectory = join(r, '.kontourai/e2e-runs');
     // Put a valid-looking payload under the *wrong* filename.
     writeFileSync(

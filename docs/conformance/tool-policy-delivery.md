@@ -1,15 +1,22 @@
 # Pre-tool blocking and grant delivery boundary
 
+This page combines current source contracts with historical provider probes.
+The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
+for this review. The reviewed lockfile resolves Agent SDK 0.3.278; its installed
+`sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
+settings. That dependency contract is not a fresh live test of permission-rule
+precedence, workspace trust, or memory/MCP discovery.
+
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
 claim that post-hoc configuration, quality, or uniform-stop gates are absent.
 
 The managed Station engine delivers its full pre-tool chain through
-`beforeToolCall`. Claude Code is partial, and the boundary is narrower than it
-once was: alongside `canUseTool` (which honours a resolved agent's matching
-`tools.autoApprove` patterns) a `PreToolUse` hook runs Station's staged
-evaluator, so stale-generation, delegated-tool, config-protection and
-approval-guardian decisions DO reach the actual tool-call path. What it still
+`beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
+and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
+`canUseTool` also honors that Agent's matching `tools.autoApprove` patterns.
+Stale-generation, delegated-tool, config-protection and approval-guardian
+decisions therefore have a pre-tool delivery path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands
 external interaction back to the engine's own permission flow before those
 stages, and the external adapters carry no unattended principal for them to
@@ -20,20 +27,24 @@ in Ask mode the engine asks before tool calls its own rules and classifier do
 not already allow, and Station adds no floor over it. What that leaves open, and
 what Station ships instead, is the Accepted-gap section below.
 
-ACP is equivalently partial at its protocol `requestPermission`
-callback, through the same staged evaluator and with the same one gap. Codex
+ACP is partial at its protocol `requestPermission` callback through the same
+staged evaluator. It has the unattended gap above and an additional coverage
+limit: only calls that invoke that callback and report a tool name enter the
+policy check, and the external engine reports that identity. Codex
 has no Station pre-tool interception seam. Muse is also unsupported. An
-unknown external engine fails closed with no pre-tool delivery.
+unknown engine receives an unsupported matrix entry; that does not mean Station
+intercepts or blocks all of that engine's tool calls.
 
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
 In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the
-engine's own permission flow decides, and it honours the Claude settings files
-the CLI loads. Station sets no `settingSources`, so the SDK loads all of them —
+engine's own permission flow decides. Station sets no `settingSources`, so the
+current SDK contract permits all filesystem sources —
 `~/.claude/settings.json`, the workspace's checked-in `.claude/settings.json`,
 and `.claude/settings.local.json`. A repository with
-`{"permissions":{"allow":["Bash(rm:*)"]}}` committed can therefore run `rm` with
-no Station approval request and no Station receipt.
+`{"permissions":{"allow":["Bash(rm:*)"]}}` is therefore not excluded by Station's
+settings selection. The historical probes below established permission-rule
+bypass of Station's approval callback under their stated conditions.
 
 **This is an accepted gap, not an oversight.** Measured against `claude` 2.1.224
 with a real turn in `permissionMode: 'default'`:
@@ -54,14 +65,86 @@ that operator to run their code. Station does not treat the checked-in file as a
 separate escalation, and it adds no approval floor of its own over the engine's
 permission flow.
 
-What Station ships instead is that its approval surfaces name the call. Every
-`request.opened` approval — the live toast and the durable inbox row — carries a
-bounded, single-line preview naming **which command, or which file**
+Station's approval surfaces attempt to name the call. Tool approval requests
+can carry a bounded, single-line preview naming **which command, or which file**
 (`toolRequestPreview`, `packages/shared/src/tool-request-preview.ts`), and the
-standing-grant button says which tool it grants. A call the settings do NOT
-already allow is therefore prompted with its subject visible, never as a bare
-tool name. The Ask-mode chip copy says the engine asks before calls its own rules
+standing-grant button names the tool when the payload supplies one. Empty,
+unsupported or unserializable input can produce no preview; the surface then
+falls back to its title/tool label. The Ask-mode chip copy says the engine asks before calls its own rules
 do not already allow, rather than claiming a floor Station does not impose.
+
+The standing grant covers calls to the tool, never an escalation beyond the
+call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
+SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
+escalations in several shapes, first read in 2.1.261 and re-checked in
+2.1.278. Read, Glob, Grep and LSP ask for a path outside
+the session's working directories without a `blockedPath`. They carry a session
+`Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
+drops the reason's type. Edit and Write outside them suggest `addDirectories`
+(with `acceptEdits` in default mode). The Bash path checks report a
+`blockedPath`, with a `Read` rule for a read and `addDirectories` for a write.
+A directory suggestion is an allow rule for a file tool (Read, Edit, Write,
+MultiEdit, NotebookEdit) or `addDirectories`. A Bash or PowerShell command
+rule is never one, even when it names a path.
+
+One shared computation, `toolRequestSessionGrant`, decides what a session
+answer grants. The adapter honours it and the toast, inline card and inbox
+card label it:
+
+- A plain call to a tool grants every later call to that tool ("Allow Bash for
+  this session"). Only this case mints a Station tool grant.
+- A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
+  mode and full access, allows the call and forwards only the engine's
+  `acceptEdits` mode change ("Auto-accept file edits for this session"). The
+  engine then passes later edits inside the working directories itself and
+  still asks for sensitive files such as `.git/config`, and Station, holding
+  no grant, prompts for those. The adapter records the forwarded mode as both
+  the mode it requested and the engine's current mode, and reports it on
+  `session.configured` metadata. The answer lasts until the user changes mode
+  only when the answering caller holds `setApprovalMode` authority: an answer
+  sent through the orchestration command route. There, once the engine has
+  taken it, the orchestration service records an `auto` approval-mode
+  decision for the conversation (`session.approval-mode-set`), as a composer
+  pick of Auto would. If any decision was recorded after the answer was sent
+  (Ask, Auto or full access), that decision stands and nothing is recorded.
+  It is not recorded over a standing Auto or full access. The composer chip,
+  later turns and their metadata then show Auto, and picking Ask ends it. An
+  answer from another path is sent to the engine as a one-call accept: no mode
+  change is forwarded and nothing is recorded. That covers the delegated
+  `respond_to_task_request` path for a task on this Station, which admits a
+  bound Project approver who may not set the approval mode, and the approval
+  inbox. The inbox card does not offer the option at all. For a task on a
+  saved Environment, the answer reaches that Station through its command
+  route with this Station's enrolled credential, and that Station applies
+  the same rule.
+- A turn applies the conversation's approval mode only when it differs from
+  the mode Station last requested, never merely because the engine moved. An
+  engine that entered plan mode stays there through the user's follow-ups
+  until the plan's review ends it. Picking a different mode is still applied.
+  In plan mode the engine still suggests `acceptEdits` for a sensitive-file
+  safety check, so an edit there offers no session option and forwards no
+  mode change (#2916). The same holds under full access
+  (`bypassPermissions`), where a forwarded `acceptEdits` would drop full
+  access. Station learns of plan entry from the engine's `status`
+  report, which reaches it on the message stream. A permission request raced
+  ahead of that report on the control channel reads the earlier mode, and can
+  still offer the auto-accept option for one edit.
+- An escalation, or any Read, Glob, Grep or LSP ask, forwards only the engine's
+  directory suggestions with `destination: 'session'`, so the approved
+  directory is the engine's state. The button reads "Allow reading this folder
+  for this session" for read rules and "Allow access to this folder for this
+  session" otherwise. An `acceptEdits` suggested alongside is not forwarded.
+- No session option is shown where there is nothing to forward, and a session
+  answer is recorded as a one-call accept. That covers an ask rule, a read
+  safety check, a file-edit safety check once the session is in `acceptEdits`,
+  and `ExitPlanMode` (#2916). A plan exit therefore always prompts, and its
+  suggested mode change is dropped.
+
+Station cannot see the reason type behind an edit ask (the SDK drops it), so
+a file-edit safety check the engine raises while it still suggests
+`acceptEdits`, such as a Windows suspicious-path check, can still offer the
+auto-accept option (#2932). Answering it allows that call and switches the
+session to `acceptEdits`; the engine keeps asking for such paths.
 
 Both surfaces read the payload through the same `toolRequestPreviewFromPayload`,
 whose `TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish
@@ -75,9 +158,9 @@ seam, so its `request.opened` payload is the app-server's raw request params. Th
 same helper falls back to reading the payload itself, which is why
 `item/commandExecution/requestApproval` previews its `command` and
 `item/fileChange/requestApproval` previews the paths in `changes[]`. Without that
-fallback a Codex file-change approval named no file on either surface, and the
-"every approval carries a preview" claim above was false for exactly the engine
-Station can do least about.
+fallback a Codex file-change approval could name no file on either surface.
+This is a best-effort presentation helper, not a completeness guarantee for
+every engine request.
 
 Two limits on "the preview", stated because a consent surface must not be read as
 promising more than it does:
@@ -97,7 +180,7 @@ promising more than it does:
   show its head and `[REDACTED]` and none of its tail — pre-existing behaviour,
   and in the safe direction.
 
-### Why the obvious remedy was not taken
+### Historical settings-isolation experiment
 
 Narrowing to `settingSources: ['user']` was built and reverted. The option is
 not permission-scoped: an excluded tier is not read at all. Measured against
@@ -130,9 +213,18 @@ option is covered by a test, so setting it later is a deliberate change.
 
 ## Matrix authority
 
-The matrix is authoritative for UI and conformance consumers. Its declared
+The [matrix](../../packages/contracts/src/engine-capability-matrix.ts) is authoritative for UI and conformance consumers. Its declared
 adapter modules are also the source for the tripwire, so a declared adapter
 module cannot silently gain a managed pre-tool seam while its matrix remains
 stale. This does not claim that every possible `EngineId` string is a
-registered adapter; unknown engines remain fail-closed through the separate
-unknown-engine matrix.
+registered adapter; the separate unknown-engine matrix reports unsupported
+delivery.
+
+Current source owners are the [Claude adapter](../../src-server/providers/adapters/claude-adapter.ts),
+[ACP callback](../../src-server/providers/adapters/acp-adapter.ts),
+[staged evaluator](../../src-server/runtime/agents/pre-tool-policy.ts), and
+[managed hook](../../src-server/runtime/agents/agent-hooks.ts). Preview behavior
+comes from the [shared reader](../../packages/shared/src/tool-request-preview.ts),
+the [live approval handler](../../src-ui/src/hooks/orchestration/approvalHandlers.ts),
+and the [durable request presentation owner](../../src-server/services/orchestration/request-presentation.ts). Fixture tests exercise these
+branches; the matrix and tripwire do not prove live provider enforcement.

@@ -22,7 +22,9 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
-const { handleRequestOpenedEvent } = await import('../approvalHandlers');
+const { handleRequestOpenedEvent, handleRequestDeliveryEvent } = await import(
+  '../approvalHandlers'
+);
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -112,6 +114,115 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
       'Allow Bash for this session',
       'Deny',
     ]);
+  });
+
+  test('#2916: a plan exit offers no session grant', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: 'ExitPlanMode',
+        toolInput: { plan: 'Step 1' },
+      }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Deny',
+    ]);
+  });
+
+  const folderRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+  test.each([
+    [
+      'a Claude read-only tool with the engine folder rule',
+      { toolName: 'Grep', suggestions: [folderRule] },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Claude read-only tool with nothing to forward (an ask rule)',
+      { toolName: 'Read' },
+      undefined,
+    ],
+    [
+      'a Bash read outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/etc/hosts',
+        suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+            behavior: 'allow',
+            destination: 'session',
+          },
+        ],
+      },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Bash redirect writing outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/work/b/out.txt',
+        suggestions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Allow access to this folder for this session',
+    ],
+    [
+      'a plain Claude file edit',
+      {
+        toolName: 'Edit',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Auto-accept file edits for this session',
+    ],
+    [
+      'a file edit asked in plan mode',
+      {
+        toolName: 'Edit',
+        permissionMode: 'plan',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      undefined,
+    ],
+    [
+      'a sensitive-file edit with nothing to forward',
+      { toolName: 'Edit', suggestions: [] },
+      undefined,
+    ],
+    [
+      'a Bash call forced by an ask rule',
+      {
+        toolName: 'Bash',
+        matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
+      },
+      undefined,
+    ],
+  ])('#2915: labels the session grant for %s', (_case, payload, label) => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...payload, toolInput: { path: '/work/b' } }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual(
+      label ? ['Allow Once', label, 'Deny'] : ['Allow Once', 'Deny'],
+    );
   });
 
   test('reads an MCP wire name as a person would in the grant label', () => {
@@ -351,7 +462,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(showToolApproval).toHaveBeenCalledTimes(1);
   });
 
-  test('an answer to a request already answered says so, and is not an error', async () => {
+  test('an answer to a request no longer open says so, and is not an error', async () => {
     vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
       new Error('This request was already resolved.'),
     );
@@ -367,7 +478,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        'Bash: this request was already answered.',
+        'Bash: this request is no longer open.',
         'thread-1',
         5000,
       ),
@@ -429,5 +540,80 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     expect(showToast).not.toHaveBeenCalled();
     expect(showToolApproval).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () => {
+  function delivery(
+    outcome: 'acknowledged' | 'unacknowledged',
+    requestId: string,
+    reason?: 'no-acknowledgement' | 'invalid-reply',
+  ) {
+    return {
+      ...(reason ? { reason } : {}),
+      eventId: `evt-${outcome}`,
+      provider: 'codex',
+      threadId: 'thread-1',
+      createdAt: '2026-09-28T00:00:00.000Z',
+      method: 'request.delivery',
+      requestId,
+      outcome,
+      waitedMs: 30_000,
+    } as unknown as Parameters<typeof handleRequestDeliveryEvent>[0];
+  }
+
+  beforeEach(() => {
+    updateChat.mockClear();
+    getChatForExecutionSession.mockReset();
+  });
+
+  test('an unacknowledged decision is listed on the chat with its reason', () => {
+    getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'no-acknowledgement'),
+    );
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+      ],
+    });
+  });
+
+  test('a refused reply is listed as invalid-reply, not as awaiting', () => {
+    getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'invalid-reply'),
+    );
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'invalid-reply' },
+      ],
+    });
+  });
+
+  test('an unacknowledged report after the session exited does not bring the note back', () => {
+    getChatForExecutionSession.mockReturnValue({
+      orchestrationStatus: 'exited',
+      unacknowledgedDecisions: [],
+    });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'no-acknowledgement'),
+    );
+    expect(updateChat).not.toHaveBeenCalled();
+  });
+
+  test('a late acknowledgement takes only that decision off the list', () => {
+    getChatForExecutionSession.mockReturnValue({
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+        { requestId: 'req-2', reason: 'no-acknowledgement' },
+      ],
+    });
+    handleRequestDeliveryEvent(delivery('acknowledged', 'req-1'));
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-2', reason: 'no-acknowledgement' },
+      ],
+    });
   });
 });

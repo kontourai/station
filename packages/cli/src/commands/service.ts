@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as nodeFs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import {
   claimInstanceEntry,
   entryOwnedByLiveProcess,
@@ -12,10 +13,12 @@ import {
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   CWD,
   DEFAULT_INSTANCE_ID,
+  LIFECYCLE_CODE_ROOT,
   type LifecycleHomeSource,
   resolveLifecycleInstanceId,
   resolveServiceInstanceId,
@@ -31,6 +34,13 @@ import {
   sourceBuildStampNeedsRebuild,
   stop,
 } from './lifecycle.js';
+import type { LifecycleCodeRoot } from './lifecycle-code-root.js';
+import {
+  resolveServiceCodeLocation,
+  type ServiceCodeKind,
+  type ServiceCodeLocation,
+  serviceNodeDirectory,
+} from './service-command.js';
 import {
   installLaunchd,
   launchdRegistration,
@@ -40,6 +50,7 @@ import {
   stopLaunchd,
   uninstallLaunchd,
 } from './service-launchd.js';
+import { installServiceLauncher } from './service-launcher-link.js';
 import {
   collectServicePathCandidates,
   inspectServicePathDrift,
@@ -63,6 +74,7 @@ import {
   systemdStatus,
   uninstallSystemd,
 } from './service-systemd.js';
+import { runServiceUpdateHome } from './service-update-home.js';
 import {
   assertWindowsServiceExecutionTrusted,
   installWindowsService,
@@ -130,6 +142,17 @@ export interface ServiceFs {
 }
 
 export interface ServiceManifest {
+  /**
+   * What the unit runs (#2675 slice C): `source` or a prebuilt `archive`.
+   * Absent in manifests written before slice C, which were all source.
+   */
+  kind?: ServiceCodeKind;
+  /**
+   * The installer-owned install root whose `current` an archive unit runs.
+   * The upgrade guard and install.sh recognize the service by it across
+   * versions.
+   */
+  installRoot?: string;
   /** Persisted pairing-trust origins; reinstalls preserve these (#1672). */
   allowedOrigins?: string[];
   /** Complete config is persisted so drift guidance never resets a service. */
@@ -175,6 +198,8 @@ export interface ServiceRegistration {
 }
 
 export interface ServiceDependencies {
+  /** What `service install` runs from; defaults to this CLI's code root. */
+  codeRoot?: LifecycleCodeRoot;
   /**
    * Builds stale service artifacts before replacing the supervisor. This keeps
    * a cold build outside the post-install identity readiness budget.
@@ -473,6 +498,13 @@ function readManifest(
     !manifest.instanceId ||
     !manifest.unitPath ||
     (manifest.baseDir !== undefined && typeof manifest.baseDir !== 'string') ||
+    (manifest.kind !== undefined &&
+      manifest.kind !== 'archive' &&
+      manifest.kind !== 'source') ||
+    (manifest.installRoot !== undefined &&
+      (manifest.kind !== 'archive' ||
+        typeof manifest.installRoot !== 'string' ||
+        manifest.installRoot.length === 0)) ||
     (manifest.features !== undefined &&
       manifest.features !== null &&
       typeof manifest.features !== 'string') ||
@@ -589,8 +621,14 @@ function restoreManifest(
   }
 }
 
-export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
-  const { accepted, nodeDir } = collectServicePathCandidates(run, fs);
+export function captureServicePath(
+  run: CommandRunner,
+  fs: ServiceFs,
+  location?: ServiceCodeLocation,
+): string {
+  const { accepted, nodeDir } = collectServicePathCandidates(run, fs, {
+    nodeDir: location ? serviceNodeDirectory(location) : undefined,
+  });
   if (!accepted.includes(nodeDir)) {
     throw new Error(
       `Unsafe Node executable directory for service PATH: ${nodeDir}`,
@@ -766,12 +804,60 @@ function redactRegistryForStatus(
   };
 }
 
+/**
+ * One line (and, when an operator must act, the command) for a launcher-run
+ * archive's update (#2675 D3), from the same reader the server uses. This
+ * is where `needs-operator` is visible: in that state the launcher runs no
+ * Station, so no client can ask a server about it.
+ */
+function describeServiceUpdate(
+  progress: ServiceUpdateProgress,
+  instanceId: string,
+): string[] {
+  switch (progress.state) {
+    case 'idle':
+      return [];
+    case 'unavailable':
+      return [
+        'unreadable (the launcher state or a request file cannot be read)',
+      ];
+    case 'queued':
+      return ['requested, not yet picked up'];
+    case 'staging':
+      return ['downloading and verifying the release'];
+    case 'updating':
+      return [
+        `${progress.fromVersion} -> ${progress.targetVersion}: ${progress.phase} (trial attempt ${progress.attempts})`,
+      ];
+    case 'committed':
+      return [
+        `updated ${progress.fromVersion} -> ${progress.targetVersion} at ${progress.finishedAt}`,
+      ];
+    case 'rolled-back':
+    case 'failed':
+      return [
+        `update to ${progress.targetVersion} ${progress.state} (${progress.reason}) at ${progress.finishedAt}; runs ${progress.fromVersion}`,
+      ];
+    case 'needs-operator':
+      return [
+        `NEEDS OPERATOR: the update to ${progress.targetVersion} could not be rolled back; restoring the home failed ${progress.restoreAttempts} times (${progress.reason}). No Station runs; the home's backup is kept.`,
+        `fix the cause in the service log, then retry the restore: station service stop --instance=${instanceId} && station service start --instance=${instanceId}`,
+      ];
+    case 'up-to-date':
+      return [`already the newest release (${progress.version})`];
+    case 'staging-failed':
+    case 'rejected':
+      return [`last request ${progress.state}: ${progress.reason}`];
+  }
+}
+
 function renderStatus(
   state: InstanceState,
   scheduling: ServiceSchedulingPolicy,
   servicePath: ServicePathDrift | null,
   remedy: ServiceInstallRemedy | null,
   json: boolean,
+  update: ServiceUpdateProgress | null = null,
 ): void {
   const installed = state.installation !== 'absent';
   const schedulingHealthy = isSchedulingPolicyHealthy(scheduling);
@@ -793,6 +879,7 @@ function renderStatus(
     scheduling,
     ...(servicePath === null ? {} : { servicePath }),
     unit: state.unit,
+    ...(update === null ? {} : { update }),
   };
   if (json) {
     console.log(JSON.stringify(result));
@@ -811,6 +898,14 @@ function renderStatus(
   );
   if (state.allowedOrigins.length) {
     console.log(`origins        ${state.allowedOrigins.join(', ')}`);
+  }
+  if (update !== null) {
+    const [first, ...rest] = describeServiceUpdate(
+      update,
+      state.instance.instanceId,
+    );
+    if (first !== undefined) console.log(`update         ${first}`);
+    for (const line of rest) console.log(`               ${line}`);
   }
   // Scheduling and PATH drift share one remedy; print it once, under the
   // first layer that needs it.
@@ -1069,9 +1164,15 @@ export async function runServiceCommand(
     throw new Error(`Station user services are unsupported on ${platform}`);
   }
   if (
-    !['install', 'start', 'status', 'stop', 'uninstall', 'run'].includes(
-      action ?? '',
-    )
+    ![
+      'install',
+      'start',
+      'status',
+      'stop',
+      'uninstall',
+      'run',
+      'update-home',
+    ].includes(action ?? '')
   ) {
     throw new Error(
       'Usage: station service <install|start|status|stop|uninstall|run> [flags]',
@@ -1079,6 +1180,11 @@ export async function runServiceCommand(
   }
   if (lifecycle.homeSource === '--temp-home') {
     throw new Error('--temp-home cannot be used with service commands');
+  }
+  if (action === 'update-home') {
+    // The launcher's home snapshot (#2675 D). It touches no service backend.
+    runServiceUpdateHome(args.slice(1), lifecycle.baseDir);
+    return;
   }
 
   const fs = dependencies.fs ?? nodeFs;
@@ -1219,8 +1325,21 @@ export async function runServiceCommand(
       lifecycle,
       instanceId,
     );
-    const repoPath = fs.realpathSync(CWD);
-    const nodePath = fs.realpathSync(process.execPath);
+    const location = resolveServiceCodeLocation({
+      codeRoot: dependencies.codeRoot ?? LIFECYCLE_CODE_ROOT,
+      execPath: process.execPath,
+      fs,
+      platform,
+    });
+    // An installer-owned archive's unit runs the fixed launcher (#2675 D),
+    // which must be in place before the backend loads the unit.
+    if (
+      location.kind === 'archive' &&
+      location.installRoot !== undefined &&
+      platform !== 'win32'
+    ) {
+      installServiceLauncher(fs, location.installRoot, location.repoPath);
+    }
     // A backend reinstall has an owned prior supervisor. Retain its verified
     // boot identity and require readiness to observe a different one after
     // the backend has stopped and replaced it.
@@ -1255,17 +1374,16 @@ export async function runServiceCommand(
       );
     }
     const common = {
+      ...location,
       fs,
       lifecycle,
-      nodePath,
-      repoPath,
       run,
     };
     const manifest =
       platform === 'darwin'
         ? installLaunchd(instanceId, {
             ...common,
-            servicePath: captureServicePath(run, fs),
+            servicePath: captureServicePath(run, fs, location),
             ...(priorInstance?.found
               ? {
                   stopOwnedInstance: () =>
@@ -1279,7 +1397,7 @@ export async function runServiceCommand(
         : platform === 'linux'
           ? installSystemd(instanceId, {
               ...common,
-              servicePath: captureServicePath(run, fs),
+              servicePath: captureServicePath(run, fs, location),
             })
           : installWindowsService(instanceId, common);
     manifest.installedAt = (
@@ -1449,12 +1567,12 @@ export async function runServiceCommand(
             manifest.platform === 'darwin'
               ? installLaunchd(instanceId, {
                   ...common,
-                  servicePath: captureServicePath(run, fs),
+                  servicePath: captureServicePath(run, fs, location),
                 })
               : manifest.platform === 'linux'
                 ? installSystemd(instanceId, {
                     ...common,
-                    servicePath: captureServicePath(run, fs),
+                    servicePath: captureServicePath(run, fs, location),
                   })
                 : installWindowsService(instanceId, common);
           recovered.installedAt = (
@@ -1587,7 +1705,11 @@ export async function runServiceCommand(
   // Compared only for a managed install: without a manifest there is no unit
   // Station wrote, so no captured PATH to speak about.
   const servicePath = existing
-    ? inspectServicePathDrift(existing, { fs, run })
+    ? inspectServicePathDrift(existing, {
+        fs,
+        nodeDir: serviceNodeDirectory(existing),
+        run,
+      })
     : null;
   const remedy = existing
     ? resolveServiceInstallRemedy(existing, lifecycle.baseDir)
@@ -1598,6 +1720,10 @@ export async function runServiceCommand(
     servicePath,
     remedy,
     args.includes('--json'),
+    // A launcher-run archive's update, read from its install's runtime files.
+    existing?.installRoot
+      ? readServiceUpdateProgress(existing.installRoot)
+      : null,
   );
   if (action === 'start' || action === 'stop') {
     if (observed.supervisor.error !== null) {

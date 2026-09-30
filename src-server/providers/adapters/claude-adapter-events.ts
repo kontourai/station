@@ -392,6 +392,37 @@ interface MapClaudeMessageParams {
   interruptEngine?: () => void;
 }
 
+/**
+ * #2915: record a permission mode the engine now runs in, when it differs
+ * from the one Station last knew, and report it as `session.configured`
+ * metadata (the channel the composer's applied-mode chip reads). Called for
+ * the engine's own `status` report of a mode change, and when a session
+ * answer forwards a `setMode` update, so Station's view (and the next turn's
+ * "has the mode changed" check, and per-turn metadata) matches the engine.
+ */
+export function reportClaudePermissionMode(
+  record: Pick<ClaudeMessageState, 'currentPermissionMode' | 'session'>,
+  mode: PermissionMode,
+  publish: (event: CanonicalRuntimeEvent) => void,
+  provider: ProviderSession['provider'],
+): void {
+  if (record.currentPermissionMode === mode) return;
+  record.currentPermissionMode = mode;
+  const approvalMode = mapPermissionModeToApprovalMode(mode);
+  publish({
+    eventId: crypto.randomUUID(),
+    provider,
+    threadId: record.session.threadId,
+    createdAt: new Date().toISOString(),
+    method: 'session.configured',
+    sessionId: record.session.threadId,
+    metadata: {
+      permissionMode: mode,
+      ...(approvalMode ? { approvalMode } : {}),
+    },
+  });
+}
+
 export function mapClaudeSdkMessage({
   provider,
   record,
@@ -632,6 +663,15 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'system' && message.subtype === 'status') {
+    // The engine reports a changed permission mode on a status message
+    // (its own plan-mode entry, a forwarded setMode, …).
+    if (message.permissionMode)
+      reportClaudePermissionMode(
+        record,
+        message.permissionMode,
+        publish,
+        provider,
+      );
     publish({
       eventId: crypto.randomUUID(),
       provider,
