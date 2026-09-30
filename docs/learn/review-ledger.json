@@ -3557,7 +3557,7 @@
         },
         {
           "path": "src-server/routes/system/archive-update.ts",
-          "digest": "97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9"
+          "digest": "11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -3593,7 +3593,7 @@
         },
         {
           "path": "scripts/portable-nightly-publication.mjs",
-          "digest": "ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940"
+          "digest": "32c0bf695524c4451f24fb96b4e6a9d464a95d6b08375383d34108184d3e2f28"
         },
         {
           "path": "src-desktop/tauri.conf.json",
@@ -3634,10 +3634,11 @@
         "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
         "Wording: nightly core reason corrected; lines re-wrapped.",
         "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
-        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
+        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold.",
+        "Re-read against two changes: #2975 (src-server/routes/system/archive-update.ts now follows https-only redirects, at most 5, when checking the signed release manifest, because GitHub serves release assets through a 302; signature verification unchanged) and the rolling-manifest re-verify retry window in scripts/portable-nightly-publication.mjs (5 minutes). The ADR's pointer/channel decisions and its line about repointing installer URLs do not describe either behavior; no prose change needed."
       ],
       "documentDigest": "d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372",
-      "sourceRevision": "54e0ffb5c1ae765b4127f031e525793087fb9669"
+      "sourceRevision": "6f5b10d1f684f16f2754f2142db88337c3f6d8bb"
     },
     {
       "path": "docs/architecture.md",
@@ -16815,7 +16816,7 @@
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "2a94434e1fd015132afd2997471810fb188fbc20",
+      "sourceRevision": "6f5b10d1f684f16f2754f2142db88337c3f6d8bb",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -17071,7 +17072,7 @@
         },
         {
           "path": "scripts/portable-nightly-publication.mjs",
-          "digest": "ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940"
+          "digest": "32c0bf695524c4451f24fb96b4e6a9d464a95d6b08375383d34108184d3e2f28"
         },
         {
           "path": "scripts/__tests__/portable-nightly-publish-workflow.test.ts",
@@ -17109,7 +17110,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json); workflow edits only move pinned action SHAs (setup-java 6.0.1, setup-android 4.0.4, setup-buildx 4.4.1, setup-qemu 4.4.0, build-push 7.4.0, codeql-action init/analyze, upload-testflight-build 5.4.0 with unchanged inputs and default appstore-api backend) and the gallery Playwright container to v1.63.0; no job, trigger, permission or input changed (.github/workflows/nightly-native-cohort.yml, .github/workflows/nightly-native-stage.yml, .github/workflows/publish-release.yml, .github/workflows/release.yml, .github/workflows/testflight-delivery.yml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "#2977 changed only release.yml assemble-draft producer-asset admission (explicit artifact allowlist script replacing a find that matched nothing) and two job env vars (RELEASE_CHANNEL, IOS_BUNDLE_VERSION). Searched this document for assemble/admission/release-assets/download-artifact claims; none describe the admission step, so its claims remain accurate.",
         "Correction to this document's earlier #2977 note: the replaced find did not match nothing. It copied nothing from the single-path producer uploads (desktop, portable, Android, container, iOS simulator), but it did match the iOS device IPA inside the multi-path TestFlight staged and testflight artifacts, copying it twice with the second overwriting the first, including the beta IPA on preview tags. This document's claims are unaffected.",
-        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold."
+        "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
+        "Re-read against scripts/portable-nightly-publication.mjs: verify now retries a remote rolling-manifest mismatch for up to 5 minutes (30 x 10 s) instead of 60 s, after GitHub's asset host served the replaced manifest from cache past the old window. The page says the job re-fetches and re-verifies the rolling manifest last; it states no retry window, so the prose remains accurate."
       ]
     },
     {
