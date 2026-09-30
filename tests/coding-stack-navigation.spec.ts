@@ -383,6 +383,40 @@ test.describe('Coding stack — the dock is left as the reader had it', () => {
     expect(await savedDock()).toBe(before);
   });
 
+  test('a closed dock stays closed: showing Chat on the Coding layout never opens it', async ({
+    page,
+  }) => {
+    const mac = await page.evaluate(() =>
+      navigator.platform.toUpperCase().includes('MAC'),
+    );
+    const primary = mac ? 'Meta' : 'Control';
+    const savedDock = () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('station-device-settings-v1');
+        const record = raw ? JSON.parse(raw)?.values?.regionArrangement : null;
+        return JSON.stringify(record?.regions?.bottom ?? null);
+      });
+    await landOnChat(page);
+    expect(new URL(page.url()).searchParams.get('dock')).toBeNull();
+    const before = await savedDock();
+
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+    await page.keyboard.press(`${primary}+KeyK`);
+    await page
+      .getByRole('combobox', { name: 'Search commands' })
+      .fill('Open chat dock');
+    await page.keyboard.press('Enter');
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+    await page.keyboard.press(`${primary}+KeyD`);
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+
+    expect(new URL(page.url()).searchParams.get('dock')).toBeNull();
+    expect(await savedDock()).toBe(before);
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(page.locator('#chat-dock')).toHaveClass(/is-collapsed/);
+  });
+
   test('the stack chords are text editing inside a field, not Back', async ({
     page,
   }) => {
