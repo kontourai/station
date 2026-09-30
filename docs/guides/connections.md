@@ -40,6 +40,27 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ---
 
+## Sign an engine profile in from a device
+
+Under **Connections → Engines**, open an engine and its credential profile.
+When the installed engine offers device-code login and the profile is signed
+out, select **Sign in**. Open the verification page, enter the displayed code,
+and finish on the provider's page. Station checks the result automatically and
+reports completion only when the engine confirms sign-in. **Cancel sign-in**
+stops the pending login. Returning to the profile resumes status checks.
+
+This flow applies to credential profiles, not the engine's global CLI account.
+Codex currently supports it; other engines must advertise an observed mechanism
+before the action appears. A paired device needs **Start engine sign-in**
+(`engine:login`), which the operator grants under **Change access**. If access
+cannot be checked, the action remains unavailable with a retry control.
+
+A refused start reports its reason, including an unsupported mechanism, a busy
+engine, an already signed-in profile or an unknown sign-in state. If a request
+or status check fails, check the login status before starting another attempt:
+the server may still be running it. The command/manual re-check remains
+available for engines without device-code support.
+
 ## Saved Station addresses
 
 Open **Manage Stations** in the header to inspect the computers this client

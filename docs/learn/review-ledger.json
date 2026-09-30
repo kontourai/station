@@ -3645,7 +3645,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3673,7 +3673,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/index.ts",
@@ -3840,7 +3840,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. The overview's route/OrchestrationService diagrams hold; remote forwarding is a delegation detail below its level. Prose accurate.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json, packages/connect/package.json, packages/sdk/package.json, packages/shared/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The overview names no dependency version and its approval claims are diagram-level. Prose accurate.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -7603,7 +7604,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7659,7 +7660,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -7731,7 +7732,8 @@
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its Codex claims are app-home and adoption wiring (getAppHomeEnv, processFactory), which neither change touches; the Claude app-home claim holds as recorded under #2915. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its app-home and session-start claims hold: session start's agent resolution and its unavailable reasons are unchanged in behaviour. Prose accurate.",
         "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -10835,7 +10837,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "ee6196c23ebd9c2966111532d696506c448a90827eb2e2e21dfd5d43f877ecae",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10947,7 +10949,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -11170,7 +11172,8 @@
         "Merge review (origin/main 99f9520b0 into #2915/#2916): both sides changed this record. Main (#2946) rewrote only the Theming & Colors section (DESIGN.md pointer, --k-* tone tokens, station-tones.ts) and added that source; this branch's sources (claude-adapter.ts, orchestration-service.ts, routes/orchestration/orchestration.ts) carry the session-grant and approval-authority changes. Re-checked both against the merged guide: the theming section names no approval or session-grant behaviour, and the Tool Approval Flow section (Station-engine route; orchestration clients use respondToRequest) is unchanged and still accurate with this branch's respond path. Prose accurate.",
         "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Tool Approval Flow and delegation guidance hold: delegated respond still answers the request, as a one-call accept for an edit-mode session answer on this Station. Prose accurate.",
-        "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css."
+        "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -11694,7 +11697,7 @@
     {
       "path": "docs/guides/build-your-first-plugin.md",
       "documentDigest": "92cf393ead150dc61a14dce4523f4c84276ba419317bfff0df75784f984779db",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full304-line original read. Source-reviewed package prerequisites, portable manifest/component/build example, CLI create/init/build/dev/install dispatch, legacy preview and proxy bounds, New plugin Project caller, preview/consent/reconciliation and trusted server-module distinction. Extracted manifest/entrypoint passed actual schema and production/dev build controls. Continuation clarifies that install.ts gates target.source: only automatic active-local/default loopback; explicit loopback API flags and saved localhost selections remain directory-refused.",
@@ -11734,7 +11737,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/shared/package.json",
@@ -11806,7 +11809,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the plugin guide's /build import and engine claims are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, packages/shared/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -12091,8 +12095,8 @@
     },
     {
       "path": "docs/guides/connections.md",
-      "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
+      "documentDigest": "4f50af953fbe2b0e6b2d4951a3d10478ca3919df39fe357f66edf81cf8dea141",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12260,7 +12264,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/connections/self-hosted-broker.ts",
@@ -12616,7 +12620,8 @@
         "Re-read 'Connections Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; pairing-route-scopes.ts drops the /station-control/caller/delegation entry; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -14835,7 +14840,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14883,7 +14888,7 @@
         },
         {
           "path": "docs/reference/sdk.md",
-          "digest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf"
+          "digest": "61d973e04ef204b9e979d51524d1c036ae6eae0c2dc1e781cb1d5a5e5281d949"
         },
         {
           "path": "packages/contracts/src/deployment-authentication.ts",
@@ -14931,7 +14936,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Only change among its sources is api.md's branding theme paragraph (now naming validateBrandOverride plus Station's stricter checks); this page's links and claims about the API reference still hold."
+        "Only change among its sources is api.md's branding theme paragraph (now naming validateBrandOverride plus Station's stricter checks); this page's links and claims about the API reference still hold.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -18698,7 +18704,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18794,7 +18800,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/orchestration/dispatch-scope.ts",
@@ -18997,7 +19003,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It lists respond_to_task_request for an open request from a delegated worker (now answered as a one-call accept for an edit-mode session answer under #2915) and says delegated activity retains bounded request titles, which main's code-point bound with an ellipsis still satisfies. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. respond_to_task_request still answers a delegated worker's open request (a one-call accept for an edit-mode session answer). Prose accurate.",
         "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -21745,7 +21752,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21777,7 +21784,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold.",
-        "Only change among its sources is the token sentence in agents.md (ui 1.16.0 token list); this plan does not rely on that sentence."
+        "Only change among its sources is the token sentence in agents.md (ui 1.16.0 token list); this plan does not rely on that sentence.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -24626,12 +24634,12 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
       "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
-      "documentDigest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf",
+      "documentDigest": "61d973e04ef204b9e979d51524d1c036ae6eae0c2dc1e781cb1d5a5e5281d949",
       "sources": [
         {
           "path": "docs/design/mcp-ui-host.md",
@@ -24679,7 +24687,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/__tests__/application-session-native.test.ts",
@@ -25634,7 +25642,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. The SDK's respondToRequest example is unchanged; main's deadline guard documents no new message here. Prose accurate.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The SDK package's own exports and the respondToRequest example are unchanged. Prose accurate.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -29152,7 +29161,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -29248,7 +29257,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/orchestration/dispatch-scope.ts",
@@ -29451,7 +29460,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true with both. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its statement that non-metadata calls remain subject to approval and the caller's authority still holds. Prose accurate.",
         "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -30233,7 +30243,7 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
@@ -30250,7 +30260,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/api-agent-runtime.ts",
@@ -30357,7 +30367,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read '@kontourai/station-sdk' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
