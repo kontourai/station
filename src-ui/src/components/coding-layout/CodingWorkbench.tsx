@@ -245,6 +245,7 @@ export function CodingWorkbench({
    */
   const userMoveRef = useRef(0);
   const drillInPageRef = useRef<HTMLElement>(null);
+  const currentCrumbRef = useRef<HTMLSpanElement>(null);
   const [announcement, setAnnouncement] = useState('');
 
   useCodingChatPositionEffects({
@@ -295,7 +296,9 @@ export function CodingWorkbench({
     );
     if (recentUserMove || focusWasLeft) {
       if (page === 'chat') setFocusRequest((request) => request + 1);
-      else drillInPageRef.current?.focus();
+      // The drill-in's name in the breadcrumb, not the whole page: a
+      // normal-sized focus ring on the thing that says where the reader is.
+      else currentCrumbRef.current?.focus();
     }
   }, [page, historyIndex, provisional]);
 
@@ -570,6 +573,8 @@ export function CodingWorkbench({
                 <span
                   className="coding-workbench__crumb-current"
                   aria-current="page"
+                  ref={currentCrumbRef}
+                  tabIndex={-1}
                 >
                   {drillInLabel}
                 </span>
@@ -628,7 +633,6 @@ export function CodingWorkbench({
             ref={drillInPageRef}
             className="coding-workbench__page coding-workbench__page--drill-in"
             aria-label={drillInLabel}
-            tabIndex={-1}
             {...pageState('drill-in')}
           >
             {children}

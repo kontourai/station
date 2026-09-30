@@ -90,6 +90,7 @@
 }
 
 .coding-workbench__crumb-link:focus-visible,
+.coding-workbench__crumb-current:focus-visible,
 .coding-workbench__rail-item:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 1px;

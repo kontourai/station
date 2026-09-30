@@ -646,4 +646,14 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       vi.useRealTimers();
     }
   });
+
+  test('drilling in moves focus to the breadcrumb naming the pane, not the whole page', async () => {
+    renderStack();
+    await drillInto('Diff');
+    const current = within(
+      screen.getByRole('list', { name: 'Breadcrumb' }),
+    ).getByText('Diff');
+    expect(window.document.activeElement).toBe(current);
+    expect(current.getAttribute('aria-current')).toBe('page');
+  });
 });
