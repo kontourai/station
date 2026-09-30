@@ -1,5 +1,47 @@
 [
   {
+    "timestampUtc": "2026-09-30T20:29:52Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2464.36767826654",
+    "sha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36767826654",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2464.36767826654 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+      "groups": {
+        "feat": [
+          "[#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary",
+          "[#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review",
+          "[#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices",
+          "[#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts"
+        ],
+        "fix": [
+          "[#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable",
+          "[#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams",
+          "[#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline",
+          "[#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories",
+          "[#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes"
+        ],
+        "other": [
+          "[#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-09-30T06:25:54Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2464",
