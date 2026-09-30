@@ -3564,7 +3564,7 @@
         },
         {
           "path": "src-server/routes/system/archive-update.ts",
-          "digest": "97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9"
+          "digest": "11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -3641,10 +3641,11 @@
         "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
         "Wording: nightly core reason corrected; lines re-wrapped.",
         "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
-        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
+        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold.",
+        "Reviewed the archive-update.ts delta from #2975 (76fbd9f4a) since 54e0ffb5c: the release-manifest fetch now follows up to 5 https-only redirects by hand (redirect: 'manual', refusing a hop that leaves https or exceeds the bound) instead of refusing all redirects; the signature check is unchanged. ADR 0020's archive-update claims still hold: the route refuses an out-of-range launcherProtocol {min,max} against SERVICE_LAUNCHER_PROTOCOL, takes the ring from the baked release marker (provenance.release.releaseChannel) and the manifest URL from the install state, and D3's 'kontourai.io redirect is a repoint' is consistent with (now easier under) redirect following. No prose change."
       ],
       "documentDigest": "d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372",
-      "sourceRevision": "54e0ffb5c1ae765b4127f031e525793087fb9669"
+      "sourceRevision": "e27600d1fcd3ba8b80f793713e7901c35cba4381"
     },
     {
       "path": "docs/architecture.md",
