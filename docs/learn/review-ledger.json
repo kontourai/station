@@ -32199,7 +32199,7 @@
     {
       "path": "examples/headless-agent/README.md",
       "documentDigest": "b506af3755d8225e783d25338bb01231e68115c44ab50bad42db5cd158a2ceab",
-      "sourceRevision": "12e161f7032b17c2f97702c0c41116b0c82bbb91",
+      "sourceRevision": "296ca2a5b46f12423e3742ea7480f0c05d76f481",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed argument/credential prerequisites, accepted-handle observation, failure propagation and existing portable Agent package composition.",
@@ -32211,7 +32211,7 @@
         },
         {
           "path": "examples/headless-agent/package.json",
-          "digest": "6ab7e301d1841369fb912a17a68eb02c209fd2034ee405b59b707d71e9ee0aa5"
+          "digest": "7f034abcb425f061e132b747088bf99ecc5cbc8f7a250bd92056b424a445b6e8"
         },
         {
           "path": "examples/headless-agent/tsconfig.json",
@@ -32227,7 +32227,8 @@
         }
       ],
       "checks": [
-        "Public Node/browser bundle and host/build focused tests: 28 tests passed. Headless source typecheck and Node build passed. React leakage mutation failed both Agent boundary assertions; restored six bundle tests passed. No live provider run."
+        "Public Node/browser bundle and host/build focused tests: 28 tests passed. Headless source typecheck and Node build passed. React leakage mutation failed both Agent boundary assertions; restored six bundle tests passed. No live provider run.",
+        "Release-candidate example dependency now requires SDK ^0.8.0, the first declared version containing the Agent entry. Source imports, bundler and operating/authentication instructions remain accurate; outside-workspace install selects the release containing /agent rather than the older 0.7 line."
       ]
     }
   ]
