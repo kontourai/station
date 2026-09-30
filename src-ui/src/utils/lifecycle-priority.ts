@@ -84,9 +84,10 @@ export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
  * term for "no path exists in the serving process", and archive#1783 leaked
  * it verbatim to two surfaces (the chat-dock inbox chip, the mobile task
  * switcher's `Current · …` line) purely because the label set is shared.
- * The chip family has always translated (`Running` → "Active", `Completed`
- * → "Done"); this is the same translation for the surfaces that do not use
- * a chip, so one term cannot appear two ways.
+ * The chip family translates where the label is not user vocabulary
+ * (`Completed` → "Done"; `Running` stays "Running", the live lane's word);
+ * this is the same translation for the surfaces that do not use a chip, so
+ * one term cannot appear two ways.
  */
 export function lifecycleLabelText(label: HomeLifecycleLabel): string {
   return label === 'Unanswerable' ? "Can't answer here" : label;
@@ -119,7 +120,7 @@ export const LIFECYCLE_CHIP_LABELS = new Set<HomeLifecycleLabel>([
   // different hat. The chip renders in the neutral treatment, not a fourth
   // colour meaning: nothing is broken and nothing needs acting on.
   'Unanswerable',
-  // #2310: chipped because a Draft sits outside "Active now", and a row that
+  // #2310: chipped because a Draft sits outside the live lanes, and a row that
   // moved without saying why reads as lost work. Neutral treatment again.
   'Draft',
 ]);
