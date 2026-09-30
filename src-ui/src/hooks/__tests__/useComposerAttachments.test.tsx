@@ -159,7 +159,7 @@ describe('useComposerAttachments', () => {
     );
     hook.rerender();
     expect(hook.result.current.sendBlockedReason).toMatch(
-      /Too many uploads are waiting to be sent/,
+      /Upload limit reached: 5 unsent uploads at a time/,
     );
     // The composer hides the block line (and its Remove action) behind any
     // attachment error, so the generic aggregate sentence must not be one.

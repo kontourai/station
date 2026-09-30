@@ -584,13 +584,18 @@ export function ChatInputArea({
       root.style.flexShrink = saved[1];
       root.style.maxHeight = saved[2];
       textarea.style.height = saved[3];
-      const next = `${needed}px`;
-      root.style.minHeight = saved[0] === next ? saved[0] : next;
       // In a dock too short for the transcript's and banner's own padding on
       // top of that, they step aside entirely (data-composer-priority) rather
-      // than the composer overflowing its dock.
+      // than the composer overflowing its dock. And the reservation never
+      // exceeds what the dock can give: past that point Send staying on screen
+      // outranks the draft's two-line floor.
       const body = root.parentElement;
-      if (!body?.classList.contains('chat-dock__body')) return;
+      if (!body?.classList.contains('chat-dock__body')) {
+        const next = `${needed}px`;
+        root.style.minHeight = saved[0] === next ? saved[0] : next;
+        return;
+      }
+      let others = 0;
       let fixed = needed;
       for (const child of body.children) {
         if (child === root || !(child instanceof HTMLElement)) continue;
@@ -609,13 +614,21 @@ export function ChatInputArea({
             edge('border-top-width') +
             edge('border-bottom-width');
         } else if (style.display !== 'none') {
-          fixed += child.getBoundingClientRect().height + margins;
+          const size = child.getBoundingClientRect().height + margins;
+          fixed += size;
+          others += size;
         }
       }
       body.toggleAttribute(
         'data-composer-priority',
         fixed > body.clientHeight + 0.5,
       );
+      const granted = Math.max(0, Math.min(needed, body.clientHeight - others));
+      // A shortfall comes out of the draft's floor, so it scrolls rather than
+      // overflowing onto the controls row.
+      textarea.style.minHeight = `${Math.max(0, floor - (needed - granted))}px`;
+      const next = `${granted}px`;
+      root.style.minHeight = saved[0] === next ? saved[0] : next;
     };
     reserve();
     // Rows around the draft mount late (the lazy chip strip) or change size

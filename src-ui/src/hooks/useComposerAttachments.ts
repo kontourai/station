@@ -639,7 +639,7 @@ export function useComposerAttachments(options: {
       : options.stages.some((stage) => stage.state === 'accepted')
         ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
         : options.stages.some((stage) => stage.capacityFull)
-          ? 'Too many uploads are waiting to be sent (at most 5 at a time). Remove attachments here or in another chat, or wait up to 10 minutes for unsent ones to expire, then add the file again.'
+          ? 'Upload limit reached: 5 unsent uploads at a time. Remove some (here or in another chat) or wait up to 10 minutes.'
           : hasRetryableStage
             ? options.stages.some(
                 (stage) => stage.state === 'retryable' && stage.expired,

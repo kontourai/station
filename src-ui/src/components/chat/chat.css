@@ -1208,6 +1208,12 @@
   flex-shrink: 0;
 }
 
+/* A dock too short for the whole composer (see data-composer-priority):
+   the chip strip shows one row and scrolls, so the draft keeps its room. */
+.chat-dock__body[data-composer-priority] .composer-attachments {
+  max-height: 50px;
+}
+
 .chat-input .chat-controls-row {
   position: relative;
   background: var(--bg-primary);
@@ -1248,8 +1254,16 @@
   color: var(--error-text);
 }
 
+/* The fix sits at the end of its reason, wrapping as one unit, without its
+   touch target inflating the text's line height. */
+.chat-input__attachment-error:has(.chat-input__blocked-action) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+
 .chat-input__attachment-error .chat-input__blocked-action {
-  margin-inline-start: var(--space-2);
   padding: 0 var(--space-1);
   border: 0;
   background: transparent;
