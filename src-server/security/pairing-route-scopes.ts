@@ -788,6 +788,22 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/pairing/native-device-bindings/:bindingId:manage',
+    method: 'GET',
+    prefix: '/api/pairing/native-device-bindings/:bindingId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/pairing/native-device-bindings/:bindingId/approve:manage',
+    method: 'POST',
+    prefix: '/api/pairing/native-device-bindings/:bindingId/approve',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/client-presence/summary:read',
     method: 'GET',
     prefix: '/api/client-presence/summary',

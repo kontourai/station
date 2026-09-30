@@ -80,6 +80,30 @@ export interface NativeDeviceBindingCandidateV1 {
 }
 
 /**
+ * Operator-only HTTP readback of one binding's historical record. The
+ * `currentDeviceBinding` flag reports only whether this Device proof binding
+ * is current against Station's paired-Device state; it grants no account,
+ * Project, or runtime authority.
+ */
+export interface NativeDeviceProofBindingReadbackV1 {
+  readonly version: 'station-native-device-proof-binding-readback/v1';
+  readonly binding: {
+    readonly stationId: string;
+    readonly deviceId: string;
+    readonly bindingId: string;
+    readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+    readonly deviceProofJwk: NativeDeviceProofPublicKey;
+    readonly deviceProofKeyThumbprint: string;
+    readonly state: 'active' | 'revoked';
+    readonly createdAt: number;
+    readonly approvedAt: number;
+    readonly revokedAt?: number;
+    readonly revocationReason?: 'operator-revoked' | 'replaced';
+  };
+  readonly currentDeviceBinding: boolean;
+}
+
+/**
  * Exact claims signed by the native Device proof key for one request. The
  * proof key and purpose are distinct from account continuation, Station
  * signing and broker routing keys.
