@@ -1,13 +1,13 @@
 import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH } from '@kontourai/station-contracts/environment-security';
 import type { NativeDeviceBindingCandidateV1 } from '@kontourai/station-contracts/native-device-proof';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureDevicePairingPublicRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -18,17 +18,12 @@ import {
 import { createNativeDeviceProofBindingRoutes } from '../native-device-proof-binding-routes.js';
 
 const ORIGIN = 'https://station.example.test';
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 type TestBindings = HttpBindings & {
   incoming: HttpBindings['incoming'] & {
     socket: HttpBindings['incoming']['socket'] & { remoteAddress?: string };
   };
 };
-
-afterEach(async () => {
-  for (const home of homes.splice(0))
-    await rm(home, { recursive: true, force: true });
-});
 
 function publicKey() {
   const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
@@ -44,8 +39,7 @@ function thumbprint(jwk: ReturnType<typeof publicKey>): string {
 }
 
 async function harness() {
-  const home = await mkdtemp(join(tmpdir(), 'station-native-binding-route-'));
-  homes.push(home);
+  const home = makeTempDir('station-native-binding-route-');
   const security = new EnvironmentSecurityService({ homeDir: home });
   const { credential: operatorCredential, environmentId } =
     await security.initialize();
