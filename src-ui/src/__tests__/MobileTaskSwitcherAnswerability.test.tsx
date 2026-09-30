@@ -8,7 +8,7 @@
  * files over carried both. Same label, two answers, one of them a bare
  * adjective.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
@@ -115,9 +115,60 @@ describe('MobileTaskSwitcher answerability basis', () => {
       }),
     ]);
     expect(screen.queryByTestId('inbox-row-answerability')).toBeNull();
-    // The shared row renders the lifecycle CHIP ("Active"), not the raw
-    // 'Running' wire enum the old bespoke row leaked (#3312 richness parity).
-    expect(screen.getByText('Active')).toBeTruthy();
-    expect(screen.queryByText('Running')).toBeNull();
+    // The shared row renders the lifecycle CHIP, not a bare status string
+    // (#3312 richness parity). The chip's word is the lane's word, "Running"
+    // (never "Active"), and it appears once, inside the chip.
+    const row = screen.getByTestId('inbox-row');
+    expect(
+      within(row).getByText('Running', { selector: '.lifecycle-chip' }),
+    ).toBeTruthy();
+    expect(within(row).getAllByText('Running')).toHaveLength(1);
+    expect(within(row).queryByText('Active')).toBeNull();
+    expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
+  });
+});
+
+describe('MobileTaskSwitcher lane-move focus', () => {
+  test('a focused row that moves Running -> Idle keeps focus in the sheet', () => {
+    const props = {
+      open: true,
+      activeChatSessionId: null,
+      visualViewportStyle: {},
+      triggerRef: createRef<HTMLButtonElement>(),
+      onClose: vi.fn(),
+      onFocusChat: vi.fn(),
+      onOpenConversation: vi.fn(),
+      onOpenSession: vi.fn(),
+      now: Date.now(),
+    };
+    const running = task({
+      id: 'chat:moving',
+      chatSessionId: 'moving',
+      title: 'Moving row',
+      lifecycleLabel: 'Running',
+      unanswerableNotice: undefined,
+    });
+    const other = task({
+      id: 'chat:other',
+      chatSessionId: 'other',
+      title: 'Other row',
+      lifecycleLabel: 'Ready',
+      unanswerableNotice: undefined,
+    });
+    const view = render(
+      <MobileTaskSwitcher {...props} tasks={[running, other]} />,
+    );
+    const name = 'Moving row, Station';
+    screen.getByRole('button', { name }).focus();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+
+    view.rerender(
+      <MobileTaskSwitcher
+        {...props}
+        tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name }));
   });
 });
