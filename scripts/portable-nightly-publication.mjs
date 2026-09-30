@@ -259,6 +259,9 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
  * GETs `url`, retrying while a just-uploaded release asset is still
  * propagating. A 404 is returned as null only when `allowMissing` is set.
  */
+const REVERIFY_ATTEMPTS = 30;
+const REVERIFY_DELAY_MS = 10_000;
+
 export async function fetchBytes(
   url,
   { fetchImpl = fetch, attempts = 10, delayMs = 6000, allowMissing = false },
@@ -378,8 +381,11 @@ async function main(argv) {
     case 'verify': {
       const expected = readJson(values['expected-payload']);
       const remote = /^https:\/\//.test(values.manifest ?? '');
-      // A just-replaced rolling asset can briefly serve the previous bytes,
-      // so a remote read retries a mismatch before failing.
+      // A just-replaced rolling asset can serve the previous bytes for a
+      // while: GitHub's asset host cached the old manifest for longer than a
+      // minute after the replacement on 2026-09-30, so a remote read retries a
+      // mismatch for up to REVERIFY_ATTEMPTS * REVERIFY_DELAY_MS (5 minutes)
+      // before failing. A mismatch that outlasts that still fails the job.
       for (let attempt = 1; ; attempt += 1) {
         const envelope = await readManifest(values.manifest);
         try {
@@ -389,8 +395,8 @@ async function main(argv) {
           );
           return;
         } catch (error) {
-          if (!remote || attempt >= 10) throw error;
-          await sleep(6000);
+          if (!remote || attempt >= REVERIFY_ATTEMPTS) throw error;
+          await sleep(REVERIFY_DELAY_MS);
         }
       }
     }
