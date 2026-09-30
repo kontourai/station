@@ -112,6 +112,12 @@ describe('useComposerAttachments', () => {
       new Error('Attachment staging capacity is full.'),
       { status: 409, code: 'stage_capacity' },
     );
+    // What the real queue throws after reporting the stage: a codeless
+    // aggregate (attachment-staging-queue.ts).
+    const aggregate = new AggregateError(
+      [capacity],
+      'One or more attachment stages did not complete.',
+    );
     stageComposerAttachments.mockImplementationOnce(
       async (_api, files, _signal, update) => {
         update({
@@ -121,7 +127,7 @@ describe('useComposerAttachments', () => {
           error: capacity.message,
           capacityFull: true,
         });
-        throw capacity;
+        throw aggregate;
       },
     );
     readChatAttachmentFiles.mockResolvedValueOnce({
@@ -155,6 +161,10 @@ describe('useComposerAttachments', () => {
     expect(hook.result.current.sendBlockedReason).toMatch(
       /Too many uploads are waiting to be sent/,
     );
+    // The composer hides the block line (and its Remove action) behind any
+    // attachment error, so the generic aggregate sentence must not be one.
+    expect(hook.result.current.error).toBeNull();
+    expect(stages[0]?.error).toBe('Attachment staging capacity is full.');
   });
 
   test('late upload progress stays with its original chat after the selected composer changes', async () => {

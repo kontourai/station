@@ -239,10 +239,20 @@ export function useComposerAttachments(options: {
             const current = currentStages().find(
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );
+            // The queue throws an AggregateError with no code of its own; the
+            // capacity refusal is on the stage it already reported (or inside
+            // the aggregate), and that explanation must win over the generic
+            // "did not complete" sentence.
+            const causes =
+              failure instanceof AggregateError ? failure.errors : [failure];
             const capacityFull =
-              (failure as { code?: unknown } | null)?.code ===
-                'stage_capacity' || current?.capacityFull === true;
-            if (current?.state !== 'complete') {
+              current?.capacityFull === true ||
+              causes.some(
+                (cause) =>
+                  (cause as { code?: unknown } | null)?.code ===
+                  'stage_capacity',
+              );
+            if (current?.state !== 'complete' && !current?.capacityFull) {
               update({
                 clientAttachmentId,
                 state:
@@ -254,7 +264,7 @@ export function useComposerAttachments(options: {
                 ...(capacityFull ? { capacityFull: true } : {}),
               });
             }
-            setError(message);
+            setError(capacityFull ? null : message);
           }
         } finally {
           owned.running.current.delete(clientAttachmentId);
