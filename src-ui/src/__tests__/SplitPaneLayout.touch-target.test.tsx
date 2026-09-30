@@ -57,6 +57,7 @@ vi.mock('../hooks/useIsMobile', () => ({
 
 import { PageFrame } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
+import { SPLIT_PANE_MIN_WIDTH } from '../components/split-pane-metrics';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
@@ -156,6 +157,34 @@ function fixtureHtml(): string {
     throw new Error('the framed rail did not put collapse in the filter row');
   const framedRail = framedLeft.outerHTML;
   framed.unmount();
+  // The narrowest rail with two trailing controls (a draft row's Discard
+  // beside a row menu): both must fit without scrolling the list sideways.
+  const minimal = render(
+    <SplitPaneLayout
+      label="min"
+      title="Min"
+      items={[
+        {
+          id: 'draft',
+          name: 'A draft row with a long title',
+          trailing: (
+            <>
+              {chip('min-a')}
+              {chip('min-b')}
+            </>
+          ),
+        },
+      ]}
+      selectedId={null}
+      onSelect={() => {}}
+      onSearch={() => {}}
+    >
+      <div>detail</div>
+    </SplitPaneLayout>,
+  );
+  const minimalRail =
+    minimal.container.querySelector('.split-pane__left')?.outerHTML ?? '';
+  minimal.unmount();
   const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
@@ -167,6 +196,9 @@ function fixtureHtml(): string {
     </div>
     <div class="split-pane" id="narrow" style="display:flex;width:1000px;height:300px">
       <div style="width:255px;display:flex">${framedRail}</div>
+    </div>
+    <div class="split-pane" id="min" style="display:flex;width:1000px;height:300px">
+      <div style="width:${SPLIT_PANE_MIN_WIDTH}px;display:flex">${minimalRail}</div>
     </div>
   </body>
 </html>`;
@@ -193,7 +225,7 @@ describe.skipIf(!chromiumAvailable)(
       const context = await browser.newContext({
         // Wider than the 768px narrow-viewport branch: the case the old CSS
         // left at desktop density (a tablet in landscape).
-        viewport: { width: 1000, height: 700 },
+        viewport: { width: 1000, height: 1400 },
         hasTouch: coarse,
         isMobile: coarse,
       });
@@ -281,6 +313,13 @@ describe.skipIf(!chromiumAvailable)(
               return new Set(tops).size > 1;
             }),
             collapse: { width: collapse.width, height: collapse.height },
+            minListOverflow: (() => {
+              const list = document.querySelector<HTMLElement>(
+                '#min .split-pane__list',
+              );
+              if (!list) throw new Error('the minimal rail did not render');
+              return list.scrollWidth - list.clientWidth;
+            })(),
             narrowCollapse: {
               width: narrowCollapse.width,
               height: narrowCollapse.height,
@@ -332,6 +371,9 @@ describe.skipIf(!chromiumAvailable)(
         const result = await measure(coarse);
         expect(result.coarse).toBe(coarse);
         expect(result.edgeThieves).toEqual([]);
+        // Two trailing controls at the minimum rail width do not scroll the
+        // list sideways.
+        expect(result.minListOverflow).toBeLessThanOrEqual(0);
         if (coarse) {
           // Width is real, not borrowed from a neighbour; and no slot stacks
           // two controls into one 44px row.

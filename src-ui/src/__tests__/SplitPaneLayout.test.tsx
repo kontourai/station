@@ -1929,6 +1929,42 @@ describe('SplitPaneLayout', () => {
       );
     });
 
+    test('a row removed after a real blur to <body> does not pull focus back', async () => {
+      const items: Items = [
+        { id: 'a', name: 'Alpha' },
+        { id: 'b', name: 'Beta' },
+        { id: 'c', name: 'Gamma' },
+      ];
+      const props = {
+        label: 'things',
+        title: 'Things',
+        selectedId: 'c',
+        onSelect: vi.fn(),
+        onSearch: vi.fn(),
+      };
+      const view = render(
+        <SplitPaneLayout {...props} items={items}>
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      const beta = screen.getByRole('button', { name: 'Beta' });
+      act(() => beta.focus());
+      // A click on blank space: focus goes to <body>, the row stays.
+      act(() => beta.blur());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      view.rerender(
+        <SplitPaneLayout
+          {...props}
+          items={items.filter((item) => item.id !== 'b')}
+        >
+          <div>detail</div>
+        </SplitPaneLayout>,
+      );
+      expect(document.activeElement).toBe(document.body);
+    });
+
     test.each([
       'radiogroup',
       'tablist',

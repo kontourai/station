@@ -825,8 +825,11 @@
     align-self: stretch;
   }
 
+  /* Two 44px controls plus the gap must fit even in the 220px minimum rail,
+     where the 38% cap alone leaves about 84px. */
   .split-pane__item-trailing {
     flex-wrap: nowrap;
+    max-width: max(38%, 96px);
   }
 
   .split-pane__group-header :is(button, a[href]):not(.split-pane__group-toggle),

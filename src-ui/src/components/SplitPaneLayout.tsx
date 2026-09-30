@@ -1038,10 +1038,24 @@ export function SplitPaneLayout({
   }
 
   function forgetLeftLine(event: React.FocusEvent<HTMLDivElement>) {
-    // Only a move to a known element outside the list forgets the line. A
-    // null relatedTarget is also what removing the focused row looks like.
     const next = event.relatedTarget as Node | null;
-    if (next && !listRef.current?.contains(next)) focusedLineRef.current = null;
+    if (next) {
+      if (!listRef.current?.contains(next)) focusedLineRef.current = null;
+      return;
+    }
+    // A null relatedTarget is either a real blur to <body> (a click on blank
+    // space) or the focused row being removed. Decide once the DOM settles:
+    // an element that is still connected was blurred, not removed, so its
+    // line is forgotten and a later removal does not pull focus back.
+    const left = event.target as HTMLElement;
+    const line = focusedLineRef.current;
+    setTimeout(() => {
+      if (left.isConnected && focusedLineRef.current === line) {
+        const active = left.ownerDocument.activeElement;
+        if (!active || !listRef.current?.contains(active))
+          focusedLineRef.current = null;
+      }
+    }, 0);
   }
 
   function navigateList(event: React.KeyboardEvent<HTMLDivElement>) {
