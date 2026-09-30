@@ -40,7 +40,10 @@ export function useShowSurface(): (
       // render without Chat. The intent (a session to open) still goes
       // through the outbox, which the centre's Chat consumes like any other
       // Chat placement.
-      if (surfaceId === 'chat' && centerOwnsChat && requestCenterChatPage()) {
+      if (surfaceId === 'chat' && centerOwnsChat) {
+        // Never a reveal of Chat's (suspended) dock region, even before the
+        // workbench mounts to answer the request.
+        requestCenterChatPage();
         if (intent) deliverSurfaceIntent(surfaceId, intent);
         return;
       }

@@ -315,3 +315,24 @@
     min-height: 44px;
   }
 }
+
+/* Read by assistive technology, not drawn. */
+.coding-workbench__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.coding-workbench__state {
+  flex: none;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.coding-workbench__page--drill-in:focus {
+  outline: none;
+}

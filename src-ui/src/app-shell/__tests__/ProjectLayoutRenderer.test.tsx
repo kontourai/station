@@ -41,6 +41,7 @@ import { writeFilePreviewPaneState } from '../../workspace-panes/filePreviewPane
 import { workspacePaneHostScopeKey } from '../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../workspace-panes/workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../../workspace-panes/workspacePaneHostRuntime';
+import { requestCenterChatPage } from '../chat-placement';
 
 const layoutQueryMock = vi.fn();
 
@@ -428,6 +429,36 @@ function drillIntoHostPane(instanceId?: string) {
 describe('ProjectLayoutRenderer', () => {
   afterEach(() => {
     navigationStore.navigate('/', { pane: null, paneScope: null });
+  });
+
+  /**
+   * App suspends the dock's Chat as soon as it knows the route is the
+   * built-in Coding layout, so every state before the pane host mounts must
+   * still show the centre's Chat — exactly one — with the state beside it,
+   * and answer "show Chat" (⌘D) so nothing falls back to the dock.
+   */
+  test.each([
+    [
+      'the catalog loading',
+      { isLoading: true, entries: [] },
+      'Loading coding workspace panes',
+    ],
+    [
+      'the catalog failing',
+      { isError: true, entries: [], refetch: vi.fn() },
+      'Could not load coding workspace',
+    ],
+    ['no Coding occurrence', { entries: [] }, 'Coding workspace unavailable'],
+  ])('%s still shows the one centre Chat', (_state, catalog, text) => {
+    catalogMock.mockReturnValue(catalog);
+    mobileMock.mockReturnValue(false);
+    chatWorkspacePaneMock.mockClear();
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    render(<ProjectLayoutRenderer projectSlug="demo" layoutSlug="coding" />);
+
+    expect(screen.getAllByTestId('coding-center-chat')).toHaveLength(1);
+    expect(screen.getByText(text)).toBeTruthy();
+    expect(requestCenterChatPage()).toBe(true);
   });
   test('keeps a catalog-missing Coding workspace unavailable instead of mounting another shell', () => {
     catalogMock.mockReturnValue({ entries: [] });

@@ -48,3 +48,14 @@ export function subscribeCenterChatPageRequests(
     centerChatRequestListeners.delete(listener);
   };
 }
+
+/**
+ * "Show Chat" for a writer outside the region model — the command palette,
+ * a turn notification, a share or a new session. While the Coding centre owns
+ * Chat that is its Chat page; opening the dock there would persist a visible
+ * Chat region that renders nothing on the route (the region shells suspend
+ * it). Anywhere else it is the dock, as before.
+ */
+export function showChatPageOrDock(openDock: () => void): void {
+  if (!requestCenterChatPage()) openDock();
+}

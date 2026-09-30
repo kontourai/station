@@ -2826,7 +2826,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             returnFocusTarget: backgroundTasksTriggerRef.current,
             onOpenTranscript: (threadId) => {
               setIsBackgroundTasksOpen(false);
-              setDockState(false, isDockMaximized);
+              // A full-screen Chat is no dock: closing "the dock" from it would
+              // write the real dock region's visibility behind the reader.
+              if (!isFullscreenPlacement) setDockState(false, isDockMaximized);
               showSurface('activity', { session: threadId });
             },
             onClose: () => setIsBackgroundTasksOpen(false),

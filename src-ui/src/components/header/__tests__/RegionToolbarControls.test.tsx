@@ -388,14 +388,16 @@ describe('RegionToolbarControls', () => {
     }
   });
 
-  test('with no Coding centre mounted to answer, ⌘D is the dock toggle it always was', () => {
+  test('before the Coding centre mounts to answer, ⌘D still leaves the dock alone', () => {
     render(
       <LayoutChatPlacementContext.Provider value="center">
         <RegionToolbarControls />
       </LayoutChatPlacementContext.Provider>,
     );
     harness.shortcuts.get('dock.toggle')?.handler();
-    expectOnlyToggle('chat');
+    expect(harness.toggleSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    expect(harness.showSurface).not.toHaveBeenCalled();
   });
 
   /**

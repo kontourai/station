@@ -73,6 +73,20 @@ import './CodingWorkbench.css';
  * stack's Back/Forward chords stay out of a focused composer or terminal
  * (Alt+Arrow is word motion in both).
  */
+/** Whether keyboard focus is in something that edits text. */
+function focusEditsText(): boolean {
+  const focused = document.activeElement;
+  if (!(focused instanceof Element)) return false;
+  return Boolean(
+    focused.matches(
+      'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"]',
+    ) ||
+      focused.closest(
+        '[contenteditable=""], [contenteditable="true"], .cm-editor, .xterm',
+      ),
+  );
+}
+
 const STACK_CHORD_WHEN: ShortcutWhen = {
   not: { or: ['composerFocused', 'terminalFocused'] },
 };
@@ -109,7 +123,12 @@ export interface CodingWorkbenchProps {
   /** The panes a drill-in can show, in the host's document order. */
   instances: readonly WorkspacePaneInstance[];
   /** The host's live document, for the catalog's target group. */
-  hostDocument: () => WorkspacePaneHostDocumentV1;
+  hostDocument: () => WorkspacePaneHostDocumentV1 | null;
+  /**
+   * A state the layout reports above both pages — its catalog loading or
+   * failing, a pane host it could not mount. The Chat page stays usable.
+   */
+  notice?: ReactNode;
   paneLabel(instance: WorkspacePaneInstance): string;
   hostOpen: WorkspacePaneHostOpenAction | null;
   onOpenCatalog(request: WorkspacePaneHostCatalogRequest): void;
@@ -163,6 +182,7 @@ export function CodingWorkbench({
   scope,
   instances,
   hostDocument,
+  notice,
   paneLabel,
   hostOpen,
   onOpenCatalog,
@@ -206,6 +226,10 @@ export function CodingWorkbench({
   const chatPageRef = useRef<HTMLElement>(null);
   const pageRef = useRef(page);
   pageRef.current = page;
+  /** Set by the reader's own moves, so only those move focus. */
+  const userMoveRef = useRef(false);
+  const drillInPageRef = useRef<HTMLElement>(null);
+  const [announcement, setAnnouncement] = useState('');
 
   useCodingChatPositionEffects({
     projectId,
@@ -223,6 +247,7 @@ export function CodingWorkbench({
   // a push (drill-in) from the trailing edge, a pop (Back) from the leading
   // edge. Direction is the history index delta, not the page kind, so
   // Forward onto the Chat page still reads as forward.
+  const [focusRequest, setFocusRequest] = useState(0);
   const [transition, setTransition] = useState<{
     page: 'chat' | 'drill-in';
     kind: StackTransition;
@@ -236,6 +261,21 @@ export function CodingWorkbench({
       page,
       kind: historyIndex < last.historyIndex ? 'pop' : 'push',
     });
+    // Focus follows the reader's own move, and never stays on the page that
+    // just became inert: the conversation's composer, or the pane's page.
+    const leaving =
+      page === 'chat' ? drillInPageRef.current : chatPageRef.current;
+    const focusWasLeft = Boolean(
+      leaving &&
+        document.activeElement &&
+        leaving.contains(document.activeElement),
+    );
+    const userMove = userMoveRef.current || focusWasLeft;
+    userMoveRef.current = false;
+    if (userMove) {
+      if (page === 'chat') setFocusRequest((request) => request + 1);
+      else drillInPageRef.current?.focus();
+    }
   }, [page, historyIndex]);
 
   // ── Back / Forward: browser history and the stack's chords.
@@ -249,26 +289,47 @@ export function CodingWorkbench({
       ...clearOpenFilePreviewIntent(),
     });
   }, []);
-  const goBack = useCallback(() => {
+  // Each returns whether it moved; a chord that did nothing leaves the key
+  // to the browser (its own Back/Forward) rather than swallowing it.
+  const goBack = useCallback((): boolean => {
     const entry = navigationStore.adjacentLocation(-1);
     if (entry?.pathname === window.location.pathname) {
+      userMoveRef.current = true;
       window.history.back();
-      return;
+      return true;
     }
     // Arrived on a drill-in from elsewhere (a link, a reload): its parent is
     // the Chat page, reached forward rather than by leaving the layout.
-    if (page === 'drill-in') goToChatPage();
-  }, [goToChatPage, page]);
-  const goForward = useCallback(() => {
+    if (pageRef.current === 'drill-in') {
+      userMoveRef.current = true;
+      goToChatPage();
+      return true;
+    }
+    return false;
+  }, [goToChatPage]);
+  const goForward = useCallback((): boolean => {
     const entry = navigationStore.adjacentLocation(1);
-    if (entry?.pathname === window.location.pathname) window.history.forward();
+    if (entry?.pathname !== window.location.pathname) return false;
+    userMoveRef.current = true;
+    window.history.forward();
+    return true;
   }, []);
+  // The chords never fire from a place that edits text: Alt+Arrow is word
+  // motion and ⌘[ is outdent there.
+  const backChord = useCallback(
+    () => (focusEditsText() ? false : goBack()),
+    [goBack],
+  );
+  const forwardChord = useCallback(
+    () => (focusEditsText() ? false : goForward()),
+    [goForward],
+  );
   useKeyboardShortcut(
     'codingStack.back',
     isMac ? '[' : 'ArrowLeft',
     isMac ? ['cmd'] : ['alt'],
     'Back in the Coding stack',
-    goBack,
+    backChord,
     true,
     0,
     STACK_CHORD_WHEN,
@@ -278,7 +339,7 @@ export function CodingWorkbench({
     isMac ? ']' : 'ArrowRight',
     isMac ? ['cmd'] : ['alt'],
     'Forward in the Coding stack',
-    goForward,
+    forwardChord,
     true,
     0,
     STACK_CHORD_WHEN,
@@ -288,6 +349,7 @@ export function CodingWorkbench({
   // Chat page (the stack does not grow), else a push to it.
   const returnToChatPage = useCallback(() => {
     if (pageRef.current !== 'drill-in') return;
+    userMoveRef.current = true;
     const entry = navigationStore.adjacentLocation(-1);
     if (
       entry?.pathname === window.location.pathname &&
@@ -299,7 +361,6 @@ export function CodingWorkbench({
 
   // ── "Show Chat" from outside the layout (the Chat chord, `showSurface`):
   // go to the Chat page, then focus the composer.
-  const [focusRequest, setFocusRequest] = useState(0);
   useEffect(() => {
     if (!centerChat) return;
     return subscribeCenterChatPageRequests(() => {
@@ -356,11 +417,33 @@ export function CodingWorkbench({
       ? instances.find((instance) => instance.instanceId === paneId)
       : undefined;
   const drillInLabel = drilledIn ? paneLabel(drilledIn) : 'Pane';
+  // Say where the reader landed, politely, when the page changes (not on
+  // arrival, when the route itself is announced).
+  const announcedPage = useRef<string | null>(null);
+  const pageKey = page === 'chat' ? 'chat' : `drill-in:${paneId}`;
+  useEffect(() => {
+    if (announcedPage.current === null) {
+      announcedPage.current = pageKey;
+      return;
+    }
+    if (announcedPage.current === pageKey) return;
+    announcedPage.current = pageKey;
+    setAnnouncement(
+      page === 'chat'
+        ? `Conversation: ${chatTitle}`
+        : `Showing ${drillInLabel}`,
+    );
+  }, [chatTitle, drillInLabel, page, pageKey]);
 
-  const openView = (instance: WorkspacePaneInstance) =>
+  const openView = (instance: WorkspacePaneInstance) => {
+    // The drill-in already on screen is not a new page.
+    if (page === 'drill-in' && instance.instanceId === paneId) return;
+    userMoveRef.current = true;
     navigationStore.setActiveWorkspacePane(instance.instanceId, scopeKey);
+  };
   const requestCatalog = () => {
     const document = hostDocument();
+    if (!document) return;
     const group =
       workspacePaneHostGroupContaining(
         document.root,
@@ -484,6 +567,12 @@ export function CodingWorkbench({
             />
           ) : null}
         </nav>
+        <p className="coding-workbench__announcement" aria-live="polite">
+          {announcement}
+        </p>
+        {notice ? (
+          <div className="coding-workbench__state">{notice}</div>
+        ) : null}
         {persistenceProblem ? (
           <p className="coding-workbench__notice" role="status">
             {persistenceProblem === 'contended'
@@ -513,8 +602,10 @@ export function CodingWorkbench({
             )}
           </section>
           <section
+            ref={drillInPageRef}
             className="coding-workbench__page coding-workbench__page--drill-in"
             aria-label={drillInLabel}
+            tabIndex={-1}
             {...pageState('drill-in')}
           >
             {children}

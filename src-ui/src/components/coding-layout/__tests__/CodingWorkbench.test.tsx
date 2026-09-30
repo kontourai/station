@@ -247,6 +247,9 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(harness.chatProps).toMatchObject({ onScreen: true });
     expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
 
+    // Back on the conversation, focus went to its composer; the chords are for
+    // the reader who has left it.
+    (window.document.activeElement as HTMLElement | null)?.blur();
     act(() => harness.shortcuts.get('codingStack.forward')?.handler());
     await act(async () => {
       await vi.waitFor(() =>
@@ -295,6 +298,9 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     await historyBackSettled();
     expect(chatPage().getAttribute('data-active')).toBe('true');
 
+    // Back on the conversation, focus went to its composer; the chords are for
+    // the reader who has left it.
+    (window.document.activeElement as HTMLElement | null)?.blur();
     act(() => harness.shortcuts.get('codingStack.forward')?.handler());
     await act(async () => {
       await vi.waitFor(() =>
@@ -511,5 +517,98 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     );
     await act(async () => undefined);
     expect(screen.getByRole('status').textContent).toMatch(/another tab/);
+  });
+
+  test('the chords never fire from a text field or contenteditable, and decline when there is nowhere to go', async () => {
+    renderStack();
+    await drillInto('Diff');
+    const index = navigationStore.getHistoryIndex();
+    const input = window.document.createElement('input');
+    const editable = window.document.createElement('div');
+    editable.setAttribute('contenteditable', 'true');
+    editable.tabIndex = 0;
+    window.document.body.append(input, editable);
+    try {
+      for (const field of [input, editable]) {
+        field.focus();
+        expect(window.document.activeElement).toBe(field);
+        let result: unknown;
+        act(() => {
+          result = harness.shortcuts.get('codingStack.back')?.handler();
+        });
+        // Declined: the key is left to the field (word motion, outdent).
+        expect(result).toBe(false);
+        expect(navigationStore.getHistoryIndex()).toBe(index);
+        expect(drillInPage().getAttribute('data-active')).toBe('true');
+      }
+    } finally {
+      input.remove();
+      editable.remove();
+    }
+    // On the Chat page with nothing behind it in the layout, Back has nothing
+    // to do here, so the browser keeps its own Back.
+    (window.document.activeElement as HTMLElement | null)?.blur();
+    act(() => {
+      navigationStore.navigate('/elsewhere');
+      navigationStore.navigate(ROUTE, { pane: null, paneScope: null });
+    });
+    let result: unknown;
+    act(() => {
+      result = harness.shortcuts.get('codingStack.back')?.handler();
+    });
+    expect(result).toBe(false);
+    act(() => {
+      result = harness.shortcuts.get('codingStack.forward')?.handler();
+    });
+    expect(result).toBe(false);
+  });
+
+  test('clicking the drill-in already on screen is not a new entry', async () => {
+    renderStack();
+    await drillInto('Diff');
+    const index = navigationStore.getHistoryIndex();
+    await drillInto('Diff');
+    await drillInto('Diff');
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+  });
+
+  test('a URL naming a pane the host no longer holds shows, and names, the pane on screen', () => {
+    expect(
+      resolveCodingStackLocation(
+        scope,
+        instances,
+        'closed-preview',
+        scopeKey,
+        diff.instanceId,
+      ),
+    ).toEqual({ page: 'drill-in', paneId: diff.instanceId });
+  });
+
+  test('Back from a drill-in the reader was using moves focus to the composer and says where they are', async () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    try {
+      renderStack();
+      await drillInto('Diff');
+      const inPane = window.document.createElement('button');
+      drillInPage().append(inPane);
+      inPane.focus();
+      expect(window.document.activeElement).toBe(inPane);
+      act(() => {
+        (window.document.activeElement as HTMLElement).blur();
+      });
+      act(() => harness.shortcuts.get('codingStack.back')?.handler());
+      await historyBackSettled();
+      act(() => {
+        vi.advanceTimersToNextFrame();
+      });
+      expect(window.document.activeElement).toBe(
+        screen.getByRole('textbox', { name: 'Message' }),
+      );
+      expect(
+        window.document.querySelector('[aria-live="polite"]')?.textContent,
+      ).toBe(`Conversation: ${harness.chatTitle}`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

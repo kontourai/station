@@ -443,12 +443,13 @@ function ConnectedRegionToolbarControls() {
         surface={surface}
         shortcut={surface.shortcut}
         onToggle={() => {
-          if (
-            centerOwnsChat &&
-            surface.id === 'chat' &&
-            requestCenterChatPage()
-          )
+          if (centerOwnsChat && surface.id === 'chat') {
+            // Never the dock's toggle here, even in the moment before the
+            // workbench mounts to answer: toggling would persist a visible
+            // Chat region that renders nothing on this route.
+            requestCenterChatPage();
             return;
+          }
           toggleSurface(surface);
         }}
       />

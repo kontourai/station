@@ -49,7 +49,14 @@ import {
   useGitStatusQuery,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
 import {
   resolveCodingStackLocation,
@@ -372,6 +379,9 @@ function sameWorkspacePaneInstanceIds(
  * differs anywhere is published, and only a byte-identical one keeps its
  * identity.
  */
+const CHAT_PAGE = { page: 'chat', paneId: null } as const;
+const NO_INSTANCES: readonly WorkspacePaneInstance[] = [];
+
 function retainWorkspacePaneHostDocument(
   published: {
     current: { content: string; document: WorkspacePaneHostDocumentV1 } | null;
@@ -439,6 +449,8 @@ function BuiltinCodingLayoutHost({
     useState<readonly WorkspacePaneInstance[]>();
   /** The host's latest document, read when the catalog needs a target group. */
   const liveHostDocument = useRef<WorkspacePaneHostDocumentV1 | null>(null);
+  /** The pane the host is showing, for a URL that names one it lacks. */
+  const [hostActiveId, setHostActiveId] = useState<string | null>(null);
   const announcedInstanceIds = useRef<ReadonlySet<string> | undefined>(
     undefined,
   );
@@ -452,6 +464,7 @@ function BuiltinCodingLayoutHost({
   const handleHostDocumentChange = useCallback(
     (next: WorkspacePaneHostDocumentV1) => {
       liveHostDocument.current = next;
+      setHostActiveId(next.activeInstanceId);
       const ids = new Set(
         next.instances.map((instance) => instance.instanceId),
       );
@@ -863,13 +876,44 @@ function BuiltinCodingLayoutHost({
       isCanonicalBuiltinTrustDescriptor(candidate.descriptor),
   );
 
+  /**
+   * Every state before the host can mount — the catalog loading or failing,
+   * an unavailable Coding occurrence, a composition or document that cannot
+   * be admitted — still renders the Chat page, with the state as a notice
+   * above it. App suspends the dock's Chat as soon as it knows the layout is
+   * the built-in Coding one, so a state that rendered only its message would
+   * leave the route with no Chat at all.
+   */
+  const chatOnly = (notice: ReactNode) => (
+    <CodingWorkbench
+      projectId={projectId ?? ''}
+      projectSlug={projectSlug}
+      centerChat={centerChat}
+      location={CHAT_PAGE}
+      scope={{
+        kind: 'project',
+        projectId: projectId ?? 'pending',
+        layoutId: layout.id,
+      }}
+      instances={NO_INSTANCES}
+      hostDocument={() => null}
+      paneLabel={() => 'Pane'}
+      hostOpen={null}
+      onOpenCatalog={() => undefined}
+      notice={notice}
+    >
+      {null}
+    </CodingWorkbench>
+  );
   if (catalog.isLoading) {
-    return <SkeletonList count={1} label="Loading coding workspace panes" />;
+    return chatOnly(
+      <SkeletonList count={1} label="Loading coding workspace panes" />,
+    );
   }
   // #2319: a failed background revalidation keeps the answer it had; only a
   // catalog that never loaded is an error screen.
   if (catalog.isError && catalog.data === undefined) {
-    return (
+    return chatOnly(
       <ErrorState
         title="Could not load coding workspace"
         description="Station could not read this Project’s pane catalog."
@@ -878,7 +922,7 @@ function BuiltinCodingLayoutHost({
             Retry
           </button>
         }
-      />
+      />,
     );
   }
 
@@ -894,7 +938,7 @@ function BuiltinCodingLayoutHost({
           codingOccurrence.rendererResolution,
         )
       : undefined;
-    return (
+    return chatOnly(
       <ErrorState
         title="Coding workspace unavailable"
         description={
@@ -912,7 +956,7 @@ function BuiltinCodingLayoutHost({
             </button>
           )
         }
-      />
+      />,
     );
   }
   // Layout slugs address routes; the host and its pane occurrences persist the
@@ -948,11 +992,11 @@ function BuiltinCodingLayoutHost({
     (readinessEntry?.instance && !readinessInstance) ||
     (trustEntry?.instance && !trustInstance)
   ) {
-    return (
+    return chatOnly(
       <ErrorState
         title="Coding workspace unavailable"
         description="Station could not bind its pane occurrences to this layout."
-      />
+      />,
     );
   }
   const fileComposition =
@@ -989,7 +1033,7 @@ function BuiltinCodingLayoutHost({
     fileCompositionControl !== 'legacy' &&
     (!fileBrowserEntry?.instance || !fileComposition?.instance)
   ) {
-    return (
+    return chatOnly(
       <>
         {fileCompositionReceipt ? (
           <CodingFileCompositionReceiptTracker
@@ -1000,7 +1044,7 @@ function BuiltinCodingLayoutHost({
           title="Coding file workspace unavailable"
           description="The Workspace Composition file pane could not be admitted. Station did not fall back to the legacy Coding host."
         />
-      </>
+      </>,
     );
   }
   const selectedFileBrowserInstance =
@@ -1035,7 +1079,7 @@ function BuiltinCodingLayoutHost({
     diffCompositionControl !== 'legacy' &&
     (!diffEntry?.instance || !diffComposition?.instance)
   ) {
-    return (
+    return chatOnly(
       <>
         {diffCompositionReceipt ? (
           <CodingDiffCompositionReceiptTracker
@@ -1046,7 +1090,7 @@ function BuiltinCodingLayoutHost({
           title="Coding Diff workspace unavailable"
           description="The Workspace Composition Diff pane could not be admitted. Station did not fall back to the legacy Coding host."
         />
-      </>
+      </>,
     );
   }
   const selectedDiffInstance = diffComposition?.instance ?? diffInstance;
@@ -1100,7 +1144,7 @@ function BuiltinCodingLayoutHost({
     evidenceCompositionControl !== 'legacy' &&
     !evidenceComposition?.document
   ) {
-    return (
+    return chatOnly(
       <>
         {evidenceCompositionReceipts.map((receipt) => (
           <CodingEvidenceCompositionReceiptTracker
@@ -1112,7 +1156,7 @@ function BuiltinCodingLayoutHost({
           title="Coding evidence workspace unavailable"
           description="The Workspace Composition evidence panes could not be admitted. Station did not fall back to the legacy Coding host."
         />
-      </>
+      </>,
     );
   }
   const selectedEvidence = (descriptorId: string) =>
@@ -1162,11 +1206,11 @@ function BuiltinCodingLayoutHost({
         )
       : null;
   if (drillInInstances.length > 0 && !document) {
-    return (
+    return chatOnly(
       <ErrorState
         title="Coding workspace cannot mount"
         description="Station could not create the required workspace pane host."
-      />
+      />,
     );
   }
   const location = resolveCodingStackLocation(
@@ -1175,6 +1219,7 @@ function BuiltinCodingLayoutHost({
     hostInstances ?? (document ? undefined : []),
     stackSelection.pane,
     stackSelection.paneScope,
+    hostActiveId,
   );
   if (location.page === 'drill-in' && !drillInVisited) setDrillInVisited(true);
   const renderPanes = drillInVisited || location.page === 'drill-in';
