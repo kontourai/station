@@ -336,7 +336,10 @@ export async function startNativeProjectRuntimeFixture(input: {
           JSON.stringify({
             version: 'station-self-hosted-broker-credentials/v1',
             scope,
-            bundle: credentials,
+            bundle: {
+              connector: credentials.connector,
+              routing: credentials.routing,
+            },
           }),
           { mode: 0o600, flag: 'wx' },
         );
