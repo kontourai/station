@@ -22,7 +22,7 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"src-server/services/plugins/workspace-pane-host-actions.ts","digest":"75590eb71c83be080b9f8b7fb080bc6276c18202b48f91f80cda8eff461c9474","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
 

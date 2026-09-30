@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"d7e005e24651c4609ce268807590dfaa26c7f22f7c70f1b7cd84c3e3b8df4b25","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
 
   "sources": [
     {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -40,7 +40,7 @@
 
     {"path":"scripts/lib/windows-nightly.mjs","digest":"6ad16d115434c40d429c7ed7323c6b8659b6edd284530bac01cebd4fafa5dedd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"78ab514b4e2f46ed766e09d15c51a78c01b55a031b0cb65a8bb8f1f656d15b81","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"e0979a810d3197689cdbb3e10b690aa03bac5c9a38010eba8a0392691405f8ab","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
 
     {"path":"scripts/verify-windows-installer-upgrade.ps1","digest":"e7935481402cf99f16b2ad2489e07a51677c0878828a9e7a50fecc393e159754","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -86,7 +86,9 @@
 
     {"path":"tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts","digest":"e38fdd0e01c5ac3ea83a499ebee2f37598adaab04f61d81f8c284d1d4ddb4b8d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"tests/tauri-shell/plugin-host-security.e2e.ts","digest":"963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"tests/tauri-shell/plugin-host-security.e2e.ts","digest":"963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"tests/tauri-shell/native-chat-dispatch.e2e.ts","digest":"cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"}
   ],
 
   "checks": [

@@ -22,13 +22,13 @@
 
     {"path":"scripts/ios-simulator-build.mjs","digest":"4d51daa51536951d6ad0f4046146f4a77ac5a4a8ba3a8780eedd44f02a72f6f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"78ab514b4e2f46ed766e09d15c51a78c01b55a031b0cb65a8bb8f1f656d15b81","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"e0979a810d3197689cdbb3e10b690aa03bac5c9a38010eba8a0392691405f8ab","revision":"a4dfd0454dc0e354c29903ee291f7b75660b05e3"},
 
     {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"a4dfd0454dc0e354c29903ee291f7b75660b05e3"},
 
     {"path":"src-desktop/src/startup_readiness.rs","digest":"77c26585b925bf67038df2ff3aea842c9ef0c4262914bbf957b2ca30f0332f82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

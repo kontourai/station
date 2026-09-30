@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"},
+    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

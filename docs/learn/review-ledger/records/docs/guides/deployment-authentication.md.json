@@ -16,7 +16,7 @@
 
     {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/routes/projects/project-shared-tasks.ts","digest":"88db69ca402777109e190b7e43e4f38c382136173392e765752f2f27d9c1a0dd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -26,7 +26,7 @@
 
     {"path":"src-server/runtime/bootstrap/account-bound-device-gate.ts","digest":"95dcd17de321d9d9db586a028780e534a2b45fdab677b8b7280f86494237e2ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f57107b0a6843918e4e870a11af21292ef9273114f1a63f2840f3c9c033215e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

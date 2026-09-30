@@ -9,7 +9,7 @@
 
   "limits": "Local tests cover development boundary, registry/permission decisions, MCP, server modules and durable-event fixtures. No fresh full installed-provider/native journey, live enterprise integration, remote npm availability or performance benchmark. Build dependency preparation may fail or time out; an attempted dev install is not readiness. Source review is complete for published guide claims, not every private security path.",
 
-  "document": {"digest":"2430fc55758bda39ede194cd3a818763ae4890fad69c5ff2b27daa8f4fdf33c5","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+  "document": {"digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
   "sources": [
     {"path":"config/plugin-scaffold-dependencies.json","digest":"e74f1f4028077bdd56e52057f43561d4cc4e790c42d8f600e04d1a1115f6da74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -26,7 +26,7 @@
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -92,7 +92,9 @@
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"}
   ],
 
   "checks": [

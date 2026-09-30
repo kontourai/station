@@ -26,7 +26,7 @@
 
     {"path":"examples/registry/manifest.json","digest":"1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

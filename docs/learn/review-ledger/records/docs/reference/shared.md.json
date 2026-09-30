@@ -9,7 +9,7 @@
 
   "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof.",
 
-  "document": {"digest":"93e17afd59f1d73e1d564bb58ca851b847beb177e5484fba001ee3d6cbcb77f7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"027c9b2d763f98eae6cd3e2f48a183d8e49399d33eb8a111bad447c08d38fed4","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -50,17 +50,17 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"0bbc56ff6227f45998a77b3ce439bc856c9e07d7b906ce76f00bd45b7787b9f3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"packages/shared/package.json","digest":"7c4354577f3bcca95ec54c836d3250b20c5863aa86fb5f988edd0d61117c39cd","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"packages/shared/src/__tests__/build.test.ts","digest":"e7c2da46760a947ef17e70c50e4c244376e4b60f98802a4fd2f620764f08d4bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/shared/src/__tests__/parsers.test.ts","digest":"1790f0e30a102fcb8c8a7207be6e15f91d11c746ba5a5cff9938263d3692b827","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/src/__tests__/plugin-build.test.ts","digest":"54f606a55c186f8856656fb98a23e04388f44f61f111b9e59268a167baf1802b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/shared/src/__tests__/plugin-build.test.ts","digest":"2a5460afa9ad492886405b44f820997f91060bcc16f43b93a7295e576ca17e09","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"packages/shared/src/git.ts","digest":"e937710f53be37a50ec58616e6d987b390ee0273ae098a660de60411ae7cea77","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -80,7 +80,7 @@
 
     {"path":"packages/shared/src/types.ts","digest":"fab18c926454048b1723c4e4575be8a5fba438473de42b420def9154a91d63a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -108,7 +108,9 @@
 
     {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"041ac68827827014fd0f9d655efbf020879bde4cf0da8b99150e2a370c149833","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"packages/shared/src/harness-questions.ts","digest":"b8b0b14163551da7b8628f1921050bf56c338fbc8bada7a34dfc51d5cd5418d4","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
   ],
 
   "checks": [

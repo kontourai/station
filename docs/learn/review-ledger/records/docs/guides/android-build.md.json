@@ -20,7 +20,7 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/release.yml","digest":"e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -44,7 +44,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -90,7 +90,7 @@
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

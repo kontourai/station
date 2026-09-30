@@ -12,7 +12,7 @@
   "document": {"digest":"2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"fb70b5b67c507e121e1c8a03cbbe74ac88532effc67aeb3e503569ee817d15b1","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -28,9 +28,9 @@
 
     {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"0bbc56ff6227f45998a77b3ce439bc856c9e07d7b906ce76f00bd45b7787b9f3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"packages/shared/package.json","digest":"7c4354577f3bcca95ec54c836d3250b20c5863aa86fb5f988edd0d61117c39cd","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -38,7 +38,7 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f57107b0a6843918e4e870a11af21292ef9273114f1a63f2840f3c9c033215e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"},
+    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 

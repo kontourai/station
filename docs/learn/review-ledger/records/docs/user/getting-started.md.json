@@ -40,11 +40,11 @@
 
     {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
     {"path":"src-ui/src/components/attention/RequestInspectionDialog.css","digest":"a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"57aa853ab758d299d83b7e783816f9930d9a191faef8122dbc19ee0a8934c817","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
     {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"585db4db640e419062c8f94aae75c677dd26574b5168f560d22e4ec3a2885253","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -72,7 +72,7 @@
 
     {"path":"src-ui/src/hooks/useChatInput.ts","digest":"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"876c61c9054c099a3c374fc6ab90ed0a1fcf205b1d39badd60de5ae64cb1dbb9","revision":"f2a75d4c1e52cc2edf1fe09befc1f7cd284ac079"},
+    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
     {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

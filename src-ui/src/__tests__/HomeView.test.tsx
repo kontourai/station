@@ -608,7 +608,7 @@ describe('HomeView', () => {
   // #2310 (verifier finding): the partition routes a Draft ONLY to `drafts`,
   // so if Home stopped rendering that section the row would vanish from Home
   // with every other test green. Render it and find the row inside it.
-  test('Home lists a Draft under its own Drafts section, and not under Active now', () => {
+  test('Home lists a Draft under its own Drafts section, and not under a live lane', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
     fixtures.defaultModelLabel = 'Model not reported';
@@ -647,9 +647,11 @@ describe('HomeView', () => {
     expect(
       within(drafts as HTMLElement).getByText('Never prompted title'),
     ).toBeTruthy();
-    const active = screen.getByRole('region', { name: /Active now/ });
-    expect(within(active).queryByText('Never prompted title')).toBeNull();
-    expect(within(active).getByText('Worked session title')).toBeTruthy();
+    // The worked session has no turn in flight: it is Idle, not Running.
+    const idle = screen.getByRole('region', { name: /^Idle/ });
+    expect(within(idle).queryByText('Never prompted title')).toBeNull();
+    expect(within(idle).getByText('Worked session title')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /^Running/ })).toBeNull();
   });
 
   // #2312: a Draft is discarded by the SERVER (so every device agrees), from
@@ -888,7 +890,7 @@ describe('HomeView', () => {
     expect(screen.getByText('Write a message and begin')).toBeTruthy();
   });
 
-  test('separates Active now from terminal Recently finished work with counts and compact cwd metadata', () => {
+  test('separates Running from terminal Recently finished work with counts and compact cwd metadata', () => {
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -923,7 +925,7 @@ describe('HomeView', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const active = screen.getByRole('region', { name: 'Active now (1)' });
+    const active = screen.getByRole('region', { name: 'Running (1)' });
     const recentlyFinished = screen.getByRole('region', {
       name: 'Recently finished (1)',
     });

@@ -32,7 +32,7 @@
 
     {"path":"packages/sdk/src/voice/types.ts","digest":"dfd4391d896aab895738f531a6fb50be606e4ea4e27751806c9e90a3c83d3b41","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"src-ui/src/hooks/useSTT.ts","digest":"07ef559ed6484e750a1d3be22e9f88e80ade4d2335b38f658d82461f6ce4208a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

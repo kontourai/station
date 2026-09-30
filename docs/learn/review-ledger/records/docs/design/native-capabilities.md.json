@@ -18,7 +18,7 @@
 
     {"path":"src-desktop/capabilities/default.json","digest":"b6ce0ba74944574562d08ddd8f02698a222840af0581bf093c662a70f07c9ab1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"a4dfd0454dc0e354c29903ee291f7b75660b05e3"},
 
     {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

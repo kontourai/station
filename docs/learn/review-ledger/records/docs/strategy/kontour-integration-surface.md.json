@@ -14,9 +14,9 @@
   "sources": [
     {"path":"docs/contexts/evidence-governance/CONTEXT.md","digest":"976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"docs/guides/integrating-station.md","digest":"9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"docs/guides/integrating-station.md","digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
-    {"path":"package.json","digest":"12631831e2544c3af335cd44ede75b95aa5d4acf88d9953857064676857ec31c","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"}
+    {"path":"package.json","digest":"93fd2602f701684ddbe9743dffddc8d4855b3fc80de7db7a8b2716b11a05be31","revision":"92636a1751411426e2972236b7416e50b18daf32"}
   ],
 
   "checks": [

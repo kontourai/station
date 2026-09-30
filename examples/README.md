@@ -8,6 +8,7 @@ prove.
 
 | Example | Focus |
 | --- | --- |
+| [Headless Agent](headless-agent/README.md) | Agent execution and observation without a Pane or plug-in manifest |
 | [Portable Author Kit](portable-author-kit/README.md) | Agent Plugins Skill plus Station Agent; no package dependencies |
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |

@@ -24,7 +24,7 @@
 
     {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"e67021c515f0b8834bb3fe70fb14c6d15b8db921d0a58b57abb95139c804ee34","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"schemas/agent-plugins/1.0.0/mcp.schema.json","digest":"6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

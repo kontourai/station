@@ -58,7 +58,7 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"94f81b48093080a0e80c3cb131a5fb568ca970b277209fb8a47ab560bd6fff25","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -78,7 +78,7 @@
 
     {"path":"src-server/runtime/bootstrap/account-bound-device-gate.ts","digest":"95dcd17de321d9d9db586a028780e534a2b45fdab677b8b7280f86494237e2ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f57107b0a6843918e4e870a11af21292ef9273114f1a63f2840f3c9c033215e","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"49951201fe9590b5fbf6b33873d2ae6c48a68dbef028f4ed57169d67f01cdf83","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

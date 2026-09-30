@@ -1,9 +1,13 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
 } from '@kontourai/station-shared/runtime-event-projection';
-import { toolRequestFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import type { ChatMessage } from '../../types';
 
 /** One card for the pending-approvals strip: the transcript's own part shape. */
@@ -45,6 +49,7 @@ function openApprovalRequests(
       for (const [entry, request] of open) {
         if (
           request.threadId === event.threadId &&
+          !(request.blocking === false && event.method === 'turn.completed') &&
           approvalRetiredBy(
             event.method,
             isSubagentApprovalRequest(request.payload),
@@ -101,7 +106,9 @@ export function unansweredApprovalRequests(
     }
   }
   const unanswered = open.filter(
-    (request) => !bound.has(requestKey(request.threadId, request.requestId)),
+    (request) =>
+      readHarnessQuestionnaire(request.payload?.questionnaire) !== null ||
+      !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
@@ -120,8 +127,16 @@ export function unansweredApprovalRequests(
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
+      ...(readHarnessQuestionnaire(request.payload?.questionnaire)
+        ? {
+            questionnaire: readHarnessQuestionnaire(
+              request.payload?.questionnaire,
+            )!,
+          }
+        : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
+      approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
     };
   });
 }

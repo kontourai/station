@@ -9,14 +9,14 @@
 
   "limits": "No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope.",
 
-  "document": {"digest":"e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"docs/architecture/module-map.md","digest":"341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
     {"path":"docs/reference/connect.md","digest":"e4977bfd6271262feec0f1ba01e6f313910bc4c88f30453136ae8c3757d3fd74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"docs/reference/contracts.md","digest":"31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"docs/reference/contracts.md","digest":"17d25cd92d51dab41f590067e5c0cf3bc03eff1e2f1358313b0e9f4aca972a4e","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -14,7 +14,7 @@
   "sources": [
     {"path":".changeset/config.json","digest":"f9e8c5a4c74425adbff4891af4de563d68bee61b94032c209f7112d9ec1f8cee","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-workspace.yaml","digest":"962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-workspace.yaml","digest":"24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"scripts/check-changesets.mjs","digest":"715f234b8c8e740728db04e91df3245c6c54780dbbf1b5efe9b48f9a94b96550","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

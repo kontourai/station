@@ -9,12 +9,12 @@
 
   "limits": "No independent npm installation or registry publication, arbitrary loader compatibility, full package build or live plugin activation. Registry signing fixture does not establish real key custody.",
 
-  "document": {"digest":"985b2108b9d66e7d483ee21e565106359b31b7d6a153cd15b974e996a4ec53eb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"fe07b7bc45e896f7e45736411cdc2aa47162ee396804e5ec5ed9bc0bf0a959e6","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
   "sources": [
-    {"path":"packages/shared/package.json","digest":"0bbc56ff6227f45998a77b3ce439bc856c9e07d7b906ce76f00bd45b7787b9f3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"packages/shared/package.json","digest":"7c4354577f3bcca95ec54c836d3250b20c5863aa86fb5f988edd0d61117c39cd","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

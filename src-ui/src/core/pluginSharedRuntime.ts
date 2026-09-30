@@ -86,16 +86,17 @@ export const loadStationSdkClient = () =>
 
 /**
  * Resolve the shared modules first paint does not need (the SDK barrel and
- * `UserDetailModal`, plus the SDK client, voice SDK, `zod`, `dompurify`) into
+ * `UserDetailModal`, plus the Agent SDK, SDK client, voice SDK, `zod`, `dompurify`) into
  * the bridge. Idempotent and memoized — call it before injecting any plugin
  * bundle, or via `window.__station_ai_shared_ready` from the page.
  */
 export function ensurePluginSharedRuntimeReady(): Promise<void> {
   onDemandModules ??= (async () => {
-    const [sdk, components, sdkClient, voiceSdk, zod, dompurify] =
+    const [sdk, components, agentSdk, sdkClient, voiceSdk, zod, dompurify] =
       await Promise.all([
         import('@kontourai/station-sdk'),
         import('../components/modals/UserDetailModal'),
+        import('@kontourai/station-sdk/agent'),
         loadStationSdkClient(),
         loadStationVoiceSdk(),
         import('zod/v3'),
@@ -107,6 +108,7 @@ export function ensurePluginSharedRuntimeReady(): Promise<void> {
     shared['@kontourai/station-components'] = {
       UserDetailModal: components.UserDetailModal,
     };
+    shared['@kontourai/station-sdk/agent'] = agentSdk;
     shared['@kontourai/station-sdk/client'] = sdkClient;
     shared['@kontourai/station-sdk/voice'] = voiceSdk;
     shared.zod = zod;

@@ -82,6 +82,11 @@ function buildHarness(laneName) {
 
 export const SHELL_E2E_LANES = [
   {
+    name: 'native-chat-dispatch',
+    spec: 'tests/tauri-shell/native-chat-dispatch.e2e.ts',
+    manual: true,
+  },
+  {
     name: 'plugin-host-security',
     spec: 'tests/tauri-shell/plugin-host-security.e2e.ts',
   },

@@ -24,7 +24,7 @@
 
     {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/release.yml","digest":"e31b7ee8cc563ce585da76683218b6da2ee43fae619cc0df09b1760fa9184a2b","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -106,7 +106,7 @@
 
     {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

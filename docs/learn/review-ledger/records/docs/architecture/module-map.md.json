@@ -9,7 +9,7 @@
 
   "limits": "Source review is complete for the documented module claims; it does not establish every application behavior, live provider/device outcomes, deployed services, power-loss safety or production performance. One coordinator test timed out; its failure is retained. Linked designs and historical evidence have separate review records.",
 
-  "document": {"digest":"68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+  "document": {"digest":"341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -104,7 +104,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"ad5e5c641f18d3c228178629502119f56a82f0e65d8e0a17069a09ab6a1a8da7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -142,7 +142,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -264,7 +264,7 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"5f060a7dd3f414433b3035da2e98fd413f233f3a7019abfad5e9dc1a55fb15d4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"d0196ce1fb343a0930c493bdd2ba266fb0783bb49c5805144d00b1f7180a4bc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -292,7 +292,7 @@
 
     {"path":"src-server/routes/system/deployment-authentication-routes.ts","digest":"ed7aa12b5049410821a0f11ba9c016a7b6f664519ebc0ee6e94b2ea021ecb6a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f57107b0a6843918e4e870a11af21292ef9273114f1a63f2840f3c9c033215e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -524,7 +524,7 @@
 
     {"path":"src-server/services/orchestration/native-invocation-runs.ts","digest":"f60bd1aa1d935d571749b4fe620a754360022df65dc3c10459ecf25ed4ac44eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

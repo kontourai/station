@@ -36,7 +36,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"pnpm-workspace.yaml","digest":"962a92db200292d8c0c89fe0c90230e9fed4ee8d226f97f07b1b2016fb4264f2","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"pnpm-workspace.yaml","digest":"24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -58,7 +58,7 @@
 
     {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"5f060a7dd3f414433b3035da2e98fd413f233f3a7019abfad5e9dc1a55fb15d4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

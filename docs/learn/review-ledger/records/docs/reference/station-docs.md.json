@@ -36,11 +36,11 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"ccfcb2163a0ee4059f5bcd837ca6846193de03afee8d8044377e22d40d3157fa","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"450af4fe4d55c49c64b64b858c38c7c81decb2df43c46e99940be9a0299c7140","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
     {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -80,9 +80,9 @@
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c935fad916983420c6eb619db776d4b932e9e424f1a81b89a1db19da7a5bda23","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
     {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"4ec510404c46aa8fd0bd0739e593acb214998048418fcac797cbc66a031cea8a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"f7be47371425b7737b50a91cd366d647882e3feda0ffed9fb540abe793350915","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"258889062c233f284560989b0e1d99e17503ab6e05a471b873b106b53d54685e","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

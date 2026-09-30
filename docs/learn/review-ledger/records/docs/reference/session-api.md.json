@@ -5,26 +5,26 @@
 
   "state": "source-reviewed",
 
-  "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
+  "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"b49f0ad44ef94a7017f60274c66c46ad5d71a24e755ffa0e22cc23642f00da20","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
   "sources": [
     {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"5f060a7dd3f414433b3035da2e98fd413f233f3a7019abfad5e9dc1a55fb15d4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -54,9 +54,9 @@
 
     {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"5a0d7172f0bbbc987c0571a3cef95ce9b562d6e6224e65d334513b07467edacf","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"8f67c22b974050867339a67e4690ba046b7a97e8f6fe61732ebfdf9b90b59021","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"f198dc43900198c9f803f64173dcf911d3a76c831a1ec659e28d63542279cddf","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/providers/__tests__/codex-adapter-rpc-id.test.ts","digest":"b34f7500b2f83fccbe853cf600614dc88c93bdde1d6287d8e3ad5a444191bf4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -66,7 +66,9 @@
 
     {"path":"src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","digest":"311cb357976129526312eddafdaea13d78f1bdb9f96b28adfdf0187388bc1769","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"}
   ],
 
   "checks": [

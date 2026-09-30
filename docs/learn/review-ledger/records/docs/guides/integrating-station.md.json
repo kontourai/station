@@ -9,7 +9,7 @@
 
   "limits": "No cloud sizing, current price quote, AWS/GCP deployment, Marketplace approval/API acceptance, service availability, commercial/legal qualification, two-tenant isolation or complete provider audit. Local persistence checks do not establish tenant-safe PostgreSQL repositories. Historical costs and normative integration acceptance criteria were not converted to shipped behavior.",
 
-  "document": {"digest":"9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+  "document": {"digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
   "sources": [
     {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
@@ -22,17 +22,17 @@
 
     {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 
-    {"path":"docs/guides/plugins.md","digest":"2430fc55758bda39ede194cd3a818763ae4890fad69c5ff2b27daa8f4fdf33c5","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
+    {"path":"docs/guides/plugins.md","digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
     {"path":"docs/guides/workspace-packages.md","digest":"01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"docs/reference/api.md","digest":"3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+    {"path":"docs/reference/api.md","digest":"d70a1a2a13fa37444c5981c025b29d719f1d6db26d0e751ac2dc231fc0ba1714","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
     {"path":"docs/reference/cli.md","digest":"f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
-    {"path":"docs/reference/contracts.md","digest":"31c17fa78ba721e7c73975a4d8f4368feb1e6f068c3b7a8c8b9ef1d4791da08e","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"docs/reference/contracts.md","digest":"17d25cd92d51dab41f590067e5c0cf3bc03eff1e2f1358313b0e9f4aca972a4e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
-    {"path":"docs/reference/sdk.md","digest":"a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf","revision":"f287e75383622538756bd3de86a9d557a461fc2c"},
+    {"path":"docs/reference/sdk.md","digest":"b74632b6fb89d0d7166daa2238f8ad4da12f0eaa6da3689b95cf188f29911796","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 

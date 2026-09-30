@@ -9,10 +9,10 @@
 
   "limits": "Navigation and content-authority review does not certify every linked runtime journey or a hosted Pages deployment.",
 
-  "document": {"digest":"376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+  "document": {"digest":"6db432a08c23792fc96cc22fef8094f44e3392e30768257be3b54155a16e93ab","revision":"8384fdd2685097c42593beb42a035c1292e3d882"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"docs/architecture/module-map.md","digest":"341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be","revision":"8384fdd2685097c42593beb42a035c1292e3d882"},
 
     {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 

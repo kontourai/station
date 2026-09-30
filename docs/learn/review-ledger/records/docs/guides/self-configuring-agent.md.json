@@ -36,11 +36,11 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"5a0d7172f0bbbc987c0571a3cef95ce9b562d6e6224e65d334513b07467edacf","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/providers/adapters/codex-approval-mode.ts","digest":"72b03e79d4d54962b60769c3749da7f421a822e271edebb0c6a9adbc0deaa321","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -56,9 +56,9 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e12a8e9c7c3120e32a859ae668138d6da2394f6c1d82d6aadb989ab58b88b7c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"5f060a7dd3f414433b3035da2e98fd413f233f3a7019abfad5e9dc1a55fb15d4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c64b69b79f214ddc7f96fd9929c31c6f50a92f2bfa12ae0e95702a32616eca76","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/tools/station-control-catalog-tools.ts","digest":"bdbc3859eb839956ce824fea173bb4d1d366bb9adf068d294327a67c7a7a55a2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

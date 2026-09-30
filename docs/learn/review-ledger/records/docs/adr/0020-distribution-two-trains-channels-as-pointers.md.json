@@ -16,7 +16,7 @@
 
     {"path":"packages/shared/src/service-launcher-protocol.ts","digest":"fdbe729811c373d0bdf059c51ea72dbc5d1e3240c88c91fa553d878107a9b68e","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"src-server/routes/system/archive-update.ts","digest":"97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    {"path":"src-server/routes/system/archive-update.ts","digest":"11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
 
     {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
@@ -34,7 +34,7 @@
 
     {"path":"packaging/portable-server/bin/station-launcher.mjs","digest":"bb4b5acbe1ca4528b66c51821919b0c048d51102ae47eda12ada64bc236f14a2","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"scripts/portable-nightly-publication.mjs","digest":"ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    {"path":"scripts/portable-nightly-publication.mjs","digest":"f4c49094d99c29712fd552079888be228c174a0f1a64d26a76363c518dc9c584","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
 
     {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
