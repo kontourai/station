@@ -91,7 +91,8 @@ On either route, when the bound engine is an ACP engine, a send whose
 attachments it cannot take (its handshake did not advertise image input, or a
 non-image file) is refused before any engine effect with
 `code: "attachment_input_unsupported"`. The same request is refused again, so it
-is not a retry candidate. Codex and Muse refuse a non-image file with a plain
+is not a retry candidate. Staged uploads the refused send had bound are released
+from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
 A completed turn does not discard the conversation. If the next turn needs a new
