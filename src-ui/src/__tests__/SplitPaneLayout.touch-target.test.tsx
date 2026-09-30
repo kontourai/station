@@ -320,6 +320,23 @@ describe.skipIf(!chromiumAvailable)(
               if (!list) throw new Error('the minimal rail did not render');
               return list.scrollWidth - list.clientWidth;
             })(),
+            // The slot itself must hold both controls: a nowrap slot that is
+            // too narrow overflows toward the row (justify-content: flex-end)
+            // rather than scrolling the list.
+            minSlotOverflow: (() => {
+              const slot = document.querySelector<HTMLElement>(
+                '#min .split-pane__item-trailing',
+              );
+              if (!slot) throw new Error('the minimal slot did not render');
+              const controls = [...slot.children].map((child) =>
+                child.getBoundingClientRect(),
+              );
+              const box = slot.getBoundingClientRect();
+              return Math.max(
+                box.left - Math.min(...controls.map((r) => r.left)),
+                Math.max(...controls.map((r) => r.right)) - box.right,
+              );
+            })(),
             narrowCollapse: {
               width: narrowCollapse.width,
               height: narrowCollapse.height,
@@ -374,6 +391,7 @@ describe.skipIf(!chromiumAvailable)(
         // Two trailing controls at the minimum rail width do not scroll the
         // list sideways.
         expect(result.minListOverflow).toBeLessThanOrEqual(0);
+        expect(result.minSlotOverflow).toBeLessThanOrEqual(0.5);
         if (coarse) {
           // Width is real, not borrowed from a neighbour; and no slot stacks
           // two controls into one 44px row.
