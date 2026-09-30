@@ -118,7 +118,10 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
-import { OPEN_APPROVAL_QUEUE_EVENT } from '../components/status/approvalReveal';
+import {
+  OPEN_APPROVAL_QUEUE_EVENT,
+  getApprovalClaims,
+} from '../components/status/approvalReveal';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import type { ChatSession } from '../types';
 
@@ -227,6 +230,11 @@ describe('ChatDockBody floating status pill', () => {
       expect(pill()?.getAttribute('data-chat-status-pill')).toBe('approval'),
     );
     expect(pill()?.textContent).toContain('Approval needed');
+    // The mounted pill owns this chat's approval, so the app-wide pill does
+    // not float a duplicate over the pane.
+    await waitFor(() =>
+      expect(getApprovalClaims().has(buildSession().id)).toBe(true),
+    );
     // The transcript (a lazy chunk) has rendered the assistant row…
     await screen.findByText('Editing.');
     // …without the inline status the pill replaces.
