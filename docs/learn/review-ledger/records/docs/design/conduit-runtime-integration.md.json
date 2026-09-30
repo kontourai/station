@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/conformance/station-runtime-conformance.json","digest":"0e490185dc517a73778f26db61735d8d0fe74f597ebca0ed1afc46c62c620bf3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"pnpm-lock.yaml","digest":"e4701d4b51b08d71c7f9b20f6ce95e3f6830a213754a39d1fb56b9b698f694f5","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
