@@ -703,8 +703,8 @@ describe('native device proof binding service (station#2893)', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const badSurfaces: unknown[] = [
-      surface({ kind: 'browser-extension' as never }),
-      surface({ channel: 'canary' as never }),
+      { ...surface(), kind: 'browser-extension' },
+      { ...surface(), channel: 'canary' },
       surface({ appIdentifier: '-leading-dot' }),
       surface({ appIdentifier: 'a b' }),
       surface({ keyThumbprint: 'short' }),
@@ -722,13 +722,15 @@ describe('native device proof binding service (station#2893)', () => {
     });
     for (const bad of badSurfaces) {
       expect(() =>
-        bindingService.createBinding({
-          bindingId,
-          deviceId,
-          surface: bad as NativeDeviceClientSurface,
-          jwk,
-          approval,
-        }),
+        Reflect.apply(bindingService.createBinding, bindingService, [
+          {
+            bindingId,
+            deviceId,
+            surface: bad,
+            jwk,
+            approval,
+          },
+        ]),
       ).toThrow('invalid_native_surface');
     }
     expect(
@@ -1150,22 +1152,26 @@ describe('native device proof binding service (station#2893)', () => {
       jwk: p256PublicJwk(),
     };
     expect(() =>
-      bindingService.createBinding({
-        bindingId: forged.bindingId,
-        deviceId,
-        surface: surface(),
-        jwk: p256PublicJwk(),
-        approval: forged as never,
-      }),
+      Reflect.apply(bindingService.createBinding, bindingService, [
+        {
+          bindingId: forged.bindingId,
+          deviceId,
+          surface: surface(),
+          jwk: p256PublicJwk(),
+          approval: forged,
+        },
+      ]),
     ).toThrow(NativeDeviceProofBindingError);
     expect(() =>
-      bindingService.revokeBinding({
-        bindingId: forged.bindingId,
-        deviceId,
-        surface: surface(),
-        jwk: forged.jwk,
-        approval: forged as never,
-      }),
+      Reflect.apply(bindingService.revokeBinding, bindingService, [
+        {
+          bindingId: forged.bindingId,
+          deviceId,
+          surface: surface(),
+          jwk: forged.jwk,
+          approval: forged,
+        },
+      ]),
     ).toThrow(NativeDeviceProofBindingError);
     expect(() =>
       new NativeDeviceProofOperatorAuthority().approve({

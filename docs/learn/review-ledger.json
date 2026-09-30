@@ -3565,7 +3565,7 @@
         },
         {
           "path": "src-server/routes/system/archive-update.ts",
-          "digest": "11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9"
+          "digest": "97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -3642,11 +3642,10 @@
         "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
         "Wording: nightly core reason corrected; lines re-wrapped.",
         "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
-        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold.",
-        "Rechecked against the main-side archive-update redirect-following change: release channels remain pointers and the manifest URL stays the recorded https origin of trust, with redirect hops followed by hand, https-only and bounded, and the signature still vouching for the bytes; the ADR's channel-as-pointer claims remain accurate."
+        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
       ],
       "documentDigest": "d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf"
+      "sourceRevision": "54e0ffb5c1ae765b4127f031e525793087fb9669"
     },
     {
       "path": "docs/architecture.md",
@@ -4044,7 +4043,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "a089477c81ad23807a3ff261af24a424647fbc1a8b67d31fdf582757b11a3333",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf",
+      "sourceRevision": "c9903b770fbe1dbb6f07d9efea9127b9838afffd",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5760,7 +5759,7 @@
         },
         {
           "path": "src-server/services/ssh/native-device-proof-binding-service.ts",
-          "digest": "a113e3c0e0da3f74a1b448f46dd6dc323af2fe69ef305d3bbb0818a416add62c"
+          "digest": "fab664c4a6d3e1b5c3bb9cc5e7c6189470d4e55f6b20a10d416d2fef767b48e5"
         },
         {
           "path": "src-server/services/identity/native-device-proof-verifier.ts",
@@ -5825,7 +5824,8 @@
         "Traced the native Device proof vault, binding sidecar, verifier, replay owner, private peer nonce and credential-free Request principal. Added their source navigation and explicit unmounted/operator-authentication/host-IPC limits; account keyring storage compatibility is preserved. Source tests do not establish packaged Project access.",
         "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled.",
         "Reviewed shared 4096-character compact Device proof limit and SDK pre-sign refusal against the verifier and the executed maximum-surface/path regression. SDK documentation now states the 2048 path and aggregate bound. Module-map unmounted status, integration navigation and SDK scope instructions remain accurate; no admission capability is activated.",
-        "Rechecked the native Device foundations entry against the station#2893 candidate-ID slice: the binding sidecar now accepts the host-proposed canonical UUIDv4 binding ID under a tuple-bound approval context; it remains unmounted with no operator authentication or request admission, so the recorded claims stay accurate."
+        "Rechecked the native Device foundations entry against the station#2893 candidate-ID slice: the binding sidecar now accepts the host-proposed canonical UUIDv4 binding ID under a tuple-bound approval context; it remains unmounted with no operator authentication or request admission, so the recorded claims stay accurate.",
+        "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed."
       ]
     },
     {
@@ -7585,8 +7585,8 @@
     },
     {
       "path": "docs/design/connection-broker.md",
-      "documentDigest": "9e133634ad90fa214b01f1728ebca6224094d90bba6c34c2bbe57bfbab629ab6",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf",
+      "documentDigest": "75dd0be08f21d05c772c52cbb88b1ac42acc148049f84ff63ba7a92f7afef210",
+      "sourceRevision": "c9903b770fbe1dbb6f07d9efea9127b9838afffd",
       "kind": "design",
       "state": "classified",
       "summary": "Dated requirements and local milestones mapped to broker/connector/protected dispatcher/Device enrollment owners; preserves production/native enablement boundary.",
@@ -7626,7 +7626,7 @@
         },
         {
           "path": "src-server/services/ssh/native-device-proof-binding-service.ts",
-          "digest": "a113e3c0e0da3f74a1b448f46dd6dc323af2fe69ef305d3bbb0818a416add62c"
+          "digest": "fab664c4a6d3e1b5c3bb9cc5e7c6189470d4e55f6b20a10d416d2fef767b48e5"
         },
         {
           "path": "src-server/services/identity/native-device-proof-verifier.ts",
@@ -7653,7 +7653,8 @@
         "Traced the native Device proof vault, binding sidecar, verifier, replay owner, private peer nonce and credential-free Request principal. Added their source navigation and explicit unmounted/operator-authentication/host-IPC limits; account keyring storage compatibility is preserved. Source tests do not establish packaged Project access.",
         "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled.",
         "Reviewed shared 4096-character compact Device proof limit and SDK pre-sign refusal against the verifier and the executed maximum-surface/path regression. SDK documentation now states the 2048 path and aggregate bound. Module-map unmounted status, integration navigation and SDK scope instructions remain accurate; no admission capability is activated.",
-        "Rewrote the station#2893 binding paragraph for the reviewed Sol6.1 decision: the host mints a provisional canonical UUIDv4 candidate binding ID before creating its Device key and the operator approves the exact tuple (Station ID, approved Device ID, full surface, Device public JWK and server-recomputed thumbprint, no secret); the server accepts the host-proposed ID, which removes the independent-random host/server UUID mismatch; uniqueness spans active and revoked records, exact active retries return recorded state without re-approval, and host reconciliation retains the provisional key until a definitive terminal outcome or confirmed cancellation."
+        "Rewrote the station#2893 binding paragraph for the reviewed Sol6.1 decision: the host mints a provisional canonical UUIDv4 candidate binding ID before creating its Device key and the operator approves the exact tuple (Station ID, approved Device ID, full surface, Device public JWK and server-recomputed thumbprint, no secret); the server accepts the host-proposed ID, which removes the independent-random host/server UUID mismatch; uniqueness spans active and revoked records, exact active retries return recorded state without re-approval, and host reconciliation retains the provisional key until a definitive terminal outcome or confirmed cancellation.",
+        "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed."
       ]
     },
     {
@@ -10572,7 +10573,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf",
+      "sourceRevision": "c9903b770fbe1dbb6f07d9efea9127b9838afffd",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10856,7 +10857,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
-        "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate."
+        "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate.",
+        "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed."
       ]
     },
     {
@@ -14914,7 +14916,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf",
+      "sourceRevision": "c9903b770fbe1dbb6f07d9efea9127b9838afffd",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -15013,7 +15015,8 @@
         "Only change among its sources is api.md's branding theme paragraph (now naming validateBrandOverride plus Station's stricter checks); this page's links and claims about the API reference still hold.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
         "Reviewed shared 4096-character compact Device proof limit and SDK pre-sign refusal against the verifier and the executed maximum-surface/path regression. SDK documentation now states the 2048 path and aggregate bound. Module-map unmounted status, integration navigation and SDK scope instructions remain accurate; no admission capability is activated.",
-        "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate."
+        "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate.",
+        "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed."
       ]
     },
     {
@@ -23908,7 +23911,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf",
+      "sourceRevision": "c9903b770fbe1dbb6f07d9efea9127b9838afffd",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -24155,7 +24158,8 @@
         "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. No contract type changed on either side. Prose accurate.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
-        "Extended the native-device-proof contract row and the NativeDeviceBindingCandidateV1/Snapshot docstrings for the host-proposed candidate binding ID: protocol data only, public JWK with no secret, strict version identity; verified the remaining rows and subpath table still match the contracts sources."
+        "Extended the native-device-proof contract row and the NativeDeviceBindingCandidateV1/Snapshot docstrings for the host-proposed candidate binding ID: protocol data only, public JWK with no secret, strict version identity; verified the remaining rows and subpath table still match the contracts sources.",
+        "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed."
       ]
     },
     {
@@ -30170,7 +30174,7 @@
     },
     {
       "path": "packages/contracts/AGENTS.md",
-      "sourceRevision": "d80494355ce54c15b158367a166396729705adaf",
+      "sourceRevision": "c9903b770fbe1dbb6f07d9efea9127b9838afffd",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the contracts reference and requires domain-specific imports, explicit compatibility, and focused consumer checks. The prohibition on runtime helpers/parsers is normative, not a claim that the existing package contains none.",
@@ -30197,7 +30201,8 @@
         "Integration source review through 2ef40ae83: docs/reference/contracts.md now names the ServiceUpdateProgress system-status shape. This policy routes to that reference and duplicates none of its shape list, so the prose is accurate. Source review is separate from executed test evidence.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
-        "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate."
+        "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate.",
+        "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed."
       ]
     },
     {
