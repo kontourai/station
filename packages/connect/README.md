@@ -10,7 +10,7 @@ not grant any of those permissions.
 [package.json](./package.json), not an advertised standalone npm installation.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
-`/application-channel`, `/self-hosted-browser`, `/native-diagnostic-echo` and
+`/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
 `/native-application`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 

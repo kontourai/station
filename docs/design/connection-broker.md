@@ -441,7 +441,7 @@ those acceptance requirements.
 
 ### Native Device proof on the application channel (#2893)
 
-**Decision for the first native pilot; runtime admission pending.** The Tauri host
+**Decision for the first native pilot; server admission is source opt-in.** The Tauri host
 keeps a paired Device bearer in its OS keyring and attaches it to host-owned
 HTTP requests in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
 native WebRTC application client in [#2856](https://github.com/kontourai/station/pull/2856)
@@ -537,19 +537,22 @@ native account continuation) re-reads binding, paired Device and account
 binding through it — including before and after each provider await — never
 carrying identity from headers. Station-runtime composes binding, replay and
 admission only behind `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with a supported
-provider/session capability; anything else fails closed at startup. The
+provider/session capability and native connector; `0` disables the pilot and
+unsupported opt-in configurations fail closed at startup. The
 exchange attempt limiter is keyed by the verified Device identity, not the
 absent-Authorization bucket.
 
 **Evidence boundaries.** The production-composition suite
 ([runtime-routes native pilot](../../src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts))
 drives the real HTTP admission, real application channel and Pion adapter with
-a faked broker transport, real pairing/binding/replay/membership stores and a
-fixture provider module. It does not prove a packaged Tauri host, the
+a faked peer transport, real pairing/binding/replay/membership stores and the
+real local-account provider. It does not prove a packaged Tauri host, the
 host-signing IPC, physical devices or a production identity provider. The
-approval-context factory still does not authenticate an operator; the operator
-route and host signing IPC still need to establish and consume the reviewed
-binding.
+approval-context factory still does not authenticate an operator. The opt-in
+runtime mounts an operator-credential-only approval/readback route that checks
+current authority and the exact binding tuple. Native Device proofs, account
+membership and home possession cannot approve a binding. Host signing IPC and
+ordinary native client composition remain unbuilt.
 
 ### Transport qualification
 

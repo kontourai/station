@@ -611,7 +611,10 @@ mid-delivery. A presented proof never falls back to a bearer or cookie, and a
 proof-bearing request can never read as the local operator.
 
 Limits: this is not packaged-Tauri, physical-device or production-identity
-evidence; the host signing IPC and operator approval route remain unbuilt.
+evidence. The opt-in runtime mounts operator-only binding approval and public
+readback under `/api/pairing/native-device-bindings`; native proof authority
+cannot enter that operator path. Host signing IPC, ordinary native client
+composition and fresh relay-only native enrollment remain unbuilt.
 See [the broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
 for the protocol and the production-composition test for the exercised
 boundary.

@@ -129,10 +129,16 @@ while preserving the account vault's stored format. The proposed native Device
 path also has a [binding sidecar](../../src-server/services/ssh/native-device-proof-binding-service.ts),
 [JWS verifier](../../src-server/services/identity/native-device-proof-verifier.ts),
 [replay store](../../src-server/services/identity/native-device-replay-store.ts)
-and a separate credential-free Request principal. These foundations remain
-unmounted: they do not authenticate an operator or authorize Project requests.
-The [broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
-owns the remaining approval, host-signing and runtime composition requirements.
+and a separate credential-free Request principal. The
+[native runtime factory](../../src-server/runtime/bootstrap/native-device-proof-runtime.ts)
+composes server admission behind explicit opt-in and provider/native connector
+checks. The [binding management routes](../../src-server/routes/system/native-device-proof-binding-routes.ts)
+require current operator credentials and expose historical/current binding
+readback. Native proofs authorize only the pilot account and Project-read
+surface, with independent account and membership checks. Rust signing IPC and
+ordinary native client composition remain unmounted; the
+[broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)
+owns their integration and acceptance requirements.
 
 The separate [paired-Device custody owner](../../src-desktop/src/native_device_custody.rs)
 captures authenticated pairing identity in an app/channel-bound keyring

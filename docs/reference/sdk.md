@@ -1495,11 +1495,12 @@ The canonical path may contain up to 2,048 characters, but the complete compact
 JWS must fit 4,096 characters. A combination of long path and surface fields
 can exceed that aggregate bound; the helper refuses it before invoking the signer.
 
-This is a protocol component under #2893, not an enabled authentication path.
-Station must still store an operator-approved Device proof binding, verify the
-JWS and exact body against private native peer provenance, consume replay state
-before dispatch, and apply current Device, account, Project and resource
-authorization. No product UI or Tauri signing command consumes this helper yet.
+The source-opt-in server pilot under #2893 stores operator-approved bindings,
+verifies the JWS and exact body against private native peer provenance, consumes
+replay state before dispatch, and applies independent current Device, account
+and Project authorization. Its protected surface is limited to native account
+challenge/exchange and Project reads. No product UI or Tauri signing command
+consumes this helper yet; it does not establish a packaged native journey.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project

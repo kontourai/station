@@ -151,8 +151,9 @@ ES256 operations.
 
 The Device vault registers no Tauri command or renderer capability and has no
 production signing caller. A key and owner tuple do not establish operator
-approval. Bounded signing IPC, runtime Device authorization and a packaged
-Project journey remain integration requirements. The software key is decoded
+approval. Server-side Device authorization exists in the opt-in pilot;
+bounded host signing IPC and a packaged Project journey remain integration
+requirements. The software key is decoded
 inside Rust for signing; this is not hardware-backed non-exportability.
 
 ### Desktop paired-Device identity custody

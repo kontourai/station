@@ -2512,6 +2512,26 @@ admission does not replace authentication or scope. See
 
 ---
 
+## Opt-in native Device proof binding management
+
+```http
+GET /api/pairing/native-device-bindings/:bindingId
+POST /api/pairing/native-device-bindings/:bindingId/approve
+```
+
+The native proof pilot mounts these routes only when its supported provider and
+native connector are configured. Both require a current operator credential and
+the `access:manage` tier; Device credentials, native proofs, account membership
+and home possession cannot approve a binding.
+
+POST accepts `{operation: "create" | "revoke", candidate}` with the exact
+`NativeDeviceBindingCandidateV1` tuple and matching path ID. GET projects public
+historical binding data plus `currentDeviceBinding`, which says nothing about
+account or Project authority. Responses use `Cache-Control: no-store`. Missing
+readback does not establish cancellation of an ambiguous approval request.
+See [deployment authentication](../guides/deployment-authentication.md)
+for the pilot's scope and remaining native-client limitations.
+
 ## Bind a paired device to its verified person
 
 ```http
