@@ -54,6 +54,7 @@ describe('device pairing notifications', () => {
       ...pending,
       id: 'notification-1',
       source: 'device-pairing',
+      priority: 'high',
       status: 'delivered',
       scheduledAt: null,
       deliveredAt: now,

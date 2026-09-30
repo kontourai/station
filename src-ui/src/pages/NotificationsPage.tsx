@@ -106,10 +106,10 @@ export function NotificationsPage() {
   );
   const attentionItems = useMemo(() => {
     const pending = pendingAttentionItems(filtered.items);
-    const targets = [exactApproval, exactPairing].filter(
-      (item) =>
-        item !== null &&
-        !pending.some((pendingItem) => pendingItem.id === item.id),
+    const targets = [exactApproval, exactPairing].flatMap((item) =>
+      item && !pending.some((pendingItem) => pendingItem.id === item.id)
+        ? [item]
+        : [],
     );
     return [...targets, ...pending];
   }, [exactApproval, exactPairing, filtered.items]);
