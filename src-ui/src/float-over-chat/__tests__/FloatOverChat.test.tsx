@@ -311,6 +311,8 @@ afterEach(() => {
 describe('a dialog the page holds for the person driving from the float', () => {
   test('is shown and answerable in the float, with Open in pane, and answering it clears it', async () => {
     h.tone = 'you';
+    // As the real opener answers: an outcome, here a success.
+    h.opener.mockReturnValue({ ok: true });
     sessions = [
       session({
         pendingDialog: {
