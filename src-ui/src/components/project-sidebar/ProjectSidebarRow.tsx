@@ -42,13 +42,13 @@ export function ProjectSidebarRow({
   /** The set-aware color `projectAccents` allocates over the sidebar's projects. */
   accent?: string;
   /**
-   * Sessions in this project's live lanes — Needs you plus Active now, the
+   * Sessions in this project's live lanes — Needs you, Running and Idle, the
    * Sessions list's own populations scoped to this project (archive#3202).
    */
   liveCount?: number;
   /**
-   * What that number means, in the lanes' own words ("Needs you: 2 · Active
-   * now: 1"). Supplied by the same derivation that produced `liveCount`, never
+   * What that number means, in the lanes' own words ("Needs you: 2 · Running:
+   * 1"). Supplied by the same derivation that produced `liveCount`, never
    * composed here, so the number and its explanation cannot drift.
    */
   liveLabel?: string;

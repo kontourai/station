@@ -392,7 +392,9 @@ const NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT: usize = 12;
 /// (see `native_http_agent_config` and `native_http_send_body_budget`): at most
 /// resolve 10s + connect 15s (+ up to 15s more for a TLS handshake whose peer
 /// goes silent) + request headers 15s + response headers 20s = 75s for a
-/// bodiless request. A request with a body adds its send-body budget,
+/// bodiless request. Foreground chat dispatch gets 60s for response headers
+/// instead of 20s, adding at most 40s to these bounds. A request with a body
+/// adds its send-body budget,
 /// `max(120s, body_len / 32 KiB/s)`, plus ureq's 1s `Expect: 100-continue`
 /// wait: 196s up to 3.75 MiB, rising to about 14 minutes (75s + 768s + 1s)
 /// for the 24 MiB `NATIVE_HTTP_BODY_LIMIT`.
@@ -3335,20 +3337,40 @@ fn native_http_send_body_budget(body_len: usize, floor: Duration, min_rate: u64)
 }
 
 /// Applies the per-request send-body budget through ureq's request-level
-/// configuration; every other timeout stays the agent's.
-fn native_http_request_with_send_body_budget(
+/// configuration. Foreground dispatch waits for provider acceptance before headers.
+fn native_http_request_with_budgets(
     agent: &ureq::Agent,
     request: ureq::http::Request<Vec<u8>>,
     floor: Duration,
     min_rate: u64,
+    response_budget: Duration,
+    foreground_response_budget: Duration,
 ) -> ureq::http::Request<Vec<u8>> {
     let budget = native_http_send_body_budget(request.body().len(), floor, min_rate);
+    let path = request.uri().path();
+    let foreground = request.method() == ureq::http::Method::POST
+        && (matches!(
+            path,
+            "/api/orchestration/chat"
+                | "/api/orchestration/chat/delegated"
+                | "/api/orchestration/chat/background"
+        ) || path
+            .strip_prefix("/api/orchestration/chat/")
+            .and_then(|rest| rest.strip_suffix("/continue"))
+            .is_some_and(|id| !id.is_empty() && !id.contains('/')));
+    let response_budget = if foreground {
+        foreground_response_budget
+    } else {
+        response_budget
+    };
     agent
         .configure_request(request)
         .timeout_send_body(Some(budget))
+        .timeout_recv_response(Some(response_budget))
         .build()
 }
 const NATIVE_HTTP_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
+const NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
     ureq::Agent::config_builder()
@@ -3690,11 +3712,13 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
-        let request = native_http_request_with_send_body_budget(
+        let request = native_http_request_with_budgets(
             &agent,
             request,
             NATIVE_HTTP_SEND_BODY_MIN_TIMEOUT,
             NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
         );
         run_admitted_native_http_exchange(
             slot,
@@ -16532,7 +16556,14 @@ mod tests {
             .uri(format!("{origin}/api/uploads"))
             .body(vec![0_u8; body_len])
             .unwrap();
-        let request = native_http_request_with_send_body_budget(&agent, request, floor, min_rate);
+        let request = native_http_request_with_budgets(
+            &agent,
+            request,
+            floor,
+            min_rate,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+        );
         let result = agent
             .run(request)
             .map(|response| response.status().as_u16());
@@ -16566,6 +16597,73 @@ mod tests {
             matches!(error, ureq::Error::Timeout(ureq::Timeout::SendBody)),
             "expected a send-body timeout, got {error:?}"
         );
+    }
+
+    #[test]
+    fn native_http_foreground_dispatch_receives_delayed_headers_within_its_own_budget() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        for (method, path, foreground) in [
+            ("POST", "/api/orchestration/chat", true),
+            ("POST", "/api/orchestration/chat/delegated", true),
+            ("POST", "/api/orchestration/chat/background", true),
+            ("POST", "/api/orchestration/chat/thread-1/continue", true),
+            ("GET", "/api/orchestration/chat", false),
+            ("POST", "/api/orchestration/chat/other", false),
+            ("POST", "/api/config", false),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                let (mut connection, _) = listener.accept().unwrap();
+                connection
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut received = Vec::new();
+                let mut buf = [0_u8; 1024];
+                while !received.windows(4).any(|w| w == b"\r\n\r\n") {
+                    let count = connection.read(&mut buf).unwrap();
+                    assert!(count > 0);
+                    received.extend_from_slice(&buf[..count]);
+                }
+                std::thread::sleep(Duration::from_millis(300));
+                let _ =
+                    connection.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+            });
+            let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+            let request = ureq::http::Request::builder()
+                .method(method)
+                .uri(format!("{origin}{path}"))
+                .body(Vec::new())
+                .unwrap();
+            let request = native_http_request_with_budgets(
+                &agent,
+                request,
+                Duration::from_secs(1),
+                1024,
+                Duration::from_millis(100),
+                Duration::from_secs(2),
+            );
+            let result = agent.run(request);
+            server.join().unwrap();
+            if foreground {
+                assert_eq!(
+                    result
+                        .expect("foreground dispatch receives delayed headers")
+                        .status(),
+                    204,
+                    "{method} {path}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        result,
+                        Err(ureq::Error::Timeout(ureq::Timeout::RecvResponse))
+                    ),
+                    "ordinary request retains its deadline: {method} {path}"
+                );
+            }
+        }
     }
 
     #[test]

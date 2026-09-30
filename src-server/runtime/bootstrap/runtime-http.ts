@@ -78,6 +78,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { outwardTransportError } from '../../utils/outward-error.js';
 import { isRouteError, type RouteError } from '../../utils/route-error.js';
 import {
   buildRuntimeRouteVocabulary,
@@ -350,6 +351,25 @@ export function configureRuntimeHttp({
       }),
     );
   }
+
+  // Framework handlers catch provider exceptions themselves, bypassing onError.
+  app.use('/agents/:slug/chat', async (c, next) => {
+    await next();
+    if (c.req.method !== 'POST' || c.res.status < 500) return;
+    const correlationId = randomUUID();
+    logger.error('Framework chat request failed', {
+      correlationId,
+      status: c.res.status,
+    });
+    const message = outwardTransportError('sse');
+    c.res = new Response(
+      JSON.stringify({ error: message, message, correlationId }),
+      {
+        status: c.res.status,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+  });
 
   app.use('*', async (c, next) => {
     await next();

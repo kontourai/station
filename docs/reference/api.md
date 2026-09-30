@@ -163,6 +163,15 @@ not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
 
+`start-step` and `finish-step` frames carry only their type. Provider request
+and response bodies, headers, metadata and nested errors are not sent in these
+frames. Text and tool frames keep their existing contracts.
+
+The framework compatibility route `POST /agents/:slug/chat` remains behind
+Station authentication. Its HTTP 5xx responses contain fixed failure text and
+a correlation ID, never the provider's raw error message. Successful streams
+and client-side 4xx refusals keep the framework's response contract.
+
 <a id="agent-management-1"></a>
 
 ### Default Agent
