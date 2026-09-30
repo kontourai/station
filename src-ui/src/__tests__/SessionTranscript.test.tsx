@@ -45,6 +45,12 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
   },
 }));
 
+const ensureStream = vi.hoisted(() => vi.fn(() => () => {}));
+vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: ensureStream,
+}));
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionTranscript } from '../components/session-detail/SessionTranscript';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import {
@@ -78,15 +84,18 @@ function renderTranscript(isStreaming = true) {
   const session = { threadId: THREAD, conversationId: THREAD };
   // The app mounts PreviewProvider above every surface (main.tsx); a file
   // part's chip opens through it.
+  const queryClient = new QueryClient();
   const tree = (streaming: boolean) => (
-    <PreviewProvider>
-      <SessionTranscript
-        apiBase={API}
-        session={session}
-        agentLabel="Code Reviewer"
-        isStreaming={streaming}
-      />
-    </PreviewProvider>
+    <QueryClientProvider client={queryClient}>
+      <PreviewProvider>
+        <SessionTranscript
+          apiBase={API}
+          session={session}
+          agentLabel="Code Reviewer"
+          isStreaming={streaming}
+        />
+      </PreviewProvider>
+    </QueryClientProvider>
   );
   const view = render(tree(isStreaming));
   return {
@@ -106,6 +115,25 @@ beforeEach(() => {
 });
 
 describe('SessionTranscript source', () => {
+  test('starts the app-wide live stream itself, so the detail streams with no chat dock mounted', () => {
+    ensureStream.mockClear();
+    const view = renderTranscript();
+    expect(ensureStream).toHaveBeenCalledWith(API, expect.anything());
+    live([
+      ev({ method: 'turn.started', turnId: 'solo', prompt: 'Alone' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'solo',
+        itemId: 's',
+        delta: 'streamed',
+      }),
+    ]);
+    expect(screen.getByTestId('session-transcript').textContent).toContain(
+      'streamed',
+    );
+    view.unmount();
+  });
+
   test('a streamed answer longer than the per-session feed cap keeps its first words and its early tool call', async () => {
     renderTranscript();
     const words = Array.from({ length: 400 }, (_, i) => `w${i + 1}`);
@@ -198,6 +226,44 @@ describe('SessionTranscript source', () => {
     const before = windowState.revisions.at(-1);
     view.setStreaming(false);
     expect(windowState.revisions.at(-1)).toBe((before ?? 0) + 1);
+  });
+
+  test('a re-read after a long turn ends (newest-first tail + anchor, max sequence = watermark) shows the whole answer', () => {
+    // The shape the conversation route returns for a long finished turn
+    // (listNewestEventWindow): the turn's `turn.started` anchor, then only the
+    // TAIL of its deltas up to the head, then `turn.completed` carrying the
+    // full output; its highest sequence equals the reported watermark.
+    const words = Array.from({ length: 300 }, (_, i) => `v${i + 1}`);
+    windowState.events = [
+      {
+        sequence: 100,
+        event: ev({ method: 'turn.started', turnId: 'L', prompt: 'Long' }),
+      },
+      ...words.slice(250).map((word, index) => ({
+        sequence: 351 + index,
+        event: ev({
+          method: 'content.text-delta',
+          turnId: 'L',
+          itemId: 'L',
+          delta: `${word} `,
+        }),
+      })),
+      {
+        sequence: 401,
+        event: ev({
+          method: 'turn.completed',
+          turnId: 'L',
+          finishReason: 'stop',
+          outputText: `${words.join(' ')} `,
+        }),
+      },
+    ];
+    windowState.watermark = 401;
+    renderTranscript(false);
+    const [, answer] = screen.getAllByTestId('session-transcript-message');
+    expect(answer.textContent).toMatch(/v1(?!\d)/);
+    expect(answer.textContent).toContain('v150');
+    expect(answer.textContent).toContain('v300');
   });
 
   test('live frames already in the window are not rendered twice, and frames at or below its watermark are ignored', () => {

@@ -489,7 +489,11 @@ export function useMutableSessionDetailState({
   // station-delivery Flow run nor a Builder sidecar can be attached to them.
   // Avoid two expected 404 probes every time a normal resumed conversation
   // opens; a task-bound session still performs both provenance lookups.
-  const hasTaskBinding = Boolean(session.delegation?.taskId);
+  // A paired-Station (peer) record has no local run: its task, and any Flow
+  // or Builder run bound to it, live on the peer.
+  const hasTaskBinding =
+    Boolean(session.delegation?.taskId) &&
+    session.delegation?.environmentKind !== 'peer';
   const { data: workflowTasks = [] } =
     useWorkflowTasksQuery(workflowProjectSlug);
   // A finished (`completed`) session's run bindings no longer move under it:

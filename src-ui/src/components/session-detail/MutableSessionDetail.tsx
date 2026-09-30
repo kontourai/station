@@ -195,14 +195,43 @@ export function MutableSessionDetail({
     // the scroll ONCE when that read settles — never the focus again.
     revealAwaitsTranscriptRef.current = !transcriptSettledRef.current;
   }, [evidenceReveal, threadId]);
+  const stopFollowingRevealRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopFollowingRevealRef.current?.(), []);
   const onTranscriptSettledChange = useCallback((settled: boolean) => {
     transcriptSettledRef.current = settled;
     if (!settled || !revealAwaitsTranscriptRef.current) return;
     revealAwaitsTranscriptRef.current = false;
     const region = evidenceRegionRef.current;
-    if (region && typeof region.scrollIntoView === 'function') {
-      region.scrollIntoView({ block: 'start' });
-    }
+    if (!region || typeof region.scrollIntoView !== 'function') return;
+    region.scrollIntoView({ block: 'start' });
+    // Rendered markdown and tool rows load lazily and can grow the
+    // conversation again just after it settles. For at most one second, and
+    // only until the reader scrolls, touches or types, follow that growth —
+    // scroll only, never focus. Bounded on purpose: after that the reader
+    // owns the scroll position.
+    const transcript = region
+      .closest('.sessions-detail__scroll')
+      ?.querySelector('[data-testid="session-transcript"]');
+    const scroller = region.closest('.sessions-detail__scroll');
+    if (!transcript || !scroller || typeof ResizeObserver === 'undefined')
+      return;
+    stopFollowingRevealRef.current?.();
+    const observer = new ResizeObserver(() =>
+      region.scrollIntoView({ block: 'start' }),
+    );
+    const readerMoved = ['wheel', 'touchstart', 'keydown'] as const;
+    const stop = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      for (const type of readerMoved) scroller.removeEventListener(type, stop);
+      if (stopFollowingRevealRef.current === stop)
+        stopFollowingRevealRef.current = null;
+    };
+    const timer = setTimeout(stop, 1_000);
+    for (const type of readerMoved)
+      scroller.addEventListener(type, stop, { passive: true });
+    observer.observe(transcript);
+    stopFollowingRevealRef.current = stop;
   }, []);
 
   const [confirmStop, setConfirmStop] = useState(false);
@@ -334,6 +363,7 @@ export function MutableSessionDetail({
           errorMessage={attentionErrorMessage}
           onRetry={attentionRefetch}
           items={visibleAttentionItems}
+          answerHere={!isPeerRecord}
         />
 
         {isPeerRecord ? (

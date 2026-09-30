@@ -172,6 +172,53 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
+  test('follows lazy growth of the conversation for at most a second after settling, and stops once the reader scrolls', () => {
+    const callbacks: Array<() => void> = [];
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          callbacks.push(callback);
+        }
+        observe() {}
+        disconnect() {
+          disconnect();
+        }
+      },
+    );
+    vi.useFakeTimers();
+    try {
+      transcript.settled = false;
+      const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
+      act(() => transcript.set(true));
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      // Markdown lands and the conversation grows: follow it.
+      act(() => callbacks.at(-1)!());
+      expect(scrollIntoView).toHaveBeenCalledTimes(3);
+      // The reader scrolls: the follow ends.
+      const scroller = view.container.querySelector(
+        '.sessions-detail__scroll',
+      ) as HTMLElement;
+      fireEvent.wheel(scroller);
+      expect(disconnect).toHaveBeenCalled();
+      view.unmount();
+
+      // Bounded in time too.
+      disconnect.mockClear();
+      transcript.settled = false;
+      renderDetail({ threadId: 'station:thread-1', token: 2 });
+      act(() => transcript.set(true));
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('a reveal after the conversation already settled scrolls once only', () => {
     transcript.settled = true;
     const view = renderDetail({ threadId: 'station:thread-1', token: 1 });

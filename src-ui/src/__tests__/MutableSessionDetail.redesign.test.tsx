@@ -26,6 +26,10 @@ const interruptOrchestrationTurn = vi.hoisted(() =>
 const acknowledge = vi.hoisted(() => vi.fn());
 const attention = vi.hoisted(() => ({ items: [] as unknown[] }));
 const receipts = vi.hoisted(() => ({ data: [] as unknown[] }));
+const runProbes = vi.hoisted(() => ({
+  flow: vi.fn((..._args: unknown[]) => ({ data: null })),
+  builder: vi.fn((..._args: unknown[]) => ({ data: null })),
+}));
 const agents = vi.hoisted(() => ({
   list: [{ slug: 'reviewer', name: 'Code Reviewer' }] as unknown[],
 }));
@@ -39,8 +43,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: vi.fn(),
   }),
   useWorkflowTasksQuery: () => ({ data: [] }),
-  useSessionFlowRunQuery: () => ({ data: null }),
-  useSessionBuilderRunQuery: () => ({ data: null }),
+  useSessionFlowRunQuery: runProbes.flow,
+  useSessionBuilderRunQuery: runProbes.builder,
   useOrchestrationCommandReceiptsQuery: () => ({
     data: receipts.data,
     isLoading: false,
@@ -74,6 +78,10 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
     settled: true,
     catchingUp: false,
   }),
+}));
+
+vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => () => {},
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -417,6 +425,60 @@ describe('fix round', () => {
     }
   });
 
+  test('a peer record runs no local run probes and offers no inline answer to its attention item', () => {
+    runProbes.flow.mockClear();
+    runProbes.builder.mockClear();
+    attention.items = [
+      {
+        id: `needs-input:${THREAD}`,
+        kind: 'needs_input',
+        title: 'Planner is waiting on you',
+        createdAt: '2026-09-28T00:00:02.000Z',
+        updatedAt: '2026-09-28T00:00:02.000Z',
+        sessionId: THREAD,
+        source: { threadId: THREAD },
+      },
+    ];
+    renderDetail(
+      baseSession({
+        lifecycleState: 'needs_input',
+        hasActiveTurn: false,
+        delegation: {
+          taskId: 'task:peer-2',
+          environmentKind: 'peer',
+          mode: 'isolated-child',
+        },
+      }),
+    );
+    for (const probe of [runProbes.flow, runProbes.builder]) {
+      expect(probe).toHaveBeenCalled();
+      expect(
+        probe.mock.calls.every(
+          (call) => (call[2] as { enabled?: boolean }).enabled === false,
+        ),
+      ).toBe(true);
+    }
+    expect(screen.queryByTestId('attention-item')).toBeNull();
+    const elsewhere = screen.getByTestId('attention-item-elsewhere');
+    expect(elsewhere.textContent).toContain('Planner is waiting on you');
+    expect(elsewhere.textContent).toContain('paired Station');
+    expect(within(elsewhere).queryByRole('textbox')).toBeNull();
+  });
+
+  test('a local delegated task still probes its runs (control)', () => {
+    runProbes.flow.mockClear();
+    renderDetail(
+      baseSession({
+        delegation: { taskId: 'task:local-1', mode: 'isolated-child' },
+      }),
+    );
+    expect(
+      runProbes.flow.mock.calls.some(
+        (call) => (call[2] as { enabled?: boolean }).enabled === true,
+      ),
+    ).toBe(true);
+  });
+
   test('an already-acknowledged failure offers no Dismiss', () => {
     attention.items = [
       {
@@ -459,6 +521,36 @@ describe('fix round', () => {
     );
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(interruptOrchestrationTurn).not.toHaveBeenCalled();
+  });
+
+  test('a turn that ends while Stop is being confirmed lands focus on Open in chat, not <body>', async () => {
+    const queryClient = new QueryClient();
+    const tree = (session: any) => (
+      <QueryClientProvider client={queryClient}>
+        <MutableSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onTaskChanged={vi.fn()}
+          events={[]}
+          connected
+          visualViewport={{ style: {}, height: 900 } as any}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(tree(baseSession()));
+    const stop = screen.getByRole('button', { name: 'Stop…' });
+    stop.focus();
+    fireEvent.click(stop);
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    view.rerender(
+      tree(baseSession({ lifecycleState: 'idle', hasActiveTurn: false })),
+    );
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Open in chat' }),
+      ),
+    );
   });
 
   test('when Stop… goes away with focus on nothing, focus lands on Open in chat, not <body>', () => {

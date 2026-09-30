@@ -68,11 +68,35 @@ export function SessionDetailHeader({
     const lost = stopWasShown.current && !showStop;
     stopWasShown.current = showStop;
     if (!lost) return;
-    const active = document.activeElement;
-    if (active && active !== document.body && active.isConnected) return;
-    (openInChatRef.current ?? headerRef.current)?.focus({
-      preventScroll: true,
+    // Focus is stranded when it sits on nothing a user can operate: <body>, a
+    // detached node, or a container that only took programmatic focus (the
+    // return-focus walk climbs to one when the Stop… it would restore is
+    // gone). Checked now and again after a closing dialog has run its own
+    // restore (it defers to the next frame), so the "turn ended while the
+    // confirmation was open" path lands here too.
+    const land = () => {
+      const active = document.activeElement;
+      const stranded =
+        !active ||
+        active === document.body ||
+        !active.isConnected ||
+        (active instanceof HTMLElement &&
+          active.tabIndex < 0 &&
+          !active.matches('button, a[href], input, textarea, select'));
+      if (!stranded) return;
+      (openInChatRef.current ?? headerRef.current)?.focus({
+        preventScroll: true,
+      });
+    };
+    land();
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(land);
     });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
   }, [showStop]);
   const clauses = meta.filter((clause): clause is string =>
     Boolean(clause?.trim()),

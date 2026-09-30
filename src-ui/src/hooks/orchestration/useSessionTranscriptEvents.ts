@@ -1,5 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { stitchWindowWithLiveEvents } from './conversationTranscriptParts';
+import { ensureOrchestrationEventStream } from './ensureOrchestrationEventStream';
 import {
   readSequencedLiveEvents,
   readSequencedLiveTruncation,
@@ -38,6 +40,16 @@ export function useSessionTranscriptEvents(
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
   isStreaming: boolean,
 ) {
+  // The live half of this transcript is the app-wide stream. The chat dock
+  // and the Agents pane start it, but the detail must not depend on either
+  // being mounted: ensure it here (deduplicated per apiBase; the returned
+  // release drops only this registration).
+  const queryClient = useQueryClient();
+  useEffect(
+    () => ensureOrchestrationEventStream(apiBase, queryClient),
+    [apiBase, queryClient],
+  );
+
   const [revision, setRevision] = useState(0);
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
