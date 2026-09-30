@@ -10516,8 +10516,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "documentDigest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78",
+      "sourceRevision": "0ddba35997f62b4ea873a0147f8f1a50c3679cf5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10803,7 +10803,8 @@
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Added the Live lanes entry (Needs you / Running / Idle from liveLaneFor in src-ui/src/views/home/home-lane-model.ts, consumed by Home, the Sessions list, the project live-work badge and the chat dock inbox) and the Unsent draft cue read from chatDraftsStore; replaced the retired 'Active now' reference in the Draft entry. Checked against the partition and InboxRow code in this commit.",
         "Live lanes entry: Needs you now also names an offline-queued send (chat.status 'queued' folds to Needs attention in chatLifecycleLabel). Checked against home-view-model.ts and liveLaneFor.",
-        "Merge of origin/main 62a39b083: main left glossary bytes unchanged and re-reviewed it against C2b source changes; this lane's Live lanes / Unsent draft / Needs-you wording is the only text delta. Re-read those lines on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes."
+        "Merge of origin/main 62a39b083: main left glossary bytes unchanged and re-reviewed it against C2b source changes; this lane's Live lanes / Unsent draft / Needs-you wording is the only text delta. Re-read those lines on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes.",
+        "Merge of origin/main e27600d1f: main left glossary bytes unchanged (its record changes follow source edits it reviewed); this lane's Live lanes / Unsent draft / Needs-you lines are the only text delta, re-read on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes."
       ]
     },
     {
