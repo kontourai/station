@@ -38,7 +38,7 @@ function plainTitleText(text: string): string {
     .replace(/`([^`]+)`/g, '$1');
   for (const pattern of EMPHASIS) plain = plain.replace(pattern, '$1$2');
   return plain
-    .replace(/^\s*(?:#{1,6}|>|[-+]|\d+\.)\s+/, '')
+    .replace(/^\s*(?:#{1,6}|>|[-+*]|\d+\.)\s+/, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

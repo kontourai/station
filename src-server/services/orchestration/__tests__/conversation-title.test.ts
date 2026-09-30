@@ -19,6 +19,8 @@ describe('derivedConversationTitle', () => {
     ['a ~~old~~ b', 'a old b'],
     ['see [the docs](https://example.com)', 'see the docs'],
     ['# Heading here', 'Heading here'],
+    ['* list item', 'list item'],
+    ['- list item', 'list item'],
   ])('%s', (input, expected) => {
     expect(derivedConversationTitle(input)).toBe(expected);
   });

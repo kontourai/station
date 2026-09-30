@@ -771,12 +771,14 @@ button:hover {
   gap: 14px;
   padding: 3px 14px;
   padding-top: var(--safe-top);
-  /* The side padding is composed HERE, once, from three inputs, so no later
-     rule can drop one by re-declaring `padding`: the gutter (14px, 12px on a
+  /* The side padding is composed HERE from three inputs, and breakpoints
+     change the inputs rather than re-declaring `padding`, so a phone rule
+     cannot drop the safe-area insets: the gutter (14px, 12px on a
      phone), the side safe-area insets (a landscape phone's notch and rounded
      corner), and the macOS overlay title bar's traffic-light inset (set only
-     in the single-column layout). Breakpoints change the inputs, never the
-     property. */
+     in the single-column layout). The macOS collapsed-sidebar rules in
+     ProjectSidebar.css still set `padding-left` directly; they only apply on
+     desktop, where the side insets are 0. */
   padding-left: max(
     var(--app-toolbar-gutter, 14px),
     var(--safe-left),
