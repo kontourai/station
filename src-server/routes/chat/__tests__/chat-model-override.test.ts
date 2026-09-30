@@ -403,6 +403,43 @@ describe('chat-model-override helpers', () => {
     );
   });
 
+  test('a Station-authored error while creating the override agent keeps its own text', async () => {
+    const result = await resolveChatAgentModelOverride({
+      ctx: {
+        activeAgents: new Map(),
+        agentSpecs: new Map([['writer', {}]]),
+        agentTools: new Map([['writer', []]]),
+        appConfig: {},
+        getAgentConfigurationRevision: () => 0,
+        configLoader: {
+          getProjectHomeDir: () => '/home',
+          getLaunchabilityRevision: () => 0,
+        },
+        providerService: {
+          resolveModelForProvider: vi.fn().mockResolvedValue('m-1'),
+          listProviderConnections: () => [],
+          getLaunchabilityRevision: () => 3,
+        },
+        framework: {
+          createModel: vi
+            .fn()
+            .mockRejectedValue(new Error('Agent tool registry is not loaded')),
+          createTempAgent: vi.fn(),
+        },
+        logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+      } as any,
+      slug: 'writer',
+      modelOverride: 'm-1',
+      agent: { id: 'writer' },
+      providerConnection: { id: 'ollama-main', type: 'ollama' } as any,
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.error).toBe(
+      'Failed to switch to model m-1: Agent tool registry is not loaded',
+    );
+  });
+
   test('uses provider-owned exact validation for non-Bedrock overrides', async () => {
     const resolveModelForProvider = vi
       .fn()
