@@ -6,12 +6,16 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
  * How long a row's new lifecycle must hold before the list shows it. The
  * inbox groups and sorts by lifecycle, so a state that flickers — a turn
  * that reads idle for a moment while a reconnect catches up, a snapshot and
- * a live event briefly disagreeing — would move the row between "Active now"
- * and "Just finished" and back. Held, a blip never reaches the screen.
+ * a live event briefly disagreeing — would move the row between the Running
+ * and Idle lanes and back. Held, a blip never reaches the screen.
  */
 export const LIFECYCLE_HOLD_MS = 1_200;
 
-/** Shown at once: a state that asks the user to act must never wait. */
+/**
+ * Never held, in either direction: a state that asks the user to act (the
+ * "Needs you" lane is exactly `Needs attention`) must never wait to appear,
+ * and once answered it must not linger there as a stale ask.
+ */
 const IMMEDIATE = new Set<HomeLifecycleLabel>(['Needs attention', 'Failed']);
 
 interface Held {
@@ -23,7 +27,7 @@ interface Held {
 /**
  * The items with each row's lifecycle held through brief changes (see
  * `LIFECYCLE_HOLD_MS`). Only a move into or out of `Running` is held — that
- * is the state that flickers. A row's first appearance, a change into an
+ * is the state that flickers. A row's first appearance, a change into or out of an
  * act-now state, and every other change show at once. Rows that are
  * not being held keep their identity, and when nothing is held the input
  * array itself is returned, so memoized grouping downstream is undisturbed.
@@ -46,6 +50,7 @@ export function useHeldLifecycles(
       !entry ||
       entry.shown === actual ||
       IMMEDIATE.has(actual) ||
+      IMMEDIATE.has(entry.shown) ||
       // Only moves into or out of "in motion" flicker (a turn that reads
       // idle for a beat mid-reconnect); leaving Draft, a failure clearing,
       // and the like are real events and show at once.

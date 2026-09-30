@@ -84,6 +84,46 @@ function renderHome(
   return { model: m, onNavigate };
 }
 
+describe('HomeSurface live-lane focus', () => {
+  beforeEach(() => localStorage.clear());
+
+  test('a focused row whose lane empties (Running -> Idle) keeps focus', () => {
+    const running = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const idle = item('b', 'Audit the ref translation', 'Station', 30, 'Ready');
+    const view = render(
+      <HomeSurface
+        model={model({ workItems: [running, idle] })}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const open = (title: string) =>
+      screen
+        .getByText(title)
+        .closest<HTMLElement>('.home-view__task-open') as HTMLElement;
+    open('Wire the delegate verbs').focus();
+    expect(document.activeElement).toBe(open('Wire the delegate verbs'));
+
+    view.rerender(
+      <HomeSurface
+        model={model({
+          workItems: [{ ...running, lifecycleLabel: 'Ready' }, idle],
+        })}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+    expect(document.activeElement).toBe(open('Wire the delegate verbs'));
+  });
+});
+
 describe('HomeSurface composition', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -167,7 +207,9 @@ describe('HomeSurface composition', () => {
       screen.getByRole('heading', { name: 'Where the work has been' }),
     ).toBeTruthy();
     const recent = screen.getByRole('region', { name: 'Recent work' });
-    expect(within(recent).getByText('Active now')).toBeTruthy();
+    expect(
+      within(recent).getByRole('heading', { name: 'Running (1)' }),
+    ).toBeTruthy();
     // The one-list constraint, pinned: an item appears exactly once in the
     // list. Two recent-work lists is the failure this composition exists to
     // prevent, and it would read as a duplicate row rather than an error.
@@ -422,9 +464,13 @@ describe('HomeSurface: what is clickable', () => {
     });
     expect(
       screen.getByRole('button', {
-        name: 'Active now, 1, show the Active now lane',
+        name: 'Running, 1, show the Running lane',
       }),
     ).toBeTruthy();
+    // Empty live lanes render nothing, so their zero counts are text.
+    expect(screen.queryByRole('button', { name: /^Needs you,/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Idle,/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Active now,/ })).toBeNull();
     expect(
       screen.getByRole('button', {
         name: 'Projects, 1, show where the work has been',

@@ -1484,7 +1484,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1510,7 +1510,9 @@
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change.",
+        "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change."
       ]
     },
     {
@@ -1548,7 +1550,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1574,7 +1576,9 @@
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change.",
+        "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change."
       ]
     },
     {
@@ -3261,7 +3265,7 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
-          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+          "digest": "08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -3317,7 +3321,8 @@
         "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate.",
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. The ADR's claim that SSE resume rides Last-Event-ID still holds: parseResumeCursor keeps its fail-closed parsing and is only no longer exported. Classification unchanged.",
         "Re-read 'ADR 0018 — SSE is the realtime transport, because resume rides `Last-Event-ID`' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Resume still rides Last-Event-ID: neither the deadline guard on SDK body reads nor the respond-route flag changes the SSE resume path. Classification unchanged."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Resume still rides Last-Event-ID: neither the deadline guard on SDK body reads nor the respond-route flag changes the SSE resume path. Classification unchanged.",
+        "ensureOrchestrationEventStream.ts changed one comment only (a Draft sits outside the live lanes, not 'Active now'); no transport behavior changed, ADR claims unaffected."
       ]
     },
     {
@@ -10527,8 +10532,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "documentDigest": "f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78",
+      "sourceRevision": "0ddba35997f62b4ea873a0147f8f1a50c3679cf5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10811,7 +10816,11 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Added the Live lanes entry (Needs you / Running / Idle from liveLaneFor in src-ui/src/views/home/home-lane-model.ts, consumed by Home, the Sessions list, the project live-work badge and the chat dock inbox) and the Unsent draft cue read from chatDraftsStore; replaced the retired 'Active now' reference in the Draft entry. Checked against the partition and InboxRow code in this commit.",
+        "Live lanes entry: Needs you now also names an offline-queued send (chat.status 'queued' folds to Needs attention in chatLifecycleLabel). Checked against home-view-model.ts and liveLaneFor.",
+        "Merge of origin/main 62a39b083: main left glossary bytes unchanged and re-reviewed it against C2b source changes; this lane's Live lanes / Unsent draft / Needs-you wording is the only text delta. Re-read those lines on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes.",
+        "Merge of origin/main e27600d1f: main left glossary bytes unchanged (its record changes follow source edits it reviewed); this lane's Live lanes / Unsent draft / Needs-you lines are the only text delta, re-read on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes."
       ]
     },
     {
@@ -14343,7 +14352,7 @@
     {
       "path": "docs/guides/e2e-coverage-matrix.md",
       "documentDigest": "ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1",
-      "sourceRevision": "bac5568301597a79720a56517330b13dde51bf83",
+      "sourceRevision": "64d397c368d647a4e61afdfd799e4f88a19fe29a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete coverage map against package scripts, coordinated full lane, bucket scheduler and settlement/count classification, exact manifest ownership, suite runner and Starter telemetry/discovery isolation. Traced representative named surface assertions/intercepts for every table row; retained authoring tiers as targets rather than coverage verdicts. Corrected Android to the shared suite runner selecting its separate browser project, and replaced the retired navigation spec pointer with mobile-layout. Conflict integration review: removed the retired duplicate registry-install spec; registry.spec.ts remains the representative owner. Reviewed repaired layout navigation, removed duplicate project/skills assertions, root-route positive control and manifest membership without inferring complete coverage.",
@@ -14455,7 +14464,7 @@
         },
         {
           "path": "tests/mobile-chat-composer.spec.ts",
-          "digest": "f59c57cda03763b2e96be23fb60addd011fd73845816ee632a017a228eb58973"
+          "digest": "53a9a3dc6ba6f89c9d414b94d2be5a39439e2ad99580b6784ab6a979015adb63"
         },
         {
           "path": "tests/monitoring.spec.ts",
@@ -14519,8 +14528,10 @@
         "Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed package.json, covered by its notes above; this branch changed tests/e2e-manifest.mjs, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "mobile-chat-composer.spec.ts only changed the chip word it filters rows by (Active -> Running); journeys and coverage are unchanged, so the matrix entry stays accurate.",
         "Checked against the mobile-chat-composer spec change: its reconnect assertion now reads the chat pane's status pill instead of the inline banner. The matrix row names the spec and its composer/geometry scope, which is unchanged. No prose change.",
-        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change.",
+        "Merge of #2984: mobile-chat-composer still covers composer reachability and Home continuity; it now finds the running row by the Running chip and asserts reconnect via the floating status pill; matrix row claims unchanged."
       ]
     },
     {
@@ -23882,7 +23893,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "sourceRevision": "64d397c368d647a4e61afdfd799e4f88a19fe29a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -24095,7 +24106,7 @@
         },
         {
           "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
-          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+          "digest": "08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45"
         }
       ],
       "checks": [
@@ -24128,7 +24139,9 @@
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. No contract type changed on either side. Prose accurate.",
         "Re-read '@kontourai/station-contracts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new PullRequestBranchMergeability paragraph; it makes no claim about SDK body-read deadlines, orchestration delegation refusals or the forwarder.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. No contract type changed on either side. Prose accurate.",
-        "Checked the runtime-events module row and tool-event claims against the additive EngineToolKind type and optional toolKind fields; the table describes runtime-events as event payloads, still accurate. No prose change."
+        "ensureOrchestrationEventStream.ts changed one comment only (lane wording); no contract or event behavior changed, reference unaffected.",
+        "Checked the runtime-events module row and tool-event claims against the additive EngineToolKind type and optional toolKind fields; the table describes runtime-events as event payloads, still accurate. No prose change.",
+        "Merge of #2984: runtime-events subpath still carries the event stream payloads (incl. this branch's optional toolKind); ensureOrchestrationEventStream unchanged relative to main; no contract claim changed."
       ]
     },
     {

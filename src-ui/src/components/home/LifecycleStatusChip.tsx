@@ -35,7 +35,11 @@ const CHIPS: Partial<
     { tone: string; glyph?: LiveStatusGlyphKind; text?: string }
   >
 > = {
-  Running: { tone: 'active', glyph: 'working', text: 'Active' },
+  // "Running", the lane's own word — never "Active". The owner's report was
+  // "'Active' feels incorrect when there's no activity"; the chip under the
+  // Running lane must say what that lane computes, not a looser synonym.
+  // (`--active` is the in-motion colour class, not copy.)
+  Running: { tone: 'active', glyph: 'working', text: 'Running' },
   'Needs attention': {
     tone: 'warning',
     glyph: 'attention',

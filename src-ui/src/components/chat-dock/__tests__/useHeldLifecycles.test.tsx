@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HomeLifecycleLabel } from '../../../utils/lifecycle-priority';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import { LifecycleStatusChip } from '../../home/LifecycleStatusChip';
+import { groupMobileActivity } from '../mobile-activity-groups';
 import { LIFECYCLE_HOLD_MS, useHeldLifecycles } from '../useHeldLifecycles';
 
 afterEach(() => {
@@ -71,6 +72,58 @@ describe('useHeldLifecycles — no row jumps from status churn', () => {
     expect(result.current).toBe(items);
     rerender({ list: items });
     expect(result.current).toBe(items);
+  });
+});
+
+/** The row's lane as the dock inbox and mobile switcher compute it. */
+function useLaneOf(items: HomeWorkItem[], id: string): string | undefined {
+  const groups = groupMobileActivity(useHeldLifecycles(items), 0);
+  return groups.find((g) => g.items.some((i) => i.id === id))?.id;
+}
+
+const row = (lifecycleLabel: HomeLifecycleLabel) =>
+  ({
+    id: 'a',
+    kind: 'chat',
+    kindLabel: 'Direct chat',
+    title: 't',
+    projectLabel: 'p',
+    agentLabel: 'a',
+    modelLabel: 'm',
+    updatedAt: 0,
+    lifecycleLabel,
+  }) as HomeWorkItem;
+
+describe('held lifecycles through the Needs you / Running / Idle lanes', () => {
+  test('Needs you is never delayed, entering or leaving', () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(
+      ({ items }) => useLaneOf(items, 'a'),
+      { initialProps: { items: [row('Running')] } },
+    );
+    expect(result.current).toBe('running');
+    rerender({ items: [row('Needs attention')] });
+    expect(result.current).toBe('needsYou');
+    // Answered: back to Running on the same render, never a stale ask.
+    rerender({ items: [row('Running')] });
+    expect(result.current).toBe('running');
+    rerender({ items: [row('Ready')] });
+    rerender({ items: [row('Needs attention')] });
+    expect(result.current).toBe('needsYou');
+  });
+
+  test('Running -> Idle holds in Running, then moves once', () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(
+      ({ items }) => useLaneOf(items, 'a'),
+      { initialProps: { items: [row('Running')] } },
+    );
+    rerender({ items: [row('Ready')] });
+    expect(result.current).toBe('running');
+    act(() => {
+      vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
+    });
+    expect(result.current).toBe('idle');
   });
 });
 

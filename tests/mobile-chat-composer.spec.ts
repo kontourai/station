@@ -1276,12 +1276,12 @@ test('switches between mobile tasks and restores the exact active chat context',
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
   // Shared inbox rows (archive#3312): the row button's accessible name is
   // "{title}, {project}" and the lifecycle renders as the shared chip text
-  // ("Active"/"Attention needed"), so state discrimination filters on the
+  // ("Running"/"Attention needed"), so state discrimination filters on the
   // chip content rather than the old raw-text accessible name.
   await expect(
     menu
       .getByRole('button', { name: 'Station Chat, Default' })
-      .filter({ hasText: 'Active' }),
+      .filter({ hasText: 'Running' }),
   ).toBeVisible();
   const reviewRow = menu
     .getByRole('button', { name: 'Station Chat, Default' })
@@ -1322,7 +1322,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await menu
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Active' })
+    .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
 
@@ -1386,7 +1386,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page
     .getByRole('dialog', { name: 'Switch task' })
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Active' })
+    .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
   await switcher.click();
@@ -3253,7 +3253,7 @@ test('profiles switching between authoritative conversations', async ({
     'conversation-switch',
     { conversations: 2 },
     async () => {
-      for (const state of ['Attention needed', 'Active', 'Attention needed']) {
+      for (const state of ['Attention needed', 'Running', 'Attention needed']) {
         await switcher.click();
         await menu
           .getByRole('button', { name: 'Station Chat, Default' })
