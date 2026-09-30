@@ -55,13 +55,13 @@ jobs:
     # (verify:static) parses `src-ui/src/fonts.css` and holds the declared
     # inventory in `scripts/ui-glyph-coverage-allowlist.json` (#1649).
     #
-    # Pinned by digest, not by tag: `v1.62.1-noble` is republished, and a
+    # Pinned by digest, not by tag: `v1.63.0-noble` is republished, and a
     # rebuilt base image is a different renderer wearing the same name.
-    # Bump this in lockstep with `@playwright/test` (currently 1.62.1), and
+    # Bump this in lockstep with `@playwright/test` (currently 1.63.0), and
     # expect a re-baseline to be part of that change.
     runs-on: ubuntu-22.04
     container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
       # --ipc=host is Playwright's documented remedy for Chromium crashing on
       # the 64MB /dev/shm a container job gets by default.
       #

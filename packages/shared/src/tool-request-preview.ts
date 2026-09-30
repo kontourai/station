@@ -393,8 +393,8 @@ export function sessionGrantPermissionUpdates<T>(
 /**
  * #2915: whether a request asks for more than the tool call (the rule #2911
  * set for Codex: a tool grant covers calls to the tool, never escalations).
- * Read against the Claude Code engine the lockfile pins (Agent SDK 0.3.261,
- * bundling Claude Code 2.1.261):
+ * Read against the Claude Code engine the lockfile pins (Agent SDK 0.3.278,
+ * bundling Claude Code 2.1.278; first read in 2.1.261):
  *
  * - a directory suggestion. Read, Glob, Grep and LSP ask for a path outside
  *   the working directories with no `blockedPath`, a `Read(//dir/**)` rule

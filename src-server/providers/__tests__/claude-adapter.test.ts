@@ -2167,8 +2167,9 @@ describe('ClaudeAdapter', () => {
     }
 
     /**
-     * The ask the engine (SDK 0.3.261's bundled CLI) sends for Read, Glob,
-     * Grep or LSP on a path outside the session's working directories: no
+     * The ask the engine (the bundled CLI of SDK 0.3.261 and 0.3.278) sends
+     * for Read, Glob, Grep or LSP on a path outside the session's working
+     * directories: no
      * `blockedPath`, a session `addRules` rule for the directory written
      * `//<abs dir>/**` under the `Read` rule name, and the workingDir reason.
      */

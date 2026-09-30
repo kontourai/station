@@ -2,7 +2,7 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.261; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.278; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
@@ -90,9 +90,10 @@ falls back to its title/tool label. The Ask-mode chip copy says the engine asks 
 do not already allow, rather than claiming a floor Station does not impose.
 
 The standing grant covers calls to the tool, never an escalation beyond the
-call (#2915; #2911 set the same rule for Codex). The lockfile pins Agent SDK
-0.3.261, which bundles Claude Code 2.1.261, and that engine signals
-escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
+call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
+SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
+escalations in several shapes, first read in 2.1.261 and re-checked in
+2.1.278. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
 `Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
 drops the reason's type. Edit and Write outside them suggest `addDirectories`
