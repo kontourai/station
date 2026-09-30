@@ -148,8 +148,8 @@ importers:
         specifier: 0.5.0
         version: 0.5.0
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.16.0
+        version: 1.16.0(react@19.3.0)
       '@kontourai/veritas':
         specifier: 1.7.4
         version: 1.7.4(supports-color@7.2.0)(zod@4.6.5)
@@ -559,8 +559,8 @@ importers:
         specifier: ^3.2.0
         version: 3.2.0(supports-color@7.2.0)
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.16.0
+        version: 1.16.0(react@19.3.0)
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.5
         version: 1.7.5(@modelcontextprotocol/sdk@1.30.0(supports-color@7.2.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
@@ -602,8 +602,8 @@ importers:
         specifier: ^0.7.0
         version: link:../sdk
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.16.0
+        version: 1.16.0(react@19.3.0)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.0
@@ -731,8 +731,8 @@ importers:
         specifier: 0.5.0
         version: 0.5.0
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.16.0
+        version: 1.16.0(react@19.3.0)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.0
@@ -2414,8 +2414,8 @@ packages:
       typescript:
         optional: true
 
-  '@kontourai/ui@1.12.0':
-    resolution: {integrity: sha512-DsbMTv8PIGN2c71vdOxrH2W3Rt6SwTunYtp/+xB+2XP+xt789nX1RfJPmfdv58EQmfsms0Z3k3C+CS3GfFJVMw==}
+  '@kontourai/ui@1.16.0':
+    resolution: {integrity: sha512-CI35OowSV4U+b8AzKtU2wTF/lJSUSktV5gu1DaKPZdDsyzYpTCWXCVxUlyrLreOVc6TvJ17ljFXeSEdawLC3jg==}
     engines: {node: '>=22'}
     peerDependencies:
       react: ^19.0.0
@@ -9528,7 +9528,7 @@ snapshots:
   '@kontourai/console-ui@0.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@kontourai/console-core': 0.3.0
-      '@kontourai/ui': 1.12.0(react@19.3.0)
+      '@kontourai/ui': 1.16.0(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
 
@@ -9794,7 +9794,7 @@ snapshots:
       - canvas
       - playwright
 
-  '@kontourai/ui@1.12.0(react@19.3.0)':
+  '@kontourai/ui@1.16.0(react@19.3.0)':
     dependencies:
       react: 19.3.0
 
