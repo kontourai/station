@@ -1,6 +1,7 @@
 import type { BrowserPendingDialogView } from '@kontourai/station-contracts/workspace-browser-pane';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import './BrowserPageDialog.css';
 
 /**
  * A JavaScript dialog the page is showing and Station is holding for the
@@ -11,18 +12,31 @@ import { Button } from '../../components/Button';
  * The message is the PAGE's text: shown as text, with the page's host, so it
  * is never mistaken for Station asking.
  */
+/** Well inside the person's 30 s hold. */
+const KEEP_ALIVE_MS = 10_000;
+
 export function BrowserPageDialog({
   dialog,
   pageHost,
   pending,
   error,
   onAnswer,
+  onOpenInPane,
+  onKeepAlive,
 }: {
   dialog: BrowserPendingDialogView;
   pageHost: string;
   pending: boolean;
   error: string | null;
   onAnswer: (answer: { accept: boolean; promptText?: string }) => void;
+  /** Offered where the card is shown outside the pane (the float). */
+  onOpenInPane?: () => void;
+  /**
+   * Renew the person's control while this card is on screen. The server
+   * dismisses a held dialog once the person's control ends; a person reading
+   * it has not left.
+   */
+  onKeepAlive?: () => void;
 }) {
   const titleId = useId();
   const messageId = useId();
@@ -37,6 +51,19 @@ export function BrowserPageDialog({
     if (dialog.type === 'prompt') inputRef.current?.focus();
     else okRef.current?.focus();
   }, [dialog.dialogId]);
+
+  const keepAliveRef = useRef(onKeepAlive);
+  keepAliveRef.current = onKeepAlive;
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (
+        typeof document === 'undefined' ||
+        document.visibilityState === 'visible'
+      )
+        keepAliveRef.current?.();
+    }, KEEP_ALIVE_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -57,6 +84,9 @@ export function BrowserPageDialog({
       onKeyDown={(event) => {
         if (event.key === 'Escape' && dialog.type !== 'alert' && !pending) {
           event.preventDefault();
+          // Escape answers THIS dialog; it must not also close a menu, a
+          // float or a panel around it.
+          event.stopPropagation();
           onAnswer({ accept: false });
         }
       }}
@@ -70,7 +100,7 @@ export function BrowserPageDialog({
       {dialog.type === 'prompt' ? (
         <input
           ref={inputRef}
-          className="browser-pane__address"
+          className="browser-pane__page-dialog-input"
           aria-label="Your answer"
           value={text}
           maxLength={4096}
@@ -87,6 +117,17 @@ export function BrowserPageDialog({
         </p>
       ) : null}
       <div className="browser-pane__page-dialog-actions">
+        {onOpenInPane ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="browser-pane__control browser-pane__page-dialog-open"
+            onClick={onOpenInPane}
+          >
+            Open in pane
+          </Button>
+        ) : null}
         {dialog.type === 'alert' ? null : (
           <Button
             type="button"

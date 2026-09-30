@@ -177,6 +177,8 @@ export interface BrowserSessionActivity {
      * answered in time. Absent: answered the moment it opened.
      */
     unanswered?: true;
+    /** Held for a person, and dismissed when their control ended. */
+    controlEnded?: true;
   };
 }
 
@@ -432,6 +434,9 @@ export interface BrowserSessionRegistryOptions {
   newId?: () => string;
   /** Whether a URL is one of this Station's own listeners (D2 wording). */
   isStationAddress?: (url: string) => boolean;
+  /** Test seams for the screenshot bounds. */
+  screenshotDeadlineMs?: number;
+  screenshotMaxBytes?: number;
 }
 
 /** A navigation this soon after someone's input is theirs (a link click). */
@@ -472,6 +477,11 @@ export class BrowserSessionRegistry {
   >();
   /** The URL an explicit navigate is loading, per session. */
   private readonly inflightNavigations = new Map<string, string>();
+  /** A screenshot in flight per session; a second request joins it. */
+  private readonly inflightShots = new Map<
+    string,
+    Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }>
+  >();
   /** Who last sent input into each session, and when. */
   private readonly lastInput = new Map<
     string,
@@ -559,6 +569,21 @@ export class BrowserSessionRegistry {
   async captureScreenshot(
     browserSessionId: string,
   ): Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }> {
+    // At most one capture per session: concurrent requests (a double click,
+    // two viewers) share the one in flight rather than each asking the page.
+    const inflight = this.inflightShots.get(browserSessionId);
+    if (inflight) return inflight;
+    const shot = this.captureScreenshotOnce(browserSessionId).finally(() => {
+      if (this.inflightShots.get(browserSessionId) === shot)
+        this.inflightShots.delete(browserSessionId);
+    });
+    this.inflightShots.set(browserSessionId, shot);
+    return shot;
+  }
+
+  private async captureScreenshotOnce(
+    browserSessionId: string,
+  ): Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }> {
     this.assertRunning();
     this.requireLive(browserSessionId, undefined);
     const live = this.liveTarget(browserSessionId);
@@ -568,6 +593,10 @@ export class BrowserSessionRegistry {
         'The session has no running browser.',
       );
     const cdp = live.host.cdp();
+    const deadlineMs =
+      this.options.screenshotDeadlineMs ?? SCREENSHOT_DEADLINE_MS;
+    const maxBytes =
+      this.options.screenshotMaxBytes ?? BROWSER_SCREENSHOT_MAX_BYTES;
     const capture = async (
       params: { format: 'png' } | { format: 'jpeg'; quality: number },
     ): Promise<Buffer> => {
@@ -589,7 +618,7 @@ export class BrowserSessionRegistry {
                     'The page did not answer in time.',
                   ),
                 ),
-              SCREENSHOT_DEADLINE_MS,
+              deadlineMs,
             );
           }),
         ]);
@@ -605,11 +634,9 @@ export class BrowserSessionRegistry {
       }
     };
     const png = await capture({ format: 'png' });
-    if (png.length <= BROWSER_SCREENSHOT_MAX_BYTES)
-      return { mimeType: 'image/png', data: png };
+    if (png.length <= maxBytes) return { mimeType: 'image/png', data: png };
     const jpeg = await capture({ format: 'jpeg', quality: 85 });
-    if (jpeg.length <= BROWSER_SCREENSHOT_MAX_BYTES)
-      return { mimeType: 'image/jpeg', data: jpeg };
+    if (jpeg.length <= maxBytes) return { mimeType: 'image/jpeg', data: jpeg };
     throw new BrowserSessionError(
       'screenshot-too-large',
       'The screenshot is too large. Choose a smaller viewport and try again.',
@@ -871,6 +898,7 @@ export class BrowserSessionRegistry {
       message: string;
       accepted: boolean;
       unanswered?: true;
+      controlEnded?: true;
     },
   ): void {
     const record = this.sessions.get(browserSessionId);
@@ -910,11 +938,14 @@ export class BrowserSessionRegistry {
       message: string;
       accepted: boolean;
       unanswered?: true;
+      controlEnded?: true;
     },
   ): void {
     const how = dialog.unanswered
       ? 'automatically after nobody answered it'
-      : 'automatically';
+      : dialog.controlEnded
+        ? "automatically when the person's control ended"
+        : 'automatically';
     const entry = this.recordPageNoise(record, 'dialog-handled', {
       detail: `${dialog.type} ${dialog.accepted ? 'accepted' : 'dismissed'} ${how}${dialog.message ? `: ${dialog.message}` : ''}`,
     });
@@ -926,6 +957,7 @@ export class BrowserSessionRegistry {
       accepted: dialog.accepted,
       count: entry.count ?? 1,
       ...(dialog.unanswered ? { unanswered: true as const } : {}),
+      ...(dialog.controlEnded ? { controlEnded: true as const } : {}),
     };
   }
 

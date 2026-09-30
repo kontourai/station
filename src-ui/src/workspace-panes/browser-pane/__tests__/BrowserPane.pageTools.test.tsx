@@ -369,6 +369,7 @@ describe('the console drawer', () => {
       ],
       dropped: 7,
       latestSeq: 9,
+      generation: 1,
       capturing: true,
     };
     const fake = renderPane({
@@ -378,6 +379,7 @@ describe('the console drawer', () => {
         entries: [entry(10, 'warning', 'slow request')],
         dropped: 7,
         latestSeq: 10,
+        generation: 1,
         capturing: true,
       }),
     });
@@ -545,6 +547,7 @@ describe('the toolbar', () => {
               ],
               dropped: 0,
               latestSeq: 1,
+              generation: 1,
               capturing: true,
             },
           },
@@ -558,12 +561,14 @@ describe('the toolbar', () => {
         ],
         dropped: 0,
         latestSeq: 4,
+        generation: 1,
         capturing: true,
       }),
       [`GET /api/browser/sessions/${SESSION}/console?after=4`]: ok({
         entries: [],
         dropped: 0,
         latestSeq: 4,
+        generation: 1,
         capturing: true,
       }),
     });

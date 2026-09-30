@@ -611,41 +611,6 @@
   z-index: 2;
 }
 
-.browser-pane__page-dialog {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-md, 0 2px 8px rgb(0 0 0 / 0.2));
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2, 8px);
-  max-height: 70%;
-  max-width: 28rem;
-  overflow: auto;
-  padding: var(--space-3, 12px);
-  width: 100%;
-}
-
-.browser-pane__page-dialog-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.browser-pane__page-dialog-message {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.browser-pane__page-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2, 8px);
-  justify-content: flex-end;
-}
-
 .browser-pane__screenshot-thumb {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm, 4px);
@@ -660,12 +625,6 @@
   display: inline-flex;
   justify-content: center;
   text-decoration: none;
-}
-
-/* The prompt's answer field shares the address field's look, not its row
-   flex (in the dialog's column that basis would be a height). */
-.browser-pane__page-dialog .browser-pane__address {
-  flex: 0 0 auto;
 }
 
 /* The console header is one slim row: label, a compact level filter (the

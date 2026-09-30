@@ -151,23 +151,25 @@ function harness() {
     method: string,
     path: string,
     options: { role?: Role; body?: unknown; agent?: boolean } = {},
-  ) =>
-    browserRoutes.request(`http://station.test${path}`, {
-      method,
-      headers: {
-        'x-test-role': options.role ?? 'operator',
-        'content-type': 'application/json',
-        ...(options.agent
-          ? {
-              [STATION_CONTROL_ORIGIN_HEADER]:
-                STATION_CONTROL_ORIGIN_AGENT_TOOL,
-            }
-          : {}),
-      },
-      ...(options.body === undefined
-        ? {}
-        : { body: JSON.stringify(options.body) }),
-    });
+  ): Promise<Omit<Response, 'json'> & { json(): Promise<any> }> =>
+    Promise.resolve(
+      browserRoutes.request(`http://station.test${path}`, {
+        method,
+        headers: {
+          'x-test-role': options.role ?? 'operator',
+          'content-type': 'application/json',
+          ...(options.agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        ...(options.body === undefined
+          ? {}
+          : { body: JSON.stringify(options.body) }),
+      }),
+    ) as Promise<Omit<Response, 'json'> & { json(): Promise<any> }>;
   /** A person's click through the live-surface input route (claims control). */
   const personClicks = async (browserSessionId: string) => {
     const surfaceId = binder.surfaceIdFor(browserSessionId)!;

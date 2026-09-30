@@ -225,8 +225,13 @@ export class BrowserLiveSurfaces {
   consoleFor(
     browserSessionId: string,
     after?: number,
-  ): BrowserConsoleSnapshot | undefined {
-    return this.bindings.get(browserSessionId)?.console.read(after);
+  ): (BrowserConsoleSnapshot & { generation: number }) | undefined {
+    const binding = this.bindings.get(browserSessionId);
+    // The generation names which browser the entries came from: `seq`
+    // restarts with each one, so a reader must not mix two.
+    return binding
+      ? { ...binding.console.read(after), generation: binding.generation }
+      : undefined;
   }
 
   async dispose(): Promise<void> {
@@ -381,6 +386,11 @@ export class BrowserLiveSurfaces {
     const offLease =
       lease?.onChange((next) => {
         const holder = next.holder;
+        // A dialog held for a person does not outlive their control: once
+        // it is released, lapses or passes to an agent, it is dismissed, so
+        // nobody is left behind a modal page (the pane renews the person's
+        // hold while it shows them the dialog).
+        if (holder?.kind !== 'human') producer.releaseHeldDialog();
         // Nobody holding (a lapse or a release) says nothing about who
         // drives next; the last holder is remembered across it.
         if (!holder) return;

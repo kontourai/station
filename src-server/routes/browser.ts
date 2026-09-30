@@ -105,12 +105,12 @@ export interface BrowserRoutesDeps {
     dialogId: string,
     answer: { accept: boolean; promptText?: string },
     actor: BrowserSessionActor,
-  ): Promise<{ ok: true } | { ok: false; code: 'no-dialog' }>;
+  ): Promise<{ ok: true } | { ok: false; code: 'no-dialog' | 'page-busy' }>;
   /** A live session page's console entries newer than `after`. */
   consoleFor?(
     browserSessionId: string,
     after?: number,
-  ): BrowserConsoleSnapshot | undefined;
+  ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -612,7 +612,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
           found.actor,
         )
       : ({ ok: false, code: 'no-dialog' } as const);
-    if (!result.ok) return c.json({ success: false, code: result.code }, 409);
+    if (!result.ok)
+      return c.json(
+        { success: false, code: result.code },
+        result.code === 'page-busy' ? 504 : 409,
+      );
     const next = deps.registry.getSessionSummary(
       found.session.browserSessionId,
     );
@@ -636,6 +640,15 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    // Console text can carry what the pixels never showed (tokens a page
+    // logs). A request that may be an agent's reads it only where the
+    // Project lets agents read page script output (`browserEvaluate`, D4).
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(found.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
     if (found.session.state !== 'live')
       return c.json({ success: false, code: 'not-live' }, 409);
     const snapshot = deps.consoleFor?.(
@@ -646,7 +659,13 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       success: true,
       data: snapshot
         ? { ...snapshot, capturing: true }
-        : { entries: [], dropped: 0, latestSeq: 0, capturing: false },
+        : {
+            entries: [],
+            dropped: 0,
+            latestSeq: 0,
+            generation: found.session.generation,
+            capturing: false,
+          },
     });
   });
 

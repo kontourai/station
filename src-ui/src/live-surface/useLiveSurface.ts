@@ -75,6 +75,8 @@ export type LiveSurfaceInputNotice =
   | 'control-changed'
   | 'input-failed'
   | 'host-busy'
+  /** The page is showing a dialog that waits for an answer. */
+  | 'page-dialog'
   | null;
 
 /** A retryable 503 `surface-busy` answer (#2433). */
@@ -508,6 +510,9 @@ export function useLiveSurface(
         for (const id of pressedRef.current) orphanedRef.current.add(id);
         pressedRef.current.clear();
         setInputNotice('control-changed');
+      } else if (result && !result.ok && result.code === 'page-dialog-open') {
+        queueRef.current = [];
+        setInputNotice('page-dialog');
       } else {
         queueRef.current = [];
         setInputNotice('input-failed');

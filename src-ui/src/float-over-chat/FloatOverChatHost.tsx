@@ -4,7 +4,7 @@ import type {
   BrowserSessionView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -38,6 +38,11 @@ import {
   LiveSurfaceCanvas,
   type LiveSurfaceControlState,
 } from '../live-surface/LiveSurfaceCanvas';
+import { BrowserPageDialog } from '../workspace-panes/browser-pane/BrowserPageDialog';
+import {
+  browserPaneApi,
+  describeBrowserFailure,
+} from '../workspace-panes/browser-pane/browserPaneApi';
 import {
   DEVICE_PLACEHOLDER_ASPECT,
   deviceCornerRadius,
@@ -883,6 +888,24 @@ function BrowserFloat({
 }) {
   const host = hostOf(session.url);
   const openBrowser = useOpenBrowserSessionInRegion();
+  const queryClient = useQueryClient();
+  const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
+  const pendingDialog = session.pendingDialog;
+  const answer = useMutation({
+    mutationFn: (reply: {
+      dialogId: string;
+      accept: boolean;
+      promptText?: string;
+    }) =>
+      browserPaneApi(apiBase, transport).answerDialog(
+        session.browserSessionId,
+        reply,
+      ),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['float-over-chat', apiBase, 'sessions', session.projectSlug],
+      }),
+  });
   const { projectId, browserSessionId } = session;
   const openInPanel = useMemo(() => {
     if (!openBrowser) return null;
@@ -913,15 +936,45 @@ function BrowserFloat({
       agentInput={agentInputOf(session, receivedAt)}
       openInPanel={openInPanel}
       renderSurface={(onControlState) => (
-        <LiveSurfaceCanvas
-          apiBase={apiBase}
-          surfaceId={source.surfaceId}
-          label={`Browser: ${host}`}
-          transport={transport}
-          hostControls
-          inputRequiresLease
-          onControlState={onControlState}
-        />
+        // A dialog the page holds for the person driving from here is
+        // answered here too: otherwise the float is a page that refuses
+        // every click for no visible reason (#90).
+        <div className="float-over-chat__browser">
+          <LiveSurfaceCanvas
+            apiBase={apiBase}
+            surfaceId={source.surfaceId}
+            label={`Browser: ${host}`}
+            transport={transport}
+            hostControls
+            inputRequiresLease
+            onControlState={(state) => {
+              onControlState(state);
+              setControl(state);
+            }}
+          />
+          {pendingDialog ? (
+            <div className="float-over-chat__dialog-layer">
+              <BrowserPageDialog
+                key={pendingDialog.dialogId}
+                dialog={pendingDialog}
+                pageHost={host}
+                pending={answer.isPending}
+                error={
+                  answer.isError ? describeBrowserFailure(answer.error) : null
+                }
+                onAnswer={(reply) =>
+                  answer.mutate({ dialogId: pendingDialog.dialogId, ...reply })
+                }
+                {...(openInPanel
+                  ? { onOpenInPane: () => void openInPanel() }
+                  : {})}
+                {...(control?.tone === 'you'
+                  ? { onKeepAlive: () => void control.claimControl() }
+                  : {})}
+              />
+            </div>
+          ) : null}
+        </div>
       )}
     />
   );

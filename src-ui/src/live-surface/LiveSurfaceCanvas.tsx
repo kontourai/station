@@ -794,6 +794,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         <p className="live-surface__notice" role="status">
           Your input could not be delivered.
         </p>
+      ) : surface.inputNotice === 'page-dialog' ? (
+        <p className="live-surface__notice" role="status">
+          The page is showing a dialog. Answer it to continue.
+        </p>
       ) : surface.inputNotice === 'host-busy' ? (
         <p className="live-surface__notice" role="status">
           The host is busy, so nothing was sent. Try again in a moment.

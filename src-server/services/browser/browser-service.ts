@@ -91,7 +91,7 @@ export interface BrowserService {
   consoleFor(
     browserSessionId: string,
     after?: number,
-  ): BrowserConsoleSnapshot | undefined;
+  ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
   shutdown(): Promise<void>;
 }
 

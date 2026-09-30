@@ -232,6 +232,8 @@ export interface BrowserSessionActivityView {
     count: number;
     /** Held for a person, then answered automatically because nobody did. */
     unanswered?: true;
+    /** Held for a person, then dismissed when their control ended. */
+    controlEnded?: true;
   };
 }
 
@@ -275,6 +277,11 @@ export interface BrowserConsoleView {
   /** Oldest entries evicted to keep the server's bound, since capture began. */
   dropped: number;
   latestSeq: number;
+  /**
+   * The browser generation these entries came from. `seq` restarts with each
+   * generation (a reopen), so a reader keeps entries of one generation only.
+   */
+  generation: number;
   /** False when this Station captures no console for the session. */
   capturing: boolean;
 }

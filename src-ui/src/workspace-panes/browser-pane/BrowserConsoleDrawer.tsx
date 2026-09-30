@@ -55,16 +55,15 @@ function location(entry: BrowserConsoleEntryView): string | null {
 }
 
 /**
- * Append a read to what is held. A read whose newest entry is OLDER than the
- * cursor means the browser restarted (a new generation starts at 1): the
- * held entries belong to a page that is gone, so start over from the read.
+ * Append a read to what is held. Entries of two browser generations never
+ * mix: `seq` restarts with each one (a reopen), so a read from a different
+ * generation replaces what is held.
  */
 export function mergeConsoleRead(
   held: BrowserConsoleView | undefined,
   read: BrowserConsoleView,
-  after: number | undefined,
 ): BrowserConsoleView {
-  if (!held || after === undefined || read.latestSeq < after) return read;
+  if (!held || held.generation !== read.generation) return read;
   const entries = [...held.entries, ...read.entries];
   return {
     ...read,
@@ -106,32 +105,40 @@ export function useBrowserConsole({
     queryKey: key,
     queryFn: async ({ signal }) => {
       const held = queryClient.getQueryData<BrowserConsoleView>(key);
-      const after = held?.latestSeq;
-      const next = await api.console(browserSessionId, after, signal);
-      if (after !== undefined && next.latestSeq < after) {
-        // A new browser generation: read it whole.
+      const next = await api.console(browserSessionId, held?.latestSeq, signal);
+      if (held && next.generation !== held.generation) {
+        // A new browser generation: its entries from the start, not the
+        // tail after a cursor that belonged to the old one.
         return api.console(browserSessionId, undefined, signal);
       }
-      return mergeConsoleRead(held, next, after);
+      return mergeConsoleRead(held, next);
     },
     enabled: live,
     retry: false,
     refetchInterval: live ? (open ? POLL_MS : CLOSED_POLL_MS) : false,
   });
-  /** Entries at or below this seq have been seen in the open drawer. */
-  const [seenThrough, setSeenThrough] = useState<number | null>(null);
+  /** Entries of `generation` at or below `seq` have been seen. */
+  const [seen, setSeen] = useState<{ generation: number; seq: number } | null>(
+    null,
+  );
   const latest = read.data?.latestSeq;
+  const generation = read.data?.generation;
   useEffect(() => {
-    if (latest === undefined) return;
-    // The first read is the baseline: what the page logged before this pane
-    // looked is not "new". While the drawer is open, everything is seen.
-    setSeenThrough((current) => (current === null || open ? latest : current));
-  }, [latest, open]);
+    if (latest === undefined || generation === undefined) return;
+    setSeen((current) => {
+      // The first read is the baseline: what the page logged before this
+      // pane looked is not "new". While the drawer is open, all is seen.
+      if (current === null || open) return { generation, seq: latest };
+      // A reopened browser starts over: every error it logs is unseen.
+      if (current.generation !== generation) return { generation, seq: 0 };
+      return current;
+    });
+  }, [latest, generation, open]);
   const unreadErrors =
-    seenThrough === null
+    seen === null || seen.generation !== generation
       ? 0
       : (read.data?.entries ?? []).filter(
-          (entry) => entry.level === 'error' && entry.seq > seenThrough,
+          (entry) => entry.level === 'error' && entry.seq > seen.seq,
         ).length;
   return { read, unreadErrors };
 }
@@ -145,14 +152,20 @@ export function BrowserConsoleDrawer({
 }) {
   const [level, setLevel] = useState<LevelFilter>('all');
   /** Entries at or below this seq were cleared from view (not from the page). */
-  const [clearedThrough, setClearedThrough] = useState(0);
+  const [cleared, setCleared] = useState<{
+    generation: number;
+    seq: number;
+  } | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const stuckToBottom = useRef(true);
 
   const data = consoleRead.data;
   const shown = (data?.entries ?? []).filter(
     (entry) =>
-      entry.seq > clearedThrough && (level === 'all' || entry.level === level),
+      (cleared === null ||
+        cleared.generation !== data?.generation ||
+        entry.seq > cleared.seq) &&
+      (level === 'all' || entry.level === level),
   );
   const newest = shown.at(-1)?.seq;
   // Follow new lines only while the reader is already at the bottom.
@@ -259,7 +272,10 @@ export function BrowserConsoleDrawer({
           aria-label="Clear console"
           title="Clear console"
           disabled={!data || data.entries.length === 0}
-          onClick={() => setClearedThrough(data?.latestSeq ?? 0)}
+          onClick={() =>
+            data &&
+            setCleared({ generation: data.generation, seq: data.latestSeq })
+          }
         >
           <DiscardGlyph />
         </Button>

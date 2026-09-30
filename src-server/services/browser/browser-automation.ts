@@ -2332,6 +2332,14 @@ function inputRefusal(
         { accepted },
       ),
     );
+  if (code === 'page-dialog-open')
+    return new ToolRefusal(
+      refuse(
+        'dialog-open',
+        'The page is showing a dialog that is waiting for a person to answer it in the Browser pane. Do not retry immediately: wait for them, or ask them to answer it.',
+        { accepted },
+      ),
+    );
   if (code === 'not-authorized')
     return new ToolRefusal(
       refuse(

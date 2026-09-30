@@ -38,9 +38,10 @@ import {
   LIVE_SURFACE_DEVICE_SCALE_FACTOR_MIN,
 } from '@kontourai/station-contracts/live-surface';
 import { jpegSize } from '../live-surface/jpeg-size.js';
-import type {
-  LiveSurfaceHeldInput,
-  LiveSurfaceProducer,
+import {
+  type LiveSurfaceHeldInput,
+  LiveSurfaceInputRefusal,
+  type LiveSurfaceProducer,
 } from '../live-surface/producer.js';
 import type { CdpTransport } from './browser-host.js';
 
@@ -54,6 +55,11 @@ export interface HandledJavaScriptDialog {
   accepted: boolean;
   /** Held for a person, and answered automatically because nobody did. */
   unanswered?: true;
+  /**
+   * Held for a person, and dismissed automatically because their control
+   * ended (released or lapsed) before they answered.
+   */
+  controlEnded?: true;
 }
 
 /** The dialog types a person can be asked to answer. */
@@ -74,12 +80,19 @@ export interface PendingJavaScriptDialog {
 
 export type AnswerDialogResult =
   | { ok: true; dialog: PendingJavaScriptDialog }
-  | { ok: false; code: 'no-dialog' };
+  | { ok: false; code: 'no-dialog' | 'page-busy' };
 
-/** Input refused because a held dialog is waiting for a person. */
-export class ChromiumScreencastDialogPendingError extends Error {
+/**
+ * Input refused because a held dialog is waiting for a person. A
+ * `LiveSurfaceInputRefusal`, so the viewer is told `page-dialog-open`
+ * rather than a generic dispatch failure.
+ */
+export class ChromiumScreencastDialogPendingError extends LiveSurfaceInputRefusal {
   constructor() {
-    super('The page is showing a dialog that is waiting for an answer.');
+    super(
+      'page-dialog-open',
+      'The page is showing a dialog that is waiting for an answer.',
+    );
     this.name = 'ChromiumScreencastDialogPendingError';
   }
 }
@@ -314,6 +327,21 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     );
   }
 
+  /**
+   * The person the dialog was held for no longer holds control: dismiss it
+   * now (reported as `controlEnded`), so the page is not left modal with
+   * nobody answering and an agent blocked behind it.
+   */
+  releaseHeldDialog(): void {
+    const dialog = this.pending;
+    if (!dialog) return;
+    this.clearPending();
+    this.answerAutomatically(
+      { type: dialog.type, message: dialog.message },
+      'control-ended',
+    );
+  }
+
   /** The dialog held for a person right now, if any (a copy). */
   pendingDialog(): PendingJavaScriptDialog | null {
     return this.pending ? { ...this.pending } : null;
@@ -331,8 +359,11 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     const dialog = this.pending;
     if (!dialog || dialog.dialogId !== dialogId)
       return { ok: false, code: 'no-dialog' };
-    this.clearPending();
-    await this.cdp.send(
+    const timer = this.pendingTimer;
+    this.pending = null;
+    this.pendingTimer = null;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const sent = this.cdp.send(
       'Page.handleJavaScriptDialog',
       {
         accept: answer.accept,
@@ -342,7 +373,38 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       },
       this.session,
     );
-    return { ok: true, dialog };
+    try {
+      const outcome = await Promise.race([
+        sent.then(
+          () => 'answered' as const,
+          () => 'gone' as const,
+        ),
+        new Promise<'timeout'>((resolve) => {
+          deadline = setTimeout(
+            () => resolve('timeout'),
+            this.dispatchTimeoutMs,
+          );
+        }),
+      ]);
+      if (outcome === 'timeout') {
+        // The browser did not answer: the dialog may still be showing, so it
+        // stays held (with its own hold timer) and the person can try again.
+        if (!this.pending && !this.disposed) {
+          this.pending = dialog;
+          this.pendingTimer = timer;
+        }
+        return { ok: false, code: 'page-busy' };
+      }
+      if (timer) clearTimeout(timer);
+      this.reportPending(null);
+      // Refused by the browser: the page navigated away or the dialog was
+      // already closed. There is nothing left to answer.
+      if (outcome === 'gone') return { ok: false, code: 'no-dialog' };
+      return { ok: true, dialog };
+    } finally {
+      if (deadline) clearTimeout(deadline);
+      sent.catch(() => {});
+    }
   }
 
   async start(
@@ -705,7 +767,7 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       this.pending = null;
       this.pendingTimer = null;
       this.reportPending(null);
-      this.answerAutomatically(event, true);
+      this.answerAutomatically(event, 'unanswered');
     }, this.dialogHoldMs);
     this.pendingTimer.unref?.();
     this.reportPending(dialog);
@@ -769,7 +831,7 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
 
   private answerAutomatically(
     event: DialogOpeningEvent,
-    unanswered = false,
+    heldEnded?: 'unanswered' | 'control-ended',
   ): void {
     // `beforeunload` is accepted: dismissing it would silently cancel the
     // navigation someone asked for. Every other dialog is dismissed.
@@ -791,7 +853,10 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
             : '',
         ...(typeof event?.url === 'string' ? { url: event.url } : {}),
         accepted,
-        ...(unanswered ? { unanswered: true as const } : {}),
+        ...(heldEnded === 'unanswered' ? { unanswered: true as const } : {}),
+        ...(heldEnded === 'control-ended'
+          ? { controlEnded: true as const }
+          : {}),
       });
     } catch (error) {
       this.options.onError?.('dialog report failed', error);

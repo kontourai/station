@@ -1090,6 +1090,9 @@ function BrowserSessionPane({
                   ...answer,
                 })
               }
+              {...(control?.tone === 'you'
+                ? { onKeepAlive: () => void control.claimControl() }
+                : {})}
             />
           </div>
         ) : null}
@@ -1117,7 +1120,7 @@ function BrowserSessionPane({
             {newDialog && !isDismissed(newDialog) ? (
               <div className="browser-pane__overlay-notice" role="status">
                 <p className="browser-pane__notice">
-                  {`The page showed a dialog${newDialog.message ? `: “${newDialog.message}”` : ''}. Station ${newDialog.accepted ? 'accepted' : 'dismissed'} it automatically${newDialog.count > 1 ? ` (${newDialog.count} times)` : ''}${newDialog.unanswered ? ' because nobody answered it in time' : ' because no person was in control'}. Take control before the page asks, and you can answer it yourself.`}
+                  {`The page showed a dialog${newDialog.message ? `: “${newDialog.message}”` : ''}. Station ${newDialog.accepted ? 'accepted' : 'dismissed'} it automatically${newDialog.count > 1 ? ` (${newDialog.count} times)` : ''}${newDialog.unanswered ? ' because nobody answered it in time' : newDialog.controlEnded ? ' because your control ended before it was answered' : ' because no person was in control'}. Take control before the page asks, and you can answer it yourself.`}
                 </p>
                 <Button
                   size="sm"

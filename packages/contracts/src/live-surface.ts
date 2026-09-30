@@ -265,7 +265,13 @@ export type LiveSurfaceInputRefusalCode =
    * The producer failed, or did not answer within the dispatch timeout,
    * while dispatching; `accepted` events did land.
    */
-  | 'dispatch-failed';
+  | 'dispatch-failed'
+  /**
+   * The surface's page is showing a dialog that waits for an answer (a
+   * browser `alert`/`confirm`/`prompt` held for the person in control), so
+   * input that would act on it was refused. Answer the dialog to continue.
+   */
+  | 'page-dialog-open';
 
 export type LiveSurfaceInputResult =
   | { ok: true; accepted: number; lease: LiveSurfaceControlLease }
