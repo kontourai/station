@@ -1146,6 +1146,7 @@ import {
 } from './pairing-route-scopes.js';
 
 export interface CurrentRuntimeRequestPrincipalSecurity {
+  verifyOperatorCredential?(credential: string): boolean;
   authorizeCredential(
     credential: string,
     request: { method: string; path: string },
@@ -1184,9 +1185,14 @@ export function isRuntimeRequestPrincipalCurrent(
   const grantedScope = security.resolveGrantedScope(principal.credential);
   return (
     grantedScope !== undefined &&
-    pairingScopeSatisfiesHttpRoute(grantedScope, capability.scope, {
-      method: request.method,
-      path,
-    })
+    pairingScopeSatisfiesHttpRoute(
+      grantedScope,
+      capability.scope,
+      {
+        method: request.method,
+        path,
+      },
+      security.verifyOperatorCredential?.(principal.credential) === true,
+    )
   );
 }
