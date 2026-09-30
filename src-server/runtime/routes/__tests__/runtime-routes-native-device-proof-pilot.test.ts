@@ -116,7 +116,6 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const ORIGIN = 'https://station.example.test';
-const STATION_ID = randomUUID();
 let guestUsernameCounter = 0;
 const guestUsername = () => `pilotguest${++guestUsernameCounter}`;
 const GUEST_PASSWORD = 'pilot-password-123';
@@ -249,7 +248,8 @@ describe('native Device request-proof pilot over the production composition', ()
     const homeDir = join(owned, 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
     const security = new EnvironmentSecurityService({ homeDir });
-    const { credential: operatorCredential } = await security.initialize();
+    const { credential: operatorCredential, environmentId: STATION_ID } =
+      await security.initialize();
 
     const storage = new FileStorageAdapter(homeDir);
     const manifests = new ProjectManifestStore(homeDir, storage);
@@ -291,6 +291,7 @@ describe('native Device request-proof pilot over the production composition', ()
     };
     const nativeAuthority = new NativeDeviceRequestAuthority(pilot);
 
+    let lastNativeRequest: Request | undefined;
     const applicationSessions = createApplicationSessionRuntime(
       homeDir,
       STATION_ID,
@@ -303,6 +304,7 @@ describe('native Device request-proof pilot over the production composition', ()
       undefined,
       readVerifiedNativeVirtualApplicationRequest,
       (request: Request) => {
+        lastNativeRequest = request;
         const current = nativeAuthority.resolveCurrent(request);
         return current ? { device: current.device } : undefined;
       },
@@ -361,7 +363,7 @@ describe('native Device request-proof pilot over the production composition', ()
       environmentSecurityService: security,
       eventBus,
       taskGraphService: { listTasks: () => [] },
-      nativeDeviceProofPilot: pilot,
+      nativeDeviceProofPilot: { ...pilot, authority: nativeAuthority },
     });
     const result = configureRuntimeRoutesProduction(
       context as unknown as Parameters<
@@ -457,11 +459,12 @@ describe('native Device request-proof pilot over the production composition', ()
         Awaited<ReturnType<typeof localAccounts.service.loginVirtualSession>>,
         { kind: 'authenticated' }
       >,
+      scope = GUEST_GRANT,
     ) => {
       const pairing = security.devicePairing;
       const offer = pairing.createOffer({
         endpoint: ORIGIN,
-        scope: GUEST_GRANT,
+        scope,
       });
       const pending = pairing.requestPairing({
         offerId: offer.offerId,
@@ -506,12 +509,22 @@ describe('native Device request-proof pilot over the production composition', ()
         clientInstanceId: randomUUID(),
         keyThumbprint: 'B'.repeat(43),
       };
+      const bindingId = randomUUID();
       const binding = bindingService.createBinding({
+        bindingId,
         deviceId: device.id,
         surface,
         jwk: deviceKey.publicJwk,
         approval: operatorAuthority.approve({
           operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          tuple: {
+            operation: 'create',
+            stationId: STATION_ID,
+            deviceId: device.id,
+            bindingId,
+            surface,
+            jwk: deviceKey.publicJwk,
+          },
         }),
       });
       return {
@@ -698,26 +711,28 @@ describe('native Device request-proof pilot over the production composition', ()
         const serverEnd = {
           send: (message: string) => {
             if (clientClosedByServer) return;
-            driver.frames.push(message);
-            const frame = readApplicationFrame(message) as Record<
-              string,
-              unknown
-            >;
-            if (frame.type === 'response')
-              driver.status = frame.status as number;
-            else if (frame.type === 'chunk')
-              driver.chunks.push(
-                new Uint8Array(Buffer.from(frame.bytes as string, 'base64')),
-              );
-            else if (frame.type === 'end') driver.end = true;
-            else if (frame.type === 'error')
-              driver.error = frame.code as string;
-            clientHandler?.(message);
+            queueMicrotask(() => {
+              driver.frames.push(message);
+              const frame = readApplicationFrame(message) as Record<
+                string,
+                unknown
+              >;
+              if (frame.type === 'response')
+                driver.status = frame.status as number;
+              else if (frame.type === 'chunk')
+                driver.chunks.push(
+                  new Uint8Array(Buffer.from(frame.bytes as string, 'base64')),
+                );
+              else if (frame.type === 'end') driver.end = true;
+              else if (frame.type === 'error')
+                driver.error = frame.code as string;
+              clientHandler?.(message);
+            });
           },
           close: () => {
             clientClosedByServer = true;
             try {
-              clientClosedCb?.();
+              queueMicrotask(() => clientClosedCb?.());
             } catch {
               // Fake lifecycle only.
             }
@@ -736,12 +751,12 @@ describe('native Device request-proof pilot over the production composition', ()
         const clientEnd = {
           send: (message: string) => {
             if (serverClosedByClient) return;
-            serverHandler?.(message);
+            queueMicrotask(() => serverHandler?.(message));
           },
           close: () => {
             serverClosedByClient = true;
             try {
-              serverClosedCb?.();
+              queueMicrotask(() => serverClosedCb?.());
             } catch {
               // Fake lifecycle only.
             }
@@ -761,7 +776,7 @@ describe('native Device request-proof pilot over the production composition', ()
         return {
           driver,
           channel: clientEnd,
-          write: (frame) => serverHandler?.(writeApplicationFrame(frame)),
+          write: (frame) => clientEnd.send(writeApplicationFrame(frame)),
           awaitFrame: async () => {
             const before = driver.frames.length;
             await vi.waitFor(
@@ -868,7 +883,7 @@ describe('native Device request-proof pilot over the production composition', ()
           const exchangeText = await exchangeResponse.text();
           expect(
             exchangeResponse.status,
-            `native exchange: ${exchangeResponse.status} ${exchangeText.slice(0, 200)}`,
+            `native exchange: ${exchangeResponse.status} bytes=${exchangeText.length}`,
           ).toBe(200);
           const data = JSON.parse(exchangeText) as {
             data: { credential: string; nonce: string; deviceId: string };
@@ -915,6 +930,10 @@ describe('native Device request-proof pilot over the production composition', ()
           void created.close().catch(() => {});
         },
         nativeFetch,
+        retire: async () => {
+          peerController.abort();
+          await created.close();
+        },
         openManualChannel,
         session,
         deviceProof,
@@ -927,6 +946,7 @@ describe('native Device request-proof pilot over the production composition', ()
       request,
       security,
       localAccounts,
+      applicationSessions,
       membership,
       ownerHeaders,
       shareAndCreateGuest,
@@ -934,6 +954,8 @@ describe('native Device request-proof pilot over the production composition', ()
       startNativePeer,
       bindingService,
       operatorAuthority,
+      nativeAuthority,
+      lastNativeRequest: () => lastNativeRequest,
     };
   }
 
@@ -989,6 +1011,192 @@ describe('native Device request-proof pilot over the production composition', ()
       // Challenge, exchange, list and read each consumed exactly one JTI;
       // currentness rechecks never consume again.
       expect(peer.replaySize()).toBe(4);
+    } finally {
+      peer.dispose();
+    }
+  });
+
+  test('retiring the admitted peer makes the exact Request principal and shared resolver stale', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest('peer-current', 'Peer current');
+    const paired = await h.pairNativeDevice('peer-current-device', guest.login);
+    const peer = await h.startNativePeer(paired);
+    try {
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const held = peer.openManualChannel();
+      held.write({
+        type: 'request',
+        method: 'GET',
+        path: '/api/projects',
+        headers: Object.entries(
+          await peer.session.headers('GET', '/api/projects'),
+        ).map(([name, value]) => [name.toLowerCase(), value]),
+        body: null,
+      });
+      await held.awaitFrame();
+      expect(held.driver.status, deliverySummary(held.driver)).toBe(200);
+      const request = h.lastNativeRequest();
+      if (!request)
+        throw new Error('native service never received the admitted Request');
+      expect(h.nativeAuthority.resolveCurrent(request)?.deviceId).toBe(
+        paired.device.id,
+      );
+      await peer.retire();
+      expect(
+        readVerifiedNativeVirtualApplicationRequest(request),
+      ).toBeUndefined();
+      expect(h.nativeAuthority.resolveCurrent(request)).toBeUndefined();
+    } finally {
+      peer.dispose();
+    }
+  });
+
+  test('invalid proofs from one verified installation cannot rate-limit a different peer installation', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'rate-isolation',
+      'Rate isolation',
+    );
+    const first = await h.pairNativeDevice('rate-first', guest.login);
+    const second = await h.pairNativeDevice('rate-second', guest.login);
+    const a = await h.startNativePeer(first);
+    const b = await h.startNativePeer(second);
+    try {
+      const invalid = async (peer: typeof a) => {
+        const parts = (await peer.deviceProof('GET', '/api/projects')).split(
+          '.',
+        );
+        const claims = JSON.parse(
+          Buffer.from(parts[1]!, 'base64url').toString(),
+        );
+        claims.deviceId = second.device.id; // Unverified selectors cannot poison this Device's budget.
+        parts[1] = Buffer.from(JSON.stringify(claims)).toString('base64url');
+        const signature = Buffer.from(parts[2]!, 'base64url');
+        signature[0] ^= 1;
+        parts[2] = signature.toString('base64url');
+        return peer.nativeFetch(
+          new Request(`${ORIGIN}/api/projects`, {
+            headers: { [NATIVE_DEVICE_PROOF_HEADER]: parts.join('.') },
+          }),
+        );
+      };
+      let limited = false;
+      for (let attempt = 0; attempt < 32; attempt++) {
+        const response = await invalid(a);
+        await response.text();
+        if (response.status === 429) {
+          limited = true;
+          break;
+        }
+        expect(response.status).toBe(403);
+      }
+      expect(limited).toBe(true);
+      const independent = await invalid(b);
+      expect(independent.status, await independent.text()).toBe(403);
+    } finally {
+      a.dispose();
+      b.dispose();
+    }
+  });
+
+  test('verified Device failures are limited without charging another Device', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'verified-budget',
+      'Verified budget',
+    );
+    const a = await h.startNativePeer(
+      await h.pairNativeDevice('verified-budget-a', guest.login),
+    );
+    const b = await h.startNativePeer(
+      await h.pairNativeDevice('verified-budget-b', guest.login),
+    );
+    try {
+      const noAccount = async (peer: typeof a) =>
+        peer.nativeFetch(
+          new Request(`${ORIGIN}/api/projects`, {
+            headers: {
+              [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof(
+                'GET',
+                '/api/projects',
+              ),
+            },
+          }),
+        );
+      let limited = false;
+      for (let attempt = 0; attempt < 32; attempt++) {
+        const response = await noAccount(a);
+        await response.text();
+        if (response.status === 429) {
+          limited = true;
+          break;
+        }
+        expect(response.status).toBe(401);
+      }
+      expect(limited).toBe(true);
+      const independent = await noAccount(b);
+      expect(independent.status, await independent.text()).toBe(401);
+    } finally {
+      a.dispose();
+      b.dispose();
+    }
+  });
+
+  test('scope withdrawn during real provider verification refuses the admitted Project read', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest('scope-await', 'Scope await');
+    const paired = await h.pairNativeDevice(
+      'scope-await-device',
+      guest.login,
+      'orchestration:operate',
+    );
+    const changeScope = async (scope: string[]) => {
+      const response = await h.request(
+        `/api/pairing/devices/${paired.device.id}/scope`,
+        h.ownerHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+    };
+    await changeScope(['orchestration:read', 'orchestration:operate']);
+    const peer = await h.startNativePeer(paired);
+    try {
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const verify = h.localAccounts.service.verifySessionReference.bind(
+        h.localAccounts.service,
+      );
+      let withdrew = false;
+      vi.spyOn(
+        h.localAccounts.service,
+        'verifySessionReference',
+      ).mockImplementation(async (...args) => {
+        const result = await verify(...args);
+        if (!withdrew) {
+          withdrew = true;
+          await changeScope(['orchestration:operate']);
+        }
+        return result;
+      });
+      const response = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(response.status).toBe(401);
+      expect(await response.text()).toContain(
+        'account_authentication_required',
+      );
+      expect(withdrew).toBe(true);
     } finally {
       peer.dispose();
     }
@@ -1138,76 +1346,147 @@ describe('native Device request-proof pilot over the production composition', ()
     }
   });
 
-  test('binding revoked before byte release delivers zero protected bytes', async () => {
-    const h = await setup();
-    const guest = await h.shareAndCreateGuest('delayed', 'Delayed');
-    const paired = await h.pairNativeDevice('revoke-device', guest.login);
-    await h.membership.service.accept(guest.invitationToken, {
-      current: async () => ({
-        principal: deploymentAccountPrincipal(
-          guest.login.issuer,
-          guest.login.session.subject,
-          GUEST_DISPLAY,
-        ),
-        verifiedEmails: [],
-      }),
-      operator: async () => {},
-    });
-    const peer = await h.startNativePeer(paired);
-    try {
-      await peer.session.establish({
-        username: guest.username,
-        password: GUEST_PASSWORD,
-      });
-      // Control: the identical request through the production client reads.
-      const control = await peer.nativeFetch(
-        new Request(`${ORIGIN}/api/projects/${guest.project.slug}`, {
-          headers: await peer.session.headers(
-            'GET',
-            `/api/projects/${guest.project.slug}`,
+  test.each(['binding', 'device', 'provider', 'member', 'peer'] as const)(
+    '%s revoked before byte release delivers zero protected bytes',
+    async (retired) => {
+      const h = await setup();
+      const guest = await h.shareAndCreateGuest('delayed', 'Delayed');
+      const paired = await h.pairNativeDevice('revoke-device', guest.login);
+      await h.membership.service.accept(guest.invitationToken, {
+        current: async () => ({
+          principal: deploymentAccountPrincipal(
+            guest.login.issuer,
+            guest.login.session.subject,
+            GUEST_DISPLAY,
           ),
+          verifiedEmails: [],
         }),
-      );
-      expect(control.status, await control.text()).toBe(200);
-      // Controlled manual delivery: request the guarded read, hold the
-      // response, revoke, then credit exactly once.
-      const manual = peer.openManualChannel();
-      manual.write({
-        type: 'request',
-        method: 'GET',
-        path: `/api/projects/${guest.project.slug}`,
-        headers: Object.entries({
-          ...(await peer.session.headers(
-            'GET',
-            `/api/projects/${guest.project.slug}`,
-          )),
-        }).map(
-          ([name, value]) => [name.toLowerCase(), value] as [string, string],
-        ),
-        body: null,
+        operator: async () => {},
       });
-      await manual.awaitFrame();
-      expect(manual.driver.status, deliverySummary(manual.driver)).toBe(200);
-      // Revoke the approved native binding before pulling any byte.
-      h.bindingService.revokeBinding({
-        deviceId: paired.device.id,
-        surface: paired.surface,
-        approval: h.operatorAuthority.approve({
-          operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
-        }),
-      });
-      manual.write({ type: 'credit' });
-      await manual.awaitFrame();
-      // A late authorization guard denies the bytes: the frame record shows
-      // the canonical application_failed error and zero protected bytes.
-      expect(manual.driver.error, deliverySummary(manual.driver)).toBe(
-        'application_failed',
-      );
-      expect(manual.driver.chunks, deliverySummary(manual.driver)).toHaveLength(
-        0,
-      );
-    } finally {
-      peer.dispose();
-    }
-  });
+      const peer = await h.startNativePeer(paired);
+      try {
+        const logins = vi.spyOn(h.localAccounts.service, 'loginVirtualSession');
+        await peer.session.establish({
+          username: guest.username,
+          password: GUEST_PASSWORD,
+        });
+        const login = await logins.mock.results.at(-1)?.value;
+        if (login?.kind !== 'authenticated')
+          throw new Error(
+            'native exchange did not establish a real provider session',
+          );
+        // Control: the identical request through the production client reads.
+        const control = await peer.nativeFetch(
+          new Request(`${ORIGIN}/api/projects/${guest.project.slug}`, {
+            headers: await peer.session.headers(
+              'GET',
+              `/api/projects/${guest.project.slug}`,
+            ),
+          }),
+        );
+        expect(control.status, await control.text()).toBe(200);
+        // Controlled manual delivery: request the guarded read, hold the
+        // response, revoke, then credit exactly once.
+        const manual = peer.openManualChannel();
+        manual.write({
+          type: 'request',
+          method: 'GET',
+          path: `/api/projects/${guest.project.slug}`,
+          headers: Object.entries({
+            ...(await peer.session.headers(
+              'GET',
+              `/api/projects/${guest.project.slug}`,
+            )),
+          }).map(
+            ([name, value]) => [name.toLowerCase(), value] as [string, string],
+          ),
+          body: null,
+        });
+        await manual.awaitFrame();
+        expect(manual.driver.status, deliverySummary(manual.driver)).toBe(200);
+        if (retired === 'binding') {
+          // Revoke the approved native binding before pulling any byte.
+          h.bindingService.revokeBinding({
+            bindingId: paired.binding.bindingId,
+            deviceId: paired.device.id,
+            surface: paired.surface,
+            jwk: paired.deviceKey.publicJwk,
+            approval: h.operatorAuthority.approve({
+              operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              tuple: {
+                operation: 'revoke',
+                stationId: paired.binding.stationId,
+                deviceId: paired.device.id,
+                bindingId: paired.binding.bindingId,
+                surface: paired.surface,
+                jwk: paired.deviceKey.publicJwk,
+              },
+            }),
+          });
+        } else if (retired === 'device') {
+          const response = await h.request(
+            `/api/pairing/devices/${paired.device.id}`,
+            h.ownerHeaders({ method: 'DELETE' }),
+          );
+          expect(response.status).toBe(200);
+          await response.text();
+        } else if (retired === 'provider') {
+          await h.localAccounts.service.revokeSessionReference(
+            login.session.sessionId,
+            new AbortController().signal,
+          );
+        } else if (retired === 'member') {
+          const administration = await h.request(
+            `/api/projects/${guest.project.slug}/access`,
+            h.ownerHeaders(),
+          );
+          expect(administration.status).toBe(200);
+          const { data } = await readJson<{
+            data: import('@kontourai/station-contracts/project-membership').ProjectAccessAdministrationView;
+          }>(administration);
+          const member = data.members.find(
+            (entry) => entry.principal.id === login.principal.id,
+          );
+          if (!member) throw new Error('real invited member not found');
+          const revoked = await h.request(
+            `/api/projects/${guest.project.slug}/access/members`,
+            h.ownerHeaders({
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                scope: data.scope,
+                principalId: member.principal.id,
+                revision: member.revision,
+                role: member.role,
+                status: 'revoked',
+              }),
+            }),
+          );
+          expect(revoked.status).toBe(200);
+          await revoked.text();
+        } else {
+          await peer.retire();
+          expect(manual.closedByServer()).toBe(true);
+          expect(
+            manual.driver.chunks,
+            deliverySummary(manual.driver),
+          ).toHaveLength(0);
+          return;
+        }
+        manual.write({ type: 'credit' });
+        await manual.awaitFrame();
+        // A late authorization guard denies the bytes: the frame record shows
+        // the canonical application_failed error and zero protected bytes.
+        expect(manual.driver.error, deliverySummary(manual.driver)).toBe(
+          'application_failed',
+        );
+        expect(
+          manual.driver.chunks,
+          deliverySummary(manual.driver),
+        ).toHaveLength(0);
+      } finally {
+        peer.dispose();
+      }
+    },
+  );
 });

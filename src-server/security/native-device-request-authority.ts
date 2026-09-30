@@ -10,10 +10,15 @@
  * carried on the Request — never from any header, body field or claim source
  * other than the proof's own signature check against those facts.
  */
+import {
+  APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
+  APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+} from '@kontourai/station-contracts/application-session';
 import type {
   DevicePrincipalBinding,
   PairedDevice,
 } from '@kontourai/station-contracts/environment-security';
+import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { readVerifiedNativeVirtualApplicationRequest } from '../services/connections/virtual-application.js';
 import {
@@ -22,6 +27,7 @@ import {
   type NativeDeviceProofReplayStore,
   verifyNativeDeviceRequestProof,
 } from '../services/identity/native-device-proof-verifier.js';
+import { requiredExternalSurfaceCapability } from './pairing-route-scopes.js';
 import {
   getRuntimeNativeDeviceProofPrincipal,
   isRuntimeNativeDeviceProofCurrent,
@@ -114,8 +120,33 @@ const accountBindingOf = (
     : undefined;
 };
 
+/**
+ * The explicit #2893 pilot route allowlist. Privileged, terminal, plugin,
+ * pairing, consent and operator routes are NOT listed and refuse proof
+ * authority even when the proven Device holds broad pairing scopes.
+ * Unmapped routes stay denied by the capability table above this.
+ */
+export function nativeDeviceProofPilotRoute(
+  method: string,
+  path: string,
+): boolean {
+  if (method === 'POST')
+    return (
+      path === APPLICATION_SESSION_NATIVE_CHALLENGE_PATH ||
+      path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH
+    );
+  if (method === 'GET' || method === 'HEAD')
+    return path === '/api/projects' || /^\/api\/projects\/[^/]+$/.test(path);
+  return false;
+}
+
 export class NativeDeviceRequestAuthority {
+  private active = true;
   constructor(private readonly deps: NativeDeviceRequestAuthorityDeps) {}
+
+  close(): void {
+    this.active = false;
+  }
 
   /**
    * Verify one Device request JWS against the exact received bytes and the
@@ -128,6 +159,8 @@ export class NativeDeviceRequestAuthority {
     finalRequest: Request,
     input: NativeDeviceAdmissionInput,
   ): Promise<NativeDeviceAdmission> {
+    if (!this.active)
+      throw new NativeDeviceRequestRefusedError('device_not_current');
     const facts = readVerifiedNativeVirtualApplicationRequest(finalRequest);
     if (!facts) throw new NativeDeviceRequestRefusedError('provenance_invalid');
     let verification: Awaited<
@@ -185,11 +218,15 @@ export class NativeDeviceRequestAuthority {
         throw new NativeDeviceRequestRefusedError('proof_invalid', { cause });
       throw cause;
     }
-    const minted = this.mint(finalRequest, {
-      deviceId: verification.deviceId,
-      bindingId: verification.bindingId,
-      surface: facts.surface,
-    });
+    const minted = this.mint(
+      finalRequest,
+      {
+        deviceId: verification.deviceId,
+        bindingId: verification.bindingId,
+        surface: facts.surface,
+      },
+      facts,
+    );
     return {
       deviceId: minted.deviceId,
       bindingId: minted.bindingId,
@@ -205,14 +242,22 @@ export class NativeDeviceRequestAuthority {
    * still current — re-read now, never carried from headers.
    */
   resolveCurrent(request: Request): NativeDeviceCurrentRequest | undefined {
+    if (!this.active) return undefined;
     const principal = getRuntimeNativeDeviceProofPrincipal(request);
-    if (!principal || !isRuntimeNativeDeviceProofCurrent(request))
+    if (
+      !readVerifiedNativeVirtualApplicationRequest(request) ||
+      !principal ||
+      !isRuntimeNativeDeviceProofCurrent(request)
+    )
       return undefined;
-    return this.currentFor(
+    const current = this.currentFor(
       principal.deviceId,
       principal.bindingId,
       principal.approvedSurface,
     );
+    return current && this.scopeCurrent(request, current.device.scope)
+      ? current
+      : undefined;
   }
 
   private mint(
@@ -222,7 +267,14 @@ export class NativeDeviceRequestAuthority {
       bindingId: string;
       surface: SelfHostedBrokerNativeClientSurfaceV2;
     },
+    facts: NonNullable<
+      ReturnType<typeof readVerifiedNativeVirtualApplicationRequest>
+    >,
   ): NativeDeviceCurrentRequest {
+    if (!this.active)
+      throw new NativeDeviceRequestRefusedError('device_not_current');
+    if (readVerifiedNativeVirtualApplicationRequest(finalRequest) !== facts)
+      throw new NativeDeviceRequestRefusedError('provenance_invalid');
     const current = this.currentFor(
       selectors.deviceId,
       selectors.bindingId,
@@ -240,14 +292,38 @@ export class NativeDeviceRequestAuthority {
       deviceId: current.deviceId,
       bindingId: current.bindingId,
       approvedSurface: current.surface,
-      isCurrent: () =>
-        this.currentFor(
+      isCurrent: () => {
+        if (!this.active) return false;
+        if (readVerifiedNativeVirtualApplicationRequest(finalRequest) !== facts)
+          return false;
+        const latest = this.currentFor(
           current.deviceId,
           current.bindingId,
           current.surface,
-        ) !== undefined,
+        );
+        return (
+          latest !== undefined &&
+          this.scopeCurrent(finalRequest, latest.device.scope)
+        );
+      },
     });
     return current;
+  }
+
+  private scopeCurrent(request: Request, scope: string): boolean {
+    const path = new URL(request.url).pathname;
+    const capability = requiredExternalSurfaceCapability(
+      'http',
+      request.method,
+      path,
+    );
+    return (
+      nativeDeviceProofPilotRoute(request.method, path) &&
+      (capability?.capability === 'public' ||
+        (capability?.capability === 'pairing-scope' &&
+          capability.scope !== undefined &&
+          pairingScopeIncludes(scope, capability.scope)))
+    );
   }
 
   private currentFor(
@@ -258,7 +334,12 @@ export class NativeDeviceRequestAuthority {
     const current = this.deps.binding.currentBinding({ deviceId, surface });
     if (!current || current.binding.bindingId !== bindingId) return undefined;
     const device = this.deps.pairing.activeDevice(deviceId);
-    if (device?.kind !== 'device') return undefined;
+    if (
+      device?.kind !== 'device' ||
+      device.id !== deviceId ||
+      device.revokedAt !== null
+    )
+      return undefined;
     const accountBinding = accountBindingOf(device);
     if (!accountBinding) return undefined;
     return {

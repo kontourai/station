@@ -19,7 +19,10 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  getRuntimeNativeDeviceProofPrincipal,
+} from '../../security/runtime-request-security.js';
 import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 
@@ -166,6 +169,11 @@ export function installAccountBoundDeviceGate(
     const account = deps.deploymentAuthentication?.service.current(c.req.raw);
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
     const nativeDevice = deps.resolveNativeDevice?.(c.req.raw);
+    if (getRuntimeNativeDeviceProofPrincipal(c.req.raw) && !nativeDevice)
+      return c.json(
+        { error: { code: 'native_device_proof_device_not_current' } },
+        403,
+      );
     const binding = nativeDevice
       ? nativeDevice.device.principalBinding
       : runtimePrincipal?.authority === 'device-credential'

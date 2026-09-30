@@ -720,6 +720,7 @@ export interface ConfigureRuntimeRoutesContext {
     pairing: import('../../security/native-device-request-authority.js').NativeDeviceProofPairingLookup;
     replayStore: import('../../services/identity/native-device-proof-verifier.js').NativeDeviceProofReplayStore;
     nowSeconds?: () => number;
+    authority?: NativeDeviceRequestAuthority;
   };
   projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
@@ -1189,7 +1190,10 @@ export function configureRuntimeRoutes(
   // #2893: the one native Device request authority for this runtime. Absent
   // unless the pilot was explicitly composed; proof headers then refuse closed.
   const nativeDeviceProofAuthority = context.nativeDeviceProofPilot
-    ? new NativeDeviceRequestAuthority(context.nativeDeviceProofPilot)
+    ? context.nativeDeviceProofPilot.authority instanceof
+      NativeDeviceRequestAuthority
+      ? context.nativeDeviceProofPilot.authority
+      : new NativeDeviceRequestAuthority(context.nativeDeviceProofPilot)
     : undefined;
   const resolveNativeDeviceBinding = nativeDeviceProofAuthority
     ? (request: Request) => {
@@ -4125,8 +4129,11 @@ export function configureRuntimeRoutes(
       if (!principalCurrent) throw new ProjectMembershipRefusal('forbidden');
       const account =
         await context.deploymentAuthentication?.service.authenticate(request);
+      const refreshedNativeDevice = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request)
+        : undefined;
       const stillCurrent = nativeDevice
-        ? nativeDeviceProofAuthority!.resolveCurrent(request) !== undefined
+        ? refreshedNativeDevice !== undefined
         : isRuntimeRequestPrincipalCurrent(
             request,
             context.environmentSecurityService,
@@ -4134,8 +4141,8 @@ export function configureRuntimeRoutes(
       if (!stillCurrent) throw new ProjectMembershipRefusal('forbidden');
       if (account?.kind === 'authenticated') {
         const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
-        const binding = nativeDevice
-          ? nativeDevice.accountBinding
+        const binding = refreshedNativeDevice
+          ? refreshedNativeDevice.accountBinding
           : runtime?.authority === 'device-credential'
             ? context.environmentSecurityService.identifyDevice(
                 runtime.credential,

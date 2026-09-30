@@ -18,7 +18,10 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { getCachedUser } from '../../routes/system/auth.js';
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  getRuntimeNativeDeviceProofPrincipal,
+} from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type DeploymentAuthenticationService,
@@ -155,6 +158,10 @@ export function createOrchestrationRequestPrincipalResolver(
     // #2893 pilot: a proven native Device request resolves to its matching
     // authenticated account principal and nothing else.
     const nativeDevice = deps.resolveNativeDevice?.(c.req.raw);
+    if (getRuntimeNativeDeviceProofPrincipal(c.req.raw) && !nativeDevice)
+      throw new PrincipalUnresolvedError(
+        'the native Device request is no longer current',
+      );
     if (nativeDevice) {
       const verifiedPerson = deploymentAccountPrincipal(
         nativeDevice.accountBinding.issuer,
