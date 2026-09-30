@@ -808,7 +808,10 @@
     min-height: 44px;
   }
 
+  /* flex: none — framed, the control shares .split-pane__filter-row with the
+     search input, which squeezed it to 40px in a 255px rail. */
   .split-pane__collapse {
+    flex: none;
     width: 44px;
     height: 44px;
   }

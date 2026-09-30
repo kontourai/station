@@ -1761,6 +1761,23 @@ describe('SplitPaneLayout', () => {
       );
     });
 
+    test('collapsing the group holding the selected row leaves exactly one Tab stop', () => {
+      const group = { id: 'run', label: 'Run · 1 delegated session' };
+      const items: Items = [
+        { id: 'root', name: 'Root task', group },
+        { id: 'child', name: 'Child task', group },
+        { id: 'solo', name: 'Solo' },
+      ];
+      const { list, tabStops } = renderList(items, { selectedId: 'child' });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Run · 1 delegated session' }),
+      );
+      expect(
+        list.querySelector('[data-split-pane-nav="item:child"]'),
+      ).toBeNull();
+      expect(tabStops()).toHaveLength(1);
+    });
+
     test('a control a trailing cell reveals from its own state is demoted too', async () => {
       function RevealingCell() {
         const [open, setOpen] = useState(false);

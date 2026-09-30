@@ -55,6 +55,7 @@ vi.mock('../hooks/useIsMobile', () => ({
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
 }));
 
+import { PageFrame } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -132,6 +133,29 @@ function fixtureHtml(): string {
   if (!left) throw new Error('the rail did not render');
   const rail = left.outerHTML;
   unmount();
+  // Framed, the collapse control shares the filter row with the search input;
+  // Agents' rail at a 1024px tablet is 255px wide.
+  const framed = render(
+    <PageFrame spec={{ title: 'Agents' }} routeIdentity="agents">
+      <SplitPaneLayout
+        label="agents"
+        title="Agents"
+        items={[{ id: 'a', name: 'Alpha' }]}
+        selectedId={null}
+        onSelect={() => {}}
+        onSearch={() => {}}
+      >
+        <div>detail</div>
+      </SplitPaneLayout>
+    </PageFrame>,
+  );
+  const framedLeft = framed.container.querySelector('.split-pane__left');
+  if (
+    !framedLeft?.querySelector('.split-pane__filter-row .split-pane__collapse')
+  )
+    throw new Error('the framed rail did not put collapse in the filter row');
+  const framedRail = framedLeft.outerHTML;
+  framed.unmount();
   const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
@@ -140,6 +164,9 @@ function fixtureHtml(): string {
   <body style="margin:0">
     <div class="split-pane" style="display:flex;width:1000px;height:700px">
       <div style="width:320px;display:flex">${rail}</div>
+    </div>
+    <div class="split-pane" id="narrow" style="display:flex;width:1000px;height:300px">
+      <div style="width:255px;display:flex">${framedRail}</div>
     </div>
   </body>
 </html>`;
@@ -233,6 +260,7 @@ describe.skipIf(!chromiumAvailable)(
             }
           }
           const collapse = box('.split-pane__collapse');
+          const narrowCollapse = box('#narrow .split-pane__collapse');
           const toggle = box('.split-pane__group-toggle');
           return {
             coarse: matchMedia('(pointer: coarse)').matches,
@@ -253,6 +281,10 @@ describe.skipIf(!chromiumAvailable)(
               return new Set(tops).size > 1;
             }),
             collapse: { width: collapse.width, height: collapse.height },
+            narrowCollapse: {
+              width: narrowCollapse.width,
+              height: narrowCollapse.height,
+            },
             toggleHeight: toggle.height,
             rowHeight: box('.split-pane__item').height,
             trailing: hitsAbove(
@@ -273,6 +305,9 @@ describe.skipIf(!chromiumAvailable)(
       expect(result.coarse).toBe(true);
       expect(result.collapse.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(result.collapse.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
+      // A 255px framed rail: the search input must not squeeze it.
+      expect(result.narrowCollapse.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
+      expect(result.narrowCollapse.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(result.toggleHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(result.rowHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
     });
