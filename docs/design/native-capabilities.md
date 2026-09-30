@@ -135,9 +135,8 @@ Owner construction validates identifiers; it does not establish Device approval
 or account authority, and the signer itself does not validate a request protocol.
 
 The source includes memory-backend tests and an opt-in macOS Keychain test.
-They were not run for this documentation review. IPC, account continuation,
-mobile custody and packaged/device behavior require separate integration and
-platform evidence.
+Unit checks do not establish IPC, account continuation, mobile custody or
+packaged/device behavior; those require separate integration and platform evidence.
 
 ### Desktop Device proof-key foundation
 
@@ -168,6 +167,26 @@ key and owner tuple do not establish operator approval. Server-side Device
 authorization exists in the opt-in pilot; request-signing IPC and a packaged
 Project journey remain integration requirements. The software key is decoded
 inside Rust for signing; this is not hardware-backed non-exportability.
+
+The separate main-window command `station_native_device_binding_self_receipt`
+loads an existing candidate and reads its fixed Station receipt URL through the
+native HTTP owner. It accepts only the saved profile and expected revision;
+the bearer stays in Rust. One process-wide nonblocking guard prevents overlapping
+reads from overwriting newer observations. The HTTP exchange has a 45-second
+deadline, including capacity wait, and a 4 KiB response limit. Receipt-only
+global and body budgets leave ordinary HTTP and open-ended SSE behavior unchanged.
+
+After HTTP, profile and authority locks cover owner revalidation, receipt
+validation, the Keychain observation write and result construction. The current
+host authorization epoch is separate from the Device proof binding UUID. A
+matching receipt reports `current` or `not-current`; only the closed versioned
+404 response records `not-found`. Transport failure or the versioned unavailable
+response may return a prior observation with `source: cached-observation` and
+its original timestamp. A prior positive observation is labeled
+`previously-confirmed-current`, never fresh `current`. Missing, malformed,
+mismatched or unavailable readback preserves the candidate and key. No renderer
+caller, peer-session owner or request-signing path consumes this command yet.
+Source and Rust/HTTP fixtures do not establish an executed native IPC or packaged journey.
 
 ### Desktop paired-Device identity custody
 

@@ -494,14 +494,15 @@ requests; no renderer caller currently consumes it. See the
 [candidate producer](../../src-desktop/src/native_relay_redemption.rs) and
 [candidate manager](../../src-desktop/src/native_device_binding_candidate.rs).
 
-For each request the host signs one short-lived proof over the exact Station
+The request-signing protocol requires the host to sign one short-lived proof over the exact Station
 audience, Station and Device IDs, binding ID, native surface, unique Pion peer
 nonce, uppercase method, path **including query**, SHA-256 digest of the exact
 transmitted body bytes, JTI and expiry. The WebView may carry this one-request
 proof through the encrypted application channel but never receives the Device
-bearer or private key. The host checks the current saved-profile revision,
-approved Station trust and Device binding before signing. It refuses a generic
-signing request or a foreign Station/profile. Station verifies the signature
+bearer or private key. The remaining host signing integration must check the
+current saved-profile revision, approved Station trust and Device binding before
+signing, and refuse a generic signing request or a foreign Station/profile.
+Station verifies the signature
 against the *current* Device grant, independently hashes the received body,
 consumes the JTI before dispatch, and compares the proof's peer nonce/surface
 to private Pion provenance. Only then do ordinary Device scope, account,
@@ -580,9 +581,33 @@ authority. One sidecar snapshot supplies historical state and currentness,
 and the route rechecks the current bearer before publication. Missing and
 foreign records have the same refusal. The mounted runtime tests cover the
 account-free read, ownership, revocation, scope withdrawal and corrupt storage;
-they do not establish a native host consumer or relay-only retrieval. A future
-host must compare the full receipt tuple with its prepared candidate and keep
-the provisional key when readback is missing or the outcome is unknown.
+they do not establish an executed native IPC or relay-only retrieval.
+
+The Desktop source now registers `station_native_device_binding_self_receipt`
+in the [native relay owner](../../src-desktop/src/native_relay_redemption.rs).
+It restores an existing candidate, reads only its fixed Station receipt URL
+through the private native HTTP collector, and compares the full public tuple.
+The bearer stays in Rust. The 45-second HTTP deadline includes capacity wait;
+the complete response is capped at 4 KiB. Final profile/authority locks cover
+owner and epoch revalidation, observation persistence and public result
+construction. A nonblocking process-wide guard prevents overlapping reads from
+overwriting newer observations. The host epoch is not the proof binding UUID.
+
+Fresh matching receipts return `current` or `not-current`; a closed versioned
+404 returns `not-found`. Transport outages or a versioned unavailable response
+may return an earlier `cached-observation` with its original timestamp, labeling
+a prior positive state `previously-confirmed-current`. Malformed or unrelated
+errors remain unavailable, and every refusal retains the provisional key.
+This command has no renderer consumer and grants no signing, peer, account or
+Project authority. Actual native IPC, packaged use and fresh relay enrollment
+remain unverified.
+
+The [application Fetch adapter](../../packages/connect/src/core/applicationChannel.ts)
+now supports a channel-owned `prepareRequest` hook after peer admission. It
+passes copied request bytes and headers while retaining the original target,
+query and body for dispatch. Added headers cannot replace existing headers;
+cancellation or failed preparation closes without dispatch. This public hook
+does not install a native signer or activate ordinary client transport.
 
 ### Transport qualification
 

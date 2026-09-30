@@ -146,7 +146,14 @@ and a separate credential-free Request principal. The
 composes server admission behind explicit opt-in and provider/native connector
 checks. The [binding management routes](../../src-server/routes/system/native-device-proof-binding-routes.ts)
 require current operator credentials and expose historical/current binding
-readback. Native proofs authorize only the pilot account and Project-read
+readback. A separate [Device self-receipt route](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
+admits only the owning current ordinary Device bearer. The Desktop
+`station_native_device_binding_self_receipt` command restores its existing
+candidate and reads that fixed endpoint through the native HTTP owner. It
+rechecks owners under the profile/authority locks before recording an
+observation, distinguishes cached history from fresh readback, and retains the
+key on unknown outcomes. No renderer or request-signing caller consumes it.
+Native proofs authorize only the pilot account and Project-read
 surface, with independent account and membership checks. Rust signing IPC and
 ordinary native client composition remain unmounted; the
 [broker design](../design/connection-broker.md#native-device-proof-on-the-application-channel-2893)

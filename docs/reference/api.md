@@ -2565,6 +2565,17 @@ station-native-device-proof-self-receipt-error/v1`. Only this versioned
 `not_found` response establishes a binding lookup absence; an unrelated route
 or proxy error is an unavailable observation.
 
+The Desktop [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+also registers the main-window `station_native_device_binding_self_receipt`
+command. Its inputs are only a saved profile name and expected revision; it
+reads the fixed endpoint using the current host-authorized Device bearer and
+compares the complete candidate tuple. Results distinguish fresh Station
+receipts from cached observations; cached positive history is
+`previously-confirmed-current` with its original observation timestamp.
+The command preserves the key on missing or unknown outcomes and has no
+renderer, peer-session or signing consumer. Source registration is not an
+executed native IPC or packaged acceptance receipt.
+
 ## Bind a paired device to its verified person
 
 ```http
