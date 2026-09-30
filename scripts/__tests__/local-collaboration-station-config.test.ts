@@ -34,3 +34,29 @@ it('does not launch the Station child when private broker config preparation fai
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it('refuses native Device proof pilot startup without virtual broker ingress', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-native-proof-config-'));
+  const directory = join(root, 'station');
+  try {
+    await expect(
+      startAccountLabStation(
+        {
+          directory,
+          name: 'native-proof-config-fixture',
+          hostname: '127.0.0.1',
+          allowedProbePort: 42111,
+          blockedProbePort: 42112,
+          probeNonce: 'b'.repeat(64),
+          nativeDeviceProofPilot: true,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(
+      'Native Device proof pilot requires the fixture virtual application and broker connector.',
+    );
+    expect(readdirSync(directory).sort()).toEqual(['home', 'os-home', 'tmp']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

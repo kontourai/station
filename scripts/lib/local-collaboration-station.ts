@@ -68,6 +68,8 @@ interface StationInput {
   additionalVirtualApplicationOrigins?: readonly string[];
   prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
   ownedBrokerTcpPort?: number;
+  /** Explicit fixture-only opt-in for native Device proof runtime coverage. */
+  nativeDeviceProofPilot?: true;
 }
 
 /** Boots the real entrypoint or full-runtime virtual fixture; no replacement auth routes or providers. */
@@ -188,6 +190,13 @@ export async function startAccountLabStation(
       mkdirSync(path, { recursive: true, mode: 0o700 });
     const selfHostedBrokerConfigPath =
       input.prepareSelfHostedBrokerConfig?.(base);
+    if (
+      input.nativeDeviceProofPilot &&
+      (!input.virtualApplicationOrigin || !selfHostedBrokerConfigPath)
+    )
+      throw new Error(
+        'Native Device proof pilot requires the fixture virtual application and broker connector.',
+      );
     const bootId = randomUUID();
     const config = join(input.directory, `launch-${bootId}.json`);
     const dotenv = join(input.directory, `launch-${bootId}.env`);
@@ -276,6 +285,9 @@ export async function startAccountLabStation(
             ? {
                 STATION_BROKER_CONFIG_FILE: selfHostedBrokerConfigPath,
               }
+            : {}),
+          ...(input.nativeDeviceProofPilot
+            ? { STATION_NATIVE_DEVICE_PROOF_PILOT: '1' }
             : {}),
           STATION_LOG_LEVEL: 'error',
           OTEL_SDK_DISABLED: 'true',
