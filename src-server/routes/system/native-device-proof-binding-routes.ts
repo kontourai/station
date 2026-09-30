@@ -5,24 +5,28 @@ import type {
   NativeDeviceProofPublicKey,
 } from '@kontourai/station-contracts/native-device-proof';
 import { type Context, Hono } from 'hono';
-import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
-import {
-  NativeDeviceProofBindingError,
-  NativeDeviceProofBindingService,
-  NativeDeviceProofOperatorAuthority,
-  type NativeDeviceProofApprovalTuple,
-} from '../../services/ssh/native-device-proof-binding-service.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
+import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  type NativeDeviceProofApprovalTuple,
+  NativeDeviceProofBindingError,
+  NativeDeviceProofBindingService,
+  NativeDeviceProofOperatorAuthority,
+} from '../../services/ssh/native-device-proof-binding-service.js';
 
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const SURFACE_KEYS = 'appIdentifier,channel,clientInstanceId,keyThumbprint,kind';
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SURFACE_KEYS =
+  'appIdentifier,channel,clientInstanceId,keyThumbprint,kind';
 const JWK_KEYS = 'crv,kty,x,y';
 const MAX_BODY_BYTES = 4096;
-const READBACK_VERSION = 'station-native-device-proof-binding-readback/v1' as const;
+const READBACK_VERSION =
+  'station-native-device-proof-binding-readback/v1' as const;
 
 export interface NativeDeviceProofBindingRouteDeps {
   readonly bindings: NativeDeviceProofBindingService;
@@ -36,24 +40,10 @@ export interface NativeDeviceProofBindingRouteDeps {
 class InvalidRequest extends Error {}
 
 async function readBoundedJson(context: Context): Promise<unknown> {
-  const reader = context.req.raw.body?.getReader();
-  if (!reader) throw new InvalidRequest();
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let size = 0;
-  let text = '';
+  const result = await readBoundedRequestBody(context.req.raw, MAX_BODY_BYTES);
+  if (result.status !== 'ok') throw new InvalidRequest();
   try {
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      size += part.value.byteLength;
-      if (size > MAX_BODY_BYTES) {
-        await reader.cancel();
-        throw new InvalidRequest();
-      }
-      text += decoder.decode(part.value, { stream: true });
-    }
-    text += decoder.decode();
-    return JSON.parse(text) as unknown;
+    return JSON.parse(result.body) as unknown;
   } catch {
     throw new InvalidRequest();
   }
@@ -120,7 +110,10 @@ function parseBody(value: unknown): {
   ) {
     throw new InvalidRequest();
   }
-  return { operation: value.operation, candidate: parseCandidate(value.candidate) };
+  return {
+    operation: value.operation,
+    candidate: parseCandidate(value.candidate),
+  };
 }
 
 function currentOperator(
@@ -129,10 +122,10 @@ function currentOperator(
 ): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (
-    !principal ||
-    principal.authority !== 'operator-credential' ||
+    principal?.authority !== 'operator-credential' ||
     !deps.security.verifyOperatorCredential(principal.credential)
-  ) return false;
+  )
+    return false;
   return isRuntimeRequestPrincipalCurrent(request, deps.security);
 }
 
@@ -153,7 +146,9 @@ function publicReadback(
       state: binding.state,
       createdAt: binding.createdAt,
       approvedAt: binding.approvedAt,
-      ...(binding.revokedAt === undefined ? {} : { revokedAt: binding.revokedAt }),
+      ...(binding.revokedAt === undefined
+        ? {}
+        : { revokedAt: binding.revokedAt }),
       ...(binding.revocationReason === undefined
         ? {}
         : { revocationReason: binding.revocationReason }),
@@ -166,10 +161,18 @@ type RouteStatus = 400 | 403 | 404 | 409 | 503;
 
 function serviceStatus(error: unknown): RouteStatus {
   if (!(error instanceof NativeDeviceProofBindingError)) return 503;
-  if (error.code === 'store_unavailable' || error.code === 'station_unavailable') return 503;
+  if (
+    error.code === 'store_unavailable' ||
+    error.code === 'station_unavailable'
+  )
+    return 503;
   if (error.code === 'operator_unauthorized') return 403;
   if (error.code === 'binding_not_found') return 404;
-  if (error.code === 'binding_id_conflict' || error.code === 'operator_approval_reused') return 409;
+  if (
+    error.code === 'binding_id_conflict' ||
+    error.code === 'operator_approval_reused'
+  )
+    return 409;
   return 400;
 }
 
@@ -233,34 +236,54 @@ export function createNativeDeviceProofBindingRoutes(
       });
       if (!currentOperator(context.req.raw, deps))
         return context.json({ error: { code: 'operator_required' } }, 403);
-      const binding = operation === 'create'
-        ? deps.bindings.createBinding({
-            bindingId: candidate.bindingId,
-            deviceId: candidate.deviceId,
-            surface: candidate.surface,
-            jwk: candidate.deviceProofJwk,
-            approval,
-          })
-        : deps.bindings.revokeBinding({
-            bindingId: candidate.bindingId,
-            deviceId: candidate.deviceId,
-            surface: candidate.surface,
-            jwk: candidate.deviceProofJwk,
-            approval,
-          })[0];
-      const historical = deps.bindings.bindingById({ bindingId: candidate.bindingId });
-      if (!historical) throw new NativeDeviceProofBindingError('store_unavailable');
+      const binding =
+        operation === 'create'
+          ? deps.bindings.createBinding({
+              bindingId: candidate.bindingId,
+              deviceId: candidate.deviceId,
+              surface: candidate.surface,
+              jwk: candidate.deviceProofJwk,
+              approval,
+            })
+          : deps.bindings.revokeBinding({
+              bindingId: candidate.bindingId,
+              deviceId: candidate.deviceId,
+              surface: candidate.surface,
+              jwk: candidate.deviceProofJwk,
+              approval,
+            })[0];
+      const historical = deps.bindings.bindingById({
+        bindingId: candidate.bindingId,
+      });
+      if (!historical)
+        throw new NativeDeviceProofBindingError('store_unavailable');
       const current = deps.bindings.currentBinding({
         deviceId: historical.deviceId,
         surface: historical.surface,
       });
       return context.json({
-        data: publicReadback(historical, current?.binding.bindingId === binding.bindingId),
+        data: publicReadback(
+          historical,
+          current?.binding.bindingId === binding.bindingId,
+        ),
       });
     } catch (error) {
       const status = serviceStatus(error);
       return context.json(
-        { error: { code: status === 503 ? 'unavailable' : status === 404 ? 'not_found' : status === 409 ? 'conflict' : status === 403 ? 'operator_required' : 'invalid_request' } },
+        {
+          error: {
+            code:
+              status === 503
+                ? 'unavailable'
+                : status === 404
+                  ? 'not_found'
+                  : status === 409
+                    ? 'conflict'
+                    : status === 403
+                      ? 'operator_required'
+                      : 'invalid_request',
+          },
+        },
         status,
       );
     }
