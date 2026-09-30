@@ -39,6 +39,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
+| `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |

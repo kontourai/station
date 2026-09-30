@@ -22,9 +22,11 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
-const { handleRequestOpenedEvent, handleRequestDeliveryEvent } = await import(
-  '../approvalHandlers'
-);
+const {
+  handleRequestOpenedEvent,
+  handleRequestDeliveryEvent,
+  handleRequestResolvedEvent,
+} = await import('../approvalHandlers');
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -616,4 +618,62 @@ describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () =
       ],
     });
   });
+});
+
+test('nonblocking question events do not pause or revive chat and do not keep another approval waiting', () => {
+  updateChat.mockClear();
+  showToolApproval.mockClear();
+  getChatForExecutionSession.mockReturnValue({
+    title: 'Conversation',
+    pendingApprovals: [],
+    orchestrationStatus: 'running',
+  });
+  handleRequestOpenedEvent('http://localhost:1', {
+    eventId: 'async-open',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:00Z',
+    method: 'request.opened',
+    requestId: 'async-q',
+    requestType: 'approval',
+    title: 'Question',
+    blocking: false,
+  });
+  expect(updateChat).not.toHaveBeenCalled();
+  expect(showToolApproval).not.toHaveBeenCalled();
+  getChatForExecutionSession.mockReturnValue({
+    pendingApprovals: ['permission'],
+    orchestrationStatus: 'awaiting-approval',
+  });
+  handleRequestResolvedEvent({
+    eventId: 'permission-close',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:01Z',
+    method: 'request.resolved',
+    requestId: 'permission',
+    status: 'approved',
+  });
+  expect(updateChat.mock.lastCall?.[1]).toMatchObject({
+    pendingApprovals: [],
+    orchestrationStatus: 'running',
+  });
+  updateChat.mockClear();
+  getChatForExecutionSession.mockReturnValue({
+    pendingApprovals: [],
+    orchestrationStatus: 'idle',
+  });
+  handleRequestResolvedEvent({
+    eventId: 'async-close',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:02Z',
+    method: 'request.resolved',
+    requestId: 'async-q',
+    status: 'cancelled',
+    blocking: false,
+  });
+  expect(updateChat.mock.lastCall?.[1]).not.toHaveProperty(
+    'orchestrationStatus',
+  );
 });
