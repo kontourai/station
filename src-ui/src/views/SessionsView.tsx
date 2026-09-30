@@ -1084,10 +1084,10 @@ export function SessionsView({
         }
         currentModel={delegationParent?.model}
         parentTaskId={delegationParentTaskId}
+        // The parent's own name — the one its row is listed under — not a
+        // humanized task id (a UUID stays unreadable however it is split).
         parentTaskLabel={
-          delegationParentTaskId
-            ? humanizeId(delegationParentTaskId)
-            : undefined
+          delegationParent ? sessionTitle(delegationParent) : undefined
         }
         onClose={closeDelegation}
         onDelegated={(task) => {

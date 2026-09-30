@@ -497,6 +497,7 @@ describe('Activity list', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Delegate a task' });
     expect(within(dialog).getByText('Child worker of')).toBeTruthy();
+    expect(within(dialog).getByText('Check the migration')).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText('Task'), {
       target: { value: 'Split the migration' },
     });
