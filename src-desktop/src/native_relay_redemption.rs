@@ -38,6 +38,7 @@ use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use tauri::AppHandle;
+use tauri::Manager;
 use zeroize::Zeroizing;
 
 const REDEEM_PATH: &str = "/broker/v1/native/grants/redeem";
@@ -50,6 +51,22 @@ const NATIVE_GRANT_VERSION: &str = "station-broker-native-client-grant/v2";
 const NATIVE_RETIRE_VERSION: &str = "station-broker-native-grant-retire/v2";
 const NATIVE_RENEW_VERSION: &str = "station-broker-native-grant-renew/v2";
 const NATIVE_RENEWED_VERSION: &str = "station-broker-native-grant-renewed/v2";
+const NATIVE_DEVICE_SELF_RECEIPT_ERROR_VERSION: &str =
+    "station-native-device-proof-self-receipt-error/v1";
+static NATIVE_DEVICE_RECEIPT_OPERATION: Mutex<()> = Mutex::new(());
+
+fn try_native_device_receipt_operation() -> Result<MutexGuard<'static, ()>, String> {
+    NATIVE_DEVICE_RECEIPT_OPERATION
+        .try_lock()
+        .map_err(|error| match error {
+            std::sync::TryLockError::WouldBlock => {
+                "Station is already checking a Device binding receipt".to_owned()
+            }
+            std::sync::TryLockError::Poisoned(_) => {
+                "Station Device receipt reconciliation is unavailable".to_owned()
+            }
+        })
+}
 const MAX_INVITATION_AGE_MS: u64 = 5 * 60 * 1000;
 const MAX_GRANT_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -3502,6 +3519,119 @@ mod tests {
             .next()
             .expect("the command body is bounded")
             .contains("require_main_app_window(&window, &app)"));
+    }
+
+    #[test]
+    fn device_receipt_ipc_is_desktop_only_and_cached_status_is_not_fresh() {
+        let lib = include_str!("lib.rs");
+        assert!(
+            lib.contains("native_relay_redemption::station_native_device_binding_self_receipt,")
+        );
+        let mobile_handlers = lib
+            .split("#[cfg(mobile)]\n    let builder = builder.invoke_handler")
+            .nth(1)
+            .expect("the mobile handler exists");
+        assert!(!mobile_handlers.contains("station_native_device_binding_self_receipt"));
+
+        let status = cached_receipt_status(Some(
+            crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1 {
+                status:
+                    crate::native_device_binding_candidate::NativeDeviceReceiptObservation::Current,
+                observed_at_ms: 1_800_000_000_000,
+            },
+        ))
+        .unwrap();
+        assert_eq!(
+            status.status,
+            crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatus::PreviouslyConfirmedCurrent
+        );
+        assert_eq!(
+            status.source,
+            crate::native_device_binding_candidate::NativeDeviceReceiptStatusSource::CachedObservation
+        );
+        assert_eq!(status.observed_at_ms, 1_800_000_000_000);
+        assert!(status.receipt.is_none());
+        assert!(cached_receipt_status(Some(
+            crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1 {
+                status: crate::native_device_binding_candidate::NativeDeviceReceiptObservation::Unavailable,
+                observed_at_ms: 1_800_000_000_000,
+            },
+        ))
+        .is_none());
+    }
+
+    #[test]
+    fn device_receipt_target_is_derived_from_the_exact_station_and_candidate_id() {
+        assert_eq!(
+            native_device_self_receipt_url(
+                "https://station.example.test",
+                "11111111-1111-4111-8111-111111111111"
+            )
+            .unwrap(),
+            "https://station.example.test/api/auth/native-device-bindings/11111111-1111-4111-8111-111111111111/receipt"
+        );
+        assert!(native_device_self_receipt_url(
+            "https://user@station.example.test",
+            "11111111-1111-4111-8111-111111111111"
+        )
+        .is_err());
+        assert!(native_device_self_receipt_url(
+            "https://station.example.test",
+            "../../other-route"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn receipt_single_flight_refuses_a_second_operation_without_waiting() {
+        let current = try_native_device_receipt_operation().unwrap();
+        let started = std::time::Instant::now();
+        let refusal = try_native_device_receipt_operation()
+            .expect_err("the active receipt read owns the process single-flight");
+        assert_eq!(
+            refusal,
+            "Station is already checking a Device binding receipt"
+        );
+        assert!(started.elapsed() < Duration::from_millis(100));
+        drop(current);
+        assert!(try_native_device_receipt_operation().is_ok());
+    }
+
+    #[test]
+    fn receipt_404_requires_the_exact_versioned_closed_not_found_envelope() {
+        let valid = serde_json::json!({
+            "error": {
+                "version": "station-native-device-proof-self-receipt-error/v1",
+                "code": "not_found",
+            }
+        });
+        assert_eq!(
+            exact_native_self_receipt_error(&serde_json::to_vec(&valid).unwrap()),
+            Some(NativeDeviceSelfReceiptErrorCode::NotFound)
+        );
+
+        for invalid in [
+            serde_json::json!({ "error": { "code": "not_found" } }),
+            serde_json::json!({
+                "error": {
+                    "version": "station-native-device-proof-self-receipt-error/v1",
+                    "code": "not_found",
+                    "extra": true,
+                }
+            }),
+            serde_json::json!({
+                "error": {
+                    "version": "station-native-device-proof-self-receipt-error/v1",
+                    "code": "not_found",
+                },
+                "extra": true,
+            }),
+        ] {
+            assert_eq!(
+                exact_native_self_receipt_error(&serde_json::to_vec(&invalid).unwrap()),
+                None
+            );
+        }
     }
 
     #[test]
@@ -7053,6 +7183,430 @@ pub(crate) async fn station_native_device_binding_candidate(
     })
     .await
     .map_err(|_| "Station could not create the Device binding candidate.".to_owned())?
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeDeviceSelfReceiptEnvelope {
+    data: crate::native_device_binding_candidate::NativeDeviceProofSelfReceiptV1,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeDeviceSelfReceiptErrorEnvelope {
+    error: NativeDeviceSelfReceiptErrorV1,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct NativeDeviceSelfReceiptErrorV1 {
+    version: String,
+    code: NativeDeviceSelfReceiptErrorCode,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum NativeDeviceSelfReceiptErrorCode {
+    NotFound,
+    DeviceRequired,
+    InvalidRequest,
+    Unavailable,
+}
+
+fn exact_native_self_receipt_error(body: &[u8]) -> Option<NativeDeviceSelfReceiptErrorCode> {
+    let envelope: NativeDeviceSelfReceiptErrorEnvelope = serde_json::from_slice(body).ok()?;
+    (envelope.error.version == NATIVE_DEVICE_SELF_RECEIPT_ERROR_VERSION)
+        .then_some(envelope.error.code)
+}
+
+struct NativeDeviceReceiptCapture {
+    authority: crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
+    candidate: crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1,
+    station_origin: String,
+}
+
+fn with_existing_native_device_candidate<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    let result = with_locked_saved_relay_profile_store(
+        app,
+        profile_name,
+        |profile, locked_snapshot, store| {
+            if profile.revision != expected_profile_revision {
+                return Err(NativeRedemptionError::StaleProfile);
+            }
+            let mut trust_store = NativeStationTrustStore::system();
+            let approved = trust_store
+                .approved_descriptor_for_locked_profile(&locked_snapshot)
+                .map_err(|error| match error {
+                    CandidateError::TrustStore => NativeRedemptionError::StationTrustUnavailable,
+                    _ => NativeRedemptionError::StationTrustRequired,
+                })?;
+            let station_trust = approved_station_trust(&profile, approved)?;
+            let context = NativeRedemptionContext {
+                profile: profile.clone(),
+                station_trust: station_trust.clone(),
+            };
+            let relay_owner = NativeProofKeyOwner::new(
+                &profile.app_identifier,
+                profile.channel,
+                &profile.client_instance_id,
+            )
+            .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+            let grants = native_relay_grant_vault();
+            let grant = grants
+                .load_request_grant(&relay_owner, &context, native_now_ms_or_zero(), false)?
+                .grant;
+
+            super::with_active_device_identity_in_locked_profile(
+                app,
+                store,
+                |identity, active_profile_name, client_instance_id, exact_origin, environment_id| {
+                    let authority = device_candidate_authority_from_current_owners(
+                        &profile,
+                        &station_trust,
+                        identity,
+                        active_profile_name,
+                        client_instance_id,
+                        exact_origin,
+                        environment_id,
+                        &grant,
+                    )?;
+                    let manager = crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
+                    let keys = crate::native_device_proof_key::NativeDeviceProofKeyVault::new();
+                    let candidate = manager.existing_candidate(&authority, &keys)?;
+                    let current_grant = grants
+                        .load_request_grant(
+                            &relay_owner,
+                            &context,
+                            native_now_ms_or_zero(),
+                            false,
+                        )
+                        .map_err(|_| "The approved route changed during receipt lookup".to_owned())?
+                        .grant;
+                    if !same_native_grant(&current_grant, &grant) {
+                        return Err("The approved route changed during receipt lookup".into());
+                    }
+                    let current_approved = NativeStationTrustStore::system()
+                        .approved_descriptor_for_locked_profile(&locked_snapshot)
+                        .map_err(|_| "Station trust changed during receipt lookup".to_owned())?;
+                    if approved_station_trust(&profile, current_approved)
+                        .map_err(|_| "Station trust changed during receipt lookup".to_owned())?
+                        != station_trust
+                    {
+                        return Err("Station trust changed during receipt lookup".into());
+                    }
+                    Ok(operation(NativeDeviceReceiptCapture {
+                        authority,
+                        candidate,
+                        station_origin: profile.station_endpoint.clone(),
+                    }))
+                },
+            )
+            .map_err(|_| NativeRedemptionError::StaleProfile)
+        },
+    )
+    .map_err(|_| "Station could not verify the current Device candidate owner".to_owned())?;
+    result.map_err(|_| "Station could not verify the current Device candidate owner".to_owned())
+}
+
+fn capture_existing_native_device_candidate(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+) -> Result<NativeDeviceReceiptCapture, String> {
+    with_existing_native_device_candidate(app, profile_name, expected_profile_revision, Ok)
+}
+
+fn native_device_self_receipt_url(origin: &str, binding_id: &str) -> Result<String, String> {
+    let canonical_v4 = uuid::Uuid::parse_str(binding_id)
+        .ok()
+        .is_some_and(|id| id.to_string() == binding_id && id.get_version_num() == 4);
+    if !crate::exact_origin(origin)
+        .map(|resolved| resolved == origin)
+        .unwrap_or(false)
+        || !canonical_v4
+    {
+        return Err("The current Station receipt target is invalid".into());
+    }
+    Ok(format!(
+        "{origin}/api/auth/native-device-bindings/{binding_id}/receipt"
+    ))
+}
+
+fn is_native_receipt_transport_failure(code: &str) -> bool {
+    code.starts_with("transport_") || code == "transport" || code == "response_timeout"
+}
+
+fn cached_receipt_status(
+    observation: Option<crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1>,
+) -> Option<crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1> {
+    use crate::native_device_binding_candidate::{
+        NativeDeviceBindingSelfReceiptStatus as PublicStatus,
+        NativeDeviceBindingSelfReceiptStatusV1, NativeDeviceReceiptObservation as Observation,
+        NativeDeviceReceiptStatusSource as Source,
+    };
+    let observation = observation?;
+    let status = match observation.status {
+        Observation::Current => PublicStatus::PreviouslyConfirmedCurrent,
+        Observation::NotCurrent => PublicStatus::NotCurrent,
+        Observation::NotFound => PublicStatus::NotFound,
+        Observation::Unavailable => return None,
+    };
+    Some(NativeDeviceBindingSelfReceiptStatusV1::new(
+        status,
+        Source::CachedObservation,
+        observation.observed_at_ms,
+        None,
+    ))
+}
+
+fn station_native_device_binding_self_receipt_blocking(
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1, String>
+{
+    use crate::native_device_binding_candidate::{
+        NativeDeviceBindingSelfReceiptStatus as PublicStatus,
+        NativeDeviceReceiptObservation as Observation, NativeDeviceReceiptStatusSource as Source,
+    };
+    // Do not let older in-flight reads overwrite a later revocation or 404.
+    // The single-flight guard is independent of profile/authority locks, which
+    // are released for HTTP and reacquired only for finalization.
+    let _receipt_operation = try_native_device_receipt_operation()?;
+    let before =
+        capture_existing_native_device_candidate(&app, &profile_name, expected_profile_revision)?;
+    let manager =
+        crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
+    let prior = manager.receipt_observation(&before.authority, &before.candidate)?;
+    let host_epoch = before.authority.device_authorization_epoch().to_owned();
+    let url =
+        native_device_self_receipt_url(&before.station_origin, before.candidate.binding_id())?;
+    let authority = app
+        .try_state::<super::NativeProfileAuthority>()
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?
+        .inner()
+        .clone();
+    let cancellations = app
+        .try_state::<super::NativeHttpCancellation>()
+        .ok_or_else(|| "Station native HTTP is unavailable".to_owned())?
+        .inner()
+        .clone();
+    let request = super::NativeHttpRequest {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        url,
+        method: "GET".to_owned(),
+        headers: std::collections::HashMap::new(),
+        body: None,
+        expected_binding_id: Some(host_epoch.clone()),
+        liveness_probe: false,
+    };
+    let mut collector = super::NativeReceiptMessageCollector::default();
+    let body_deadline = std::time::Instant::now() + super::NATIVE_DEVICE_SELF_RECEIPT_BODY_DEADLINE;
+    let transport_result = super::station_native_http_request_to_sink_blocking(
+        app.clone(),
+        authority,
+        cancellations,
+        request,
+        &mut collector,
+        Some(body_deadline),
+    );
+
+    // Keep both owner locks held through response validation and the durable
+    // observation write. Releasing them after this re-resolution would let a
+    // reauthorization race the Keychain write or the status returned to IPC.
+    with_existing_native_device_candidate(&app, &profile_name, expected_profile_revision, |after| {
+        if before.authority != after.authority
+            || before.candidate != after.candidate
+            || before.station_origin != after.station_origin
+            || before.authority.device_authorization_epoch() != host_epoch
+        {
+            return Err("The current Device candidate owner changed during receipt lookup".into());
+        }
+        let now = native_now_ms()?;
+        if now == 0 || now > 9_007_199_254_740_991 {
+            return Err("The local receipt clock is outside its supported range".into());
+        }
+        if transport_result.is_err() {
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station could not confirm the Device binding receipt".into());
+        }
+        let (status, body) = match collector.finish() {
+            Ok(response) => response,
+            Err(code) if is_native_receipt_transport_failure(code) => {
+                if let Some(status) = cached_receipt_status(prior) {
+                    return Ok(status);
+                }
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station could not confirm the Device binding receipt".into());
+            }
+            Err(_) => {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station returned an invalid Device binding receipt".into());
+            }
+        };
+        if std::str::from_utf8(&body).is_err() {
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station returned an invalid Device binding receipt".into());
+        }
+        if status == 404 {
+            if exact_native_self_receipt_error(&body)
+                == Some(NativeDeviceSelfReceiptErrorCode::NotFound)
+            {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::NotFound,
+                    now,
+                )?;
+                return Ok(
+                        crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1::new(
+                            PublicStatus::NotFound,
+                            Source::StationReceipt,
+                            now,
+                            None,
+                        ),
+                    );
+            }
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station returned an invalid Device binding receipt".into());
+        }
+        if status == 503 {
+            if exact_native_self_receipt_error(&body)
+                == Some(NativeDeviceSelfReceiptErrorCode::Unavailable)
+            {
+                if let Some(status) = cached_receipt_status(prior) {
+                    return Ok(status);
+                }
+            }
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station could not confirm the Device binding receipt".into());
+        }
+        if status != 200 {
+            manager.record_receipt_observation(
+                &after.authority,
+                &after.candidate,
+                &host_epoch,
+                Observation::Unavailable,
+                now,
+            )?;
+            return Err("Station could not confirm the Device binding receipt".into());
+        }
+        let envelope: NativeDeviceSelfReceiptEnvelope = match serde_json::from_slice(&body) {
+            Ok(envelope) => envelope,
+            Err(_) => {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station returned an invalid Device binding receipt".into());
+            }
+        };
+        let observation = match after.candidate.validate_self_receipt(&envelope.data) {
+            Ok(observation) => observation,
+            Err(_) => {
+                manager.record_receipt_observation(
+                    &after.authority,
+                    &after.candidate,
+                    &host_epoch,
+                    Observation::Unavailable,
+                    now,
+                )?;
+                return Err("Station returned an invalid Device binding receipt".into());
+            }
+        };
+        manager.record_receipt_observation(
+            &after.authority,
+            &after.candidate,
+            &host_epoch,
+            observation,
+            now,
+        )?;
+        let public_status = if observation == Observation::Current {
+            PublicStatus::Current
+        } else {
+            PublicStatus::NotCurrent
+        };
+        Ok(
+            crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1::new(
+                public_status,
+                Source::StationReceipt,
+                now,
+                Some(envelope.data),
+            ),
+        )
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_device_binding_self_receipt(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<crate::native_device_binding_candidate::NativeDeviceBindingSelfReceiptStatusV1, String>
+{
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if profile_name.is_empty()
+        || profile_name.len() > 256
+        || expected_profile_revision == 0
+        || expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err("The selected Device receipt profile is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        station_native_device_binding_self_receipt_blocking(
+            app,
+            profile_name,
+            expected_profile_revision,
+        )
+    })
+    .await
+    .map_err(|_| "Station could not confirm the Device binding receipt".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]

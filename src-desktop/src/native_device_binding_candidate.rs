@@ -24,6 +24,7 @@ use uuid::Uuid;
 const CANDIDATE_KEYRING_SERVICE: &str = "io.kontourai.station.device-binding-candidate";
 const CANDIDATE_ACCOUNT_PREFIX: &str = "native-device-binding-candidate:v1";
 const CANDIDATE_VERSION: &str = "station-native-device-binding-candidate/v1";
+const SELF_RECEIPT_STATUS_VERSION: &str = "station-native-device-binding-self-receipt-status/v1";
 const MAX_CANDIDATE_RECORD_BYTES: usize = 2048;
 const MAX_CANDIDATE_RECORD_UTF16_UNITS: usize = 1280;
 
@@ -144,6 +145,10 @@ impl NativeDeviceBindingCandidateAuthority {
             route,
         }
     }
+
+    pub(crate) fn device_authorization_epoch(&self) -> &str {
+        &self.device_authorization_epoch
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -154,6 +159,174 @@ struct StoredCandidateV1 {
     binding_id: String,
     initial_device_authorization_epoch: String,
     state: CandidateState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    receipt_observation: Option<StoredReceiptObservationV1>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum NativeDeviceReceiptObservation {
+    Current,
+    NotCurrent,
+    NotFound,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct StoredReceiptObservationV1 {
+    candidate_tuple_sha256: String,
+    host_authorization_epoch: String,
+    status: NativeDeviceReceiptObservation,
+    observed_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeDeviceProofSelfReceiptV1 {
+    pub(crate) version: String,
+    pub(crate) binding: NativeDeviceProofSelfReceiptBindingV1,
+    pub(crate) current_device_binding: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeDeviceProofSelfReceiptBindingV1 {
+    pub(crate) station_id: String,
+    pub(crate) device_id: String,
+    pub(crate) binding_id: String,
+    pub(crate) surface: NativeDeviceBindingSurfaceV1,
+    pub(crate) device_proof_jwk: P256PublicJwk,
+    pub(crate) device_proof_key_thumbprint: String,
+    pub(crate) state: NativeDeviceReceiptBindingState,
+    pub(crate) created_at: u64,
+    pub(crate) approved_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revoked_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revocation_reason: Option<NativeDeviceReceiptRevocationReason>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum NativeDeviceReceiptBindingState {
+    Active,
+    Revoked,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum NativeDeviceReceiptRevocationReason {
+    OperatorRevoked,
+    Replaced,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+/// Versioned public result for one host receipt lookup. Cached observations
+/// retain their original timestamp and are never presented as fresh Station
+/// currentness; the Station rechecks binding state for every proof request.
+pub(crate) struct NativeDeviceBindingSelfReceiptStatusV1 {
+    pub(crate) version: String,
+    pub(crate) status: NativeDeviceBindingSelfReceiptStatus,
+    pub(crate) source: NativeDeviceReceiptStatusSource,
+    pub(crate) observed_at_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) receipt: Option<NativeDeviceProofSelfReceiptV1>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum NativeDeviceReceiptStatusSource {
+    StationReceipt,
+    CachedObservation,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeDeviceReceiptObservationV1 {
+    pub(crate) status: NativeDeviceReceiptObservation,
+    pub(crate) observed_at_ms: u64,
+}
+
+impl NativeDeviceBindingCandidateV1 {
+    pub(crate) fn binding_id(&self) -> &str {
+        &self.binding_id
+    }
+
+    pub(crate) fn validate_self_receipt(
+        &self,
+        receipt: &NativeDeviceProofSelfReceiptV1,
+    ) -> Result<NativeDeviceReceiptObservation, String> {
+        const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
+        let binding = &receipt.binding;
+        if receipt.version != "station-native-device-proof-self-receipt/v1"
+            || binding.station_id != self.station_id
+            || binding.device_id != self.device_id
+            || binding.binding_id != self.binding_id
+            || binding.surface != self.surface
+            || binding.device_proof_jwk != self.device_proof_jwk
+            || binding.device_proof_key_thumbprint != self.device_proof_key_thumbprint
+            || binding.created_at == 0
+            || binding.approved_at < binding.created_at
+            || binding.approved_at > JS_SAFE_INTEGER_MAX
+            || binding.created_at > JS_SAFE_INTEGER_MAX
+        {
+            return Err("The Station receipt does not match this Device candidate".into());
+        }
+        match binding.state {
+            NativeDeviceReceiptBindingState::Active
+                if binding.revoked_at.is_none()
+                    && binding.revocation_reason.is_none()
+                    && receipt.current_device_binding =>
+            {
+                Ok(NativeDeviceReceiptObservation::Current)
+            }
+            NativeDeviceReceiptBindingState::Active
+                if binding.revoked_at.is_none()
+                    && binding.revocation_reason.is_none()
+                    && !receipt.current_device_binding =>
+            {
+                Ok(NativeDeviceReceiptObservation::NotCurrent)
+            }
+            NativeDeviceReceiptBindingState::Revoked
+                if binding
+                    .revoked_at
+                    .is_some_and(|at| at >= binding.approved_at && at <= JS_SAFE_INTEGER_MAX)
+                    && binding.revocation_reason.is_some()
+                    && !receipt.current_device_binding =>
+            {
+                Ok(NativeDeviceReceiptObservation::NotCurrent)
+            }
+            _ => Err("The Station receipt has inconsistent binding state".into()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum NativeDeviceBindingSelfReceiptStatus {
+    Current,
+    NotCurrent,
+    NotFound,
+    PreviouslyConfirmedCurrent,
+}
+
+impl NativeDeviceBindingSelfReceiptStatusV1 {
+    pub(crate) fn new(
+        status: NativeDeviceBindingSelfReceiptStatus,
+        source: NativeDeviceReceiptStatusSource,
+        observed_at_ms: u64,
+        receipt: Option<NativeDeviceProofSelfReceiptV1>,
+    ) -> Self {
+        Self {
+            version: SELF_RECEIPT_STATUS_VERSION.to_owned(),
+            status,
+            source,
+            observed_at_ms,
+            receipt,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -252,6 +425,7 @@ impl<B: ProofKeySecretBackend> NativeDeviceBindingCandidateManager<B> {
                         .device_authorization_epoch
                         .clone(),
                     state: CandidateState::KeyProvisioning,
+                    receipt_observation: None,
                 };
                 self.write_confirmed(&account, &stored)?;
                 stored
@@ -303,6 +477,128 @@ impl<B: ProofKeySecretBackend> NativeDeviceBindingCandidateManager<B> {
         })
     }
 
+    /// Loads a previously provisioned candidate and its public key metadata.
+    /// Receipt reads must never create a new candidate or replace a missing key.
+    pub(crate) fn existing_candidate<K: DeviceCandidateKeyVault>(
+        &self,
+        authority: &NativeDeviceBindingCandidateAuthority,
+        keys: &K,
+    ) -> Result<NativeDeviceBindingCandidateV1, String> {
+        let _guard = CANDIDATE_OPERATION
+            .lock()
+            .map_err(|_| "Device candidate custody is unavailable".to_owned())?;
+        validate_authority(authority)?;
+        let account = candidate_account(authority);
+        let owner_record = StoredCandidateOwnerV1::from_authority(authority)?;
+        let stored = self
+            .read_record(&account)?
+            .ok_or_else(|| "No provisional Device candidate exists".to_owned())?;
+        if stored.owner != owner_record
+            || !canonical_v4(&stored.binding_id)
+            || !canonical_uuid(&stored.initial_device_authorization_epoch)
+            || stored.state != CandidateState::Provisional
+        {
+            return Err("The stored Device candidate is unavailable for receipt lookup".into());
+        }
+        let owner = NativeDeviceProofKeyOwner::with_binding_id(
+            &authority.app_identifier,
+            authority.channel,
+            &authority.client_instance_id,
+            &authority.station_id,
+            &authority.device_id,
+            &stored.binding_id,
+        )
+        .map_err(|_| "The current Device candidate owner is invalid".to_owned())?;
+        let metadata = keys
+            .restore(&owner)
+            .map_err(|_| "The provisional Device candidate key is unavailable".to_owned())?;
+        if self.read_record(&account)?.as_ref() != Some(&stored) {
+            return Err("The Device candidate changed during receipt lookup".into());
+        }
+        Ok(NativeDeviceBindingCandidateV1 {
+            version: CANDIDATE_VERSION.to_owned(),
+            station_id: authority.station_id.clone(),
+            device_id: authority.device_id.clone(),
+            binding_id: stored.binding_id,
+            surface: authority.surface.clone(),
+            device_proof_jwk: metadata.jwk().clone(),
+            device_proof_key_thumbprint: metadata.thumbprint().to_owned(),
+        })
+    }
+
+    pub(crate) fn record_receipt_observation(
+        &self,
+        authority: &NativeDeviceBindingCandidateAuthority,
+        candidate: &NativeDeviceBindingCandidateV1,
+        host_authorization_epoch: &str,
+        status: NativeDeviceReceiptObservation,
+        observed_at_ms: u64,
+    ) -> Result<(), String> {
+        let _guard = CANDIDATE_OPERATION
+            .lock()
+            .map_err(|_| "Device candidate custody is unavailable".to_owned())?;
+        validate_authority(authority)?;
+        validate_candidate_for_authority(authority, candidate)?;
+        if host_authorization_epoch != authority.device_authorization_epoch
+            || !canonical_uuid(host_authorization_epoch)
+        {
+            return Err("The current Device authorization changed during receipt lookup".into());
+        }
+        let account = candidate_account(authority);
+        let owner = StoredCandidateOwnerV1::from_authority(authority)?;
+        let mut stored = self
+            .read_record(&account)?
+            .ok_or_else(|| "No provisional Device candidate exists".to_owned())?;
+        if stored.owner != owner
+            || stored.state != CandidateState::Provisional
+            || stored.binding_id != candidate.binding_id
+        {
+            return Err("The stored Device candidate changed during receipt lookup".into());
+        }
+        stored.receipt_observation = Some(StoredReceiptObservationV1 {
+            candidate_tuple_sha256: candidate_tuple_sha256(candidate)?,
+            host_authorization_epoch: host_authorization_epoch.to_owned(),
+            status,
+            observed_at_ms,
+        });
+        self.write_confirmed(&account, &stored)
+    }
+
+    pub(crate) fn receipt_observation(
+        &self,
+        authority: &NativeDeviceBindingCandidateAuthority,
+        candidate: &NativeDeviceBindingCandidateV1,
+    ) -> Result<Option<NativeDeviceReceiptObservationV1>, String> {
+        let _guard = CANDIDATE_OPERATION
+            .lock()
+            .map_err(|_| "Device candidate custody is unavailable".to_owned())?;
+        validate_authority(authority)?;
+        validate_candidate_for_authority(authority, candidate)?;
+        let account = candidate_account(authority);
+        let owner = StoredCandidateOwnerV1::from_authority(authority)?;
+        let Some(stored) = self.read_record(&account)? else {
+            return Ok(None);
+        };
+        if stored.owner != owner
+            || stored.state != CandidateState::Provisional
+            || stored.binding_id != candidate.binding_id
+        {
+            return Err("The stored Device candidate changed during receipt lookup".into());
+        }
+        let Some(observation) = stored.receipt_observation else {
+            return Ok(None);
+        };
+        if observation.candidate_tuple_sha256 != candidate_tuple_sha256(candidate)?
+            || observation.host_authorization_epoch != authority.device_authorization_epoch
+        {
+            return Ok(None);
+        }
+        Ok(Some(NativeDeviceReceiptObservationV1 {
+            status: observation.status,
+            observed_at_ms: observation.observed_at_ms,
+        }))
+    }
+
     fn read_record(&self, account: &str) -> Result<Option<StoredCandidateV1>, String> {
         let Some(raw) = self
             .backend
@@ -318,7 +614,21 @@ impl<B: ProofKeySecretBackend> NativeDeviceBindingCandidateManager<B> {
         }
         let stored: StoredCandidateV1 = serde_json::from_str(&raw)
             .map_err(|_| "The stored Device candidate is malformed".to_owned())?;
-        if stored.schema_version != 1 {
+        if stored.schema_version != 1
+            || stored
+                .receipt_observation
+                .as_ref()
+                .is_some_and(|observation| {
+                    !canonical_uuid(&observation.host_authorization_epoch)
+                        || observation.observed_at_ms == 0
+                        || observation.observed_at_ms > 9_007_199_254_740_991
+                        || observation.candidate_tuple_sha256.len() != 64
+                        || !observation
+                            .candidate_tuple_sha256
+                            .bytes()
+                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                })
+        {
             return Err("The stored Device candidate is unsupported".into());
         }
         Ok(Some(stored))
@@ -425,6 +735,27 @@ fn sha256_hex(value: &[u8]) -> String {
         .collect()
 }
 
+fn candidate_tuple_sha256(candidate: &NativeDeviceBindingCandidateV1) -> Result<String, String> {
+    let bytes = serde_json::to_vec(candidate)
+        .map_err(|_| "The Device candidate tuple is invalid".to_owned())?;
+    Ok(sha256_hex(&bytes))
+}
+
+fn validate_candidate_for_authority(
+    authority: &NativeDeviceBindingCandidateAuthority,
+    candidate: &NativeDeviceBindingCandidateV1,
+) -> Result<(), String> {
+    if candidate.version != CANDIDATE_VERSION
+        || candidate.station_id != authority.station_id
+        || candidate.device_id != authority.device_id
+        || candidate.surface != authority.surface
+        || !canonical_v4(&candidate.binding_id)
+    {
+        return Err("The Device candidate does not match its current owners".into());
+    }
+    Ok(())
+}
+
 fn canonical_v4(value: &str) -> bool {
     Uuid::parse_str(value)
         .ok()
@@ -521,6 +852,221 @@ mod tests {
         assert_eq!(first, second);
         assert!(canonical_v4(&first.binding_id));
         assert_eq!(first.version, CANDIDATE_VERSION);
+    }
+
+    #[test]
+    fn receipt_observation_is_durable_bound_to_the_public_tuple_and_current_host_epoch() {
+        let backend = MemorySecretBackend::default();
+        let manager = NativeDeviceBindingCandidateManager::new(backend.clone());
+        let keys = MemoryNativeDeviceProofKeyVault::new();
+        let owner = authority();
+        let candidate = manager.candidate(&owner, &keys).unwrap();
+        assert_ne!(
+            candidate.binding_id(),
+            owner.device_authorization_epoch(),
+            "the Device proof binding UUID and host authorization epoch are separate"
+        );
+        manager
+            .record_receipt_observation(
+                &owner,
+                &candidate,
+                owner.device_authorization_epoch(),
+                NativeDeviceReceiptObservation::Current,
+                1_800_000_000_000,
+            )
+            .unwrap();
+
+        let restarted = NativeDeviceBindingCandidateManager::new(backend);
+        assert_eq!(
+            restarted.receipt_observation(&owner, &candidate).unwrap(),
+            Some(NativeDeviceReceiptObservationV1 {
+                status: NativeDeviceReceiptObservation::Current,
+                observed_at_ms: 1_800_000_000_000,
+            })
+        );
+
+        let mut reauthorized = owner.clone();
+        reauthorized.device_authorization_epoch = "88888888-8888-4888-8888-888888888888".into();
+        assert_eq!(
+            restarted
+                .receipt_observation(&reauthorized, &candidate)
+                .unwrap(),
+            None
+        );
+
+        restarted
+            .record_receipt_observation(
+                &reauthorized,
+                &candidate,
+                reauthorized.device_authorization_epoch(),
+                NativeDeviceReceiptObservation::NotCurrent,
+                1_800_000_000_001,
+            )
+            .unwrap();
+        assert_eq!(
+            restarted
+                .receipt_observation(&reauthorized, &candidate)
+                .unwrap(),
+            Some(NativeDeviceReceiptObservationV1 {
+                status: NativeDeviceReceiptObservation::NotCurrent,
+                observed_at_ms: 1_800_000_000_001,
+            })
+        );
+        restarted
+            .record_receipt_observation(
+                &reauthorized,
+                &candidate,
+                reauthorized.device_authorization_epoch(),
+                NativeDeviceReceiptObservation::NotFound,
+                1_800_000_000_002,
+            )
+            .unwrap();
+        assert_eq!(
+            restarted
+                .receipt_observation(&reauthorized, &candidate)
+                .unwrap(),
+            Some(NativeDeviceReceiptObservationV1 {
+                status: NativeDeviceReceiptObservation::NotFound,
+                observed_at_ms: 1_800_000_000_002,
+            })
+        );
+        assert!(restarted.existing_candidate(&reauthorized, &keys).is_ok());
+
+        let mut changed_profile = reauthorized.clone();
+        changed_profile.profile_revision += 1;
+        assert!(restarted
+            .record_receipt_observation(
+                &changed_profile,
+                &candidate,
+                changed_profile.device_authorization_epoch(),
+                NativeDeviceReceiptObservation::Current,
+                1_800_000_000_003,
+            )
+            .is_err());
+        assert!(restarted
+            .record_receipt_observation(
+                &reauthorized,
+                &candidate,
+                owner.device_authorization_epoch(),
+                NativeDeviceReceiptObservation::Current,
+                1_800_000_000_004,
+            )
+            .is_err());
+        assert_eq!(
+            restarted
+                .receipt_observation(&reauthorized, &candidate)
+                .unwrap()
+                .unwrap()
+                .status,
+            NativeDeviceReceiptObservation::NotFound,
+            "a stale post-wait receipt cannot replace a current-epoch 404"
+        );
+    }
+
+    #[test]
+    fn unavailable_without_a_positive_receipt_never_becomes_current() {
+        let backend = MemorySecretBackend::default();
+        let manager = NativeDeviceBindingCandidateManager::new(backend.clone());
+        let keys = MemoryNativeDeviceProofKeyVault::new();
+        let owner = authority();
+        let candidate = manager.candidate(&owner, &keys).unwrap();
+        manager
+            .record_receipt_observation(
+                &owner,
+                &candidate,
+                owner.device_authorization_epoch(),
+                NativeDeviceReceiptObservation::Unavailable,
+                1_800_000_000_000,
+            )
+            .unwrap();
+        let restarted = NativeDeviceBindingCandidateManager::new(backend);
+        let observation = restarted
+            .receipt_observation(&owner, &candidate)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            observation.status,
+            NativeDeviceReceiptObservation::Unavailable
+        );
+        assert_eq!(observation.observed_at_ms, 1_800_000_000_000);
+    }
+
+    #[test]
+    fn receipt_lookup_never_creates_a_candidate_or_replaces_a_missing_key() {
+        let backend = MemorySecretBackend::default();
+        let manager = NativeDeviceBindingCandidateManager::new(backend.clone());
+        let keys = MemoryNativeDeviceProofKeyVault::new();
+        assert!(manager.existing_candidate(&authority(), &keys).is_err());
+        let owner = authority();
+        let candidate = manager.candidate(&owner, &keys).unwrap();
+        let key_owner = NativeDeviceProofKeyOwner::with_binding_id(
+            &owner.app_identifier,
+            owner.channel,
+            &owner.client_instance_id,
+            &owner.station_id,
+            &owner.device_id,
+            &candidate.binding_id,
+        )
+        .unwrap();
+        keys.revoke(&key_owner).unwrap();
+        let restarted = NativeDeviceBindingCandidateManager::new(backend);
+        assert!(restarted.existing_candidate(&owner, &keys).is_err());
+        assert!(restarted.candidate(&owner, &keys).is_err());
+        assert!(keys.restore(&key_owner).is_err());
+    }
+
+    #[test]
+    fn self_receipt_requires_the_exact_public_tuple_and_consistent_state() {
+        let manager = NativeDeviceBindingCandidateManager::new(MemorySecretBackend::default());
+        let candidate = manager
+            .candidate(&authority(), &MemoryNativeDeviceProofKeyVault::new())
+            .unwrap();
+        let mut receipt = NativeDeviceProofSelfReceiptV1 {
+            version: "station-native-device-proof-self-receipt/v1".into(),
+            binding: NativeDeviceProofSelfReceiptBindingV1 {
+                station_id: candidate.station_id.clone(),
+                device_id: candidate.device_id.clone(),
+                binding_id: candidate.binding_id.clone(),
+                surface: candidate.surface.clone(),
+                device_proof_jwk: candidate.device_proof_jwk.clone(),
+                device_proof_key_thumbprint: candidate.device_proof_key_thumbprint.clone(),
+                state: NativeDeviceReceiptBindingState::Active,
+                created_at: 1_800_000_000_000,
+                approved_at: 1_800_000_000_000,
+                revoked_at: None,
+                revocation_reason: None,
+            },
+            current_device_binding: true,
+        };
+        assert_eq!(
+            candidate.validate_self_receipt(&receipt).unwrap(),
+            NativeDeviceReceiptObservation::Current
+        );
+
+        let mut wrong_key = receipt.clone();
+        wrong_key.binding.device_proof_key_thumbprint = "wrong-thumbprint".into();
+        assert!(candidate.validate_self_receipt(&wrong_key).is_err());
+        let mut contradictory_currentness = receipt.clone();
+        contradictory_currentness.current_device_binding = false;
+        contradictory_currentness.binding.revoked_at = Some(1_800_000_000_001);
+        contradictory_currentness.binding.revocation_reason =
+            Some(NativeDeviceReceiptRevocationReason::Replaced);
+        assert!(candidate
+            .validate_self_receipt(&contradictory_currentness)
+            .is_err());
+
+        receipt.binding.state = NativeDeviceReceiptBindingState::Revoked;
+        receipt.binding.revoked_at = Some(1_800_000_000_001);
+        receipt.binding.revocation_reason = Some(NativeDeviceReceiptRevocationReason::Replaced);
+        receipt.current_device_binding = false;
+        assert_eq!(
+            candidate.validate_self_receipt(&receipt).unwrap(),
+            NativeDeviceReceiptObservation::NotCurrent
+        );
+
+        let mut value = serde_json::to_value(receipt).unwrap();
+        value["unexpected"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<NativeDeviceProofSelfReceiptV1>(value).is_err());
     }
 
     #[test]

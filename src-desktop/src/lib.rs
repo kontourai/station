@@ -734,9 +734,165 @@ enum NativeHttpMessage {
     },
 }
 
+#[derive(Debug)]
 struct NativeHttpBrokerFailure {
     code: &'static str,
     detail: Option<String>,
+}
+
+/// One owner-bound native HTTP exchange can feed either the renderer's
+/// existing Tauri channel or a private host collector. Keeping the protocol
+/// engine behind this sink preserves its admission, custody and cancellation
+/// checks for both callers.
+trait NativeHttpMessageSink {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure>;
+}
+
+impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
+        Channel::send(self, message).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
+    }
+}
+
+struct NativeHttpDeadlineGuard {
+    stop: std::sync::mpsc::SyncSender<()>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl NativeHttpDeadlineGuard {
+    fn start(
+        deadline: Instant,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cancellations: NativeHttpCancellation,
+    ) -> Self {
+        let (stop, stopped) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            if stopped
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .is_err()
+            {
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                let (state, changed) = &*cancellations.0;
+                if let Ok(_state) = state.lock() {
+                    changed.notify_all();
+                }
+            }
+        });
+        Self {
+            stop,
+            worker: Some(worker),
+        }
+    }
+}
+
+impl Drop for NativeHttpDeadlineGuard {
+    fn drop(&mut self) {
+        let _ = self.stop.try_send(());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+const NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT: usize = 4 * 1024;
+const NATIVE_DEVICE_SELF_RECEIPT_BODY_DEADLINE: Duration = Duration::from_secs(45);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NativeReceiptCollectorPhase {
+    Body,
+    Ended,
+    Failed,
+}
+
+/// Validates the exact response/chunk/end stream produced by the shared
+/// native HTTP owner. No transport error detail is retained for IPC output.
+#[derive(Default)]
+struct NativeReceiptMessageCollector {
+    phase: Option<NativeReceiptCollectorPhase>,
+    status: Option<u16>,
+    declared_body_length: Option<u64>,
+    body: Vec<u8>,
+    error_code: Option<&'static str>,
+    oversized: bool,
+}
+
+impl NativeReceiptMessageCollector {
+    fn finish(self) -> Result<(u16, Vec<u8>), &'static str> {
+        if self.oversized {
+            return Err("response_too_large");
+        }
+        if let Some(code) = self.error_code {
+            return Err(code);
+        }
+        if self.phase != Some(NativeReceiptCollectorPhase::Ended) {
+            return Err("response_incomplete");
+        }
+        let Some(status) = self.status else {
+            return Err("response_incomplete");
+        };
+        if self
+            .declared_body_length
+            .is_some_and(|length| length != self.body.len() as u64)
+        {
+            return Err("response_truncated");
+        }
+        Ok((status, self.body))
+    }
+}
+
+impl NativeHttpMessageSink for NativeReceiptMessageCollector {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
+        match message {
+            NativeHttpMessage::Response {
+                status,
+                body_length,
+                ..
+            } if self.phase.is_none() => {
+                if body_length
+                    .is_some_and(|length| length > NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT as u64)
+                {
+                    self.oversized = true;
+                    self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                    return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                }
+                self.status = Some(status);
+                self.declared_body_length = body_length;
+                self.phase = Some(NativeReceiptCollectorPhase::Body);
+                Ok(())
+            }
+            NativeHttpMessage::Chunk { bytes }
+                if self.phase == Some(NativeReceiptCollectorPhase::Body) =>
+            {
+                if self.body.len().saturating_add(bytes.len())
+                    > NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT
+                {
+                    self.oversized = true;
+                    self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                    return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                }
+                self.body.extend_from_slice(&bytes);
+                Ok(())
+            }
+            NativeHttpMessage::End if self.phase == Some(NativeReceiptCollectorPhase::Body) => {
+                self.phase = Some(NativeReceiptCollectorPhase::Ended);
+                Ok(())
+            }
+            NativeHttpMessage::Error { code, .. }
+                if self.phase != Some(NativeReceiptCollectorPhase::Ended) =>
+            {
+                if self.error_code.is_none() {
+                    self.error_code = Some(code);
+                }
+                self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                Ok(())
+            }
+            _ => {
+                self.error_code = Some("invalid_response_sequence");
+                self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                Err(NativeHttpBrokerFailure::coded("invalid_response_sequence"))
+            }
+        }
+    }
 }
 
 struct NativeHttpTransportDetail {
@@ -3435,6 +3591,8 @@ fn native_http_request_with_budgets(
     min_rate: u64,
     response_budget: Duration,
     foreground_response_budget: Duration,
+    global_budget: Option<Duration>,
+    response_body_budget: Option<Duration>,
 ) -> ureq::http::Request<Vec<u8>> {
     let budget = native_http_send_body_budget(request.body().len(), floor, min_rate);
     let path = request.uri().path();
@@ -3457,6 +3615,8 @@ fn native_http_request_with_budgets(
         .configure_request(request)
         .timeout_send_body(Some(budget))
         .timeout_recv_response(Some(response_budget))
+        .timeout_global(global_budget)
+        .timeout_recv_body(response_body_budget)
         .build()
 }
 const NATIVE_HTTP_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -3657,7 +3817,25 @@ fn station_native_http_request_blocking(
     authority: NativeProfileAuthority,
     cancellations: NativeHttpCancellation,
     request: NativeHttpRequest,
-    channel: Channel<NativeHttpMessage>,
+    mut channel: Channel<NativeHttpMessage>,
+) -> Result<(), NativeCommandError> {
+    station_native_http_request_to_sink_blocking(
+        app,
+        authority,
+        cancellations,
+        request,
+        &mut channel,
+        None,
+    )
+}
+
+fn station_native_http_request_to_sink_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    cancellations: NativeHttpCancellation,
+    request: NativeHttpRequest,
+    sink: &mut (impl NativeHttpMessageSink + ?Sized),
+    body_deadline: Option<Instant>,
 ) -> Result<(), NativeCommandError> {
     use std::io::Read;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -3748,6 +3926,9 @@ fn station_native_http_request_blocking(
         validate_native_liveness_probe(&method, is_stream_request, &parsed_url)?;
     }
     let cancel = Arc::new(AtomicBool::new(false));
+    let _deadline_guard = body_deadline.map(|deadline| {
+        NativeHttpDeadlineGuard::start(deadline, Arc::clone(&cancel), cancellations.clone())
+    });
     // The slot guard owns the admission from here on: moved into the exchange
     // below and released exactly once on every path, including a panic
     // (station#2327).
@@ -3802,6 +3983,11 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
+        let response_body_budget =
+            body_deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        if response_body_budget.is_some_and(|budget| budget.is_zero()) {
+            return Err(NativeHttpBrokerFailure::coded("response_timeout"));
+        }
         let request = native_http_request_with_budgets(
             &agent,
             request,
@@ -3809,6 +3995,8 @@ fn station_native_http_request_blocking(
             NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
             NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
             NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            response_body_budget,
+            response_body_budget,
         );
         run_admitted_native_http_exchange(
             slot,
@@ -3828,23 +4016,25 @@ fn station_native_http_request_blocking(
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
                 let open_stream = native_response_is_open_stream(response.headers());
                 let status = response.status().as_u16();
-                channel
-                    .send(NativeHttpMessage::Response {
-                        status,
-                        headers: native_response_headers(response.headers()),
-                        // Chunked, close-delimited, and transparently decompressed
-                        // responses do not have an exact wire length. Preserve a
-                        // declared ordinary body length so the WebView can reject a
-                        // clean-looking EOF that actually truncated JSON (#2265).
-                        body_length: response.body().content_length(),
-                    })
-                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                sink.send(NativeHttpMessage::Response {
+                    status,
+                    headers: native_response_headers(response.headers()),
+                    // Chunked, close-delimited, and transparently decompressed
+                    // responses do not have an exact wire length. Preserve a
+                    // declared ordinary body length so the WebView can reject a
+                    // clean-looking EOF that actually truncated JSON (#2265).
+                    body_length: response.body().content_length(),
+                })
+                .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 let mut reader = response.body_mut().as_reader();
                 let mut buffer = [0_u8; 16 * 1024];
                 let mut total = 0_usize;
                 loop {
                     if cancel.load(Ordering::SeqCst) {
                         return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                    }
+                    if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                        return Err(NativeHttpBrokerFailure::coded("response_timeout"));
                     }
                     let read = match reader.read(&mut buffer) {
                         Ok(read) => read,
@@ -3856,7 +4046,10 @@ fn station_native_http_request_blocking(
                                 std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
                             ) =>
                         {
-                            continue
+                            if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                                return Err(NativeHttpBrokerFailure::coded("response_timeout"));
+                            }
+                            continue;
                         }
                         Err(error) => {
                             return Err(NativeHttpBrokerFailure::transport(
@@ -3879,11 +4072,10 @@ fn station_native_http_request_blocking(
                         &reference,
                     )
                     .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-                    channel
-                        .send(NativeHttpMessage::Chunk {
-                            bytes: buffer[..read].to_vec(),
-                        })
-                        .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                    sink.send(NativeHttpMessage::Chunk {
+                        bytes: buffer[..read].to_vec(),
+                    })
+                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 }
                 revalidate_native_http_profile(
                     &app,
@@ -3893,15 +4085,21 @@ fn station_native_http_request_blocking(
                     &reference,
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-                channel
-                    .send(NativeHttpMessage::End)
+                sink.send(NativeHttpMessage::End)
                     .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 Ok(())
             },
         )
     })();
     if let Err(failure) = result {
-        let _ = channel.send(NativeHttpMessage::Error {
+        let failure = if failure.code == "cancelled"
+            && body_deadline.is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            NativeHttpBrokerFailure::coded("response_timeout")
+        } else {
+            failure
+        };
+        let _ = sink.send(NativeHttpMessage::Error {
             code: failure.code,
             detail: failure.detail,
         });
@@ -11536,6 +11734,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
         native_relay_redemption::station_native_device_binding_candidate,
+        native_relay_redemption::station_native_device_binding_self_receipt,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -15849,6 +16048,80 @@ mod tests {
     }
 
     #[test]
+    fn native_receipt_message_collector_requires_complete_bounded_response() {
+        let mut collector = NativeReceiptMessageCollector::default();
+        collector
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: Some(2),
+            })
+            .unwrap();
+        collector
+            .send(NativeHttpMessage::Chunk {
+                bytes: b"{}".to_vec(),
+            })
+            .unwrap();
+        collector.send(NativeHttpMessage::End).unwrap();
+        assert_eq!(collector.finish().unwrap(), (200, b"{}".to_vec()));
+
+        let mut truncated = NativeReceiptMessageCollector::default();
+        truncated
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: Some(3),
+            })
+            .unwrap();
+        truncated
+            .send(NativeHttpMessage::Chunk {
+                bytes: b"{}".to_vec(),
+            })
+            .unwrap();
+        truncated.send(NativeHttpMessage::End).unwrap();
+        assert_eq!(truncated.finish(), Err("response_truncated"));
+
+        let mut oversized = NativeReceiptMessageCollector::default();
+        oversized
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: None,
+            })
+            .unwrap();
+        assert_eq!(
+            oversized
+                .send(NativeHttpMessage::Chunk {
+                    bytes: vec![b'x'; NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT + 1],
+                })
+                .unwrap_err()
+                .code,
+            "response_too_large"
+        );
+        assert_eq!(oversized.finish(), Err("response_too_large"));
+
+        let mut reordered = NativeReceiptMessageCollector::default();
+        assert_eq!(
+            reordered.send(NativeHttpMessage::End).unwrap_err().code,
+            "invalid_response_sequence"
+        );
+        assert_eq!(reordered.finish(), Err("invalid_response_sequence"));
+    }
+
+    #[test]
+    fn native_http_deadline_guard_cancels_a_slow_header_exchange() {
+        let cancel = new_cancel_flag();
+        let guard = NativeHttpDeadlineGuard::start(
+            Instant::now() + Duration::from_millis(100),
+            std::sync::Arc::clone(&cancel),
+            NativeHttpCancellation::default(),
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(cancel.load(std::sync::atomic::Ordering::SeqCst));
+        drop(guard);
+    }
+
+    #[test]
     fn native_http_liveness_flag_is_refused_outside_the_identity_probe() {
         let identity = url::Url::parse("https://station.example.test/api/system/identity").unwrap();
         let other =
@@ -16654,6 +16927,8 @@ mod tests {
             min_rate,
             NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
             NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            None,
+            None,
         );
         let result = agent
             .run(request)
@@ -16688,6 +16963,62 @@ mod tests {
             matches!(error, ureq::Error::Timeout(ureq::Timeout::SendBody)),
             "expected a send-body timeout, got {error:?}"
         );
+    }
+
+    #[test]
+    fn native_http_receipt_body_budget_times_out_a_stalled_loopback_response() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let read = connection.read(&mut request).unwrap();
+            assert!(read > 0);
+            std::thread::sleep(Duration::from_millis(150));
+            connection
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nx")
+                .unwrap();
+            // Keep the declared body incomplete so only the bounded body
+            // reader can release the caller before the fixture closes.
+            std::thread::sleep(Duration::from_secs(1));
+        });
+        let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+        let request = ureq::http::Request::builder()
+            .method("GET")
+            .uri(format!(
+                "{origin}/api/auth/native-device-bindings/receipt/receipt"
+            ))
+            .body(Vec::new())
+            .unwrap();
+        let request = native_http_request_with_budgets(
+            &agent,
+            request,
+            Duration::from_secs(1),
+            1024,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            Some(Duration::from_millis(350)),
+            Some(Duration::from_millis(350)),
+        );
+        let started = Instant::now();
+        let mut response = agent
+            .run(request)
+            .expect("the fixture sends response headers");
+        let result = response
+            .body_mut()
+            .with_config()
+            .limit(NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT as u64)
+            .read_to_vec();
+        assert!(result.is_err(), "a declared incomplete body must time out");
+        assert!(
+            started.elapsed() < Duration::from_millis(430),
+            "receipt body wait exceeded its per-request deadline: {:?}",
+            started.elapsed()
+        );
+        server.join().unwrap();
     }
 
     #[test]
@@ -16734,6 +17065,8 @@ mod tests {
                 1024,
                 Duration::from_millis(100),
                 Duration::from_secs(2),
+                None,
+                None,
             );
             let result = agent.run(request);
             server.join().unwrap();
