@@ -714,6 +714,54 @@ describe('Browser pane: review-round bounds', () => {
     expect(h.binder.pendingDialogFor(id)).toMatchObject({ dialogId: 'd1' });
   });
 
+  test("when the person's control ends while their answer is in flight and the answer then fails, the dialog is dismissed, not restored", async () => {
+    const h = harness({ dispatchTimeoutMs: 30 });
+    const { browserSessionId: id } = await h.open();
+    await h.personClicks(id);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'confirm',
+      message: 'x',
+    });
+    const surfaceId = h.binder.surfaceIdFor(id)!;
+    let answers = 0;
+    h.fake.handle('Page.handleJavaScriptDialog', () => {
+      answers += 1;
+      // The person's answer hangs; the automatic dismissal that follows lands.
+      return answers === 1 ? new Promise(() => {}) : {};
+    });
+    const answer = h.browser('POST', `/sessions/${id}/dialog`, {
+      body: { dialogId: 'd1', accept: true },
+    });
+    // Mid-flight, the person lets go (the same happens on a lapse).
+    const released = await h.surfaceRoutes.request(
+      `http://station.test/${surfaceId}/lease`,
+      {
+        method: 'POST',
+        headers: {
+          'x-test-role': 'operator',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'release',
+          epoch: h.surfaces.get(surfaceId)!.lease.snapshot().epoch,
+        }),
+      },
+    );
+    expect(released.status).toBe(200);
+    expect((await answer).status).toBe(504);
+    // Not held for anyone: an agent would not be refused dialog-open.
+    expect(h.binder.pendingDialogFor(id)).toBeUndefined();
+    expect(
+      h.fake.sent
+        .filter((call) => call.method === 'Page.handleJavaScriptDialog')
+        .map((call) => call.params),
+    ).toEqual([{ accept: true }, { accept: false }]);
+    expect(h.sessions.getSession(id)!.activity.lastDialog).toMatchObject({
+      type: 'confirm',
+      controlEnded: true,
+    });
+  });
+
   test('an answer the browser never acknowledges is 504 page-busy, and the dialog stays answerable', async () => {
     const h = harness({ dispatchTimeoutMs: 30 });
     const { browserSessionId: id } = await h.open();
@@ -764,9 +812,9 @@ describe('Browser pane: the renewal cap end to end', () => {
     // Past the cap the hold has lapsed: nothing is left to keep alive.
     const refused = await keepAlive();
     expect(refused.status).toBe(409);
-    expect(
-      ((await refused.json()) as { data: { ok: boolean } }).data.ok,
-    ).toBe(false);
+    expect(((await refused.json()) as { data: { ok: boolean } }).data.ok).toBe(
+      false,
+    );
     expect(h.surfaces.get(surfaceId)!.lease.snapshot().holder).toBeNull();
     expect(h.binder.pendingDialogFor(id)).toBeUndefined();
     // With nobody in control, the page's next alert is answered at once.

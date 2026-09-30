@@ -365,6 +365,17 @@ describe('a person keep-alive (not input, capped from their last real input)', (
     });
   });
 
+  test('the same person on a different device cannot keep the hold alive', () => {
+    const { state } = lease();
+    const epoch = state.claimForHumanInput(alice, 0).lease.epoch;
+    const aliceOnPhone = { ...alice, device: 'device:phone' } as const;
+    expect(state.keepHumanAlive(aliceOnPhone, epoch)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+    });
+    expect(state.snapshot().holder).toEqual(alice);
+  });
+
   test("a keep-alive with an earlier hold's epoch is refused", () => {
     const { clock, state } = lease();
     const first = state.claimForHumanInput(alice, 0).lease.epoch;

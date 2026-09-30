@@ -289,7 +289,11 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private dialogSeq = 0;
   /** The person's answer in flight, and whether the page closed it meanwhile. */
-  private answering: { dialogId: string; closed: boolean } | null = null;
+  private answering: {
+    dialogId: string;
+    closed: boolean;
+    released: boolean;
+  } | null = null;
   /** Input calls waiting on CDP; a held dialog opening settles them. */
   private readonly dialogWaiters = new Set<() => void>();
   private offFrame: (() => void) | null = null;
@@ -339,6 +343,9 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
    * nobody answering and an agent blocked behind it.
    */
   releaseHeldDialog(): void {
+    // An answer in flight must not bring the dialog back as held for
+    // someone who no longer holds control.
+    if (this.answering) this.answering.released = true;
     const dialog = this.pending;
     if (!dialog) return;
     this.clearPending();
@@ -370,7 +377,7 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     if (this.pendingTimer) clearTimeout(this.pendingTimer);
     this.pendingTimer = null;
     this.pending = null;
-    const answering = { dialogId, closed: false };
+    const answering = { dialogId, closed: false, released: false };
     this.answering = answering;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const sent = this.cdp.send(
@@ -409,11 +416,20 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       // No answer in time, or the channel itself failed: the dialog may
       // still be showing, so it stays held (with a FRESH hold timer) unless
       // the page closed it while the answer was in flight.
-      if (!answering.closed && !this.pending && !this.disposed) {
+      // If the person's control ended meanwhile (or nobody person holds it
+      // now), it is dismissed as their control ending would have done.
+      const stillTheirs =
+        !answering.released && this.personStillHolds(dialog.type);
+      if (!answering.closed && !this.pending && !this.disposed && stillTheirs) {
         this.pending = dialog;
         this.armHoldTimer(dialog);
       } else {
         this.reportPending(null);
+        if (!answering.closed && !this.disposed && !stillTheirs)
+          this.answerAutomatically(
+            { type: dialog.type, message: dialog.message },
+            'control-ended',
+          );
       }
       return {
         ok: false,
@@ -739,6 +755,15 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
       this.options.onPendingDialogChange?.(dialog ? { ...dialog } : null);
     } catch (error) {
       this.options.onError?.('pending dialog report failed', error);
+    }
+  }
+
+  /** Whether a dialog of `type` would be held for a person right now. */
+  private personStillHolds(type: HeldJavaScriptDialogType): boolean {
+    try {
+      return this.options.holdDialog?.({ type }) === true;
+    } catch {
+      return false;
     }
   }
 
