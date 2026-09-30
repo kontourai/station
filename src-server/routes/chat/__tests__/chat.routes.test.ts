@@ -512,6 +512,41 @@ describe('Chat Routes', () => {
         'The model provider rejected the credentials.',
       ],
       [
+        'an AggregateError holding a provider error',
+        async () =>
+          new AggregateError(
+            [new Error('other'), await providerError(429)],
+            `all attempts failed: ${secret}`,
+          ),
+        500,
+        'The model provider rate-limited the request (HTTP 429).',
+      ],
+      [
+        'a wrapper chain deeper than the search bound',
+        async () => {
+          let wrapped: unknown = await providerError(404);
+          for (let level = 0; level < 5; level++) {
+            wrapped = new Error(`level ${level}: ${secret}`, {
+              cause: wrapped,
+            });
+          }
+          return wrapped;
+        },
+        500,
+        'The request could not be completed.',
+      ],
+      [
+        'a cyclic cause chain',
+        async () => {
+          const outer = new Error(`outer ${secret}`);
+          const inner = new Error(`inner ${secret}`, { cause: outer });
+          (outer as { cause?: unknown }).cause = inner;
+          return outer;
+        },
+        500,
+        'The request could not be completed.',
+      ],
+      [
         'a Station-authored error',
         async () => new Error('Prompt template is missing'),
         500,

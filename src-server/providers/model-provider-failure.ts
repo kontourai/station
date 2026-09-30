@@ -1,4 +1,5 @@
 import { APICallError, RetryError } from 'ai';
+import { outwardTransportError } from '../utils/outward-error.js';
 
 /**
  * Outward-safe wording for a model provider's refusal, composed from its HTTP
@@ -77,33 +78,63 @@ const PROVIDER_ERROR_SEARCH_BREADTH = 8;
 /**
  * The model provider's error (an ai-sdk `APICallError`) at or inside
  * `error`: through a `RetryError`'s `lastError`/`errors` ("Failed after N
- * attempts. Last error: <provider text>") and `cause` chains, bounded in
- * depth and breadth so a cyclic or huge chain cannot run away.
+ * attempts. Last error: <provider text>"), an `AggregateError`'s `errors`,
+ * and `cause` chains. Bounded in depth and breadth, and cycle-safe.
+ *
+ * `inconclusive` means the walk stopped before seeing everything (a chain
+ * deeper than the bound, more nested errors than the breadth, or a cycle),
+ * so a provider error may still be hiding inside: a caller must not trust
+ * the wrapper's own message then.
  */
+export function searchModelProviderError(error: unknown): {
+  found?: APICallError;
+  inconclusive: boolean;
+} {
+  let inconclusive = false;
+  const seen = new Set<object>();
+  const visit = (value: unknown, depth: number): APICallError | undefined => {
+    if (APICallError.isInstance(value)) return value;
+    if (!value || typeof value !== 'object') return undefined;
+    if (seen.has(value)) {
+      inconclusive = true;
+      return undefined;
+    }
+    seen.add(value);
+    const nested: unknown[] = [];
+    let listed: unknown[] = [];
+    if (RetryError.isInstance(value)) {
+      nested.push(value.lastError);
+      listed = value.errors;
+    } else if (value instanceof AggregateError) {
+      listed = value.errors;
+    }
+    if (listed.length > PROVIDER_ERROR_SEARCH_BREADTH) inconclusive = true;
+    nested.push(...listed.slice(-PROVIDER_ERROR_SEARCH_BREADTH));
+    const cause = (value as { cause?: unknown }).cause;
+    if (cause !== undefined) nested.push(cause);
+    const children = nested.filter(
+      (child) => child !== undefined && child !== null,
+    );
+    if (children.length === 0) return undefined;
+    if (depth >= PROVIDER_ERROR_SEARCH_DEPTH) {
+      inconclusive = true;
+      return undefined;
+    }
+    for (const child of children) {
+      const found = visit(child, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const found = visit(error, 0);
+  return found ? { found, inconclusive: false } : { inconclusive };
+}
+
+/** {@link searchModelProviderError}'s provider error, if it found one. */
 export function findModelProviderError(
   error: unknown,
-  depth = 0,
 ): APICallError | undefined {
-  if (APICallError.isInstance(error)) return error;
-  if (
-    depth >= PROVIDER_ERROR_SEARCH_DEPTH ||
-    !error ||
-    typeof error !== 'object'
-  )
-    return undefined;
-  const nested: unknown[] = [];
-  if (RetryError.isInstance(error)) {
-    nested.push(
-      error.lastError,
-      ...error.errors.slice(-PROVIDER_ERROR_SEARCH_BREADTH),
-    );
-  }
-  nested.push((error as { cause?: unknown }).cause);
-  for (const candidate of nested) {
-    const found = findModelProviderError(candidate, depth + 1);
-    if (found) return found;
-  }
-  return undefined;
+  return searchModelProviderError(error).found;
 }
 
 /** A credential refusal named in an error's own wording (no status). */
@@ -119,13 +150,24 @@ export function isCredentialShapedMessage(text: string): boolean {
  * Outward wording for an error that is, or wraps, a model provider's error.
  * `credentialsInferred` is true only when the provider supplied no status
  * and the wording names credentials, the one case a caller may still answer
- * as a 401. Undefined for any error with no provider error inside it.
+ * as a 401. When the search was inconclusive it is the fixed outward
+ * text; undefined only for an error fully searched with no provider error.
  */
 export function outwardModelProviderError(
   error: unknown,
 ): { text: string; credentialsInferred: boolean } | undefined {
-  const providerError = findModelProviderError(error);
-  if (!providerError) return undefined;
+  const { found: providerError, inconclusive } =
+    searchModelProviderError(error);
+  if (!providerError) {
+    // A wrapper whose chain could not be fully searched may still embed
+    // provider text in its own message: answer with the fixed outward text.
+    return inconclusive
+      ? {
+          text: outwardTransportError('runtimeHttp'),
+          credentialsInferred: false,
+        }
+      : undefined;
+  }
   const status = modelProviderErrorStatus(providerError);
   if (status !== undefined) {
     return {
