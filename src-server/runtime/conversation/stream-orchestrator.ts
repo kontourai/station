@@ -6,6 +6,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { APICallError } from 'ai';
 import {
+  findModelProviderError,
   MODEL_PROVIDER_CREDENTIALS_REJECTED,
   modelProviderErrorStatus,
   modelProviderFailureMessage,
@@ -315,7 +316,9 @@ function outwardFailureStatus(error: unknown): {
   statusCode?: number;
   statusInferred?: true;
 } {
-  const statusCode = modelProviderErrorStatus(error);
+  // Through RetryError/AggregateError/cause wrappers, like the /chat
+  // preparation path, so a retried provider error still names its status.
+  const statusCode = modelProviderErrorStatus(findModelProviderError(error));
   if (statusCode !== undefined) return { statusCode };
   return isCredentialShapedError(error)
     ? { statusCode: 401, statusInferred: true }

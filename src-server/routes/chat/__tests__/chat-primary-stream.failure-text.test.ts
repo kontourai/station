@@ -145,6 +145,24 @@ describe('streamPrimaryAgentChat failed-turn marker text', () => {
     },
   );
 
+  test('a RetryError over a provider error still persists and sends its status sentence', async () => {
+    const { RetryError } = await import('ai');
+    const { body, persisted, marker } = await run(
+      new RetryError({
+        message: `Failed after 2 attempts. Last error: upstream exploded ${SECRET}`,
+        reason: 'maxRetriesExceeded',
+        errors: [providerError(429), providerError(429)],
+      }),
+    );
+
+    expect(marker).toContain(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The model provider rate-limited the request (HTTP 429).',
+    );
+    expect(body).toContain('"statusCode":429');
+    expect(body).not.toContain(SECRET);
+    expect(persisted.join('\n')).not.toContain(SECRET);
+  });
+
   test('an error with no provider status persists the fixed generic', async () => {
     const { persisted, marker } = await run(providerError(undefined));
 
