@@ -76,6 +76,9 @@ export const CodeGlyph = /* @__PURE__ */ glyph(
   'm5 5-3 3 3 3m6-6 3 3-3 3M9.5 3.5l-3 9',
 );
 /** #2312: discard (delete) — a bin, not the Archive box, which implies recoverable. */
+export const CopyGlyph = /* @__PURE__ */ glyph(
+  'M5.5 5.5V3.5A1 1 0 0 1 6.5 2.5h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2M3.5 5.5h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z',
+);
 export const DiscardGlyph = /* @__PURE__ */ glyph(
   'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4',
 );
@@ -94,6 +97,9 @@ export const EditGlyph = /* @__PURE__ */ glyph(
 );
 export const EngineGlyph = /* @__PURE__ */ glyph(
   'm9 1.8-6 7h4l-1 5.4 7-8H9l0-4.4Z',
+);
+export const ExternalLinkGlyph = /* @__PURE__ */ glyph(
+  'M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3',
 );
 export const FolderGlyph = /* @__PURE__ */ glyph(
   'M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z',
@@ -121,6 +127,10 @@ export const LockGlyph = /* @__PURE__ */ glyph(
   'M3.5 7h9v6.5h-9V7Zm2-0V4.8a2.5 2.5 0 0 1 5 0V7M8 9.5v1.8',
 );
 export const MenuGlyph = /* @__PURE__ */ glyph('M2.5 4h11M2.5 8h11M2.5 12h11');
+/** Horizontal ellipsis: an overflow menu's trigger. */
+export const MoreGlyph = /* @__PURE__ */ glyph(
+  'M2.8 8a.7.7 0 1 0 1.4 0 .7.7 0 1 0-1.4 0Zm4.5 0a.7.7 0 1 0 1.4 0 .7.7 0 1 0-1.4 0Zm4.5 0a.7.7 0 1 0 1.4 0 .7.7 0 1 0-1.4 0Z',
+);
 export const MessageGlyph = /* @__PURE__ */ glyph(
   'M2.5 3h11v8h-6L4 13.5V11H2.5V3Zm3 3h5m-5 2.5h3',
 );

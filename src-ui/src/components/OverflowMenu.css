@@ -1,0 +1,18 @@
+/* Above every pane host and dock layer: the menu is portalled to <body>. */
+.overflow-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-navigation);
+}
+.overflow-menu {
+  z-index: calc(var(--layer-navigation) + 1);
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+}
+.overflow-menu__shortcut {
+  margin-left: auto;
+  padding-left: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

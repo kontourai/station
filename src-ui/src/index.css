@@ -5695,6 +5695,27 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-primary);
 }
 
+/* Icon-only: a 30px round ghost with an accent wash on hover. The caller
+   gives it an `aria-label` and a tooltip; a surface that needs a 44px touch
+   target sizes it up in its own layout rule. */
+.button--icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+.button--icon:hover:not(:disabled),
+.button--icon.is-active {
+  background: color-mix(in oklab, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
 .form-group {
   margin-bottom: 24px;
 }
