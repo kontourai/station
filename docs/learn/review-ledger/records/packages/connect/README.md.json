@@ -1,0 +1,57 @@
+{
+  "path": "packages/connect/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read. Added private-workspace and mixed dist/source export boundaries, declared build/stamp steps, core/React surface, actual storage fallback precedence, and explicit routing-grant custody. Retained transport authority limits and traced browser signaling/Pion/application-channel composition. Frozen upstream re-review removed node-storage and HydratedCredentialStorage claims and traced optional pinned native signaling identity before peer/SDP creation, closed nonce/clientId copy, no fallback on refused supplied identity. This is public composition, not native enrollment proof.",
+
+  "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability. Native diagnostic echo is identified only as a source export, not a validated physical-device diagnostic journey.",
+
+  "document": {"digest":"ad9c5fe804fe6d45843985d8afed0350ca9e482ef4d97e0fce0426e285cde3a4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+  "sources": [
+    {"path":"packages/connect/package.json","digest":"59e9704946b62090199e1797e07a151c67c202813c5abe1f6187505a4fd5f657","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/core/browserPionConnection.ts","digest":"85e30d796461ad69a6134b42e5a0066e5a04e34846765a8c6a4262ff35ead8e0","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/core/selfHostedBrowser.ts","digest":"4b7329608a945e6723f69b1607992b6c5b2b6bfba209e9ed1eb98ef62c0d0487","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/core/storage.ts","digest":"ccc9b390c0ab8521df87d6c37d7e2b519bbe1c0c98c91562be67137d57b155aa","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/index.ts","digest":"cc849d431465dff7d0a98b8a06ef4a6a5efe65e645c31c96a2ce5e0deee14e80","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/tsconfig.json","digest":"1dcde2ae94b6f60717ece7e76c02f9585a5193fc5fcace5bc62d6b5a02da2bdb","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Frozen upstream0bc65b9f0 merged locally; all14 changed previously recorded owner files inspected with explicit delta dispositions before digest refresh. Connect README browser identity/selfHostedBrowser additions inspected separately; no merge commit is proposed for cherry-pick.",
+
+    "Frozen-source checks:267 tests/13 files passed(18.20s),39 MCP-page/Connect-relay-consumer tests passed(1.62s),154 TS/TSX/JS/JSON fences parse,407 Markdown local paths/anchors pass. Veritas1790516770624:0failures0warnings. Fixtures do not establish live provider or physical/native/relay delivery.",
+
+    "Required merge-queue recovery through 421517851: Updated export inventory and described native-application public composition, independent trust/custody inputs and no ordinary saved-route activation or physical-client proof.. Changed inputs reviewed: packages/connect/README.md, packages/connect/package.json, packages/connect/src/core/nativeApplicationTransport.ts, packages/connect/src/__tests__/nativeApplicationTransport.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical."
+  ]
+}

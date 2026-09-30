@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-30T20:34:00Z | nightly-desktop | 0.1.11-nightly.2464.2 | `5ecd682` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
+| 2026-09-30T20:33:57Z | nightly-android | 0.1.11-nightly.2464.2 | `5ecd682` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
+| 2026-09-30T20:29:52Z | nightly-npm | 0.6.0-nightly.2464.36767826654 | `5ecd682` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
 | 2026-09-30T06:25:54Z | nightly-desktop | 0.1.11-nightly.2464 | `e27600d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36672468094) |
 | 2026-09-30T06:25:51Z | nightly-android | 0.1.11-nightly.2464 | `e27600d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36672468094) |
 | 2026-09-30T06:22:05Z | nightly-npm | 0.6.0-nightly.2464.36672468094 | `e27600d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36672468094) |
@@ -202,6 +205,108 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-30T20:34:00Z · nightly-desktop · 0.1.11-nightly.2464.2
+
+- Ship SHA: `5ecd682d3dda93a00a126e31328fb563f3b427b8`
+- Artifact built at: `2026-09-30T19:54:00.917Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36767826654)
+
+### Changelog
+
+Commits since `e27600d` ([full sha](https://github.com/kontourai/station/commit/e27600d1fcd3ba8b80f793713e7901c35cba4381)):
+
+**Features**
+
+- [#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary
+- [#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review
+- [#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices
+- [#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts
+
+**Fixes**
+
+- [#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable
+- [#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams
+- [#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline
+- [#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories
+- [#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes
+
+**Docs**
+
+- [#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes
+
+**Other**
+
+- [#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot
+
+## 2026-09-30T20:33:57Z · nightly-android · 0.1.11-nightly.2464.2
+
+- Ship SHA: `5ecd682d3dda93a00a126e31328fb563f3b427b8`
+- Artifact built at: `2026-09-30T19:54:01.809Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36767826654)
+
+### Changelog
+
+Commits since `e27600d` ([full sha](https://github.com/kontourai/station/commit/e27600d1fcd3ba8b80f793713e7901c35cba4381)):
+
+**Features**
+
+- [#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary
+- [#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review
+- [#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices
+- [#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts
+
+**Fixes**
+
+- [#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable
+- [#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams
+- [#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline
+- [#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories
+- [#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes
+
+**Docs**
+
+- [#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes
+
+**Other**
+
+- [#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot
+
+## 2026-09-30T20:29:52Z · nightly-npm · 0.6.0-nightly.2464.36767826654
+
+- Ship SHA: `5ecd682d3dda93a00a126e31328fb563f3b427b8`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2464.36767826654 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e27600d` ([full sha](https://github.com/kontourai/station/commit/e27600d1fcd3ba8b80f793713e7901c35cba4381)):
+
+**Features**
+
+- [#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary
+- [#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review
+- [#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices
+- [#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts
+
+**Fixes**
+
+- [#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable
+- [#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams
+- [#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline
+- [#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories
+- [#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes
+
+**Docs**
+
+- [#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes
+
+**Other**
+
+- [#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot
 
 ## 2026-09-30T06:25:54Z · nightly-desktop · 0.1.11-nightly.2464
 

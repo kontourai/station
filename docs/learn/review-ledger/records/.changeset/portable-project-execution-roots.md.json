@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/portable-project-execution-roots.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"9584c7d54ae2428fbc5c1beab757a48abef41a4365ad665f4e4705bc8927494a","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

@@ -165,7 +165,10 @@ as stream outcomes.
 
 `start-step` and `finish-step` frames carry only their type. Provider request
 and response bodies, headers, metadata and nested errors are not sent in these
-frames. Text and tool frames keep their existing contracts.
+frames. Text and successful tool frames retain their contracts. Failed VoltAgent
+tool-result frames omit the raw `output`, including error messages, stack traces
+and other error properties. Their `error` carries a safe Station-composed denial
+reason or the fixed `Tool call failed.` message; policy-denial badges remain.
 
 The framework compatibility route `POST /agents/:slug/chat` remains behind
 Station authentication. Its HTTP 5xx responses contain fixed failure text and
@@ -2591,6 +2594,21 @@ bounded one-exchange handles, replay/expiry and post-sign key fencing. These
 structured commands do not mint a principal or replace the server's current
 provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the typed provider and account-body-before-Device-signing ordering.
+---
+
+## Decide a pending paired-device request
+
+A current operator, qualifying local-grant credential, or Device explicitly
+promoted with `access:approve` can use these exact routes:
+
+- `GET /api/pairing/requests`
+- `POST /api/pairing/requests/:requestId/confirm`
+- `DELETE /api/pairing/requests/:requestId`
+
+The promotion satisfies the pending-request route scope without granting
+`access:manage`. Authority is rechecked before publishing a decision. It does
+not admit other Device-management routes or verified-person/account binding.
+Ordinary Device presets do not include the promotion.
 
 ## Bind a paired device to its verified person
 

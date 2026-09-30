@@ -1,0 +1,161 @@
+{
+  "path": "docs/guides/code-quality.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
+
+  "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
+
+  "document": {"digest":"96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+
+  "sources": [
+    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":".codex/hooks.json","digest":"0b4b8164d668905f799f658696343d1b34bf7570a81a336165eab50770443bb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".githooks/commit-msg","digest":"1796be57853b0dcc60ce8753ca1562cb623b9e0966f72ee9b374b7aaa7231bbc","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".github/workflows/full-regression.yml","digest":"dd5b4a1b3f64b23f7a3a7e73733600a9246934bd0d6409f2028706cf83c663be","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".github/workflows/merge-queue-regression.yml","digest":"f803f8df52480932b1b69b1e623f31ac0f1128596f034ab0b0babca1fd46bbb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/authority/default.authority-settings.json","digest":"b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
+
+    {"path":"AGENTS.md","digest":"f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+
+    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+
+    {"path":"docs/guides/testing.md","digest":"972c582ae97bded24fbf5d6171e47d81c9fcf587fea25d94041e6fbb83719cd4","revision":"8830f573323af6fa13853fbc00d48ea511da42ad"},
+
+    {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":"package.json","digest":"088bb39e956453e408b5c8ccee5e2784a0b33c8ce7487e2ef722755b54f14b1a","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+
+    {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/docs-truth-gate-aggregate.mjs","digest":"6e7e018a0038b35720985250cbac60ffab14f87ccb1834a281a926376923b35b","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/fast-checks-shard.mjs","digest":"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+
+    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/run-local-verification.mjs","digest":"0794ea25e144bf95547470d7f3a863e2e1d90379f43c200882ddd25de0141749","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/verification-policy-gate.mjs","digest":"9d80e6bff858fd5d42ee9606bb2278233c60c665808dfb356777502a06a7ddc7","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"src-server/__test-utils__/read-json.ts","digest":"2a9da454f0fa8c6436934d34c3f3e1df53ae6afbf3760e80b163fe99d025c3f6","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"src-server/__test-utils__/route-test-app.ts","digest":"099f2e8dc0822ef60cb3265734e91f1b257462ee093589a4a760ee118944e886","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"src-server/__test-utils__/sse-helpers.ts","digest":"daa4853dc02cf11574f8afb6c813145c58cc5356a2ff432870e55b1b23511492","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/git-environment.mjs","digest":"e0557da6e34d1a58ec3d045261e1a7f4655cc1848ec94cc3cb8294fad7b0803f","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+  ],
+
+  "checks": [
+    "Contributor verification review: 147 focused tests passed; nine documented command recipes and generated lane parity passed. Veritas readiness had no failures or warnings.",
+
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Reviewed documentation-only dependency correction: docs/plans/documentation-code-audit.md. The linked owner and purpose remain; no new runtime proof is inferred.",
+
+    "Upstream source review: Reviewed scope selector all versus statics and unchanged fixed invariant list/budget. Current docs distinguish hosted plan/shard/statics aggregator from local whole lane; docsTruth still not fixed invariant.",
+
+    "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Upstream source review: Delta only removes unused resolveNpmCli re-export; managed lifecycle still imports/uses owner resolver. No prose change needed for bootstrap/security/CI guidance.",
+
+    "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Upstream source review: Reviewed entire21-line upstream change: four shards, exact-plan receipts, explicit empty/deferred and legacy branch, statics and aggregator. Native facts unchanged. Its source hash is accepted as the code-quality canonical schedule link.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
+
+    "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+
+    "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline.",
+
+    "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged. Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change.",
+
+    "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: ci.yml added zsh provisioning to fast-checks shards and package.json dropped bearing/forage. The guide's fast-checks aggregation, shard and hook claims are unaffected and cite no shard timeout, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 8b48e2b35 (#2914) adds validateLaneCatalog errors to the verification-policy gate and narrows two exports. The guide's fast-checks and documentation-gate descriptions are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Updated the documentation-checks paragraph for scoped freshness (touched stale records block; repo scans and the merge queue report). Reviewed deltas: ci:fast gains five cheap verify:static gates; the code-health section is unchanged; documentation.md and the audit skill gained freshness and slice guidance.",
+
+    "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
+
+    "Reviewed the fix-round delta (reportMissing in the freshness check; mode follows the event). This guide's scoped/advisory paragraph remains accurate.",
+
+    "Reviewed: docs-index-reachability.test.ts now passes the job env explicitly to the real-ledger freshness test and pins a strict mode for its spawned anchor fixture, with an invalid ambient mode forbidden file-wide; documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The documentation-checks paragraph remains accurate."
+  ]
+}

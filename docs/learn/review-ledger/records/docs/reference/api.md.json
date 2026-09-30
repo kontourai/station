@@ -1,0 +1,423 @@
+{
+  "path": "docs/reference/api.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
+
+  "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
+
+  "document": {"digest":"6d9244f9c684c5aca2fb4b77b22ca26ada473e8c7e000f37b8d6726a1559eac3","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+  "sources": [
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"packages/cli/src/commands/surfaces.ts","digest":"5813b5447084c7e0be3069d8b012d70cea0577b26a5b07e660df7c97dc740204","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"ec273d0275ca691780e9b5bbc9940bdfa56a462c68c1ed4c5ba2394bbfe05a31","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/config.ts","digest":"d7eb4b693fdae3966c9ec13321f50eb92c3da6c4bf6d62b9e7f9679b05f276f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/connection.ts","digest":"022f4a09e8e82df9cb1845564ba1cacd6488dd97b88ac0f6a0981c3c4f570d90","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/fleet-contribution.ts","digest":"6a898f68b1e2c9796bcc0c62ee3688a9880b8e5634c001185c0bbcbc4aa24445","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/fleet-inference.ts","digest":"eeff1f8fd2bbd509d75b01bfcd18634e6ff6be33922db8cbb31cd1a177e6a48f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/principal.ts","digest":"00155a0d2f38356cfb51a720ff8195eb92ec4fd6d2b0e4dbcd97911f98eb3b73","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/provider.ts","digest":"4385997b5f108761575c33e0aa5d53cfadab0b279221ef2405a982d6701a5e3d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/review-evidence.ts","digest":"647d4c37c0bf0cb74993e9b859c410a08f3a26c7b1f253651908689f9643d75a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/runs.ts","digest":"15b9588878ccdb65535fd0bc836aceafca3bcc149f86c1367fbd377e1fc1f48b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/runtime-events.ts","digest":"d1fbeb20a129b2fb75e7b08ccd792e228f7b47f52eee85327d0b00ab44b09a0c","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/scheduler.ts","digest":"8d2dc7aaeeca2b4ea4a0763109edb7f792fb29ce6f6f1817c5a3e721cdc2e4f3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/spatial-board.ts","digest":"c23b405d1b036444596206a42731c39cd963762b3b87afa3fcf6c4b83ee6588c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/starter-work.ts","digest":"571c5e83b19ecc0a1265e1c9a0099dade847e8bf6d9cbaa067550874650e50f1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/api-core.ts","digest":"a48681c1b98cd1d44065eed3e94bccc1bee906ef27722d6ebf04d27130469bd4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/index.ts","digest":"abc6c7494bd0c8258264164f79d8bf3bf6501aa5414920b2470e4fccc7eeee3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/reviews.ts","digest":"8100a4534fcd3c3ca1a848a799e3928ff2fba3f39609cfe3660eea7014fc141d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/scheduler.ts","digest":"db883fb0678e85bf7f57ca1132b2b66ea96ce80a2e01ab757b1bc1f2b16a01ec","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/queries.ts","digest":"c074b876d3f3ef8dee821083c1c351c5e9578a3da325e7695ccb1461ddd75578","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"658b032f69dd4b9cf05339646c75f39123661bd466cc0c00e45db6fe4dcc8a50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/scheduler.ts","digest":"f445a7029df59cfa13a867233059e779eb48b95b07e6f7a2528d36c88fce6f66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/workspaceConnections.ts","digest":"86ff82fbffaccfea1f0d4bf9fdc01109ac85b8541d7d589031dc614115ca0a86","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/plugin-identity-enumeration-scan.mjs","digest":"c8b4144dcf7f69e3c6038410bf9f8ec2920eee95642a2c443573fb7ac32f4d21","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"12b5d86068c4ddaa5738cde5337f33c36ae5871a49db3d097264aaf7e3f6b522","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/analytics/usage-aggregator.ts","digest":"f4cc98d78e4a995bfeed8b66e84e6efc3a7a4ff91dbf81c4ebbd524190ed3950","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/constants.ts","digest":"124a7483ef48792d16d02ff54a577cc948be45a0ee1bc2bd9ce24773ff34513a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/agent-workflow-errors.ts","digest":"2721e63783a3930237e1ba91158270f2dc82883b0112fcc0db772880cb66c6aa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/config-loader-agents.ts","digest":"e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/config-loader.ts","digest":"7643f85e5eb7ea030ae941a962ce94a9c9c76fa18e707c82259f2634b3fece14","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/file-storage-adapter.ts","digest":"a519696551383adf08b8b96e502a3ba5696b56fc315b01766af2c1ea1401c096","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/layout-owner-storage.ts","digest":"3b8e38f528b2b2b8ec5cbe94fb03dd07ced27dde252790c1ca1aa02bef99aae1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/bedrock-adapter.ts","digest":"6b4d3cac2bc65e6ce6d40008a21a8641ed2a268176f1f53534a98d8e9a85a5b6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/ollama-adapter.ts","digest":"0585651f53f7a798618b8385a4dcdce29020c508d7108ac57f0fd7f0393ff0c0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/bedrock-models.ts","digest":"90433f6e5cc523401dc400d48ee5bb12809085b25931608d965df139c043bb73","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/bedrock-region.ts","digest":"a60f287958c5db26c48d3e89d433c8e1586e8b52cd442027785708724bf65bdb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/agent-tools.ts","digest":"ea178269f250820bee8d8d1c91198be22b47b5ce76b2ca579935468b77d84c71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/invoke-global.ts","digest":"798593a5e1cc7636321286b28214428cfe927eb467bd4744169a6f83ee9a044f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/invoke.ts","digest":"55fdb13e6bb43918ab53fd268ee4fb05b7f48974d3c49686a5a651130813a818","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/native-invocation.ts","digest":"54c8dfedfb000cadb9ff15d56d283271d86c87150d6e6854d01c90aaf9b03332","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/chat/bounded-response.ts","digest":"10b7e8b121ea3be2da778bd3d570bc2ff672d985f8f3b4399c8fff9e7f0f74dc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/chat/chat-request-preparation.ts","digest":"9f8034d6026a84924fd9df53ddda4ca3743fc36a58e284087dff0207680dcbe0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/chat/chat.ts","digest":"530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/chat/conversations.ts","digest":"919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/connections/bedrock.ts","digest":"c69651e214c4676e14c6871c96753a08c84d800c5a8c7178cbbc4e877c6a30c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/connections/connections.ts","digest":"a893202f415d8350b7339c861b940d8156d215af548e93f6cd97771bea8eb2d7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/connections/models.ts","digest":"683a22c87c70dff96fc2dd18dcc04a610b70eb493f7b8c8f8c3c0be4c9a42c6c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/evidence/reviews.ts","digest":"5688f27656273896433e6baa7c6675498b3d6d27905a31a53427bab09e7c84fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/me/personal-layouts.ts","digest":"c159dedd5f61ca0b9b5f56e84f11b381dab907b8ab3368c08867dec079bb0867","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/analytics.ts","digest":"e9aed4381d527ba03fe733e87063117cf4ce792945ab7fdbe702587fdae67a6e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/insights.ts","digest":"7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/monitoring.ts","digest":"18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/scheduler.ts","digest":"54d753dc983ec8f5736c4ae750e1da2749976a237ac1eba83071d4be63b1f59a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/routes/orchestration/attachments.ts","digest":"628b930049e5ea6a021ba03e7bee9ec916a32656f6a5979d555864b86eee71f9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"1f1d61bad07cbd02ef056fd97e055ba034ca65d05dd39b32d8285ecad2df9afb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-home-role-routes.ts","digest":"ad2b553accde4e731ec6db42c7d4c69092ccda2a50ed8cfefc6cc6f4d1dcba00","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-host-approval-routes.ts","digest":"5c978a2eac36bceb4001ae8a294172e8911aa0eaacfa81c74134ee27898ee3c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-identity-enumeration.ts","digest":"3ef1a184c8b985f6df2a080e708c3077b70475630d50c004a5f6058572618c9e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-install-routes.ts","digest":"b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-person-approval.ts","digest":"b731874cf9dac20f44beabd2410d732f41e2e4ac207aa3c173162aa72f15327e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-visibility-routes.ts","digest":"e92542c76c90aa5047015dcc2967846bd2e15cc472cca5fee54342042e51165e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugins.ts","digest":"fbaf259293b5a5f7ae43c76aae4d8676c35ab5e92157284cbd39d4f13622fb2f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/registry.ts","digest":"d2ad68bbcc5573372f17968589a0b7875ad7ba52974cd8b2a043626ca6a9ccd5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/fs.ts","digest":"73b84dab3f633c021406ad629cee445610a2cf44f43b93dc8b81e3d70d8efac4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/layouts.ts","digest":"6ed2b674c7ca398c37db2bc383d85666a4d4eda5e2e3eb2e0c268c1bdc60e912","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/project-layout-admission.ts","digest":"e31d918b0fee362897cb0360b0c8bf98cb60370e31a5170791af082e0b2749ca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/ui-commands.ts","digest":"6119ed0faf54416dabf39f6f0c437a251142002f92fc5db92855ceb5f3b8d768","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/schemas/schema-definitions/content.ts","digest":"ed5b32e05c610a8446e131fbddd2fd7b6cda0f8501da04737ca36e4300c92337","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/schemas/schema-definitions/runtime.ts","digest":"ec02780cdeda147a6d6e28b9e95fc31c0a84e353983a5c4ef5db51d02e133d42","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/schemas/schema-definitions/scheduler.ts","digest":"ac076bad66e626ca6eb4310f01184ba2e6254ab97d17ae862ab2c1507f650e3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/schemas/schema-validation.ts","digest":"b131ae64644bd7d96e4d8c2807b766e90b4abd2bbaa88d4f0091c47669febb39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/sse-response.ts","digest":"f8cda65f9baa904dff4985d84183d6579d9ff9bd8f918fea52fa6f0409052b69","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/starter-work.ts","digest":"8e05baa625f020f66702b7b8504b2484da1d1ae49bd267de73ff84c6cda93d7d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/auth.ts","digest":"f7edff4d6a502fdfa711486b7aab876db220f1410c85d75daa7a8f5c63f1bc71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/branding.ts","digest":"aba947eb8071ce00bc2cad724291c1da70d5a298262557cac29ef765495596ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/configuration-activation.ts","digest":"bb8a2c19d30a1ec5c69829fe3ab2c0edf55d0176a1a4b94cfda56f3b8a1e3224","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/install-provenance.ts","digest":"0c09b22299f50a7af1b3cb590e10ea5868d5d1e664102866f6cfe14cfec5abc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/self-update-restart-state.ts","digest":"98698c7ecde24d522ee7a231d3fce644ac68a2fc34114e1678ca2757fe64d569","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/self-update-watchdog.ts","digest":"6afd4127805b3c600769a8c997d67d4209bd7cafcc50a7aab3dd3366accdfcac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/system-update-routes.ts","digest":"e141cd4e91d3b415f9c9d81a57a36d920fecf66a3865537f9f590b07af065494","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/system.ts","digest":"264cdb590af2cf08d3080ea32b909cce88ca52a32c7e05639393f1c9f1d59c56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"1e8ca834f915e477e055a6bda36e08d6cc4375d9604345bd69ef726082596e9f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"882de4a1963c2247e547d1dd8a47d64adcdb7bdedc45fb9fe05423d0f626b6db","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-server/runtime/conversation/conversation-manager.ts","digest":"72935d7cc21136587096660f500fc44186ab877e07738dc253173672e3ecdc15","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a480ff22bbe85830582d75094fd4a97de077d1886e67fe766437aee33bcaf6aa","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cbf613e34f6760cae2bc60eba80aab9365a8c6d3f2eeffa65dcf368a57100b42","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/agents/runtime-agent-identity.ts","digest":"6576c9781082f9b80e3ea7ba434411a2b6489835320e6e69a9895303b21586bd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/connections/connection-service.ts","digest":"e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/connections/launchable-model-inventory.ts","digest":"aa94b7954c67975d4cbc6f5eef27368140a4e19f9181418d415811e83b899db2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/evidence/git-review-workspace-source.ts","digest":"aa7391c138b438905150699d0309941754abd39049fdfe81033bc98d0ae9683e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/evidence/orchestration-review-executor.ts","digest":"fff6e2cc5bceadcbab8a0e068412758c8cb2dfe9fc33e2f5ea642d88aff6c08d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/evidence/review-evidence-module.ts","digest":"0dc790fd626a256b19036d2d78228933ae35f43f67c06674db727602bf8a6ac2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/evidence/review-receipt-store.ts","digest":"2fc974e86744984d3949297f5b8bbc6b153692f6c31748bd49b3ad4feca6ffc6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/identity/principal-resolver.ts","digest":"479b1c2d15f60ec6e3c1f4b15f2536390ed265a63307c27c9a52329c9c4985e6","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/inference/fleet-inference-service.ts","digest":"c8e7e04752800198ffc520d4f351d54491c6b10c6a35ac7a029741fd2962c4cb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/layouts/layout-pane-reference.ts","digest":"8be6964ef469e33d73641576770847b08a7a77695de172838d6e925df1aff5fa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/layouts/personal-layout-service.ts","digest":"8eb0ce41fa821ca92d56f36224fb1e0e09485274315148a1e37971e9195055c7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/model-launch-planning.ts","digest":"597ddcbc218834b005f24a64634a54c805f3563333a9d4d965a36028556bce48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/services/orchestration/run-service.ts","digest":"d7549045a5ee8c7f4fea3ab4249562bf98bc9a409031c2207788f0381b55c21d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/plugins/plugin-runtime-artifact.ts","digest":"3f63050b8c51fc7698e12b14501edf35d8cb902ede18d49b2599564488313a85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-update-check.ts","digest":"1648b3117807c04411bdc54f9daf5203b87d3ac97f7bf3fc4a455b55460ea9d5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-visibility-service.ts","digest":"3fbbb277c5cc0b0d9c4a7f1a5e8b79913a7bfa4bb93971374aebcb6aba7ae579","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/layout-service.ts","digest":"8df842d974f7df9b5d9e8e96971d15c92ba0eb4ee90b26312abb620b3c0a99e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"23e3eb7ecc40c556f8dcd05c65998ab4fe029cf330373b0f72f268ecdce6a4d4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/scheduling/scheduler-service.ts","digest":"9060db6e6f089bd8f68263f8339de189ce47a90787e856412f31fac3fb0d62b7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-owner-resolver.ts","digest":"723670ffd464128f489e17cb62bee951f5c8277c8363ce1ba415e7647f7af028","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-resolver.ts","digest":"cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/starter-work/starter-owner-adapter.ts","digest":"d45b553a95bf3636a8becc851da1b20aa0c02456a965bfc77dc741e52f67f4bb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/starter-work/starter-registry.ts","digest":"b7cb66e03be18eb20ab8c22459cc26e4102f8b8fb6050ffce244a6b940a5b48c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/starter-work/starter-session-owner.ts","digest":"ad2032afeb970fb4a97c7a3048c597d123fc1f9c303739a8dec0c1303ca24581","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/starter-work/starter-work-module.ts","digest":"c522e7213724f7c058c6b22ddf4fd206533a34997afad3de6be1b4edc96932d6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/utils/path-access-failure.ts","digest":"6c1ea7d51fa72a42eea5915cb26fe5a63181371644f6d1c4fbbf5a7f715b10c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat/FilePartPreview.tsx","digest":"46dbc6a57ae860432ab98f8ec53976d005043f4a3c7b70c01dfad173bc5186d5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/home/StarterScheduledCheckCard.tsx","digest":"88a0a019a6ac99a457a6390a82f509863089a100688d44d7c4bf34c2b6927325","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/monitoring/InsightsDashboard.tsx","digest":"4c23187c38bf3279b8126838f33f29510ca327706e99db5e4fa5dba495dc7743","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/monitoring/insightsDashboardUtils.ts","digest":"e105872a228c0122615f7e20c1c908a3d9901f3a0b32488703c5b37d88ebc1a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/scheduler/JobDetail.tsx","digest":"0656f305ce3637da8aa1c721a8d0b9b1711a439bff6c20d6ef4ffe8d9d8885d0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/ModelCapabilitiesContext.tsx","digest":"0bf421cd476c032a2743dc14598920c61b269433bf5e33b1d72343e3577fcdd1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useToolApproval.ts","digest":"c9199dea9d4b69084fc11e64ac2036673b2c4274d269fe3575d4521f69ac4a13","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"0f7440eb3188e285a3237c28483b8dbb8a8cc06a9b517c66968788927ac45f65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/routes/system/native-device-proof-binding-routes.ts","digest":"712956c1af49a88f81ee58d9121fd2ffee13bf4d87d097d553bf70adf05126fd","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-server/routes/system/native-device-proof-self-receipt-routes.ts","digest":"08bbc6369df340c14a9e231bfe6839743912aa79af552676ffff1789a51d83a1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+  ],
+
+  "checks": [
+    "Static TypeScript AST mount inventory of runtime-routes.ts retained with explicit conditional-mount/admission limits.",
+
+    "423 existing route tests across 9 files pass, exit 0, 13.85s; controlled fixtures, not live provider outcomes.",
+
+    "407 Markdown local links/anchors pass; Veritas readiness veritas-1790522647179: 0 failures, 0 warnings. One Markdown file committed; no runtime edits. JSON response placeholders in edited Agent section explicitly labeled jsonc; remaining examples await later family review.",
+
+    "Batch B:124 existing tests/9 files pass, exit0,11.37s. Expected simulated EIO and unavailable-orchestration fixture logs retained.",
+
+    "Batch B:407 Markdown paths/anchors pass; git diff --check passes; Veritas1790522957196 reports0 failures0 warnings.",
+
+    "Batch C:144 existing tests/8 files pass,exit0,21.66s; model options/request shapes, catalog/fleet route and service fixtures including receipt failure. Expected fixture error logs retained.",
+
+    "Batch C:407 Markdown paths/anchors pass; Veritas readiness veritas-1790523632019:0 failures0 warnings; git diff --check passes. One Markdown file committed, no runtime edits.",
+
+    "Batch D:181 existing tests/9 files pass,exit0,46.28s; plugin/registry/visibility/Pane/grant/consent fixtures. Expected corrupt-grants errors retained.",
+
+    "Batch D:407 Markdown paths/anchors pass; Veritas readiness veritas-1790524327525:0 failures0 warnings; git diff --check passes. One Markdown file committed, no runtime edits.",
+
+    "Batch E:323 existing tests/8 files pass,exit0,68.77s; scheduler/run/system/provenance/UI command fixtures. Expected simulated job-failure logs retained.",
+
+    "Batch E:407 Markdown paths/anchors pass; Veritas1790524917600 reports0 failures0 warnings; git diff --check passes. One Markdown file committed.",
+
+    "Batch F:134 existing tests/9 files pass,exit0,54.54s; Starter/Spatial/Boards/review/Device-person fixtures. No new security probe or live-provider action.",
+
+    "Full API:37 JSON/JSONC/TS fences parse;12 verbatim request examples pass actual exported request schemas, including Agent/Board/plugin/job/invoke/review bodies. No request dispatched.",
+
+    "Final API links:407 Markdown files pass. Veritas1790527139317:0 failures0 warnings.37 syntax fences pass;12 request examples pass actual schemas using node --import tsx. Plain node invocation first failed import resolution before schema execution; no endpoint dispatched. git diff --check passed.",
+
+    "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
+
+    "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: UTC date stepping fixes streak counts across DST; API docs contain no contradictory local-day guarantee. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Agent save/delete/enable errors gain refusal wording; successful state changes and authority are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d1e0facc2: Completion validation is private and still runs before provider admission. Removed the scoped-project fetch that fed ignored list-helper arguments; Agent listing/readiness is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the plugin foreground-run projection was deleted from RunService/runs.ts; the page never documented `source: plugin`. The system-update comment now names the Windows task marker and the lifecycle upgrade guard lets archive services through, with no documented route contract changed. The ApiBaseContext/JobDetail edits are comment/export only. Corrected the plugin preview/install sections for #2719: when an open install proposal names the source, preview copies a local folder without `.git`, refuses a local Git URL and reports `gitMetadata: \"excluded\"`; install returns 409 `consent.reason: \"git-metadata\"` when the approving preview kept git metadata. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 changed several inputs. The full-access 403 refusal from the config route now goes through fullAccessRefusal() and carries structured requester/Station/grant details. Starter start-task and continue-session launches now pass the request's server-derived clientOrigin to dispatch and adoption. runtime-routes binds the refusal identity middleware, and the device scope and device revoke routes now add a full-access revocation report (or reset_failed). The contracts gained PAIRING_SCOPE_DESCRIPTIONS, FullAccessRevocationReport, the confinement-grantor metadata key and an optional revocation on approval-mode-set. device-pairing-service gained deviceHoldsScope. environment.ts added the access devices/scope/scopes verbs on the shared loopback operator channel. DevicePairingPanel shows a revocation notice. None of this contradicts the document. Its Starter Work statuses, dispositions and admission-versus-completion wording, the claim that config full-access writes have 'additional checks', the RouteError code/details wording, the person-binding confirm route, and `access approve --bind-person` are all unchanged. The document does not describe the scope or revoke device routes. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864's plugin-install-routes.ts now also strips git metadata from any source recorded in plugin-source-staging.json. Preview reports gitMetadata: excluded for it, the install records the source before writing anything, and the install returns 409 consent.reason git-metadata for a recorded source approved from a preview that kept git metadata. An unreadable record fails closed. Corrected the preview paragraph, which described only the open-proposal case, and the install 409 sentence, which now covers previously stripped installs. Not reviewed here: docs/design/plugin-installation-lifecycle.md has the same proposal-only framing but is outside this record set. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 changes one case. An ordinary paired-device credential that authorizeCredential refuses on /api/pairing, including POST /api/pairing/requests/:id/confirm without access:approve, now gets 403 insufficient_scope instead of 401. The section on binding a paired device to its verified person already says insufficient authority returns 403, so it is now matched on this path too. No other route claims depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the request.delivery event and the acknowledgement field to runtime-events, adds ACP approvalAcknowledgement 'none', and adds delegation lastDecision. It changes only a comment in useToolApproval (already-settled now covers requests closed by the engine, cancelled or expired). The /tool-approval routing, /events payload-vocabulary pointer, continuation-caller and ACP model-apply claims are unchanged by the delta. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; system-update-routes.ts only made coreUpdateSupervision module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

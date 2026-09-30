@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/snapshot-settled-child-work.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"d2f2100e407e16b66eaf66fda7ef524fb224ccff1fd3cd3b420db40437def591","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

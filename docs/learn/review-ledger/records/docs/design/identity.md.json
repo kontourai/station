@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/identity.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Mixed ingress-source design. The tailnet ingress owner still exists; a banner distinguishes it from implemented optional deployment-account authentication and the current request-principal composition.",
+
+  "limits": "Provider roadmap, passkey discussion, historical issue status and complete offline/device/provider behavior were not semantically re-audited. The standing offline journey is a requirement, not executed evidence.",
+
+  "document": {"digest":"74371a604d83779db65b078d199b976b8ec79c5c302c9289468fbd032b5537a6","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
+
+  "sources": [
+    {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
+
+    {"path":"src-server/services/identity/identity-source.ts","digest":"f66dc6ba925c136de72220876a8e9bdfc4359b60759d3459fab077875cae97a5","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
+
+    {"path":"src-server/services/identity/local-account-runtime.ts","digest":"fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"}
+  ],
+
+  "checks": [
+    "Full document read: 148 original lines; all original body bytes preserved.",
+
+    "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+
+    "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+
+    "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+  ]
+}

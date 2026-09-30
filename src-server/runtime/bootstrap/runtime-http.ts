@@ -9,7 +9,6 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import {
   AUTH_RATE_LIMITED_ERROR_CODE,
   STATION_PLUGIN_HEADER,
@@ -36,6 +35,7 @@ import {
 import {
   type ExternalSurfaceCapabilityRule,
   type PairingScopeContextStore,
+  pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
   setGrantedPairingScope,
 } from '../../security/pairing-route-scopes.js';
@@ -978,7 +978,10 @@ function configureRuntimeSecurity(
         requiredCapability.capability === 'pairing-scope' &&
         requiredCapability.scope !== undefined &&
         grantedScope !== undefined &&
-        pairingScopeIncludes(grantedScope, requiredCapability.scope);
+        pairingScopeSatisfiesHttpRoute(grantedScope, requiredCapability.scope, {
+          method: c.req.method,
+          path: c.req.path,
+        });
       if (!permitted) {
         if (cookieCredential) {
           deviceSessionAuthorizations.add(1, {
