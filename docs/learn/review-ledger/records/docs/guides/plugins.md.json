@@ -40,7 +40,7 @@
 
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/domain/config-loader.ts","digest":"7643f85e5eb7ea030ae941a962ce94a9c9c76fa18e707c82259f2634b3fece14","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/domain/config-loader.ts","digest":"b70738e0cecbc0f060089377ed78ef9dfbaf13224739e910bcacad3a19307217","revision":"26b51492632d81e2d767e2f4729d214b514403ac"},
 
     {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
