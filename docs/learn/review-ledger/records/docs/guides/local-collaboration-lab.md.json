@@ -78,7 +78,7 @@
 
     {"path":"src-server/runtime/bootstrap/account-bound-device-gate.ts","digest":"95dcd17de321d9d9db586a028780e534a2b45fdab677b8b7280f86494237e2ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f57107b0a6843918e4e870a11af21292ef9273114f1a63f2840f3c9c033215e","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"882de4a1963c2247e547d1dd8a47d64adcdb7bdedc45fb9fe05423d0f626b6db","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"49951201fe9590b5fbf6b33873d2ae6c48a68dbef028f4ed57169d67f01cdf83","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -86,7 +86,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"5a6d4e6e672a1b8187efda2833395e1efd571a65ccc5c01ae673800f4fd043e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8a0628efcd689a804f3c8cdf607c4c0758b0d6ee32de864c08995915d26cd5ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a480ff22bbe85830582d75094fd4a97de077d1886e67fe766437aee33bcaf6aa","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

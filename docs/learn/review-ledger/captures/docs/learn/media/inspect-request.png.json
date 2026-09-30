@@ -18,7 +18,7 @@
 
     {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

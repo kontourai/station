@@ -475,6 +475,12 @@ scope in place with **Paired devices** → the Device → **Change access**, or 
 the Station host with `station environment access scope`; `access:manage` is
 never granted this way.
 
+An operator can separately grant **Approve pairing requests** (`access:approve`).
+This allows that Device to list, approve, or deny pending requests, without
+Device-management access. A pairing notification opens the exact request in
+**Notifications**; opening it does not approve it. Devices without approval
+authority see the trusted-Station remedy instead of decision controls.
+
 The current terminal and voice listeners retain a separate direct-loopback
 path without credential verification. Browser-shaped upgrades on that path
 must use an allowed Station Origin; this check is not a Device-scope check.
