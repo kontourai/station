@@ -491,6 +491,12 @@ fn journal_account(
     ))
 }
 
+// windows-native-keyring-store 1.1.0 stores passwords as UTF-16 bytes;
+// CRED_MAX_CREDENTIAL_BLOB_SIZE is 2560 bytes, the supported backend floor.
+fn journal_size_valid(raw: &str) -> bool {
+    raw.len() <= 4096 && raw.encode_utf16().count() <= 1280
+}
+
 fn read_index(
     custody: &dyn PairingCustodyWriter,
     path: &std::path::Path,
@@ -505,7 +511,7 @@ fn read_index(
             entries: Vec::new(),
         });
     };
-    if raw.len() > 4096 {
+    if !journal_size_valid(&raw) {
         return Err("invalid Station retirement journal".into());
     }
     let index: RetirementIndex =
@@ -553,7 +559,7 @@ fn write_index(
     let account = journal_account(custody.owner(), path)?;
     let raw =
         serde_json::to_string(index).map_err(|_| "Station retirement journal is unavailable")?;
-    if raw.len() > 4096 || index.entries.len() > 32 {
+    if !journal_size_valid(&raw) || index.entries.len() > 32 {
         return Err("Station retirement journal is full".into());
     }
     // A lost write result is reconciled only by exact readback, before any deletion.
@@ -729,10 +735,6 @@ pub(crate) fn retry_retirements(
                 }
             }
         }
-        let Some(expected_digest) = &entry.bearer_sha256 else {
-            failed = true;
-            continue;
-        };
         let bearer = match custody.read_bearer(&entry.reference) {
             Ok(value) => value,
             Err(_) => {
@@ -740,13 +742,6 @@ pub(crate) fn retry_retirements(
                 continue;
             }
         };
-        if bearer
-            .as_ref()
-            .is_some_and(|value| custody_sha256_hex(value) != *expected_digest)
-        {
-            failed = true;
-            continue;
-        }
         let metadata =
             match custody.read_metadata(&metadata_account(custody.owner(), &entry.reference)?) {
                 Ok(value) => value,
@@ -755,6 +750,23 @@ pub(crate) fn retry_retirements(
                     continue;
                 }
             };
+        let Some(expected_digest) = &entry.bearer_sha256 else {
+            // Manual removal can release quarantine only after both owned
+            // entries are positively absent. No credential deletion is attempted.
+            if bearer.is_none() && metadata.is_none() {
+                completed.push(entry.reference.clone());
+            } else {
+                failed = true;
+            }
+            continue;
+        };
+        if bearer
+            .as_ref()
+            .is_some_and(|value| custody_sha256_hex(value) != *expected_digest)
+        {
+            failed = true;
+            continue;
+        }
         if let Some(raw) = metadata {
             match NativeDeviceCustodyMetadata::parse(&raw) {
                 Ok(record)

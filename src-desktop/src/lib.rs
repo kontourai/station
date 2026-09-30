@@ -12261,6 +12261,7 @@ mod tests {
         fail_delete_metadata: bool,
         fail_journal: bool,
         unreadable_refs: std::collections::HashSet<String>,
+        delete_attempts: std::sync::atomic::AtomicUsize,
     }
 
     #[cfg(not(mobile))]
@@ -12274,6 +12275,7 @@ mod tests {
                 fail_delete_metadata: false,
                 fail_journal: false,
                 unreadable_refs: Default::default(),
+                delete_attempts: Default::default(),
             }
         }
     }
@@ -12328,10 +12330,14 @@ mod tests {
             Ok(())
         }
         fn delete_bearer(&self, reference: &NativeCredentialReference) -> Result<(), String> {
+            self.delete_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             self.bearer.lock().unwrap().remove(&reference.id);
             Ok(())
         }
         fn delete_metadata(&self, reference: &NativeCredentialReference) -> Result<(), String> {
+            self.delete_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if self.fail_delete_metadata {
                 return Err("injected metadata deletion failure".into());
             }
@@ -12789,6 +12795,87 @@ mod tests {
         assert!(
             native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
         );
+        host.custody.unreadable_refs.remove(&original.id);
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(original.id.clone(), "replacement".into());
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert_eq!(
+            host.custody.read_bearer(&original).unwrap().as_deref(),
+            Some("replacement")
+        );
+        host.custody.bearer.lock().unwrap().remove(&original.id);
+        host.custody.unreadable_refs.insert(original.id.clone());
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody.unreadable_refs.remove(&original.id);
+        let attempts = host
+            .custody
+            .delete_attempts
+            .load(std::sync::atomic::Ordering::SeqCst);
+        credential_vault_delete_with_host(&host, &cold, Some(&original)).unwrap();
+        assert_eq!(
+            host.custody
+                .delete_attempts
+                .load(std::sync::atomic::Ordering::SeqCst),
+            attempts
+        );
+        assert!(
+            !native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        assert!(host
+            .custody
+            .read_bearer(&success.credential_ref)
+            .unwrap()
+            .is_some());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_journal_windows_blob_floor_refuses_oversize_before_profile_publication() {
+        let (_directory, host, authority, _reference) = custody_published_fixture();
+        let mut current = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        for number in 0..4 {
+            let mut legacy = current.profiles[0].clone();
+            legacy.name = format!("legacy-{number}");
+            let reference = NativeCredentialReference {
+                kind: "station-bearer".into(),
+                id: format!("legacy-{number}:{}", "x".repeat(500)),
+            };
+            host.custody
+                .bearer
+                .lock()
+                .unwrap()
+                .insert(reference.id.clone(), CUSTODY_BEARER.into());
+            legacy.credential_ref = Some(reference);
+            current.profiles.push(legacy);
+        }
+        // A real cold CLI-profile observation, followed by the public CAS owner.
+        std::fs::write(&host.path, serde_json::to_string(&current).unwrap()).unwrap();
+        station_profile_store_read_with_host(&host, &authority).unwrap();
+        let mut removed = current;
+        removed.revision = 3;
+        removed.profiles.clear();
+        let before = std::fs::read(&host.path).unwrap();
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None
+        )
+        .unwrap_err()
+        .contains("journal is full"));
+        assert_eq!(std::fs::read(&host.path).unwrap(), before);
+        assert_eq!(host.custody.bearer.lock().unwrap().len(), 5);
     }
 
     #[cfg(not(mobile))]
