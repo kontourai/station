@@ -7466,7 +7466,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "39b13443c5fd44c9c548a6563cb8840390f8df55533d03cd72637d812f06b06e",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Historical design for the deleted pure collaborative editor controller (#2900), marked not shipped. Only the server-owned editing capability remains current; the shipped Task path is ProjectTaskRoom.",
@@ -7482,7 +7482,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7507,7 +7507,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -9017,7 +9018,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -9193,7 +9194,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -9322,7 +9323,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "RegionShells delta: passes the same Chat failure context to each dock region host; shell composition unchanged. ChatDock delta: passes ambientChatPaneFailureContext (failed chat captured at failure time; Close this chat; Minimize) to the region host; no route, API or config change. This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. RegionPaneHost delta: optional chatPaneFailureContext forwarded as paneFailureContext for the Chat pane only; region/pane derivation, selection and persistence unchanged. controller delta: fail() accepts the caught error detail and exposes rendererFailureDetails for display; the reducer's rendererFailures remains the failure authority. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -9926,7 +9928,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -10010,7 +10012,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "tests/chat-replay.spec.ts",
@@ -10039,7 +10041,8 @@
         "Merge review (origin/main e8cbb9412 into #2915/#2916): both sides changed this record. Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. Tape, replay and DOM-observation claims do not depend on channel text colour or the approval card's session button. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -12128,7 +12131,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12136,7 +12139,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12508,7 +12511,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -12655,7 +12658,8 @@
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -15033,7 +15037,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -15041,7 +15045,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -15153,7 +15157,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -15206,7 +15210,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -18584,7 +18589,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18592,7 +18597,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "17ef8805233d14aa331f2e52cebb24f2b153bac53e60136fd43d9ee2203cab0c"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18692,7 +18697,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18749,7 +18754,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed. docs/ui/responsive-action-surfaces.txt: added the WorkspacePaneFailure.tsx action-surface entry (exception: geometry inherited from the shared __actions rule and the 44px dismiss/summary rules, exercised under jsdom by RegionPaneHost.chatFailure.test.tsx, not measured in a browser); checked this document names no action-surface count or entry that the addition contradicts."
       ]
     },
     {
@@ -19308,7 +19314,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19316,7 +19322,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19464,7 +19470,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -19567,7 +19573,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -20229,7 +20236,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20237,7 +20244,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "17ef8805233d14aa331f2e52cebb24f2b153bac53e60136fd43d9ee2203cab0c"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -20337,7 +20344,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20410,7 +20417,8 @@
         "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed. docs/ui/responsive-action-surfaces.txt: added the WorkspacePaneFailure.tsx action-surface entry (exception: geometry inherited from the shared __actions rule and the 44px dismiss/summary rules, exercised under jsdom by RegionPaneHost.chatFailure.test.tsx, not measured in a browser); checked this document names no action-surface count or entry that the addition contradicts."
       ]
     },
     {
@@ -21173,7 +21181,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -21181,7 +21189,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21301,7 +21309,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -21408,7 +21416,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -21440,7 +21449,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21448,7 +21457,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "17ef8805233d14aa331f2e52cebb24f2b153bac53e60136fd43d9ee2203cab0c"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21548,7 +21557,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21606,13 +21615,14 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked HTTP composition, error and SSE patterns against the response boundary change. Fixed text on framework chat 5xx and type-only step frames do not change authentication or pipeline ownership.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed. docs/ui/responsive-action-surfaces.txt: added the WorkspacePaneFailure.tsx action-surface entry (exception: geometry inherited from the shared __actions rule and the 44px dismiss/summary rules, exercised under jsdom by RegionPaneHost.chatFailure.test.tsx, not measured in a browser); checked this document names no action-surface count or entry that the addition contradicts."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21620,7 +21630,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "17ef8805233d14aa331f2e52cebb24f2b153bac53e60136fd43d9ee2203cab0c"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21720,7 +21730,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -21781,7 +21791,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked frontend transport and error contracts against changed server egress: no consumer reads step diagnostics; framework compatibility HTTP 5xx is outside ordinary orchestration UI dispatch. Existing claims remain accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed. docs/ui/responsive-action-surfaces.txt: added the WorkspacePaneFailure.tsx action-surface entry (exception: geometry inherited from the shared __actions rule and the 44px dismiss/summary rules, exercised under jsdom by RegionPaneHost.chatFailure.test.tsx, not measured in a browser); checked this document names no action-surface count or entry that the addition contradicts."
       ]
     },
     {
@@ -22089,7 +22100,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -22097,7 +22108,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -22141,7 +22152,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -22198,7 +22209,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -24603,7 +24615,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24611,7 +24623,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24643,7 +24655,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -24706,7 +24718,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -27502,7 +27515,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27523,7 +27536,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27635,7 +27648,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -27715,7 +27728,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -28607,7 +28621,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28615,7 +28629,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "faa86a869c669f1150129e7a6b991708af3064a21bce0dcf57a49ef19d5b9383"
+          "digest": "e6c90e255b973d358429cc76bcb9c33cd336495b24928180480290620d9b9c7e"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28695,7 +28709,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -28734,7 +28748,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {
@@ -31069,7 +31084,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "aef492e463a55d2a2e7a7e7e6d68518cd6d4c092",
+      "sourceRevision": "57b23561ee5a7620ca594adb8834f53d80c1c17e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -31121,7 +31136,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "ead217b555aeef9bfe7f74ca06fa1267cb5c3cf19d169a89227075965ba063ad"
+          "digest": "fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348"
         }
       ],
       "checks": [
@@ -31148,7 +31163,8 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "This branch's index.css/chat.css delta: the maximized phone dock counts the top safe-area inset once and drops its accent top border; the phone header's centred title is fit-content with a 96px edge reserve; landscape phones pad the dock and app toolbar by the side insets; the transcript fades over its bottom gutter at every width; phone answer rows stretch with the details trigger below (now --text-secondary); answer markdown tables scroll in a wrapper, size to content with 6rem-20rem cells and keep inline code whole; the No chat open card keeps the dock gutter; Stop rests on --error-fill with white. Searched this document for claims about these areas: none describe the changed behaviour; prose unchanged. Delta-check: table cells use overflow-wrap: break-word so long URLs, hashes and paths break inside their cell; answer tables get a CSS scroll-driven edge fade and an explicitly focusable, labelled scroller; the app toolbar composes its side padding once from the gutter, side safe-area insets and macOS title-bar inset.",
-        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected."
+        "Comment-only change in src-ui/src/index.css (.app-toolbar): the comment now says breakpoints change the padding inputs and names the macOS collapsed-sidebar rules in ProjectSidebar.css that still set padding-left on desktop; no rule or value changed, so no claim or capture here is affected.",
+        "src-ui/src/index.css: the markdown-table edge cue now names its easing through the --ease-linear token (value linear, unchanged) to satisfy the motion contract; no rule, value or rendered behaviour changed."
       ]
     },
     {

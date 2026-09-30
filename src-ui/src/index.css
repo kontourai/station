@@ -4117,7 +4117,7 @@ button:hover {
    scroll timelines simply show no cue. */
 @supports (animation-timeline: scroll()) {
   .chat-markdown-table {
-    animation: chat-markdown-table-edge linear both;
+    animation: chat-markdown-table-edge var(--ease-linear) both;
     animation-timeline: scroll(self inline);
   }
 }
