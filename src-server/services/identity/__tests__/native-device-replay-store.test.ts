@@ -127,6 +127,25 @@ const tempDbPath = () => {
 };
 
 describe('NativeDeviceProofReplayStoreSqlite.consume', () => {
+  test('a clock rollback cannot replay a JTI pruned after its expiry', async () => {
+    let now = 1000;
+    const store = new NativeDeviceProofReplayStoreSqlite(
+      tempDbPath(),
+      STATION_ID,
+      { nowSeconds: () => now },
+    );
+    try {
+      await store.consume(opaque('original'), 1030);
+      now = 1040;
+      await store.consume(opaque('later'), 1070);
+      now = 1001;
+      await expect(
+        store.consume(opaque('original'), 1030),
+      ).rejects.toBeInstanceOf(NativeDeviceProofReplayStoreUnavailableError);
+    } finally {
+      store.close();
+    }
+  });
   test('consumes a JTI exactly once and rejects the duplicate as replayed', async () => {
     const store = new NativeDeviceProofReplayStoreSqlite(
       tempDbPath(),

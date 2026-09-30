@@ -396,9 +396,13 @@ function validateClaims(
       'invalid_claims',
       'Native Device proof audience is not a canonical Station origin.',
     );
-  const stringClaim = (key: string): string => {
+  const stringClaim = (key: string, maxLength = 512): string => {
     const value = claims[key];
-    if (typeof value !== 'string' || value.length === 0 || value.length > 512)
+    if (
+      typeof value !== 'string' ||
+      value.length === 0 ||
+      value.length > maxLength
+    )
       throw new NativeDeviceProofRejectedError(
         'invalid_claims',
         `Native Device proof claim ${key} is not a bounded string.`,
@@ -412,7 +416,7 @@ function validateClaims(
   const peerNonce = stringClaim('peerNonce');
   const jti = stringClaim('jti');
   const htm = stringClaim('htm');
-  const htu = stringClaim('htu');
+  const htu = stringClaim('htu', 2048);
   const bodySha256 = stringClaim('bodySha256');
   if (!OPAQUE_ID.test(deviceProofKeyThumbprint) || !OPAQUE_ID.test(peerNonce))
     throw new NativeDeviceProofRejectedError(
@@ -580,6 +584,8 @@ export async function verifyNativeDeviceRequestProof(
       'binding_not_approved',
       'The Device proof binding is not currently approved.',
     );
+  const binding = structuredClone(initialBinding.snapshot);
+  const proofKey = structuredClone(initialBinding.deviceProofKey);
   const initialPeer = await authority.peer();
   if (initialPeer.status !== 'current' || !initialPeer.snapshot)
     throw new NativeDeviceProofRejectedError(
@@ -587,8 +593,7 @@ export async function verifyNativeDeviceRequestProof(
       'The verified native peer is not current.',
     );
 
-  const binding = initialBinding.snapshot;
-  const peer = initialPeer.snapshot;
+  const peer = structuredClone(initialPeer.snapshot);
 
   if (binding.deviceProofKeyThumbprint === binding.surface.keyThumbprint)
     throw new NativeDeviceProofRejectedError(
@@ -634,7 +639,6 @@ export async function verifyNativeDeviceRequestProof(
     );
 
   let publicKey: CryptoKey;
-  const proofKey = initialBinding.deviceProofKey;
   try {
     if (
       !isPlainObject(proofKey) ||

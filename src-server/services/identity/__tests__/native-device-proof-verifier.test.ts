@@ -675,6 +675,47 @@ describe('verifyNativeDeviceRequestProof', () => {
     expect(h.store.consumed).toHaveLength(0);
   });
 
+  test('accepts the SDK path contract beyond 512 characters', async () => {
+    const h = await harness();
+    const path = `/${'a'.repeat(600)}`;
+    await expect(
+      verifyNativeDeviceRequestProof(
+        await h.buildProof({ path }),
+        request({ path }),
+        h.authority,
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).resolves.toEqual({
+      deviceId: h.snapshot.deviceId,
+      bindingId: h.snapshot.bindingId,
+    });
+  });
+
+  test('refuses authority that mutates a previously returned snapshot in place', async () => {
+    const h = await harness();
+    const proof = await h.buildProof();
+    const mutable = structuredClone(await h.makeBinding());
+    let reads = 0;
+    await expect(
+      verifyNativeDeviceRequestProof(
+        proof,
+        request(),
+        {
+          ...h.authority,
+          binding: async () => {
+            if (++reads === 3 && mutable.snapshot) {
+              Object.assign(mutable.snapshot, {
+                deviceId: '11111111-1111-4111-8111-111111111111',
+              });
+            }
+            return mutable;
+          },
+        },
+        { replayStore: h.store, nowSeconds: h.nowSeconds },
+      ),
+    ).rejects.toMatchObject({ reason: 'binding_not_approved' });
+  });
+
   test.each([
     { advance: 31, reason: 'expired' },
     { advance: Number.NaN, reason: 'invalid_claims' },

@@ -148,6 +148,9 @@ export class NativeDeviceProofReplayStoreSqlite {
         db.prepare(
           'INSERT INTO native_device_proof_replay_meta (key, value) VALUES (?, ?)',
         ).run('station_id', this.stationId);
+        db.prepare(
+          'INSERT INTO native_device_proof_replay_meta (key, value) VALUES (?, ?)',
+        ).run('clock_floor', '0');
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');
@@ -169,11 +172,14 @@ export class NativeDeviceProofReplayStoreSqlite {
       )
       .all() as Array<{ key: string; value: string }>;
     if (
-      meta.length !== 2 ||
-      meta[0]?.key !== 'schema_version' ||
-      meta[0].value !== String(SCHEMA_VERSION) ||
-      meta[1]?.key !== 'station_id' ||
-      meta[1].value !== this.stationId
+      meta.length !== 3 ||
+      meta[0]?.key !== 'clock_floor' ||
+      !/^\d+$/.test(meta[0].value) ||
+      !Number.isSafeInteger(Number(meta[0].value)) ||
+      meta[1]?.key !== 'schema_version' ||
+      meta[1].value !== String(SCHEMA_VERSION) ||
+      meta[2]?.key !== 'station_id' ||
+      meta[2].value !== this.stationId
     )
       throw new Error(
         'Native Device replay database authority is unavailable.',
@@ -209,6 +215,25 @@ export class NativeDeviceProofReplayStoreSqlite {
     try {
       this.db.exec('BEGIN IMMEDIATE');
       try {
+        const floor = this.db
+          .prepare(
+            "SELECT value FROM native_device_proof_replay_meta WHERE key='clock_floor'",
+          )
+          .get()?.value;
+        if (
+          typeof floor !== 'string' ||
+          !/^\d+$/.test(floor) ||
+          !Number.isSafeInteger(Number(floor)) ||
+          now < Number(floor)
+        )
+          throw new Error(
+            'Native Device replay verification time moved backwards.',
+          );
+        this.db
+          .prepare(
+            "UPDATE native_device_proof_replay_meta SET value=? WHERE key='clock_floor'",
+          )
+          .run(String(now));
         this.db
           .prepare(
             'DELETE FROM native_device_proof_replay WHERE expires_at <= ?',
