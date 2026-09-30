@@ -574,8 +574,11 @@ approval-context factory still does not authenticate an operator. The opt-in
 runtime mounts an operator-credential-only approval/readback route that checks
 current authority and the exact binding tuple. Native Device proofs, account
 membership and home possession cannot approve a binding. Host Device and account
-proof commands are now registered; ordinary route/sign-in UI, actual native IPC,
-packaged/physical acceptance and fresh relay-only enrollment remain unqualified.
+proof commands are now registered. The separate
+[native Project pilot](../guides/native-shell-verification.md#native-protected-project-pilot)
+exercises their real macOS debug WebView/IPC composition. Its preliminary runtime
+observations and pending frozen receipt do not qualify ordinary route/sign-in
+UI, packaged/physical acceptance or fresh relay-only enrollment.
 
 The opt-in runtime also mounts a [protected Device self-receipt](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
 at `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`. Only a current
@@ -605,8 +608,9 @@ a prior positive state `previously-confirmed-current`. Malformed or unrelated
 errors remain unavailable, and every refusal retains the provisional key.
 Its positive owner/epoch-bound observation is required by the peer and account
 owners, but ordinary route-selection UI does not invoke it automatically. It
-grants no account or Project authority. Actual native IPC, packaged use and fresh relay enrollment
-remain unverified.
+grants no account or Project authority. The manual pilot has preliminary real
+host-receipt evidence; its final frozen receipt, packaged use and fresh relay-only
+enrollment remain unverified.
 
 The [application Fetch adapter](../../packages/connect/src/core/applicationChannel.ts)
 now supports a channel-owned `prepareRequest` hook after peer admission. It
@@ -625,8 +629,10 @@ the host, with a separate key and bounded owner-fenced context. One exchange,
 full host challenge-consumption retention and post-sign expiry/key checks prevent
 replay or expiry-hint laundering. Native challenge/exchange still need an already
 account-bound approved Device and real supported provider login; no principal,
-cookie or Device bearer is manufactured. This composes source boundaries, not
-completed native/packaged acceptance or default transport enablement.
+cookie or Device bearer is manufactured. The manual pilot composes these owners
+with real local-provider login and separately accepted Project membership.
+Its final frozen receipt is pending; packaged acceptance and default transport
+enablement remain separate.
 
 ### Transport qualification
 

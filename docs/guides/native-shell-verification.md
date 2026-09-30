@@ -92,6 +92,58 @@ and supervisor unit tests use injected boundaries. Neither their passing result
 nor the existence of the shell lane establishes a completed native run here.
 Mobile background renewal and packaged-platform acceptance remain separate.
 
+### Native protected Project pilot
+
+The explicit macOS development lane is:
+
+```sh
+npm run test:tauri-shell -- --build --lane=native-project-proof
+```
+
+The [shell selector](../../scripts/run-tauri-shell-e2e.mjs) uses the separate
+WebDriver relay-grant app identity. The lane needs an unlocked macOS Keychain,
+Docker with the pinned coturn image, the pinned Go toolchain and cached Pion
+modules, and OpenSSL. It is a manual lane; the default shell sweep does not run
+it. Its debug build does not qualify a signed release artifact.
+
+The [runtime fixture](../../tests/tauri-shell/native-project-runtime-fixture.ts)
+starts the real StationRuntime, local account provider, broker, TURN and Pion
+connector in private fixture homes on allocated non-default ports. It preserves
+the same Station identity when restarting with one exact native client surface
+and the explicit Device-proof pilot. Real account login and invitation
+acceptance install an active Viewer membership, which the operator API verifies
+before account-bound Device pairing. Registration alone does not install that
+membership. The native host owns the pairing bearer, routing grant and distinct
+Device/account keys; the WebView supplies no fabricated principal or Device
+metadata.
+
+The journey checks operator-approved Device binding and host self-receipt,
+host-owned peer preparation and signing, native account challenge/exchange,
+protected Project read and reconnect through the application channel, and
+subsequent account revocation. Selected relay pairs and a browser direct-Project
+request counter distinguish the exercised transport. Direct loopback bootstrap
+is still used for trust, pairing and the host receipt; this is not fresh
+relay-only enrollment.
+
+An interim September 30, 2026 macOS debug run observed a current host receipt,
+native challenge/exchange responses and a protected shared-Project read with
+status 200, selected relay pairs and zero browser direct-Project requests. The
+driver and WebView files were still uncommitted, so that run is preliminary
+runtime evidence, not a final receipt bound to frozen source and binary bytes.
+**Final frozen journey receipt: NOT_VERIFIED. Device-revocation refusal:
+NOT_VERIFIED.** Record both only after the completed final run, including its
+source revision, binary identity and cleanup result.
+
+Cleanup targets only generated fixture homes, owned processes/containers and
+exact Keychain service/account owners. Device and account proof-key owner hashes
+use raw UUID bytes; candidate-record and credential metadata hashes use their
+string fields. Unverified cleanup is a failure, and retained artifacts
+are not permission to delete unrelated Keychain entries.
+
+This lane does not enable ordinary native route/sign-in UI or qualify mobile,
+Windows/Linux, packaged release use, remote internet connectivity, production
+TURN/TLS, external identity providers or two-person collaboration.
+
 The separate hostile-plugin lane also runs in a real Tauri WebView:
 
 ```sh
