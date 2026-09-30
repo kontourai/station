@@ -34,6 +34,27 @@ export function HarnessQuestionCard({
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState<boolean>();
   const edited = useRef(false);
+  const [customOpen, setCustomOpen] = useState<Record<string, boolean>>({});
+  const heading = useRef<HTMLLegendElement>(null);
+  const moveFocus = useRef(false);
+  const customText = useRef<HTMLTextAreaElement>(null);
+  const customSecret = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (customOpen[questionnaire.questions[step].id])
+      (customSecret.current ?? customText.current)?.focus();
+  }, [customOpen, questionnaire, step]);
+  useEffect(() => {
+    if (moveFocus.current) {
+      heading.current?.focus();
+      moveFocus.current = false;
+    }
+  }, [step, review]);
+  const navigate = (index: number) => {
+    moveFocus.current = true;
+    setStep(index);
+    setReview(false);
+    setError(undefined);
+  };
   useEffect(() => {
     if (!draftKey) return;
     let active = true;
@@ -75,8 +96,21 @@ export function HarnessQuestionCard({
         { [question.id]: answer },
       );
       setError(undefined);
-      if (step + 1 < questionnaire.questions.length) setStep(step + 1);
-      else setReview(true);
+      if (step + 1 < questionnaire.questions.length) navigate(step + 1);
+      else {
+        for (const [index, item] of questionnaire.questions.entries()) {
+          try {
+            validateHarnessQuestionAnswers(
+              { questions: [item] },
+              { [item.id]: answers[item.id] ?? { optionIds: [] } },
+            );
+          } catch (error) {
+            navigate(index);
+            throw error;
+          }
+        }
+        setReview(true);
+      }
     } catch (error) {
       setError(userFacingErrorMessage(error));
     }
@@ -105,7 +139,7 @@ export function HarnessQuestionCard({
   if (sent)
     return (
       <section className="harness-question-card" role="status">
-        Answers sent. Waiting for the engine to continue…
+        Answers sent
       </section>
     );
   return (
@@ -129,43 +163,62 @@ export function HarnessQuestionCard({
       }}
     >
       <div className="harness-question-card__heading">
-        <strong>
-          {review
-            ? 'Review your answers'
-            : question.header || 'The agent has a question'}
-        </strong>
+        <strong>{review ? 'Ready to send' : 'Agent questions'}</strong>
         <span>
           {review
-            ? `${questionnaire.questions.length} questions`
-            : `Question ${step + 1} of ${questionnaire.questions.length}`}
+            ? `${questionnaire.questions.length} answers`
+            : `${step + 1}/${questionnaire.questions.length}`}
         </span>
       </div>
+      {!review && questionnaire.questions.length > 1 && (
+        <nav className="harness-question-card__steps" aria-label="Questions">
+          {questionnaire.questions.map((item, index) => (
+            <Button
+              key={item.id}
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              aria-current={step === index ? 'step' : undefined}
+              onClick={() => navigate(index)}
+            >
+              {item.header || `${index + 1}`}
+            </Button>
+          ))}
+        </nav>
+      )}
       {review ? (
         <dl className="harness-question-card__review">
           {questionnaire.questions.map((question, index) => (
             <div key={question.id}>
-              <dt>{question.prompt}</dt>
+              <dt title={question.prompt}>
+                {question.header || question.prompt}
+              </dt>
               <dd>
                 {question.secret
-                  ? 'Private answer entered'
+                  ? '••••••••'
                   : harnessAnswerTexts(question, answers).join(', ')}
               </dd>
               <Button
+                className="harness-question-card__edit"
+                variant="ghost"
+                size="sm"
+                aria-label={`Edit answer ${index + 1}`}
                 disabled={pending}
-                onClick={() => {
-                  setStep(index);
-                  setReview(false);
-                }}
+                onClick={() => navigate(index)}
               >
-                Edit answer {index + 1}
+                Edit
               </Button>
             </div>
           ))}
         </dl>
       ) : (
         <fieldset disabled={pending}>
-          <legend>{question.prompt}</legend>
-          {question.multiple && <p>Choose all that apply.</p>}
+          <legend ref={heading} tabIndex={-1}>
+            {question.prompt}
+          </legend>
+          {question.multiple && (
+            <p className="harness-question-card__hint">Select any</p>
+          )}
           <div className="harness-question-card__options">
             {question.options.map((option) => (
               <label key={option.id} className="harness-question-card__option">
@@ -195,79 +248,105 @@ export function HarnessQuestionCard({
               </label>
             ))}
           </div>
-          {question.allowCustom && (
-            <label
-              className="harness-question-card__custom"
-              htmlFor={customAnswerId}
-            >
-              <span>
-                {question.options.length ? 'Your own answer' : 'Your answer'}
-              </span>
-              {question.secret ? (
-                <input
-                  id={customAnswerId}
-                  type="password"
-                  autoComplete="off"
-                  maxLength={12000}
-                  value={answer.custom ?? ''}
-                  onChange={(event) =>
-                    update({
-                      optionIds: question.multiple ? answer.optionIds : [],
-                      custom: event.target.value,
-                    })
-                  }
-                />
-              ) : (
-                <textarea
-                  id={customAnswerId}
-                  rows={3}
-                  maxLength={12000}
-                  value={answer.custom ?? ''}
-                  onChange={(event) =>
-                    update({
-                      optionIds: question.multiple ? answer.optionIds : [],
-                      custom: event.target.value,
-                    })
-                  }
-                />
-              )}
-            </label>
-          )}
+          {question.allowCustom &&
+            question.options.length > 0 &&
+            !customOpen[question.id] &&
+            answer.custom === undefined && (
+              <Button
+                variant="ghost"
+                className="harness-question-card__other"
+                onClick={() => {
+                  setCustomOpen((previous) => ({
+                    ...previous,
+                    [question.id]: true,
+                  }));
+                }}
+              >
+                Other…
+              </Button>
+            )}
+          {question.allowCustom &&
+            (customOpen[question.id] ||
+              answer.custom !== undefined ||
+              question.options.length === 0) && (
+              <label
+                className="harness-question-card__custom"
+                htmlFor={customAnswerId}
+              >
+                <span>Your answer</span>
+                {question.secret ? (
+                  <input
+                    ref={customSecret}
+                    id={customAnswerId}
+                    type="password"
+                    autoComplete="off"
+                    maxLength={12000}
+                    value={answer.custom ?? ''}
+                    onChange={(event) =>
+                      update({
+                        optionIds: question.multiple ? answer.optionIds : [],
+                        custom: event.target.value,
+                      })
+                    }
+                  />
+                ) : (
+                  <textarea
+                    ref={customText}
+                    id={customAnswerId}
+                    rows={2}
+                    maxLength={12000}
+                    value={answer.custom ?? ''}
+                    onChange={(event) =>
+                      update({
+                        optionIds: question.multiple ? answer.optionIds : [],
+                        custom: event.target.value,
+                      })
+                    }
+                  />
+                )}
+              </label>
+            )}
         </fieldset>
       )}
       {error && <p role="alert">{error}</p>}
-      <p className="harness-question-card__draft" role="status">
-        {questionnaire.questions.some((question) => question.secret)
-          ? 'Private answers aren’t saved as drafts.'
-          : saved === true
-            ? 'Draft saved on this device.'
-            : saved === false
-              ? 'Draft kept in this tab only.'
-              : 'Answers are sent together after review.'}
-      </p>
       <div className="harness-question-card__actions">
+        <span
+          className="harness-question-card__draft"
+          role="status"
+          title={
+            questionnaire.questions.some((item) => item.secret)
+              ? 'Private answers are not saved'
+              : 'Draft saved on this device'
+          }
+        >
+          {questionnaire.questions.some((item) => item.secret)
+            ? 'Private'
+            : saved === true
+              ? 'Saved'
+              : saved === false
+                ? 'In this tab'
+                : ''}
+        </span>
         {!review && step > 0 && (
           <Button
             disabled={pending}
-            onClick={() => {
-              setStep(step - 1);
-              setError(undefined);
-            }}
+            variant="ghost"
+            onClick={() => navigate(step - 1)}
           >
-            Previous
+            Back
           </Button>
         )}
         <Button
           type="submit"
           variant="primary"
           pending={pending}
-          pendingLabel="Sending answers…"
+          pendingLabel="Sending…"
         >
           {review
-            ? 'Send answers'
+            ? 'Send'
             : step + 1 === questionnaire.questions.length
-              ? 'Review answers'
-              : 'Next question'}
+              ? 'Review'
+              : 'Next'}
         </Button>
       </div>
     </form>

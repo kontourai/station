@@ -150,7 +150,8 @@ The `InjectableStream` wrapper ensures approval events are emitted in the correc
 
 Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as inline
 question cards in the Session. Select an option, choose several where the
-harness supports it, or enter a custom answer. Use Tab and the native choice
+harness supports it, or choose Other to enter a custom answer. Question tabs
+let you jump between prompts. Use Tab and the native choice
 keys; Ctrl/Cmd+Enter advances to the next question or the review. Review and
 edit every answer before sending the batch. Answering a question never grants
 permission to later tool calls, including under wildcard auto-approval.

@@ -107,12 +107,13 @@ function mount(value = questionnaire, key = 'request-a') {
 
 function chooseBatch() {
   fireEvent.click(screen.getByRole('radio', { name: /Blue/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Next question' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   fireEvent.click(screen.getByRole('checkbox', { name: /Fast/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Other…' }));
   fireEvent.change(screen.getByRole('textbox'), {
     target: { value: 'Search' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Review answers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 }
 
 test('requires explicit choices, reviews the batch, and sends selection IDs plus custom text once', async () => {
@@ -120,32 +121,28 @@ test('requires explicit choices, reviews the batch, and sends selection IDs plus
   expect(
     screen.getByRole<HTMLInputElement>('radio', { name: /Blue/ }).checked,
   ).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: 'Next question' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
     'Choose one answer.',
   );
   chooseBatch();
-  expect(screen.getByText('Review your answers')).toBeTruthy();
+  expect(screen.getByText('Ready to send')).toBeTruthy();
   expect(screen.getByText('Fast, Search')).toBeTruthy();
   expect(submit).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Edit answer 1' }));
   expect(
     screen.getByRole<HTMLInputElement>('radio', { name: /Blue/ }).checked,
   ).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Next question' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Review answers' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   await waitFor(() => expect(submit).toHaveBeenCalledOnce());
   expect(submit).toHaveBeenCalledWith({
     colour: { optionIds: ['blue'] },
     features: { optionIds: ['fast'], custom: 'Search' },
   });
-  expect(
-    await screen.findByText(
-      'Answers sent. Waiting for the engine to continue…',
-    ),
-  ).toBeTruthy();
+  expect(await screen.findByText('Answers sent')).toBeTruthy();
   await waitFor(() => expect(storage.values.has('request-a')).toBe(false));
 });
 
@@ -160,13 +157,13 @@ test('restores a draft for the exact request and preserves it after a failed sub
       screen.getByRole<HTMLInputElement>('radio', { name: /Blue/ }).checked,
     ).toBe(true),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Next question' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('Search');
-  fireEvent.click(screen.getByRole('button', { name: 'Review answers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review' }));
   submit.mockRejectedValueOnce(
     new Error('The current request could not be verified.'),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   expect(await screen.findByRole('alert')).toBeTruthy();
   expect(storage.values.has('request-a')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Edit answer 2' }));
@@ -195,8 +192,8 @@ test('a private answer is masked during review and never enters draft storage', 
   expect(JSON.stringify([...storage.values.values()])).not.toContain(
     'private-draft-canary',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review answers' }));
-  expect(screen.getByText('Private answer entered')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+  expect(screen.getByText('••••••••')).toBeTruthy();
   expect(screen.queryByText('private-draft-canary')).toBeNull();
 });
 
@@ -237,7 +234,7 @@ test('the keyboard shortcut advances and reviews before sending, and ignores rep
   expect(screen.getByText('Which features?')).toBeTruthy();
   fireEvent.click(screen.getByRole('checkbox', { name: /Fast/ }));
   fireEvent.keyDown(form, { key: 'Enter', ctrlKey: true });
-  expect(screen.getByText('Review your answers')).toBeTruthy();
+  expect(screen.getByText('Ready to send')).toBeTruthy();
   expect(submit).not.toHaveBeenCalled();
   fireEvent.keyDown(form, { key: 'Enter', ctrlKey: true, repeat: true });
   expect(submit).not.toHaveBeenCalled();
@@ -276,12 +273,8 @@ test('the authority wrapper posts the exact prompt and structured answers throug
   }));
   render(<HarnessQuestionRequest request={request} />);
   chooseBatch();
-  fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
-  expect(
-    await screen.findByText(
-      'Answers sent. Waiting for the engine to continue…',
-    ),
-  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(await screen.findByText('Answers sent')).toBeTruthy();
   expect(posted).toEqual([
     {
       type: 'respondToRequest',
@@ -300,7 +293,7 @@ test('the authority wrapper posts the exact prompt and structured answers throug
 test('a browser authority epoch change restores drafts only from the same verified durable namespace and request', async () => {
   const view = render(<HarnessQuestionRequest request={request} />);
   fireEvent.click(screen.getByRole('radio', { name: /Blue/ }));
-  await screen.findByText('Draft saved on this device.');
+  await screen.findByText('Saved');
   view.unmount();
   requestScope.authorityKey = 'epoch-b';
   render(<HarnessQuestionRequest request={request} />);
@@ -309,4 +302,16 @@ test('a browser authority epoch change restores drafts only from the same verifi
       screen.getByRole<HTMLInputElement>('radio', { name: /Blue/ }).checked,
     ).toBe(true),
   );
+});
+
+test('question navigation returns to the first unanswered question before review', () => {
+  mount();
+  expect(screen.queryByRole('textbox')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Features' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /Fast/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+  expect(screen.queryByText('Ready to send')).toBeNull();
+  expect(screen.getByRole('alert').textContent).toBe('Choose one answer.');
+  expect(document.activeElement?.textContent).toBe('Which colour?');
+  expect(submit).not.toHaveBeenCalled();
 });
