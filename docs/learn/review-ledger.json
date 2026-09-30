@@ -3693,7 +3693,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/index.ts",
@@ -3861,6 +3861,7 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json, packages/connect/package.json, packages/sdk/package.json, packages/shared/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The overview names no dependency version and its approval claims are diagram-level. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
       ]
     },
@@ -7632,7 +7633,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7688,7 +7689,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/runtime/bootstrap/station-runtime.ts",
@@ -7760,7 +7761,8 @@
         "Merge review (origin/main into #2915/#2916): Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Its Codex claims are app-home and adoption wiring (getAppHomeEnv, processFactory), which neither change touches; the Claude app-home claim holds as recorded under #2915. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its app-home and session-start claims hold: session start's agent resolution and its unavailable reasons are unchanged in behaviour. Prose accurate.",
         "Re-read 'Design: Connections onboarding & capability passthrough' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its app-home claim holds; main's change is the Discord continue path's forwarder wiring. Prose accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -10886,7 +10888,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "ee6196c23ebd9c2966111532d696506c448a90827eb2e2e21dfd5d43f877ecae",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10998,7 +11000,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -11221,7 +11223,8 @@
         "Merge review (origin/main 99f9520b0 into #2915/#2916): both sides changed this record. Main (#2946) rewrote only the Theming & Colors section (DESIGN.md pointer, --k-* tone tokens, station-tones.ts) and added that source; this branch's sources (claude-adapter.ts, orchestration-service.ts, routes/orchestration/orchestration.ts) carry the session-grant and approval-authority changes. Re-checked both against the merged guide: the theming section names no approval or session-grant behaviour, and the Tool Approval Flow section (Station-engine route; orchestration clients use respondToRequest) is unchanged and still accurate with this branch's respond path. Prose accurate.",
         "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Tool Approval Flow and delegation guidance hold: delegated respond still answers the request, as a one-call accept for an edit-mode session answer on this Station. Prose accurate.",
-        "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css."
+        "Replaced the '1.12.0 defines none of them' token sentence: installed ui 1.16.0 defines --k-status-contrast, --k-trust-* (ink, fill, line) and the --k-action/--k-focus roles, verified in node_modules/@kontourai/ui/tokens/tokens.css.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -11747,7 +11750,7 @@
     {
       "path": "docs/guides/build-your-first-plugin.md",
       "documentDigest": "92cf393ead150dc61a14dce4523f4c84276ba419317bfff0df75784f984779db",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full304-line original read. Source-reviewed package prerequisites, portable manifest/component/build example, CLI create/init/build/dev/install dispatch, legacy preview and proxy bounds, New plugin Project caller, preview/consent/reconciliation and trusted server-module distinction. Extracted manifest/entrypoint passed actual schema and production/dev build controls. Continuation clarifies that install.ts gates target.source: only automatic active-local/default loopback; explicit loopback API flags and saved localhost selections remain directory-refused.",
@@ -11787,7 +11790,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/shared/package.json",
@@ -11859,7 +11862,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the plugin guide's /build import and engine claims are unchanged; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); plugin-public-server.ts (unused disposePluginPublicServerModule deleted); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, packages/shared/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -12144,8 +12148,8 @@
     },
     {
       "path": "docs/guides/connections.md",
-      "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
+      "documentDigest": "4f50af953fbe2b0e6b2d4951a3d10478ca3919df39fe357f66edf81cf8dea141",
+      "sourceRevision": "b344807fd085298b757bae057d264c5cf91ac40a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12313,7 +12317,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/connections/self-hosted-broker.ts",
@@ -12618,6 +12622,10 @@
         {
           "path": "tests/connections-crud.spec.ts",
           "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
+        },
+        {
+          "path": "src-ui/src/views/CredentialProfileDeviceCodeLogin.tsx",
+          "digest": "c929fd3b638cd33197362e5b079b01514a3930a2e17062939a2fa048feeb519a"
         }
       ],
       "checks": [
@@ -12670,8 +12678,10 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
+        "Reviewed the shared SkeletonBlock loading state and registered 390px action-row proof after static gate feedback; sign-in behavior is unchanged and 12 focused UI tests passed.",
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
       ]
     },
     {
@@ -14948,7 +14958,7 @@
         },
         {
           "path": "docs/reference/sdk.md",
-          "digest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf"
+          "digest": "61d973e04ef204b9e979d51524d1c036ae6eae0c2dc1e781cb1d5a5e5281d949"
         },
         {
           "path": "packages/contracts/src/deployment-authentication.ts",
@@ -14998,6 +15008,7 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Only change among its sources is api.md's branding theme paragraph (now naming validateBrandOverride plus Station's stricter checks); this page's links and claims about the API reference still hold.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
       ]
     },
@@ -18403,10 +18414,10 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Reviewed the published Flow Agents 6.5.0 registry tarball and v6.5.0 tag receipt (c9b98ac840414433da25a50363c56efe271cb4ff): registry SRI/SHA1 matched and 11 critical packaged files matched the tag. Inspected executed isolated public-install logs: 30 manifest-entry/YAML tests passed, and a real registry 6.4.0-to-6.5.0 public Kit CLI update preserved external canonical store bytes, full record provenance and link labels; Kit status reported matching recorded and observed artifact hashes. All nine Station source owners are unchanged since the prior a4df review; Station SDK/adapter boundary and dated Sep27 local-only evidence retained. Limits: macOS/Node24, no new live projection/model or Windows/Linux consumer proof; registry integrity is not independent npm attestation verification.",
-        "Clarified that matching recorded/observed hashes describe the installed Kit artifact, separate from canonical store byte/provenance/link-label preservation."
+        "Clarified that matching recorded/observed hashes describe the installed Kit artifact, separate from canonical store byte/provenance/link-label preservation.",
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
       ]
     },
     {
@@ -18623,7 +18634,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "c4923c1e6c244cd423b6c6b1852606e77a49957e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18631,7 +18642,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "77ccf0d0028d07d837c1091299dbe83327967841e137a9cc228fd1b5ad8c471d"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18787,13 +18798,14 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Reviewed the #2042 responsive action inventory addition against the shared 44px/wrap/focus floor and mounted 390px dark/light browser evidence. The new credential sign-in row is covered; existing design and component ownership claims remain unchanged. Shared SkeletonBlock replaces the bespoke loading sentence.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
       ]
     },
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "618c04635531af10ce95cda65be2bd40e5b361f98b0fde1a8ae999b125bfb6a0",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -18889,7 +18901,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/orchestration/dispatch-scope.ts",
@@ -19092,7 +19104,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It lists respond_to_task_request for an open request from a delegated worker (now answered as a one-call accept for an edit-mode session answer under #2915) and says delegated activity retains bounded request titles, which main's code-point bound with an ellipsis still satisfies. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. respond_to_task_request still answers a delegated worker's open request (a one-call accept for an edit-mode session answer). Prose accurate.",
         "Corrected: forwarding to a saved Environment now says the tool never contacts the other Station, it names the Environment to this Station's route, and remote task listings share the bound-operator restriction (C2b added it on GET /delegations).",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main corrected the forwarding text; respond_to_task_request still answers an open request from a delegated worker (a one-call accept for an edit-mode session answer on this Station). Prose accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -20268,7 +20281,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "c4923c1e6c244cd423b6c6b1852606e77a49957e",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20276,7 +20289,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "77ccf0d0028d07d837c1091299dbe83327967841e137a9cc228fd1b5ad8c471d"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -20448,8 +20461,9 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the #2042 responsive action inventory addition against the shared 44px/wrap/focus floor and mounted 390px dark/light browser evidence. The new credential sign-in row is covered; existing design and component ownership claims remain unchanged. Shared SkeletonBlock replaces the bespoke loading sentence.",
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
       ]
     },
     {
@@ -21477,7 +21491,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "fb14d985c95565344abc5e3f04dc257ad99ac8c3",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21485,7 +21499,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "77ccf0d0028d07d837c1091299dbe83327967841e137a9cc228fd1b5ad8c471d"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21642,13 +21656,14 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked HTTP composition, error and SSE patterns against the response boundary change. Fixed text on framework chat 5xx and type-only step frames do not change authentication or pipeline ownership.",
+        "Reviewed the #2042 responsive inventory addition; it changes no backend ownership, transport or error contract. Preserved upstream disclosure review notes and source bindings during the main merge.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "fb14d985c95565344abc5e3f04dc257ad99ac8c3",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21656,7 +21671,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "77ccf0d0028d07d837c1091299dbe83327967841e137a9cc228fd1b5ad8c471d"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -21816,6 +21831,7 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked frontend transport and error contracts against changed server egress: no consumer reads step diagnostics; framework compatibility HTTP 5xx is outside ordinary orchestration UI dispatch. Existing claims remain accurate.",
+        "Reviewed #2042 shared loading and responsive action inventory: 390px dark/light controls satisfy the 44px floor and wrapping; scoped SDK requests follow the existing transport owner. Preserved upstream disclosure review notes and source bindings during the main merge.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
       ]
     },
@@ -21887,8 +21903,9 @@
         "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold.",
         "Only change among its sources is the token sentence in agents.md (ui 1.16.0 token list); this plan does not rely on that sentence.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
       ]
     },
     {
@@ -24745,12 +24762,12 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "b344807fd085298b757bae057d264c5cf91ac40a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
       "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
-      "documentDigest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf",
+      "documentDigest": "61d973e04ef204b9e979d51524d1c036ae6eae0c2dc1e781cb1d5a5e5281d949",
       "sources": [
         {
           "path": "docs/design/mcp-ui-host.md",
@@ -24798,7 +24815,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/__tests__/application-session-native.test.ts",
@@ -25703,6 +25720,10 @@
         {
           "path": "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
           "digest": "2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4"
+        },
+        {
+          "path": "packages/sdk/src/device-code-login.ts",
+          "digest": "9738c9067cb02012c72eccfd88d0bb92bda54fe118879b45779867778fb4ce14"
         }
       ],
       "checks": [
@@ -25754,6 +25775,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The SDK package's own exports and the respondToRequest example are unchanged. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
+        "Added the new device-code-login module as the owner of the documented scoped query/mutation contract; checked exports and response validation.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
       ]
     },
@@ -29292,7 +29315,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "66e445c0c35d361ee3e6b16a834f5a9978086bbc",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -29388,7 +29411,7 @@
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
-          "digest": "e17f86421a9d5cf90fea5867d8e201aaa9852d93c781dad3ef96bae56f48a78b"
+          "digest": "192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9"
         },
         {
           "path": "src-server/routes/orchestration/dispatch-scope.ts",
@@ -29591,7 +29614,8 @@
         "Merge review (origin/main into #2915/#2916): routes/orchestration/orchestration.ts changed on both sides: #2915 marks the command route's respondToRequest dispatch with approvalModeAuthority, and main (#2906) made orchestrationEventMatchesThread and parseResumeCursor module-private with no behaviour change. Main's #2911 Codex change (codex-adapter*.ts) sends empty permissions when a permissions request is declined and keeps escalating requests off Station's tool grant; its adapter edits here are comments and one type. Main's station-control-delegation.ts change bounds delegated request titles in code points with an ellipsis. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true with both. Prose accurate.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. Its statement that non-metadata calls remain subject to approval and the caller's authority still holds. Prose accurate.",
         "Re-read 'Self-Configuring Agent Example' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; the dispatch-scope test adds list/options remote refusals; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold.",
-        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate."
+        "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Non-metadata calls remain subject to approval and the caller's authority, with both changes. Prose accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {
@@ -30303,7 +30327,7 @@
     },
     {
       "path": "packages/sdk/AGENTS.md",
-      "sourceRevision": "413d80f64c651ec3b3df6e30029ddec924692157",
+      "sourceRevision": "776b5c00861cd2331539638b4c8caa7a17a8a48c",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
@@ -30312,11 +30336,11 @@
       "sources": [
         {
           "path": "docs/reference/sdk.md",
-          "digest": "a1c5a2ba609d93c58ba90a098a252cec03af7cbe9b229389e386787141580fdf"
+          "digest": "61d973e04ef204b9e979d51524d1c036ae6eae0c2dc1e781cb1d5a5e5281d949"
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/query-core.ts",
@@ -30341,6 +30365,7 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Read scoped SDK instructions against the new device-code-login subpath: uses authenticated public transport with explicit request authority, documents the API in SDK reference and covers caller/cache outcomes. No instruction change.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
       ]
     },
@@ -30377,7 +30402,7 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2",
+      "sourceRevision": "a4dfd0454dc0e354c29903ee291f7b75660b05e3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
@@ -30394,7 +30419,7 @@
         },
         {
           "path": "packages/sdk/package.json",
-          "digest": "84912ccd0d5ca9b824954d208f7f950435b02e984a251f4f2d380c527fec7084"
+          "digest": "117284d5c75b85c661c3801784c2da475e05285189a2fbb289cdb49995972f74"
         },
         {
           "path": "packages/sdk/src/api-agent-runtime.ts",
@@ -30501,7 +30526,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read '@kontourai/station-sdk' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate."
+        "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
+        "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed."
       ]
     },
     {

@@ -1121,6 +1121,10 @@ describe('device-code enrolment routes', () => {
     );
 
     expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      data: { outcome: 'unsupported' },
+    });
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 
