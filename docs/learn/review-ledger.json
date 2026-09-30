@@ -1452,7 +1452,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1482,7 +1482,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "1a01f43242daec638e7e647ae849d16cb6ee8b2df00253b569b7294d8237dc91"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1507,7 +1507,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "2026-09-29: re-read against the glossary change (new designed-not-built section for distribution manifests, kernel, required slot, safe mode, layout subject). This page only routes readers to the glossary for vocabulary and makes no claim about those terms; still accurate."
       ]
     },
     {
@@ -1515,7 +1516,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1545,7 +1546,7 @@
         },
         {
           "path": "docs/glossary.md",
-          "digest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968"
+          "digest": "1a01f43242daec638e7e647ae849d16cb6ee8b2df00253b569b7294d8237dc91"
         },
         {
           "path": "packages/contracts/src/engine-capability-matrix.ts",
@@ -1570,7 +1571,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
+        "2026-09-29: re-read against the glossary change (new designed-not-built section for distribution manifests, kernel, required slot, safe mode, layout subject). This page defers vocabulary to the glossary and names none of the added terms; still accurate."
       ]
     },
     {
@@ -6377,8 +6379,8 @@
     },
     {
       "path": "docs/design/README.md",
-      "documentDigest": "46563f1bffb454928314b68a76d2aee89df757df941fd40cf35adaf8d41ad96d",
-      "sourceRevision": "e5efef30008198db7198fe9dac38f3ad632c6621",
+      "documentDigest": "0030b249ac2784eb067ed58ec73eee7e4a078993be663892759ce0797f78fe76",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "kind": "generated",
       "state": "classified",
       "summary": "Reviewed the navigation and generated index boundaries; individual records retain their own purpose and evidence.",
@@ -6390,7 +6392,8 @@
         }
       ],
       "checks": [
-        "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence."
+        "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+        "2026-09-29: regenerated by npm run docs:index to list shell-plugins-distributions.md; no prose change."
       ]
     },
     {
@@ -8885,8 +8888,8 @@
     },
     {
       "path": "docs/design/pane-or-shell.md",
-      "documentDigest": "628156637ea2f89baab9ba73c53100e6313754b0361c80e37bff94c90ed9ef23",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "c1440d672ee51e914ea0b0d2267d6e53b4abca7d8602ac01a0feda9c09aeeec8",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "kind": "policy",
       "state": "classified",
       "summary": "Adopted pane/shell criterion and runtime trust policy; surface inventory explicitly scoped to its migration stage.",
@@ -8908,7 +8911,8 @@
       "checks": [
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner and inventory qualification.",
-        "Reviewed integration deltas: src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+        "Reviewed integration deltas: src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged.",
+        "2026-09-29: added a dated amendment banner pointing to shell-plugins-distributions.md (per-install trust tier, Home as required slot). Body unchanged; no source claim changed."
       ]
     },
     {
@@ -9221,8 +9225,8 @@
     },
     {
       "path": "docs/design/plugin-authority-model.md",
-      "documentDigest": "2ebf5bb97a476d74ed01b297fd6f7bab8a81ce534e33f9c1913b8975fae7b2cc",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "documentDigest": "a27f2d50547d3a172bd8c569abc524584e11f707b6c4a3df2749ed78fb48befa",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "kind": "historical",
       "state": "classified",
       "summary": "August threat analysis preserved with current same-origin nonce-free vs cross-origin inline behavior, managed-update installer path, legacy grant rebinding and still-limited derived permissions.",
@@ -9261,7 +9265,8 @@
         "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
         "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
         "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.test.ts (restore-helper tests dropped); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.test.ts (restore-helper tests dropped); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected.",
+        "2026-09-29: added a dated amendment banner pointing to shell-plugins-distributions.md (answers open question 2; update re-prompt). Historical body unchanged; the banner claims only the new record's decisions."
       ]
     },
     {
@@ -10038,8 +10043,8 @@
     },
     {
       "path": "docs/design/shell-ownership-and-boards.md",
-      "documentDigest": "d1cb726c803bad2f5ccb50ad104de6c5906f96e03aa749cfd7ab22231d40850d",
-      "sourceRevision": "e5efef30008198db7198fe9dac38f3ad632c6621",
+      "documentDigest": "5d4e29c43eeb5fc0f1e963d8f3dd2ad0fa719b1e631d14a9a58085369afb05c2",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted ownership/Board design with staged implementation history and current personal-Board owner routing.",
@@ -10074,7 +10079,74 @@
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+        "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
+        "2026-09-29: replaced stale 'unmerged slices' text. Verified on origin/main that all nine slices landed in 8eeb8d708 (#2080: #2059, #2060, #2064), 2e47e7626 (#2084: #2061, #2063, #2066), 49299c30a (#2095: #2062, #2065, #2067). Unbuilt items listed in the banner checked: instance layouts have storage (layout-owner-storage.ts) and no route under src-server/routes/me; ProjectSidebarBoards update mutation is used only for rename; no Board reorder or clone found. Review Board placement still deferred. Added dated amendment pointing to shell-plugins-distributions.md."
+      ]
+    },
+    {
+      "path": "docs/design/shell-plugins-distributions.md",
+      "documentDigest": "dcffa3dc83f4ed58b7652d5fc638ffab66faa63162a46bbacf51489ca13011f9",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Accepted-direction record of the 2026-09-29 owner decisions (shell kernel, per-install trust, required slots, layout owner x subject, layout contract fields, distribution manifests, public plugins repo) with a source-inspected current-state section, threat notes, open items and a sliced delivery plan.",
+      "limits": "Design, not shipped behavior. Current-state claims are source inspection at 2e8ddc0f7; no test executed. The feat/coding-chat-main branch diff was not reviewed. The @kontourai/ui DESIGN.md rules were not verifiable from the installed package. Plugin-to-plugin isolation claims rest on the build shim source, not an executed probe.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/distribution.ts",
+          "digest": "0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4"
+        },
+        {
+          "path": "packages/contracts/src/layout.ts",
+          "digest": "d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43"
+        },
+        {
+          "path": "packages/contracts/src/project-membership.ts",
+          "digest": "835dd45f7c8adb2ebe74849f39013c13a552a10065156c15bf2c2baf5fb96d00"
+        },
+        {
+          "path": "packages/contracts/src/workspace-home-role.ts",
+          "digest": "afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4"
+        },
+        {
+          "path": "packages/shared/src/build.ts",
+          "digest": "381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884"
+        },
+        {
+          "path": "src-server/routes/plugins/plugin-home-role-routes.ts",
+          "digest": "ad2b553accde4e731ec6db42c7d4c69092ccda2a50ed8cfefc6cc6f4d1dcba00"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-permissions.ts",
+          "digest": "12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-visibility-service.ts",
+          "digest": "3fbbb277c5cc0b0d9c4a7f1a5e8b79913a7bfa4bb93971374aebcb6aba7ae579"
+        },
+        {
+          "path": "src-ui/src/app-shell/project-layout-kind.ts",
+          "digest": "52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce"
+        },
+        {
+          "path": "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
+          "digest": "df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302"
+        },
+        {
+          "path": "src-ui/src/core/PluginRegistry.ts",
+          "digest": "4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c"
+        },
+        {
+          "path": "src-ui/src/lib/branding-theme.ts",
+          "digest": "30a806e7e6a449a14e81c7c79bb53464d2917c3486c79f645ec252e16e4a52eb"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/workspacePaneRendererSelection.ts",
+          "digest": "7050620c120bbdf48a658e1c210d1ea06281691a0b0b63bc0644430207a10cc8"
+        }
+      ],
+      "checks": [
+        "2026-09-29 new record. Current-state claims checked by source inspection at 2e8ddc0f7: LayoutOwner/layoutOwner (no subject field); Board create/rename/promote routes and sidebar (section returns null with zero Boards; only rename calls the update mutation); instance layouts storage-only; plugin-visibility-service grants; manage-extensions owner-only in project-membership.ts; type==='coding' sites in project-layout-kind, ProjectLayoutRenderer, ProjectPage, useChatDockViewModel, LayoutWorkspacePane, workspacePaneDirectRoute, builtinWorkspacePaneCanonical; board-pane/basis-pane private and imported by src-ui; Home role grant via consent listener in plugin-home-role-routes.ts and built-in Home floor in workspace-home-role.ts (its 'NO production caller' docstring is stale); renderer capability selection; executeBundleInline still assigns the shell nonce (PluginRegistry.ts:686), same-origin path nonce-free; grant digest binding in plugin-permissions.ts; globalThis.require shim in packages/shared/src/build.ts; branding provider and branding-theme.ts contrast refusal; DistributionProfile contract and guide. Design proposals are not claims of behavior. No tests executed."
       ]
     },
     {
@@ -10409,8 +10481,8 @@
     },
     {
       "path": "docs/glossary.md",
-      "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "documentDigest": "1a01f43242daec638e7e647ae849d16cb6ee8b2df00253b569b7294d8237dc91",
+      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10692,7 +10764,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "2026-09-29: added a 'Shell kernel and distribution manifests (designed, not built)' section: Distribution disambiguation (ADR 0020 release distribution; existing DistributionProfile; designed distribution manifest), Kernel, Required slot, Safe mode (checked none exists; distinguished from the --safe-mode flag in packages/cli/src/commands/triage.ts), Layout subject (no field exists in layout.ts). Rest of glossary unchanged."
       ]
     },
     {

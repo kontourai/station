@@ -83,6 +83,7 @@ category.
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
+- [shell-plugins-distributions.md](shell-plugins-distributions.md) — Shell kernel, plugin contributions and distribution manifests
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation

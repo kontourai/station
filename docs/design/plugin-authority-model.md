@@ -13,6 +13,14 @@
 > This dated comparison is not a current exploit report or a fresh audit of
 > every contribution, framework, or external product mentioned below.
 
+> **Amended 2026-09-29.** [shell-plugins-distributions.md](shell-plugins-distributions.md)
+> records owner answers to open question 2 below: install trust is per install,
+> pinned to publisher key plus content digest, defaulting to in-process only for
+> Kontour-signed plugins. An update from a different key or requesting new
+> capabilities re-prompts, which is that record's answer to "updates launder
+> consent". It keeps this note's threat findings as open items rather than
+> treating them as resolved.
+
 Status: design note, 2026-08-25. Written while shaping station#4220 (one plugin
 format, user-chosen runtime) and station#4190 (dogfood the iframe tier).
 
