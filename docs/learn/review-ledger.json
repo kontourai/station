@@ -1452,13 +1452,13 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/contexts/agent-runtime/CONTEXT.md",
@@ -1508,7 +1508,8 @@
         "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Sources changed on this branch: the glossary (the control-lease entry now says a holder can release control explicitly, through the Browser pane's driver chip) and the module map (the BrowserSessionService section gained the page-tools paragraph and its test files, which changed its digest). Neither touches the responsibility areas or relationships this document describes. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Sources changed on this branch: the glossary (the control-lease entry now says a holder can release control explicitly, through the Browser pane's driver chip) and the module map (the BrowserSessionService section gained the page-tools paragraph and its test files, which changed its digest). Neither touches the responsibility areas or relationships this document describes. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -1516,13 +1517,13 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/contexts/agent-runtime/CONTEXT.md",
@@ -1572,7 +1573,8 @@
         "Integration source review through e0314c727: module-map replaced the CollaborativeEditorPane entry with ProjectTaskRoom and removed PluginForegroundRuns, and the two child CONTEXT files follow suit. The root CONTEXT names neither module and routes only to the child contexts and guides, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Sources changed on this branch: the glossary (the control-lease entry now says a holder can release control explicitly, through the Browser pane's driver chip) and the module map (the BrowserSessionService section gained the page-tools paragraph and its test files, which changed its digest). Neither touches the responsibility areas or relationships this document describes. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Sources changed on this branch: the glossary (the control-lease entry now says a holder can release control explicitly, through the Browser pane's driver chip) and the module map (the BrowserSessionService section gained the page-tools paragraph and its test files, which changed its digest). Neither touches the responsibility areas or relationships this document describes. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -1589,7 +1591,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1605,7 +1607,7 @@
         },
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/guides/deployment.md",
@@ -1685,7 +1687,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -2149,7 +2152,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2157,7 +2160,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/guides/documentation.md",
@@ -2173,11 +2176,11 @@
         },
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -2197,7 +2200,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -2233,7 +2236,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -2245,7 +2248,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -2257,11 +2260,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -2269,7 +2272,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -2321,11 +2324,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -2345,15 +2348,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -2373,7 +2376,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -2406,7 +2409,8 @@
         "The documentation guide link and description remain valid after the mode wording change.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Station Documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Sources changed on this branch: the Browser pane contracts, server, toolbar and the module map (BrowserSessionService page-tools paragraph). Its index descriptions of the Browser guide, glossary and module map remain accurate. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Sources changed on this branch: the Browser pane contracts, server, toolbar and the module map (BrowserSessionService page-tools paragraph). Its index descriptions of the Browser guide, glossary and module map remain accurate. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Index descriptions remain accurate. No prose change."
       ]
     },
     {
@@ -2825,7 +2829,7 @@
     {
       "path": "docs/adr/0017-browser-preview-host.md",
       "documentDigest": "9be14f3fe1a2cd87746feb09a90699767a0957a984a914dacbb21038f2319a85",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; keep original desktop choices/platform gaps and dated body. Added current Browser guide link in existing banner.",
@@ -2833,11 +2837,11 @@
       "sources": [
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -2853,7 +2857,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -2889,7 +2893,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -2901,7 +2905,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -2913,11 +2917,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -2925,7 +2929,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -2977,11 +2981,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -3001,15 +3005,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -3029,7 +3033,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3051,12 +3055,13 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) made DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private and dropped a re-export from DeviceWorkspacePane.tsx. There is no behavior change, and the ADR's adapter-local preview-host decision does not depend on these exports. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Keep browser-preview hosting adapter-local' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
       ]
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3069,11 +3074,11 @@
         },
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -3097,7 +3102,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -3137,7 +3142,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -3149,7 +3154,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -3161,11 +3166,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -3173,7 +3178,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -3225,11 +3230,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -3249,7 +3254,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
@@ -3257,11 +3262,11 @@
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -3281,7 +3286,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3307,13 +3312,14 @@
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'ADR 0018 — SSE is the realtime transport, because resume rides `Last-Event-ID`' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
       ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
       "documentDigest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated planned/unverified statements. Current implementation uses per-Project/principal profiles, bound tool grants, shared Device producer. CEF and multiplex plans are not current implementations. Added current guide link only.",
@@ -3321,11 +3327,11 @@
       "sources": [
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -3341,7 +3347,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -3377,7 +3383,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -3389,7 +3395,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -3401,11 +3407,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -3413,7 +3419,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -3465,11 +3471,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -3489,15 +3495,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -3517,7 +3523,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3539,7 +3545,8 @@
         "Integration source review through 5731eba07: #2919 makes DeviceWorkspacePane exports (DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout, placeholder re-exports) module-private with no behavior change. The ADR's Device pane capture and adoption claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'ADR 0019 — Host the Browser pane server-side, behind a host adapter' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
       ]
     },
     {
@@ -3840,7 +3847,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3852,7 +3859,7 @@
         },
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/design/orchestration-decomposition-map.md",
@@ -4020,13 +4027,14 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); orchestration-decomposition-map.md (branch prose edit (T7 wiring-test note)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Re-read 'Abstraction review' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
-      "documentDigest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "documentDigest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4094,7 +4102,7 @@
         },
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/plugin-foreground-work.ts",
@@ -4110,7 +4118,7 @@
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -4482,7 +4490,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/chat/chat-primary-stream.ts",
@@ -4698,7 +4706,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -4710,7 +4718,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -4722,11 +4730,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -4734,7 +4742,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -4922,11 +4930,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -5502,7 +5510,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/hooks/orchestration/extensionHandlers.ts",
@@ -5550,11 +5558,11 @@
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts",
@@ -5670,7 +5678,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -5778,7 +5786,8 @@
         "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
-        "Edited on this branch: the BrowserSessionService section gained the page-tools paragraph (person-held dialogs, the answer route that refuses Agents, dialog-open refusal, browser-console-log.ts, captureScreenshot) and its new test files; this changed the document's digest. Re-read against the quiet toolbar change, which is presentational. Other sections not re-reviewed. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Edited on this branch: the BrowserSessionService section gained the page-tools paragraph (person-held dialogs, the answer route that refuses Agents, dialog-open refusal, browser-console-log.ts, captureScreenshot) and its new test files; this changed the document's digest. Re-read against the quiet toolbar change, which is presentational. Other sections not re-reviewed. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Shared live surface section now names LiveSurfaceInputRefusal / page-dialog-open; BrowserSessionService paragraph names the control-end dismissal, console generation and agent gate, and one screenshot in flight. Other sections not re-reviewed."
       ]
     },
     {
@@ -6604,7 +6613,7 @@
     {
       "path": "docs/design/browser-preview-host-spike.md",
       "documentDigest": "054668c44ea7e835f73044ed1f004a832f5412d2da133d11f7958f8ba3211510",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated upstream/platform experiment and go/no-go rationale; source/current guide link added, no experiment rerun or current-upstream claim.",
@@ -6612,11 +6621,11 @@
       "sources": [
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -6632,7 +6641,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -6668,7 +6677,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -6680,7 +6689,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -6692,11 +6701,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -6704,7 +6713,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -6756,11 +6765,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -6780,15 +6789,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -6808,7 +6817,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -6830,13 +6839,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx un-exports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and re-exports with no behavior change; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser-preview host spike (Station #1376)' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
       ]
     },
     {
       "path": "docs/design/browser-preview-pane-mvp.md",
       "documentDigest": "e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
@@ -6844,11 +6854,11 @@
       "sources": [
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -6864,7 +6874,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -6900,7 +6910,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -6912,7 +6922,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -6924,11 +6934,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -6936,7 +6946,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -6988,11 +6998,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -7012,15 +7022,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -7040,7 +7050,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -7062,7 +7072,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) makes DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private in DeviceWorkspacePane and drops a re-export. There is no behaviour change, and the historical Browser pane design claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser Preview Pane MVP (Station #1375)' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
       ]
     },
     {
@@ -7778,7 +7789,7 @@
     {
       "path": "docs/design/event-store-ledger-migration.md",
       "documentDigest": "6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed extraction dispositions, durable turn/recovery/credential owners and their actual EventStore/module composition. Added reserved/commit-pending states and the startup-scan unavailable-as-empty limitation tracked in #2823.",
@@ -7786,7 +7797,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "src-server/services/orchestration/adoption-ledger.ts",
@@ -7839,7 +7850,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -10434,7 +10446,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "94162529a4b5f49068eba87988143335d1224a5b25f5ec15bc1ea9316392b29b",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10442,7 +10454,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/reference/connect.md",
@@ -10466,7 +10478,7 @@
         },
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/tool.ts",
@@ -10474,7 +10486,7 @@
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -10498,7 +10510,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -10534,7 +10546,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -10546,7 +10558,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -10558,11 +10570,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -10570,7 +10582,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -10622,11 +10634,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -10650,15 +10662,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -10686,7 +10698,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -10717,7 +10729,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Edited on this branch: the control-lease entry says a holder can release control explicitly, through the Browser pane's driver chip (checked against releaseHumanControl and useLiveSurface.releaseControl). Other Browser entries re-read against the page-tools and toolbar changes; still accurate. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Edited on this branch: the control-lease entry says a holder can release control explicitly, through the Browser pane's driver chip (checked against releaseHumanControl and useLiveSurface.releaseControl). Other Browser entries re-read against the page-tools and toolbar changes; still accurate. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The control-lease entry (explicit release via the driver chip) remains accurate; no glossary term changes. No prose change."
       ]
     },
     {
@@ -11384,8 +11397,8 @@
     },
     {
       "path": "docs/guides/browser-workspace.md",
-      "documentDigest": "afa0188cb9662c0f3d8c72c868c49c166d14a76099f3801ab17e370ac90d6b1e",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "documentDigest": "d4042dd1277c72068a041e4951959a3334234103e0f015e710c9bf565aee1067",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
@@ -11393,11 +11406,11 @@
       "sources": [
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -11413,7 +11426,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -11449,7 +11462,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -11461,7 +11474,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -11473,11 +11486,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -11485,7 +11498,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -11537,11 +11550,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -11561,15 +11574,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -11589,7 +11602,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -11612,7 +11625,8 @@
         "Integration source review through 5731eba07: #2919 makes DeviceWorkspacePane helpers module-private with no behavior change. The guide's Device pane pointer and frame-transport claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser workspace' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Edited on this branch: the page-tools section (person-held dialogs, bounded console, screenshots, one-tab popup folding) and the quiet one-row chrome (driver chip hand-back, Console count, ⋯ menu, 44px touch targets), each traced to the producer, live surfaces, routes, automation and pane code and exercised by the route, real-Chrome, pane tests and an isolated-Station run at 1280px and 390px. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Edited on this branch: the page-tools section (person-held dialogs, bounded console, screenshots, one-tab popup folding) and the quiet one-row chrome (driver chip hand-back, Console count, ⋯ menu, 44px touch targets), each traced to the producer, live surfaces, routes, automation and pane code and exercised by the route, real-Chrome, pane tests and an isolated-Station run at 1280px and 390px. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Guide updated for each: held-dialog lifetime and the float's card, page-dialog-open, answer outcomes, console agent gate, one screenshot in flight. Traced to chromium-screencast-producer.ts, browser-live-surfaces.ts, routes/browser.ts, browser-session-registry.ts and FloatOverChatHost.tsx; exercised by browser-pane-page.routes.test.ts, browser-automation.test.ts, FloatOverChat.test.tsx and BrowserPane.pageTools.test.tsx."
       ]
     },
     {
@@ -15615,7 +15629,7 @@
     {
       "path": "docs/guides/mobile-device-workspace.md",
       "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
@@ -15623,11 +15637,11 @@
       "sources": [
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "5e6e0deebfcb1671a8cf9904c9265ac8558e198df0f36b5cd8b719eb76383563"
+          "digest": "52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721"
         },
         {
           "path": "packages/contracts/src/workspace-browser-preview.ts",
@@ -15643,7 +15657,7 @@
         },
         {
           "path": "src-server/routes/browser.ts",
-          "digest": "de5b93c027e98bcc359a78bf52ba080e6d68d343bc09ad9ff0061afc7bdeb8b3"
+          "digest": "2e098e6460e7094d068c17b08af0d3965a5b77dec935d9f6211e2156c4f4e44b"
         },
         {
           "path": "src-server/routes/device-hosts.ts",
@@ -15679,7 +15693,7 @@
         },
         {
           "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "ea6009b07daf61c489c7cc4308c131ea44592e6a576a5baebc474f6de52581f3"
+          "digest": "db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637"
         },
         {
           "path": "src-server/services/browser/browser-egress-proxy.ts",
@@ -15691,7 +15705,7 @@
         },
         {
           "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "b23a39b3b6eead81acd31076ba8a129d3f748f85b2ef9fe804fdcebbd5570e2f"
+          "digest": "6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569"
         },
         {
           "path": "src-server/services/browser/browser-local-targets.ts",
@@ -15703,11 +15717,11 @@
         },
         {
           "path": "src-server/services/browser/browser-service.ts",
-          "digest": "7c503f9034e0791040ee1bf07eeee352f7e0918b1a6fa02d4fa4689f6c3c2e37"
+          "digest": "537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3"
         },
         {
           "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "9b5f48196c6f0fe075c385482a533e5a778f94b877e3217c5d7b16ee5360814d"
+          "digest": "90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968"
         },
         {
           "path": "src-server/services/browser/chromium-acquisition.ts",
@@ -15715,7 +15729,7 @@
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "fbaf22e42018a69f991b349747c2e16ec8c06e027b61e94eb9b3ecc2abf8ca57"
+          "digest": "386acd110af5259069ab33c1427a7084bf52057ff164b48d76cdfb227ffe6ea6"
         },
         {
           "path": "src-server/services/browser/egress-policy.ts",
@@ -15767,11 +15781,11 @@
         },
         {
           "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+          "digest": "e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04"
         },
         {
           "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+          "digest": "c1669e8a51b0687142d7fed70a1175260753e6f1b8b8b0e50e152c5ae52662d0"
         },
         {
           "path": "src-server/services/live-surface/surface-hub.ts",
@@ -15791,15 +15805,15 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "6a3f3b2cf5142c7f2a97a7dbb8e53a49092860cd53e6e37b86a3a25f849a347d"
+          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "a41adeac3ff1e1f7d170056a5a53ec5bac6d3e8e40f70efced8a80870a2228ba"
+          "digest": "b9979291c83930bafd365daac6a4f01a438cfe350c4ea14de730ba1f49512cb5"
         },
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "72577c1e1ff64099bfac88efbed7a654a39e1f652d7701d5aee9f5e5cbd4d610"
+          "digest": "1792fd2aa5a118b93821b40497fd0d6ab3e2da036a8e0403b4f59c5d2595b92c"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -15819,7 +15833,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "98b694606cda558853f589a7d8525b82beebdec6fddbf5c79324daff030bc687"
+          "digest": "a6e9c219779533954812b7c88066c6fd2d6585a7517544d70770b1f458dc7ab2"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -15842,7 +15856,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH/deviceToolsLayout and a re-export. The pane still renders LiveSurfaceCanvas, controller/input status and device tools as the guide states; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Mobile device workspace' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Sources changed on this branch: the shared live-surface hook and canvas gained an optional releaseControl used only by the Browser pane, and the Browser pane itself changed. This guide's Device lease, input and screenshot-poll claims are unaffected. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Sources changed on this branch: the shared live-surface hook and canvas gained an optional releaseControl used only by the Browser pane, and the Browser pane itself changed. This guide's Device lease, input and screenshot-poll claims are unaffected. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The new refusal is optional for producers and the Device producer does not use it; this guide's Device input and lease claims are unaffected. No prose change."
       ]
     },
     {
@@ -21593,13 +21608,13 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/guides/agents.md",
@@ -21625,7 +21640,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -25592,13 +25608,13 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "779b71ebb7067137aefa613e0df89a8d3665369aca2520e6076dd28c9083b594",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "summary": "Reviewed route parsing, registry delivery, platform/mount limits, focus restoration and bounded streamed-answer buffering.",
       "limits": "Browser/source and focused test evidence; no physical native-device result.",
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "scripts/gen-settings-registry.ts",
@@ -25627,7 +25643,8 @@
         "Integration source review through e0314c727: module-map.md changes are limited to the CollaborativeEditorPane to ProjectTaskRoom replacement and the PluginForegroundRuns removal. No settings or deep-link section changed, and the reference does not link the removed anchors. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -25866,7 +25883,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -26058,7 +26075,7 @@
         },
         {
           "path": "src-server/tools/station-docs-content.ts",
-          "digest": "7d6594000a04d715a30d8b1943955e66df0144e9ac3494412c04fd9a33730392"
+          "digest": "4cad2427c697b64354ef488d30335f38dd84bf8d4c07ad1954e923333e2196ca"
         },
         {
           "path": "src-server/tools/station-docs-mcp-server.ts",
@@ -26115,7 +26132,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected. 2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). station-control still needs an instance credential over reviewed channels and remains subject to caller authority; the prose remains accurate. Source review only.",
         "Re-read 'Station shipped documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (drops 'Other scheduler providers have their own capabilities'); no claim about SDK body-read deadlines.",
-        "station-docs-content.ts regenerated by docs:mcp:generate from the updated Browser workspace guide, glossary and module map. The reference's description of the station-docs tool and its topic set is unchanged; no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "station-docs-content.ts regenerated by docs:mcp:generate from the updated Browser workspace guide, glossary and module map. The reference's description of the station-docs tool and its topic set is unchanged; no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "station-docs-content.ts regenerated from the updated Browser guide and module map (review round). The station-docs tool description is unchanged."
       ]
     },
     {
@@ -27133,7 +27151,7 @@
     {
       "path": "docs/user/concepts.md",
       "documentDigest": "9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete concept guide against work/session, engine, pairing, terminal-readiness, evidence and telemetry owners. Corrected continued-turn identity, reserved Station Agent engine choice and startup/background network limits.",
@@ -27141,7 +27159,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/privacy-policy.md",
@@ -27196,7 +27214,8 @@
         "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Re-read 'Station Concepts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -28883,13 +28902,13 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "summary": "Reviewed deterministic graph export, exact edge meanings, attributed purpose, unknown historical rationale, isolated public-API ingestion and bounded interruption recovery.",
       "limits": "Derived navigation is not a call graph, test verdict, authenticated authorship or semantic search. Live historical snapshot receipts identify their own input revision, not this later export.",
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/learn/atlas.json",
@@ -28923,7 +28942,8 @@
         "Integration source review through e0314c727: the module map and atlas replaced CollaborativeEditorPane with ProjectTaskRoom and dropped PluginForegroundRuns. The README derives its module set from atlas membership and names no specific modules or counts, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -29893,7 +29913,7 @@
     },
     {
       "path": "packages/contracts/README.md",
-      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read. Corrected types-only/no-runtime wording to reflect existing pure parsers, reducers and page builders; checked source-only distribution, direct domain imports and the distinction between structural parsing and authorization.",
@@ -29914,7 +29934,7 @@
         },
         {
           "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "digest": "ba4d87f7ca55313369bb0b0bee04c7c2018ff037b4bf845760ae148b305a7fdb"
         },
         {
           "path": "packages/contracts/src/task-basis-mcp.ts",
@@ -29927,7 +29947,8 @@
         "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
         "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
         "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
-        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+        "live-surface.ts gained one input refusal code (`page-dialog-open`). This README names the live-surface parsers only in general terms and makes no claim about the refusal codes. No prose change."
       ]
     },
     {
@@ -30834,7 +30855,7 @@
     },
     {
       "path": "src-server/AGENTS.md",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
@@ -30843,7 +30864,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/guides/development.md",
@@ -30881,7 +30902,8 @@
         "The development guide delta only names two more ci:fast invariant groups; the linked development guidance this file routes to is otherwise unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); workflow-sidecar-service.ts (registers the referenced run-correlation schema with Ajv and drops the unused schemaAvailable getter); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)"
+        "Depends on docs/architecture/module-map.md, whose only change is in the BrowserSessionService section (page-tools ownership and test files). This document does not cite that section's claims (searched for BrowserSessionService/Browser pane references); no prose change. (Re-recorded on the merge with origin/main d3179f152; merged bytes, same review.)",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {
@@ -31072,7 +31094,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "d3179f1521299fa7d7cffc9b93e1efc9200325df",
+      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -31081,7 +31103,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "162ef5b19d285c8867d72d609bac42fd55a0019a3bb2dc0f86f5961db9c60cac"
+          "digest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe"
         },
         {
           "path": "docs/guides/testing.md",
@@ -31126,7 +31148,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Sources changed on this branch: Button.tsx gained an additive `icon` variant, and the module map's BrowserSessionService section changed. This file's guidance (use Button for standard actions, keep 44px mobile targets) still holds and the toolbar follows it. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152)."
+        "Sources changed on this branch: Button.tsx gained an additive `icon` variant, and the module map's BrowserSessionService section changed. This file's guidance (use Button for standard actions, keep 44px mobile targets) still holds and the toolbar follows it. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
+        "Depends on docs/architecture/module-map.md, which changed in its Shared live surface section (a typed `page-dialog-open` input refusal) and BrowserSessionService paragraph (held-dialog control-end dismissal, console generation and agent gate, one screenshot in flight). Searched this document for live-surface, Browser-pane, console and screenshot claims; none depends on those sections (the abstraction review's per-viewer frame request is unchanged). No prose change."
       ]
     },
     {

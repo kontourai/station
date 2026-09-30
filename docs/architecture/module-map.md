@@ -3045,8 +3045,11 @@ dialog opened while a person holds the lease is held in
 `ChromiumScreencastProducer` for that person (answered through
 `POST /api/browser/sessions/:id/dialog`, never by an Agent, which is refused
 `dialog-open` meanwhile); dialogs under an Agent or no holder are answered
-automatically. `browser-console-log.ts` keeps a bounded in-memory console, and
-the registry's `captureScreenshot` serves the pane's screenshot.
+automatically, and a held dialog is dismissed when the person's control
+ends. `browser-console-log.ts` keeps a bounded in-memory console per browser
+generation (agent-capable requests read it only under `browserEvaluate`), and
+the registry's `captureScreenshot` serves the pane's screenshot, one capture
+in flight per session.
 
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
@@ -3082,7 +3085,11 @@ an Agent cannot preempt a live human. Epoch identifies controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
 resurrect old work. The registry serializes and fences input, cancels held
 buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
-It cannot cancel an arbitrary producer effect already in flight.
+A producer may refuse an event for a reason the viewer can act on
+(`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
+page dialog waits for its person), which reaches the viewer as that code
+rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
+already in flight.
 
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.
