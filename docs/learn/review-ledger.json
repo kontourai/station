@@ -1461,7 +1461,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/contexts/agent-runtime/CONTEXT.md",
@@ -1520,7 +1520,8 @@
         "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change.",
         "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Compared the module-map candidate-producer addition with this map's five responsibility summaries. The change is a narrow Desktop Device-candidate IPC and does not change Flow attachment, approval, receipt, or gate ownership summarized here."
       ]
     },
     {
@@ -1534,7 +1535,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/contexts/agent-runtime/CONTEXT.md",
@@ -1593,7 +1594,8 @@
         "Glossary gained a Live lanes entry; this page only links the glossary and makes no lane or Draft claim, so no prose change.",
         "Glossary wording refined for Needs you; this page only links the glossary, no lane claim, no prose change.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Compared the module-map candidate-producer addition with this context's five responsibility summaries. It does not change the documented responsibility boundaries or Flow attachment/receipt rules."
       ]
     },
     {
@@ -1626,7 +1628,7 @@
         },
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/guides/deployment.md",
@@ -1713,7 +1715,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the root product overview and its module-map reading link against the added low-level candidate paragraph. The overview makes no native binding lifecycle or candidate-IPC claim; its product and installation statements are unchanged."
       ]
     },
     {
@@ -2187,7 +2190,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/guides/documentation.md",
@@ -2443,7 +2446,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed documentation navigation after the module-map addition. Existing audience routes and canonical-owner links remain correct; no new guide or navigation entry is required for a provisional implementation detail."
       ]
     },
     {
@@ -2830,7 +2834,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.",
+        "Reviewed the candidate IPC against the retained sidecar decision and packaged-run evidence. It is a main-window descriptor/key-provisioning command and does not change sidecar resource lookup, lifecycle, or the dated qualification boundary."
       ]
     },
     {
@@ -3918,7 +3923,7 @@
         },
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/design/orchestration-decomposition-map.md",
@@ -4098,13 +4103,14 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Compared the module-map addition with the retained transport and host-composition findings. A source-only public candidate producer does not change the separate native/relay qualification gaps or the review's bounded evidence claims."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
-      "documentDigest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9",
-      "sourceRevision": "86066aa189c175a17a821f695fccbf26bec3f119",
+      "documentDigest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee",
+      "sourceRevision": "52e814cb9e60f52becf4fb31eb0d373820605216",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4396,7 +4402,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/notification_feed.rs",
@@ -5853,6 +5859,10 @@
         {
           "path": "src-server/routes/system/native-device-proof-binding-routes.ts",
           "digest": "712956c1af49a88f81ee58d9121fd2ffee13bf4d87d097d553bf70adf05126fd"
+        },
+        {
+          "path": "src-desktop/src/native_device_binding_candidate.rs",
+          "digest": "be12a09408b77aae7c4dce74a9ca5641f8ac3867ef78bc7e104bc8108005da61"
         }
       ],
       "checks": [
@@ -5909,7 +5919,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Updated the native Device section against the candidate manager, registered producer, and current-profile identity seam. It now distinguishes the selected relay-route profile from the separate host-authorized Device profile and records the exact shared revision/instance/origin checks and provisional-only limits."
       ]
     },
     {
@@ -7685,8 +7696,8 @@
     },
     {
       "path": "docs/design/connection-broker.md",
-      "documentDigest": "865f3517e6ba1b467406eede0bf4122d1c5082240cee5ac6758d89463958fa76",
-      "sourceRevision": "86066aa189c175a17a821f695fccbf26bec3f119",
+      "documentDigest": "ee0069d6d6a8892ddbe3e9bea14e0dc027732995b2c44960f8c450fa556efe99",
+      "sourceRevision": "b79a594c2849bb12bd07aca9202627cada8f4b4a",
       "kind": "design",
       "state": "classified",
       "summary": "Dated requirements and local milestones mapped to broker/connector/protected dispatcher/Device enrollment owners; preserves production/native enablement boundary.",
@@ -7755,6 +7766,10 @@
         {
           "path": "src-server/routes/system/native-device-proof-binding-routes.ts",
           "digest": "712956c1af49a88f81ee58d9121fd2ffee13bf4d87d097d553bf70adf05126fd"
+        },
+        {
+          "path": "src-desktop/src/native_device_binding_candidate.rs",
+          "digest": "be12a09408b77aae7c4dce74a9ca5641f8ac3867ef78bc7e104bc8108005da61"
         }
       ],
       "checks": [
@@ -7768,7 +7783,8 @@
         "Rewrote the station#2893 binding paragraph for the reviewed Sol6.1 decision: the host mints a provisional canonical UUIDv4 candidate binding ID before creating its Device key and the operator approves the exact tuple (Station ID, approved Device ID, full surface, Device public JWK and server-recomputed thumbprint, no secret); the server accepts the host-proposed ID, which removes the independent-random host/server UUID mismatch; uniqueness spans active and revoked records, exact active retries return recorded state without re-approval, and host reconciliation retains the provisional key until a definitive terminal outcome or confirmed cancellation.",
         "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed.",
         "Updated canonical contracts and scope after independent Sol/Luna source review: supported-provider/native-connector0/1 pilot, exact native Request admission with peer/abort/currentDevice/account/membership checks, identity-keyed rate budgets, and current-operator-only binding approval/public historical-current readback. Actual mounted route/Origin/Device refusal test and real local-account encrypted-channel fixtures are separate from factory tests and source-only full startup. Host signing IPC, ordinary native UI/fresh relay-only native enrollment and physical acceptance remain incomplete.",
-        "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged."
+        "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
+        "Re-read the native-proof design against the Desktop candidate producer and manager. The text now distinguishes the selected relay-route profile from the host-authorized Device profile and binds both through matching revision, client instance and Station origin; initial auth epoch is provenance while stable key resumption still requires exact route/trust/current identity. No approval submission, receipt reconciliation, peer authority, signing, UI use or packaged/device proof is claimed."
       ]
     },
     {
@@ -8015,7 +8031,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "src-server/services/orchestration/adoption-ledger.ts",
@@ -8077,7 +8093,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the module-map change against EventStore extraction, credential, and recovery claims. The provisional Device candidate Keychain record is separate from EventStore and does not change ledger states, startup scans, or session recovery."
       ]
     },
     {
@@ -8280,7 +8297,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the new helper against profile-store locking and the instance registry contract. Candidate creation reuses a locked profile-store snapshot and current authority; it does not change instance registry schema, publication, ownership, or liveness behavior."
       ]
     },
     {
@@ -8699,7 +8717,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.",
+        "Confirmed the candidate module and handler are desktop-only under cfg(not(mobile)); they do not change mobile key selection, credential resolution, or the historical Android/iOS authority boundary."
       ]
     },
     {
@@ -8767,8 +8786,8 @@
     },
     {
       "path": "docs/design/native-capabilities.md",
-      "documentDigest": "18d94bc187bbb9aaf835b3e2ef754b3fe402e96cba8a6d33c0a3a68d495bbead",
-      "sourceRevision": "86066aa189c175a17a821f695fccbf26bec3f119",
+      "documentDigest": "dae355ee212514838f9957ab4d0ba5196f7f3b2684b52325704f216e35476a7c",
+      "sourceRevision": "52e814cb9e60f52becf4fb31eb0d373820605216",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
@@ -8796,7 +8815,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/tray.rs",
@@ -8877,6 +8896,10 @@
         {
           "path": "src-desktop/src/native_device_custody.rs",
           "digest": "92f8609b6251e3223970bbc9096af3bdd67014a999c1771536b22110732a6495"
+        },
+        {
+          "path": "src-desktop/src/native_device_binding_candidate.rs",
+          "digest": "be12a09408b77aae7c4dce74a9ca5641f8ac3867ef78bc7e104bc8108005da61"
         }
       ],
       "checks": [
@@ -8893,7 +8916,8 @@
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Updated canonical contracts and scope after independent Sol/Luna source review: supported-provider/native-connector0/1 pilot, exact native Request admission with peer/abort/currentDevice/account/membership checks, identity-keyed rate budgets, and current-operator-only binding approval/public historical-current readback. Actual mounted route/Origin/Device refusal test and real local-account encrypted-channel fixtures are separate from factory tests and source-only full startup. Host signing IPC, ordinary native UI/fresh relay-only native enrollment and physical acceptance remain incomplete.",
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Updated the Device proof-key section against lib.rs registration, the main-window guard, candidate manager, and locked profile/device/route owners. It now distinguishes public candidate production from approval, receipt reconciliation, peer authority, request signing, and UI composition."
       ]
     },
     {
@@ -9070,7 +9094,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the lib.rs delta against the notification feed and platform delivery claims. The new desktop candidate command does not alter notification registration, projection, tap routing, delivery, or the guide's historical provisioning evidence."
       ]
     },
     {
@@ -10509,7 +10534,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits."
+        "Reviewed the bounded #2403 native chat header-budget delta against this retained classification/instruction: no change to sidecar ownership, credential custody, SSH authority, signing or native proof requirements. Native-shell guide now records the manual transport proof and its limits.",
+        "Reviewed the new main-window command against SSH launch and environment-offer behavior. Candidate production uses a selected native relay route and paired Device; it does not change SSH execution, offer creation, or completion flows."
       ]
     },
     {
@@ -10757,7 +10783,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/reference/connect.md",
@@ -11045,7 +11071,8 @@
         "Merge of origin/main 62a39b083: main left glossary bytes unchanged and re-reviewed it against C2b source changes; this lane's Live lanes / Unsent draft / Needs-you wording is the only text delta. Re-read those lines on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes.",
         "Merge of origin/main e27600d1f: main left glossary bytes unchanged (its record changes follow source edits it reviewed); this lane's Live lanes / Unsent draft / Needs-you lines are the only text delta, re-read on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed new module-map terms against the glossary. Candidate, Station, Device, and native surface use existing vocabulary; the source addition creates no new domain definition or vocabulary rule."
       ]
     },
     {
@@ -11725,7 +11752,8 @@
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Confirmed the candidate module and command are cfg(not(mobile)); no Android generated-project, build target, permission, packaging, or emulator claim changes. This source review is not an Android build result."
       ]
     },
     {
@@ -12473,7 +12501,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/native_station_key_custody.rs",
@@ -12903,7 +12931,8 @@
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
         "Reviewed the shared SkeletonBlock loading state and registered 390px action-row proof after static gate feedback; sign-in behavior is unchanged and 12 focused UI tests passed.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the current Connections journey and host signaling caller. The candidate command has no src-ui caller and does not activate ordinary saved Desktop transport, alter route selection, or change existing grant renewal behavior."
       ]
     },
     {
@@ -13975,7 +14004,8 @@
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the new command against Desktop build, capability-file, and packaging statements. Rust source now registers a guarded descriptor producer, but the guide's build and packaged execution claims are unchanged and no packaged IPC was exercised."
       ]
     },
     {
@@ -14283,7 +14313,8 @@
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "The lib.rs change does not touch tray state, service health, start/stop controls, companion lifetime, or logging. The candidate command's profile authority is separate from tray/service ownership."
       ]
     },
     {
@@ -15611,7 +15642,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/native_station_key_custody.rs",
@@ -15844,7 +15875,8 @@
         "Independent source-delta review of opt-in native Device/account/Project-read admission and separate operator binding management. This document describes a different subsystem, dated rationale, instructions or navigation; its affected claims remain accurate. Native authority creates no generic identity source, operator/home-possession authority, fleet execution/inference, ordinary native UI or enrollment. Full StationRuntime startup and physical/packaged delivery remain unexecuted.",
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair."
+        "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
+        "Reviewed the source change against the lab's relay, account, and native evidence boundaries. The candidate producer does not change lab fixtures or establish operator approval, request signing, packaged relay delivery, or physical-device behavior."
       ]
     },
     {
@@ -16550,7 +16582,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Confirmed the candidate handler is desktop-only and does not change mobile release artifacts, credentials, entitlements, App Store delivery, or mobile verification evidence."
       ]
     },
     {
@@ -17010,7 +17043,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the new source registration against release packaging and promotion claims. No bundle/resource/signing workflow changes are present; candidate IPC source does not establish packaged availability or release qualification."
       ]
     },
     {
@@ -17104,7 +17138,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/startup_readiness.rs",
@@ -17204,7 +17238,8 @@
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bound the newly executed native-chat-dispatch manual lane to its source owner; WebView, IPC and authenticated HTTP fixture proof passed after a 26-second header delay, with no provider/mobile/keyring claim."
+        "Bound the newly executed native-chat-dispatch manual lane to its source owner; WebView, IPC and authenticated HTTP fixture proof passed after a 26-second header delay, with no provider/mobile/keyring claim.",
+        "Reviewed the candidate registration and main-window guard against verification boundaries. The source test/static registration is not an executed Tauri IPC, Keychain, packaged-shell, or physical-device receipt; those remain NOT_VERIFIED."
       ]
     },
     {
@@ -17511,7 +17546,8 @@
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
         "Carried forward after merging origin/main into #3013, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Re-read against #3013's final delta: the re-verify retry now continues only while the rolling manifest is a validly signed OLDER Nightly (up to 5 minutes), and the workflow test gained staleness-decision cases and sorted imports. The page states only that the job re-fetches and re-verifies the rolling manifest last; still accurate."
+        "Re-read against #3013's final delta: the re-verify retry now continues only while the rolling manifest is a validly signed OLDER Nightly (up to 5 minutes), and the workflow test gained staleness-decision cases and sorted imports. The page states only that the job re-fetches and re-verifies the rolling manifest last; still accurate.",
+        "Reviewed lib.rs and relay owner changes against Nightly installation, upgrade, rollback, and cohort claims. The candidate IPC does not alter those paths or provide release execution evidence."
       ]
     },
     {
@@ -18447,7 +18483,8 @@
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the use of the existing channel/client-instance values in candidate derivation. It adds no channel port, runtime-home, release identity, or channel-delivery behavior."
       ]
     },
     {
@@ -18639,7 +18676,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "The candidate command consumes existing approved Station trust and a current relay grant as inputs but changes no release-ring promotion, signature verification, freshness, or recovery procedure."
       ]
     },
     {
@@ -19475,7 +19513,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/native_station_key_custody.rs",
@@ -19655,7 +19693,8 @@
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Independent source-delta review of opt-in native Device/account/Project-read admission and separate operator binding management. This document describes a different subsystem, dated rationale, instructions or navigation; its affected claims remain accurate. Native authority creates no generic identity source, operator/home-possession authority, fleet execution/inference, ordinary native UI or enrollment. Full StationRuntime startup and physical/packaged delivery remain unexecuted.",
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the native relay command table and broker lifecycle claims. Candidate production reads an existing selected route/grant but does not change broker endpoints, route activation, renewal, relay protocol, or operator approval; ordinary Desktop application composition remains unwired."
       ]
     },
     {
@@ -20155,7 +20194,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "The candidate IPC is unrelated to App Store Connect setup, API keys, workload identity, upload, or reconciliation. No store workflow owner or receipt changes."
       ]
     },
     {
@@ -20332,7 +20372,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "The source delta does not change product listing, privacy/age declarations, screenshots, or publication status; the listing remains a proposed owner-reviewed draft."
       ]
     },
     {
@@ -22200,7 +22241,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/guides/agents.md",
@@ -22235,7 +22276,8 @@
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
         "Reviewed #2042 profile sign-in delta through the mounted UI, explicit authority-scoped SDK requests and existing device-code route. Connections and SDK references now describe the action, access grant, poll/cancel/recovery behavior and limits; other recorded claims remain unchanged. Engine completion is an observed profile login, not proof of global engine sign-in. Focused UI/route evidence: 56 tests passed; UI typecheck passed. No live provider-account sign-in or native-shell proof is claimed.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Compared the module-map addition with the inventory's Agent identity surface and source list. The candidate is Device proof-key preparation, not an Agent identity provider or Agent runtime identity surface."
       ]
     },
     {
@@ -26300,7 +26342,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "scripts/gen-settings-registry.ts",
@@ -26336,7 +26378,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the module-map text change against Settings deep-link parsing, registry delivery, focus, and platform limits. The new candidate IPC is unrelated to settings routes or deep-link behavior."
       ]
     },
     {
@@ -26577,7 +26620,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
-      "sourceRevision": "af4b34d396a6a35a0a91042bc77826e04ec4cdc0",
+      "sourceRevision": "b79a594c2849bb12bd07aca9202627cada8f4b4a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -26769,7 +26812,7 @@
         },
         {
           "path": "src-server/tools/station-docs-content.ts",
-          "digest": "ffe86c4a7072b3274db0b529627fdde16ce6b2b492ba840518edc0748732c38d"
+          "digest": "db6610c8240653983c9e696f87cb5205b44450eda01992a692f5453e88bbb14a"
         },
         {
           "path": "src-server/tools/station-docs-mcp-server.ts",
@@ -26831,7 +26874,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its topics name neither change. Prose accurate.",
         "Reviewed generated topic delta against module-map additions. Native Device vault/binding/verifier/replay/principal descriptions retain explicit unmounted limits; static topic IDs, credential-free docs tools, digest meaning and source navigation are unchanged.",
         "Reviewed regenerated101-topic registry against the reader contract and changed native module-map text: only public custody-owner navigation and limits changed, topic identities/count and reader/query protocol are unchanged. No authority or native signing capability is added.",
-        "Reviewed regenerated101-topic contents against changed opt-in native server factory, operator-only binding routes and explicit unbuilt host/UI/fresh-enrollment limits. Topic IDs/count and credential-free reader protocol are unchanged; documentation is not runtime/physical proof."
+        "Reviewed regenerated101-topic contents against changed opt-in native server factory, operator-only binding routes and explicit unbuilt host/UI/fresh-enrollment limits. Topic IDs/count and credential-free reader protocol are unchanged; documentation is not runtime/physical proof.",
+        "Reviewed the regenerated shipped topic delta against the changed module map. The DeploymentAuthentication topic now describes the provisional Device candidate producer and its dual-profile authority checks while preserving no approval/reconciliation/peer/signing/UI claims; 101 topic identities and the credential-free static reader contract remain unchanged."
       ]
     },
     {
@@ -27271,7 +27315,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the new host command against this document's direct LAN/private-tailnet HTTP scope. It exposes only a provisional public descriptor through the main-window guard and does not mint HTTP request authority, operator approval, or a relay-peer session; relayed native application traffic remains outside this threat-model boundary."
       ]
     },
     {
@@ -27878,7 +27923,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/privacy-policy.md",
@@ -27943,7 +27988,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the module-map update against user-facing concepts of pairing, access, work, and evidence. The candidate command has no renderer consumer and grants no authority, so the guide's user journey and qualification boundaries do not change."
       ]
     },
     {
@@ -28276,7 +28322,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "The candidate manager's provisional Keychain record is separate from startup sidecar readiness and recovery. The source change does not alter launch epochs, restart actions, home reset, or service recovery behavior."
       ]
     },
     {
@@ -29680,7 +29727,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/learn/atlas.json",
@@ -29721,7 +29768,8 @@
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
         "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Reviewed the module-map update against the example's graph projection and imported documentation-reference edges. It does not alter graph inputs, edge meaning, or the example's public ingestion contract."
       ]
     },
     {
@@ -31268,7 +31316,8 @@
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
         "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the Desktop candidate source delta against this Android-only upstream patch description. No patched Rust dependency, Android Keyring semantics, or Android build instruction changed."
       ]
     },
     {
@@ -31695,7 +31744,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/guides/development.md",
@@ -31738,7 +31787,8 @@
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Independent source-delta review of opt-in native Device/account/Project-read admission and separate operator binding management. This document describes a different subsystem, dated rationale, instructions or navigation; its affected claims remain accurate. Native authority creates no generic identity source, operator/home-possession authority, fleet execution/inference, ordinary native UI or enrollment. Full StationRuntime startup and physical/packaged delivery remain unexecuted.",
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Compared the module-map update with the server routing instructions. The change is Desktop-owned Rust candidate IPC and does not affect the server's route/domain, logger, process, or storage guidance."
       ]
     },
     {
@@ -31796,7 +31846,7 @@
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
-          "digest": "94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947"
+          "digest": "0cdba182f00a598646d5bb7e761d41c60c75d8edddb2ccc5be78637a5cfe7388"
         },
         {
           "path": "src-desktop/src/native_station_key_custody.rs",
@@ -31877,7 +31927,8 @@
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Independent source-delta review of opt-in native Device/account/Project-read admission and separate operator binding management. This document describes a different subsystem, dated rationale, instructions or navigation; its affected claims remain accurate. Native authority creates no generic identity source, operator/home-possession authority, fleet execution/inference, ordinary native UI or enrollment. Full StationRuntime startup and physical/packaged delivery remain unexecuted.",
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
-        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed."
+        "Reviewed #2403 native HTTP deadline delta: foreground chat POSTs await provider acceptance and now receive a bounded 60s header budget; ordinary requests remain 20s and SSE bodies remain open-ended. Native-shell guide describes the production seam and manual fixture proof, including synthetic credential/provider and macOS-only limits. Existing ownership, admission, cancellation, signing and mobile claims are unchanged. Rust suite: 487 passed, 1 ignored; real macOS debug WebView/IPC/HTTP received fixture provider-turn receipt after 26s. No real provider dispatch or mobile proof is claimed.",
+        "Reviewed the native candidate producer against the Pion peer implementation claims. It prepares a public binding descriptor before peer/request use and changes no Pion IPC, framing, queue, cleanup, or connector behavior."
       ]
     },
     {
@@ -31949,7 +32000,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "243da9de02ea05ba66fe56ef2afd6eb55234920f60ae59c1fd2052bb24cd26f9"
+          "digest": "0250d7516dd598319bda6076b0f40ab0cf0f160ae0c8b547ebcb0ba37c4267ee"
         },
         {
           "path": "docs/guides/testing.md",
@@ -31999,7 +32050,8 @@
         "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled.",
         "Independent source-delta review of opt-in native Device/account/Project-read admission and separate operator binding management. This document describes a different subsystem, dated rationale, instructions or navigation; its affected claims remain accurate. Native authority creates no generic identity source, operator/home-possession authority, fleet execution/inference, ordinary native UI or enrollment. Full StationRuntime startup and physical/packaged delivery remain unexecuted.",
         "Reviewed behavior-neutral native admission context typing repair: actual Hono Context now reaches the same body/provenance/principal owner without an unapproved production cast. Request replacement, authorization/rate/currentness behavior and previously source-reviewed document claims remain unchanged.",
-        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied."
+        "Bounded dependency advisory delta review: only brace-expansion 5.0.12/2.1.7 and fast-uri 3.1.8 minimums/resolutions changed. Checked affected prose for old pins and these packages; documented workspace lifecycle, API, authority and historical evidence claims remain unchanged. No wider implementation or runtime qualification is implied.",
+        "Compared the module-map update with UI ownership instructions. No UI consumer is added for the candidate command, and the new paragraph changes no navigation, route-guard, shared-control, or layout rule."
       ]
     },
     {

@@ -149,11 +149,24 @@ IDs. A shared [private custody core](../../src-desktop/src/native_proof_key_core
 preserves the account record format and implements both vaults' storage and
 ES256 operations.
 
-The Device vault registers no Tauri command or renderer capability and has no
-production signing caller. A key and owner tuple do not establish operator
-approval. Server-side Device authorization exists in the opt-in pilot;
-bounded host signing IPC and a packaged Project journey remain integration
-requirements. The software key is decoded
+The vault remains Rust-internal. A desktop-only, main-window-guarded
+`station_native_device_binding_candidate` command in the
+[native relay owner](../../src-desktop/src/native_relay_redemption.rs) returns
+only the public candidate descriptor. Under one locked profile-store snapshot,
+the selected relay-route profile supplies Station, trust, grant and surface;
+the separately host-authorized profile supplies the active paired Device. They
+must share the same store revision, client instance and exact Station origin.
+The [candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
+persists that owner snapshot and a provisional binding ID in a private
+Keychain namespace before creating the Device proof key, then returns only the
+public JWK and thumbprint. It retains the initial Device-authorization epoch
+for provenance and resumes the same key after reauthorization, while keeping
+the profile revision, Station, Device, trust, route and surface exact. No
+renderer caller currently uses this command. It does not submit operator
+approval, reconcile a server receipt, bind a peer session or sign a request. A
+key and owner tuple do not establish operator approval. Server-side Device
+authorization exists in the opt-in pilot; request-signing IPC and a packaged
+Project journey remain integration requirements. The software key is decoded
 inside Rust for signing; this is not hardware-backed non-exportability.
 
 ### Desktop paired-Device identity custody

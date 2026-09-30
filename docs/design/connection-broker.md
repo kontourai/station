@@ -478,6 +478,22 @@ bound to the selected Station, Device and binding ID. An existing bearer Device
 needs an explicit operator-approved binding ceremony; a saved profile or broker
 grant cannot upgrade it silently. Local solo use still needs no person account.
 
+The Desktop source now creates or resumes this provisional candidate through
+the main-window-guarded `station_native_device_binding_candidate` IPC. Under one
+locked profile-store snapshot, the selected relay-route profile supplies
+Station, approved trust, route grant and surface; the separately
+host-authorized profile supplies the active paired Device. They must share the
+same store revision, client instance and exact Station origin. The Keychain
+manager persists that owner snapshot and candidate ID before provisioning the
+Device proof key, then returns only the contract's public JWK and thumbprint.
+It retains the initial Device-authorization epoch and resumes the same key
+after reauthorization while keeping profile revision, Station, Device, trust,
+route and surface exact. The IPC does not submit the candidate to the operator
+route, reconcile an approval receipt, bind it to a peer session or sign
+requests; no renderer caller currently consumes it. See the
+[candidate producer](../../src-desktop/src/native_relay_redemption.rs) and
+[candidate manager](../../src-desktop/src/native_device_binding_candidate.rs).
+
 For each request the host signs one short-lived proof over the exact Station
 audience, Station and Device IDs, binding ID, native surface, unique Pion peer
 nonce, uppercase method, path **including query**, SHA-256 digest of the exact
@@ -505,9 +521,10 @@ This approach reuses the existing JavaScript DataChannel and Station virtual
 application ingress without a second native WebRTC implementation. A host-owned
 native DataChannel could keep the bearer out of JavaScript too, but Station has
 no such desktop client today; it remains an alternative if the proof protocol
-cannot satisfy the packaged acceptance. Source and SDK proof tests, real Tauri
-IPC, a packaged Project read/reconnect/revoke, and physical two-person evidence
-are distinct proof layers.
+cannot satisfy the packaged acceptance. Source and SDK proof tests, executed
+Tauri IPC, a packaged Project read/reconnect/revoke, and physical two-person
+evidence are distinct proof layers. Source registration of the candidate
+command is not executed IPC or packaged/device evidence.
 
 The current foundations are the [Device binding service](../../src-server/services/ssh/native-device-proof-binding-service.ts),
 [request verifier](../../src-server/services/identity/native-device-proof-verifier.ts),

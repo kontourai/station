@@ -125,7 +125,19 @@ this owner into an application flow.
 The [Device proof key vault](../../src-desktop/src/native_device_proof_key.rs)
 uses a separate keyring namespace and adds the Device binding ID to its owner.
 Both vaults share a [private custody core](../../src-desktop/src/native_proof_key_core.rs)
-while preserving the account vault's stored format. The proposed native Device
+while preserving the account vault's stored format. The Desktop-only
+[candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
+persists a provisional owner snapshot and binding ID in a separate private
+Keychain namespace before it creates the Device proof key. The main-window
+`station_native_device_binding_candidate` command joins the selected relay-route
+profile to the separately host-authorized Device profile under one profile-store
+snapshot; both must share its revision, client instance and exact Station
+origin. Approved Station trust, route grant and surface come from the selected
+route; the current paired Device comes from host authority. It returns only the
+public JWK and thumbprint. Reauthorization resumes the same key while the
+profile revision, Station, Device, trust, route and surface remain exact. The
+command does not submit approval, reconcile a receipt, authorize a peer session
+or sign a request; no renderer caller currently consumes it. The native Device
 path also has a [binding sidecar](../../src-server/services/ssh/native-device-proof-binding-service.ts),
 [JWS verifier](../../src-server/services/identity/native-device-proof-verifier.ts),
 [replay store](../../src-server/services/identity/native-device-replay-store.ts)
