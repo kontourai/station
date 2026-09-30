@@ -309,4 +309,59 @@ describe('the Activity row opens Activity as the page', () => {
     expect(current().regions.right.panes).not.toContain('activity');
     expect(current().regions.main.occupant).toBeNull();
   });
+
+  // Review round 2: on a DESKTOP a maximized dock hides the route outlet too
+  // (a maximized side region hides `.main-content`; a maximized bottom
+  // region takes its row), so the page open restores it on every device —
+  // and it leaves the reader's maximize MEMORY alone, which is what
+  // `focusSession` reopens Chat with.
+  test.each(['bottom', 'right'] as const)(
+    'on a desktop with Chat maximized in %s, the page open restores the dock and keeps the maximize memory',
+    async (region) => {
+      await mount();
+      if (region === 'right')
+        act(() => current().placeSurface('chat', 'right'));
+      act(() => navigationStore.setDockState(true, true));
+      await waitFor(() =>
+        expect(current().regions[region].maximized).toBe(true),
+      );
+      expect(navigationStore.lastDockMaximized).toBe(true);
+
+      fireEvent.click(activityRow());
+      await waitFor(() =>
+        expect(current().regions.main.occupant).toBe('activity'),
+      );
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().isDockMaximized).toBe(false),
+      );
+      expect(current().regions[region].maximized).toBe(false);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    },
+  );
+
+  // Review round 2: the remembered dock region also survives Home taking
+  // the page back — the chord then SHOWS the unplaced Activity, and that
+  // show lands where the user had docked it.
+  test('after Home displaces the page, the chord shows Activity in its remembered region', async () => {
+    await mount();
+    act(() => current().placeSurface('activity', 'left'));
+    fireEvent.click(activityRow());
+    await waitFor(() =>
+      expect(current().regions.main.occupant).toBe('activity'),
+    );
+    act(() => current().showSurface('home'));
+    await waitFor(() => expect(current().regions.main.occupant).toBe('home'));
+
+    act(() => current().toggleSurface('activity'));
+    await waitFor(() =>
+      expect(current().regions.left).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      }),
+    );
+    expect(current().regions.right.panes).not.toContain('activity');
+  });
 });

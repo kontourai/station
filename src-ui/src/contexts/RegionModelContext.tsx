@@ -607,23 +607,34 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const commit = useCallback(
     (arrangement: RegionArrangement, region: RegionId) => {
       let next = arrangement;
-      // A page opened in `main` on a phone (or any folded device) has to be
-      // SEEN: a maximized dock owns the whole viewport there
-      // (`isMobileDockFullscreenState`), so the Activity or Home row would
-      // otherwise change `main` behind a full-screen Chat and nothing on
-      // screen would move. The dock is restored, not closed — Chat stays
-      // where the reader left it, below the page. A fine-pointer desktop
-      // keeps its maximize: `main` there is not hidden by the dock rule.
-      if (region === 'main' && (bottomOnly || isMobile))
+      // A page opened in `main` has to be SEEN, on every device: a maximized
+      // dock hides the route outlet — the whole viewport on a phone
+      // (`isMobileDockFullscreenState`), and on a desktop a maximized side
+      // region hides `.main-content` while a maximized bottom region takes
+      // its row (index.css). Without this the Activity or Home row would
+      // change `main` behind the dock and nothing on screen would move. The
+      // dock is restored, not closed — it stays where the reader left it,
+      // beside or below the page.
+      let unmaximized = false;
+      if (region === 'main')
         for (const id of DOCK_REGION_IDS)
-          if (next[id].maximized)
+          if (next[id].maximized) {
             next = updateRegion(next, id, { maximized: false });
+            unmaximized = true;
+          }
+      // That restore is the system's, not the reader's: navigation's
+      // maximize MEMORY (`lastDockMaximized`, what `focusSession` reopens
+      // Chat with) is put back after the mirror writes the restore, the same
+      // way a phone layer's exit does. A layer restore that already queued
+      // its own memory keeps it.
+      if (unmaximized && pendingDockMemoryRef.current === null)
+        pendingDockMemoryRef.current = navigationStore.lastDockMaximized;
       regionsRef.current = next;
       setLastShownRegion(region);
       setRegions(next);
       if (region === 'main') navigateToMainOutlet();
     },
-    [bottomOnly, isMobile],
+    [],
   );
 
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
@@ -689,6 +700,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       // where the layer found it, Chat's region to its pre-layer state), so
       // the page placement below starts from the arrangement the reader had
       // before the layer — and the layer's history entry goes with it.
+      //
+      // It does not ask the layer pane's unsaved-changes guards (Back and
+      // "‹ Chat" do): it runs only when the pane being opened as the page IS
+      // the layer's pane, and a pane that can be both a phone layer and a
+      // `main` page (Activity) registers no guard — the move remounts it
+      // either way. A guarded surface that declares `main` would need to
+      // route this through `closePhoneLayer` instead.
       if (target === 'main' && phoneLayerRef.current?.surfaceId === surfaceId)
         restorePhoneLayerRef.current();
       const current = regionsRef.current;
@@ -778,9 +796,20 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       // No target: the surface's own rule — its region if it has one, else
       // its default (the first free dock region when that is taken); on a
       // bottom-only device the revealed region becomes the only visible one.
+      // An UNPLACED surface that was last taken from a dock region into the
+      // `main` page (and then displaced by Home) goes back to that region
+      // when this device offers it — the chord's show and a later reveal
+      // honour the user's placement like the chord's direct return does.
+      const remembered =
+        held === undefined ? mainOriginRef.current.get(surfaceId) : undefined;
+      const preferred =
+        remembered && (available as readonly RegionId[]).includes(remembered)
+          ? remembered
+          : surface.defaultRegion;
+      mainOriginRef.current.delete(surfaceId);
       const shown = bottomOnly
-        ? showSurfaceAlone(current, surfaceId, surface.defaultRegion)
-        : revealSurface(current, surfaceId, surface.defaultRegion);
+        ? showSurfaceAlone(current, surfaceId, preferred)
+        : revealSurface(current, surfaceId, preferred);
       commit(shown.arrangement, shown.region);
       return {
         ok: true,

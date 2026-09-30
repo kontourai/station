@@ -228,6 +228,36 @@ test.describe('The sidebar Activity row is a place', () => {
   });
 });
 
+test.describe('The Activity page from a maximized desktop dock', () => {
+  // Review round 2: on a desktop a maximized side region hides the route
+  // outlet and a maximized bottom region takes its row, so the page open
+  // has to restore the dock for the page to be seen.
+  for (const [label, link] of [
+    ['right', '/?dock=open&maximize=true&dockSlotPlacement=right'],
+    ['bottom', '/?dock=open&maximize=true'],
+  ] as const) {
+    test(`the row shows the Activity page from a maximized ${label} dock`, async ({
+      page,
+    }) => {
+      await page.goto(link);
+      await expect(chatDockShell(page)).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      await page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Activity', exact: true })
+        .click();
+      const heading = mainHeading(page, 'Activity');
+      await expect(heading).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+      await expect(heading).toBeInViewport();
+      await expect(page).not.toHaveURL(/maximize=true/);
+      await page.screenshot({
+        path: test.info().outputPath(`activity-page-from-${label}.png`),
+      });
+    });
+  }
+});
+
 test.describe('An empty region is a chooser', () => {
   /**
    * #2154: a VISIBLE, EMPTY dock region renders a chooser in its body —

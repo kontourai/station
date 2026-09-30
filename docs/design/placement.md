@@ -113,17 +113,24 @@ every other route. These rules make it a region rather than a special case
   notifications and evidence mint, a session intent, the chord — keeps
   `showSurface`'s reveal, which is why Activity's `defaultRegion` is still
   `right`.
-  - **On a phone the page is seen, not layered.** A landing in `main` on a
-    folded or phone-sized device restores any maximized dock region
-    (`commit` in `RegionModelContext`), because a maximized dock owns the
-    whole phone viewport and would hide the page; Chat stays open below it.
-    This holds for Home's row as well, which shares the path. When the phone
-    layer is showing the very pane being opened as the page, the layer is
-    ended through its own restore first, and its history entry goes with it.
+  - **The page is seen, not covered.** A landing in `main` restores any
+    maximized dock region on every device (`commit` in
+    `RegionModelContext`): a maximized dock owns the whole phone viewport,
+    and on a desktop a maximized side region hides `.main-content` while a
+    maximized bottom region takes its row. The dock stays open beside or
+    below the page, and the reader's maximize memory (`lastDockMaximized`,
+    what `focusSession` reopens Chat with) is kept. This holds for Home's row
+    as well, which shares the path. On a phone the page is not a layer over
+    Chat; when the layer is showing the very pane being opened as the page,
+    the layer is ended through its own restore first (without asking its
+    guards — only a guard-free surface can be both), and its history entry
+    goes with it.
   - **A docked Activity moves to `main`** (a surface is in at most one
     region), and the provider remembers the dock region it came from: the
     chord (`toggleSurface`'s `main` case) returns it there rather than to
-    `defaultRegion`, when the device still offers that region. The memory is
+    `defaultRegion`, when the device still offers that region — and so does
+    the first reveal of it after Home has taken the page back (the chord's
+    show, or a link). The memory is
     transient, like the phone layer's origin — it is not in the persisted
     arrangement record, so after a reload the chord returns to
     `defaultRegion`. An explicit placement clears it.
@@ -134,6 +141,10 @@ every other route. These rules make it a region rather than a special case
     returning to Home — and on a phone, where Back used to close Activity's
     layer back to Chat, Back from the Activity page now leaves the page
     (in the Android app, from the first entry, that can close the app).
+    When the page was opened from Activity's phone layer, the layer's
+    history entry is consumed by that open, so Back lands on the entry
+    before the layer, whose URL carries Chat's maximize: Chat comes back
+    full screen over the Activity page, which is still `main`'s occupant.
     A history entry per swap would need a restore-on-popstate rule for
     `main` that survives reload, forward and interleaved route navigation;
     that is a design decision for `main`'s URL identity, not part of this
