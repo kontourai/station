@@ -2657,3 +2657,31 @@ test("'explicit' selection still makes a user's tab choice a history entry", asy
     two.instanceId,
   );
 });
+
+test("'explicit' selection: closing the named pane corrects the entry in place, so Back never lands on the closed pane", async () => {
+  const initial = flatHostDocument(one.instanceId);
+  navigationStore.navigate('/projects/project/layouts/layout', {
+    pane: one.instanceId,
+    paneScope: workspacePaneHostScopeKey(initial.scope),
+  });
+  render(
+    <WorkspacePaneHost
+      document={initial}
+      navigationSelection="explicit"
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const index = navigationStore.getHistoryIndex();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Close One' }));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  const pane = new URL(window.location.href).searchParams.get('pane');
+  expect(pane).not.toBeNull();
+  expect(pane).not.toBe(one.instanceId);
+  expect(navigationStore.getHistoryIndex()).toBe(index);
+});

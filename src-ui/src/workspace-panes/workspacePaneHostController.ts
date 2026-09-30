@@ -38,6 +38,7 @@ import {
 } from './workspacePaneHostLease';
 import {
   readWorkspacePaneHostSelection,
+  replaceWorkspacePaneHostSelection,
   workspacePaneHostSelectionIsNamed,
   writeWorkspacePaneHostSelection,
 } from './workspacePaneHostNavigation';
@@ -193,12 +194,11 @@ export function useWorkspacePaneHostController({
       cause: 'named' | 'reconciled' = 'reconciled',
     ) => {
       if (!navigationSelection) return;
-      if (
-        navigationSelection === 'explicit' &&
-        cause === 'reconciled' &&
-        !workspacePaneHostSelectionIsNamed(document)
-      )
+      if (navigationSelection === 'explicit' && cause === 'reconciled') {
+        if (workspacePaneHostSelectionIsNamed(document))
+          replaceWorkspacePaneHostSelection(document, instanceId);
         return;
+      }
       writeWorkspacePaneHostSelection(document, instanceId);
     },
     [navigationSelection],

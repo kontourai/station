@@ -38,11 +38,22 @@ export function resolveCodingStackLocation(
   instances: readonly WorkspacePaneInstance[] | undefined,
   pane: string | null,
   paneScope: string | null,
+  shownPaneId?: string | null,
 ): CodingStackLocation {
   if (!pane || paneScope !== workspacePaneHostScopeKey(scope))
     return { page: 'chat', paneId: null };
   if (instances && instances.length === 0)
     return { page: 'chat', paneId: null };
+  // A pane the host does not hold (closed, or a stale link) while the host is
+  // showing one of its own: the page is the pane actually on screen, so the
+  // breadcrumb and the rail name what the reader sees.
+  if (
+    instances &&
+    shownPaneId &&
+    !instances.some((instance) => instance.instanceId === pane) &&
+    instances.some((instance) => instance.instanceId === shownPaneId)
+  )
+    return { page: 'drill-in', paneId: shownPaneId };
   return { page: 'drill-in', paneId: pane };
 }
 
