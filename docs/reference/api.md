@@ -2524,6 +2524,20 @@ admission does not replace authentication or scope. See
 
 ---
 
+## Decide a pending paired-device request
+
+A current operator, qualifying local-grant credential, or Device explicitly
+promoted with `access:approve` can use these exact routes:
+
+- `GET /api/pairing/requests`
+- `POST /api/pairing/requests/:requestId/confirm`
+- `DELETE /api/pairing/requests/:requestId`
+
+The promotion satisfies the pending-request route scope without granting
+`access:manage`. Authority is rechecked before publishing a decision. It does
+not admit other Device-management routes or verified-person/account binding.
+Ordinary Device presets do not include the promotion.
+
 ## Bind a paired device to its verified person
 
 ```http
