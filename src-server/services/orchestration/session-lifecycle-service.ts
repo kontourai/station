@@ -184,6 +184,7 @@ export function projectSessionLifecycle(options: {
   const pendingReviewFromLog = options.events.some(
     (event) =>
       event.method === 'request.opened' &&
+      event.blocking !== false &&
       event.requestType !== 'input' &&
       !resolvedRequestIds.has(event.requestId),
   );
@@ -1082,6 +1083,7 @@ function deriveLifecycleTransition(
         source: 'runtime',
       };
     case 'request.opened':
+      if (event.blocking === false) return null;
       return {
         from,
         to: event.requestType === 'input' ? 'needs_input' : 'review_pending',
@@ -1092,6 +1094,7 @@ function deriveLifecycleTransition(
         source: 'runtime',
       };
     case 'request.resolved':
+      if (event.blocking === false) return null;
       return {
         from,
         to: 'running',

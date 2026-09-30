@@ -146,6 +146,23 @@ every possible tool outcome:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
 
+### Questions from agent harnesses
+
+Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as inline
+question cards in the Session. Select an option, choose several where the
+harness supports it, or choose Other to enter a custom answer. Question tabs
+let you jump between prompts. Use Tab and the native choice
+keys; Ctrl/Cmd+Enter advances to the next question or the review. Review and
+edit every answer before sending the batch. Answering a question never grants
+permission to later tool calls, including under wildcard auto-approval.
+
+Non-private drafts are saved on this device for the exact request and verified
+Station authority. Without that verification or available storage, the draft
+stays in the tab. Private answers are masked during review and aren't saved as
+drafts; this does not promise secrecy in the engine's own history. A failed
+send keeps the entered answers. Optional Codex questions remain answerable
+without pausing the running Session.
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,

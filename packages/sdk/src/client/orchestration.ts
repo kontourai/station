@@ -1,3 +1,4 @@
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 /**
  * Canonical orchestration fetchers (#165/#173 Wave 1, inside the #167 DRY
  * client layer). One HTTP-call implementation per operation, shared by the
@@ -90,6 +91,7 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  answers?: HarnessQuestionAnswers;
 }
 
 export interface RespondToRequestResult {

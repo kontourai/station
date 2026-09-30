@@ -1,5 +1,6 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type {
   AdoptedSessionResult,
   InterruptTurnResult,
@@ -928,6 +929,7 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  answers?: HarnessQuestionAnswers;
   apiBase?: string;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
@@ -939,6 +941,7 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.answers ? { answers: input.answers } : {}),
     },
     input.apiBase,
   );

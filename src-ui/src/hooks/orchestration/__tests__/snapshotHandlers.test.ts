@@ -100,6 +100,42 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     expect(showToast).toHaveBeenCalledOnce();
   });
 
+  test('reload keeps nonblocking questions out of pending approvals', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['question', 'tool'],
+            blockingOpenRequestIds: ['tool'],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual(['tool']);
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['question'],
+            blockingOpenRequestIds: [],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats['thread-1'].pendingApprovals).toEqual([]);
+    expect(chats['thread-1'].orchestrationStatus).toBe('idle');
+  });
+
   test('a terminal runtime error replaces a stale idle status', () => {
     applyOrchestrationSnapshot(
       {

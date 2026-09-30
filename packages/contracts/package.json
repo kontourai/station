@@ -192,7 +192,8 @@
     "./local-accounts": "./src/local-accounts.ts",
     "./application-session": "./src/application-session.ts",
     "./relay-enrollment": "./src/relay-enrollment.ts",
-    "./registry-trust": "./src/registry-trust.ts"
+    "./registry-trust": "./src/registry-trust.ts",
+    "./harness-questions": "./src/harness-questions.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

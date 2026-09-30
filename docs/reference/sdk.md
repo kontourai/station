@@ -12,6 +12,33 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Agent development entry
+
+`@kontourai/station-sdk/agent` is the React-free Agent authoring and execution
+entry. The SDK root and owning UI subpaths remain the plug-in UI surface;
+`/client` remains the broader React-free Station API entry. See
+[Agent development](../guides/agent-development.md) for the complete journey and
+[ADR 0021](../adr/0021-separate-plugin-and-agent-sdk-surfaces.md) for the boundary.
+This source addition requires a published version that exports `/agent`.
+
+| Group | Exports |
+| --- | --- |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `environmentId`, `ClientRequestOptions` |
+| Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
+| Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
+| Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
+| Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
+| Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
+
+These are explicit re-exports of the existing clients, with unchanged arguments,
+return values, and errors. Every operation receives an explicit `apiBase` and
+per-call authority options. The [entry source](../../packages/sdk/src/agent/index.ts)
+owns the exact export list; operation documentation below and the
+[Session API](session-api.md) own behavior details. There is no automatic create
+retry, credential singleton, engine loop, or new Agent definition schema.
+
 ---
 
 ## Setup
@@ -3688,3 +3715,13 @@ uncertain dispatched mutation must not be retried automatically.
 The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
+
+## Harness question answers
+
+`respondToRequest` from `@kontourai/station-sdk/client` accepts a structured
+`answers` batch alongside `decision: 'accept'` and `expectedRequestEventId`.
+Capture the request's thread, request and opened-event IDs, and pass the
+current explicit `requestScope`; the server validates the exact pending
+question before forwarding it. See the [Session API](session-api.md#respondtorequest)
+for the wire shape and limits. Inspection preserves `requiresAnswers` for
+clients that must direct the user to the inline question card.

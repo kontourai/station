@@ -1,7 +1,7 @@
 {
   "name": "@kontourai/station-sdk",
   "version": "0.7.0",
-  "description": "SDK for building Station workspace plugins",
+  "description": "SDK for Station plug-in UI and headless Agent development",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./agent": "./src/agent/index.ts",
     "./mobile-device": "./src/mobile-device.ts",
     "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",
     ".": "./src/index.ts",

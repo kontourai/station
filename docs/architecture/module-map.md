@@ -1000,6 +1000,25 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
 
+### Harness question interaction
+
+`packages/contracts/src/harness-questions.ts` owns the types; the shared
+subpath owns descriptor parsing and complete-batch validation. Provider
+normalization maps Claude AskUserQuestion and Codex requestUserInput into the
+canonical request event. SessionCommandModule validates the current event
+and answer batch before the adapter translates it back to the harness.
+Optional Codex requests carry `blocking: false` through resolution and
+snapshot projection so they do not pause or revive turn progress.
+
+The lazy inline HarnessQuestionRequest captures the scoped SDK transport and
+exact event identity. HarnessQuestionCard owns selection, keyboard use, review
+and submission. Its IndexedDB draft owner keys non-private answers by the
+verified durable authority namespace and exact request; transport epoch
+changes fence the rendered card without discarding that authority's draft.
+Private answers are excluded from drafts and masked in review. This boundary
+does not redact engine history or establish engine acknowledgement.
+
+
 ## SessionLifecycleModule
 
 Marking a Session complete can race a new turn. The [lifecycle module](../../src-server/services/orchestration/session-lifecycle-module.ts) coordinates the transition with provider invocation and reruns its checks after completion preparation, so an old view cannot close newly active work.
