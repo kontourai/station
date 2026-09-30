@@ -201,7 +201,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
+      "reviewedRevision": "6074c6bb48d95f2285cd656a74d8d434fff08a7c",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -237,7 +237,7 @@
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.tsx",
-          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
+          "digest": "af8d4a74a8a674d7ca7d5e674e2f46f7b00b296298a801282d2b2dba04e2cf04"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -262,7 +262,8 @@
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
         "Merge review (origin/main e8cbb9412 into #2915/#2916): Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The capture shows the request inspector (Approve once and Deny); neither the channel text colours nor the session button appears in it. Both sides' review notes are kept.",
         "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
-        "Bounded #2948 review: inspected the image showing fixture_read, an ordinary tool request with Approve once/Deny. New requiresAnswers withholding applies only to normalized questionnaires; ordinary inspector rendering and exact-request actions remain unchanged. The capture does not show answering harness questions."
+        "Bounded #2948 review: inspected the image showing fixture_read, an ordinary tool request with Approve once/Deny. New requiresAnswers withholding applies only to normalized questionnaires; ordinary inspector rendering and exact-request actions remain unchanged. The capture does not show answering harness questions.",
+        "Bounded #2963 review: viewed retained screenshot of ordinary fixture_read inspector, with no pairing item or pairing URL. Pairing-only target state and focus do not alter that scenario. Recording reviewed from its retained inspect/close scenario; frames not re-inspected. No new capture or mobile pairing proof claimed."
       ]
     },
     {
@@ -274,7 +275,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
+      "reviewedRevision": "6074c6bb48d95f2285cd656a74d8d434fff08a7c",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -310,7 +311,7 @@
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.tsx",
-          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
+          "digest": "af8d4a74a8a674d7ca7d5e674e2f46f7b00b296298a801282d2b2dba04e2cf04"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -334,7 +335,8 @@
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
         "Merge review (origin/main e8cbb9412 into #2915/#2916): Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The recording inspects and closes a request without a decision; neither change appears in it. Both sides' review notes are kept.",
         "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
-        "Bounded #2948 source/scenario review: this retained recording inspects and closes an ordinary fixture_read request without a decision. The question-only requiresAnswers branch and answer validation do not run in that scenario. Inferred from source and recorded scenario; video frames were not re-inspected, and no question interaction proof is claimed."
+        "Bounded #2948 source/scenario review: this retained recording inspects and closes an ordinary fixture_read request without a decision. The question-only requiresAnswers branch and answer validation do not run in that scenario. Inferred from source and recorded scenario; video frames were not re-inspected, and no question interaction proof is claimed.",
+        "Bounded #2963 review: viewed retained screenshot of ordinary fixture_read inspector, with no pairing item or pairing URL. Pairing-only target state and focus do not alter that scenario. Recording reviewed from its retained inspect/close scenario; frames not re-inspected. No new capture or mobile pairing proof claimed."
       ]
     },
     {
