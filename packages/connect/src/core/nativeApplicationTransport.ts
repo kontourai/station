@@ -1,4 +1,13 @@
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import { STATION_CONNECTION_PROOF_MAX_BYTES } from '@kontourai/station-contracts/connection-proof';
+import {
+  NATIVE_DEVICE_PROOF_HEADER,
+  NATIVE_DEVICE_PROOF_MAX_LENGTH,
+} from '@kontourai/station-contracts/native-device-proof';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeScopeV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import {
   connectionDescriptionDigest,
   copyStationConnectionTrust,
@@ -15,17 +24,7 @@ import {
   raceOwnedLifetime,
   waitForBrowserTransport,
 } from './browserTransportWait.js';
-import {
-  fingerprint,
-  randomNonce,
-  sameTrust,
-} from './nativeConnectionShared.js';
-import type {
-  NativeDiagnosticSignalAnswer,
-  NativeDiagnosticSignaling,
-} from './nativeDiagnosticEcho.js';
-
-const NONCE_BYTES = 32;
+import { fingerprint, sameTrust } from './nativeConnectionShared.js';
 
 /**
  * The only DataChannel label this client will ever open or adopt. Any other
@@ -33,8 +32,151 @@ const NONCE_BYTES = 32;
  */
 export const APPLICATION_TRANSPORT_CHANNEL = 'station-application-v1';
 
-/** Host bridge contract. It carries signaling only and owns its routing grant. */
-export type NativeApplicationSignaling = NativeDiagnosticSignaling;
+/** Host-issued, opaque native Pion peer handle. No private owner fields cross. */
+export interface NativeApplicationPeer {
+  readonly version: 'station-native-application-peer/v1';
+  readonly peerHandle: string;
+  readonly nonce: string;
+  readonly connectionId: string;
+  readonly expiresAt: number;
+}
+
+/** Readback returned only after the host validates its complete peer transcript. */
+export interface NativeApplicationPeerAnswer {
+  readonly version: 'station-broker-native-connection-answer/v2';
+  readonly answerSdp: string | null;
+  readonly stationProof: string | null;
+  readonly expiresAt: number;
+}
+
+/** Host-owned native Pion lifecycle and per-request Device proof signing. */
+export interface NativeApplicationSignaling {
+  readonly scope: SelfHostedBrokerNativeScopeV2;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  prepare(signal: AbortSignal): Promise<NativeApplicationPeer>;
+  open(
+    peerHandle: string,
+    offerSdp: string,
+    signal: AbortSignal,
+  ): Promise<number>;
+  read(
+    peerHandle: string,
+    signal: AbortSignal,
+  ): Promise<NativeApplicationPeerAnswer>;
+  sign(
+    peerHandle: string,
+    method: string,
+    path: string,
+    body: Uint8Array,
+    signal: AbortSignal,
+  ): Promise<string>;
+  close(peerHandle: string): Promise<void>;
+}
+
+const NATIVE_APPLICATION_PEER_HANDLE = /^[A-Za-z0-9_-]{43}$/u;
+const NATIVE_APPLICATION_CLIENT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const NATIVE_APPLICATION_PEER_TTL_MS = 120_000;
+const NATIVE_APPLICATION_SDP_LIMIT_BYTES = 64 * 1024;
+const NATIVE_APPLICATION_STATION_PROOF_LIMIT_BYTES =
+  STATION_CONNECTION_PROOF_MAX_BYTES;
+const NATIVE_APPLICATION_PATH_LIMIT_BYTES = 2048;
+const NATIVE_APPLICATION_BODY_LIMIT_BYTES = 16 * 1024;
+
+function peerHandleFrom(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const handle = (value as { peerHandle?: unknown }).peerHandle;
+  return typeof handle === 'string' &&
+    NATIVE_APPLICATION_PEER_HANDLE.test(handle)
+    ? handle
+    : undefined;
+}
+
+function validatePeer(
+  value: unknown,
+  expectedConnectionId: string,
+  now: number,
+): NativeApplicationPeer {
+  const keys = ['version', 'peerHandle', 'nonce', 'connectionId', 'expiresAt'];
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Object.keys(value).length !== keys.length ||
+    !keys.every((key) => Object.hasOwn(value, key))
+  )
+    throw new Error('native_application_peer_invalid');
+  const peer = value as NativeApplicationPeer;
+  if (
+    peer.version !== 'station-native-application-peer/v1' ||
+    !NATIVE_APPLICATION_PEER_HANDLE.test(peer.peerHandle) ||
+    !NATIVE_APPLICATION_PEER_HANDLE.test(peer.nonce) ||
+    !NATIVE_APPLICATION_CLIENT_ID.test(peer.connectionId) ||
+    peer.connectionId !== expectedConnectionId ||
+    !Number.isSafeInteger(peer.expiresAt) ||
+    peer.expiresAt <= now ||
+    peer.expiresAt > now + NATIVE_APPLICATION_PEER_TTL_MS
+  )
+    throw new Error('native_application_peer_invalid');
+  return Object.freeze({ ...peer });
+}
+
+function validatePeerAnswer(
+  value: unknown,
+  peer: NativeApplicationPeer,
+  expectedExpiresAt: number | undefined,
+  now: number,
+): NativeApplicationPeerAnswer {
+  const keys = ['version', 'answerSdp', 'stationProof', 'expiresAt'];
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Object.keys(value).length !== keys.length ||
+    !keys.every((key) => Object.hasOwn(value, key))
+  )
+    throw new Error('native_application_signal_invalid');
+  const answer = value as NativeApplicationPeerAnswer;
+  if (
+    answer.version !== 'station-broker-native-connection-answer/v2' ||
+    (answer.answerSdp !== null && typeof answer.answerSdp !== 'string') ||
+    (answer.stationProof !== null && typeof answer.stationProof !== 'string') ||
+    (typeof answer.answerSdp === 'string' &&
+      answer.answerSdp.length > NATIVE_APPLICATION_SDP_LIMIT_BYTES) ||
+    (typeof answer.stationProof === 'string' &&
+      answer.stationProof.length >
+        NATIVE_APPLICATION_STATION_PROOF_LIMIT_BYTES) ||
+    !Number.isSafeInteger(answer.expiresAt) ||
+    answer.expiresAt <= now ||
+    answer.expiresAt > peer.expiresAt ||
+    (expectedExpiresAt !== undefined && answer.expiresAt !== expectedExpiresAt)
+  )
+    throw new Error('native_application_signal_invalid');
+  return answer;
+}
+
+function validateRequestProof(value: string): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > NATIVE_DEVICE_PROOF_MAX_LENGTH ||
+    !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(value)
+  )
+    throw new Error('native_application_request_proof_invalid');
+  return value;
+}
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return error === code || (error instanceof Error && error.message === code);
+}
+
+function hasUnsafeRequestPathCharacter(path: string): boolean {
+  return (
+    path.includes('#') ||
+    [...path].some((character) => {
+      const codePoint = character.charCodeAt(0);
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    })
+  );
+}
 
 export interface NativeApplicationTrustOwner {
   current(): ApprovedStationConnectionTrust | null;
@@ -122,7 +264,16 @@ export function createNativeApplicationTransport(
     const owned = lifetime.signal;
     let peer: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
+    let hostPeerHandle: string | undefined;
+    let hostPeer: NativeApplicationPeer | undefined;
+    let hostPeerClose: Promise<void> | undefined;
     let closed = false;
+    const closeHostPeer = (handle = hostPeerHandle): Promise<void> => {
+      if (!handle) return Promise.resolve();
+      if (hostPeerClose) return hostPeerClose;
+      hostPeerClose = Promise.resolve(signaling.close(handle)).catch(() => {});
+      return hostPeerClose;
+    };
     const close = () => {
       if (closed) return;
       closed = true;
@@ -138,6 +289,7 @@ export function createNativeApplicationTransport(
       } catch {
         /* already closed */
       }
+      void closeHostPeer();
     };
     owned.addEventListener('abort', close, { once: true });
     let completed = false;
@@ -159,6 +311,23 @@ export function createNativeApplicationTransport(
         throw new Error('native_application_surface_invalid');
       await assertCurrent(authority, 'checkpoint', owned);
 
+      const preparePromise = signaling.prepare(owned);
+      try {
+        const rawPeer = await raceOwnedLifetime(preparePromise, owned);
+        hostPeerHandle = peerHandleFrom(rawPeer);
+        hostPeer = validatePeer(rawPeer, clientId, now());
+      } catch (error) {
+        if (owned.aborted) {
+          void preparePromise
+            .then((latePeer) => {
+              const lateHandle = peerHandleFrom(latePeer);
+              if (lateHandle) return closeHostPeer(lateHandle);
+            })
+            .catch(() => {});
+        }
+        throw error;
+      }
+
       peer = createPeer(configuration);
       const peerOwner = peer;
       channel = peer.createDataChannel(APPLICATION_TRANSPORT_CHANNEL, {
@@ -174,7 +343,6 @@ export function createNativeApplicationTransport(
           /* already closed */
         }
       };
-      const clientNonce = randomNonce(NONCE_BYTES);
       const offer = await raceOwnedLifetime(peer.createOffer(), owned);
       await assertCurrent(authority, 'checkpoint', owned);
       await raceOwnedLifetime(peer.setLocalDescription(offer), owned);
@@ -201,43 +369,46 @@ export function createNativeApplicationTransport(
         throw new Error('native_application_offer_unavailable');
       const offerSdp = peer.localDescription.sdp;
       const clientFingerprint = fingerprint(offerSdp);
-      const expiresAt = await raceOwnedLifetime(
-        signaling.open(
-          {
-            version: 'station-broker-native-connection-open/v2',
-            scope,
-            surface,
-            nonce: clientNonce,
-            offerSdp,
-          },
+      const activeHostPeer = hostPeer;
+      const activePeerHandle = hostPeerHandle;
+      if (!activeHostPeer || !activePeerHandle)
+        throw new Error('native_application_peer_unavailable');
+      const clientNonce = activeHostPeer.nonce;
+      let expiresAt: number | undefined;
+      try {
+        expiresAt = await raceOwnedLifetime(
+          signaling.open(activePeerHandle, offerSdp, owned),
           owned,
-        ),
-        owned,
-      );
-      if (!Number.isSafeInteger(expiresAt) || expiresAt <= now())
+        );
+      } catch (error) {
+        if (!isErrorCode(error, 'native_application_peer_open_unknown'))
+          throw error;
+        // The host may have received the one open request even though its
+        // response was lost. Keep this exact handle/nonce/offer and recover
+        // with read; never submit a second offer.
+      }
+      if (
+        expiresAt !== undefined &&
+        (!Number.isSafeInteger(expiresAt) ||
+          expiresAt <= now() ||
+          expiresAt > activeHostPeer.expiresAt)
+      )
         throw new Error('native_application_signal_expired');
       await assertCurrent(authority, 'checkpoint', owned);
 
-      let answer: NativeDiagnosticSignalAnswer | undefined;
+      let answer: NativeApplicationPeerAnswer | undefined;
       while (!answer) {
-        const value = await raceOwnedLifetime(
-          signaling.read(
-            {
-              version: 'station-broker-native-connection-read/v2',
-              scope,
-              surface,
-              nonce: clientNonce,
-            },
+        const value = validatePeerAnswer(
+          await raceOwnedLifetime(
+            signaling.read(activePeerHandle, owned),
             owned,
           ),
-          owned,
+          activeHostPeer,
+          expiresAt,
+          now(),
         );
+        expiresAt ??= value.expiresAt;
         await assertCurrent(authority, 'checkpoint', owned);
-        if (
-          value.version !== 'station-broker-native-connection-answer/v2' ||
-          value.expiresAt !== expiresAt
-        )
-          throw new Error('native_application_signal_invalid');
         if (value.answerSdp !== null || value.stationProof !== null) {
           if (
             typeof value.answerSdp !== 'string' ||
@@ -272,7 +443,7 @@ export function createNativeApplicationTransport(
         stationId: trust.stationId,
         enrollmentId: trust.enrollmentId,
         generation: trust.generation,
-        connectionId: clientId,
+        connectionId: activeHostPeer.connectionId,
         clientNonce,
         clientFingerprint,
         stationFingerprint: fingerprint(answer.answerSdp!),
@@ -365,7 +536,44 @@ export function createNativeApplicationTransport(
         }
       };
       completed = true;
-      return {
+      const applicationChannel: ApplicationChannel = {
+        ...adopted,
+        async prepareRequest(request) {
+          assertBoundCurrent();
+          request.signal.throwIfAborted();
+          await assertCurrent(authority, 'checkpoint', request.signal);
+          if (
+            request.headers.has('authorization') ||
+            request.headers.has('cookie') ||
+            request.headers.has(NATIVE_DEVICE_PROOF_HEADER)
+          )
+            throw new Error('native_application_request_credential_conflict');
+          if (
+            request.method !== request.method.toUpperCase() ||
+            !request.path.startsWith('/') ||
+            new TextEncoder().encode(request.path).byteLength >
+              NATIVE_APPLICATION_PATH_LIMIT_BYTES ||
+            hasUnsafeRequestPathCharacter(request.path)
+          )
+            throw new Error('native_application_request_invalid');
+          const body = request.body.slice();
+          if (body.byteLength > NATIVE_APPLICATION_BODY_LIMIT_BYTES)
+            throw new Error('native_application_request_too_large');
+          const proof = await raceOwnedLifetime(
+            signaling.sign(
+              activeHostPeer.peerHandle,
+              request.method,
+              request.path,
+              body,
+              request.signal,
+            ),
+            request.signal,
+          );
+          request.signal.throwIfAborted();
+          await assertCurrent(authority, 'checkpoint', request.signal);
+          assertBoundCurrent();
+          return [[NATIVE_DEVICE_PROOF_HEADER, validateRequestProof(proof)]];
+        },
         send: (message: string) => {
           assertBoundCurrent();
           adopted.send(message);
@@ -391,6 +599,7 @@ export function createNativeApplicationTransport(
           close();
         },
       };
+      return applicationChannel;
     } finally {
       if (!completed) close();
     }

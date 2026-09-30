@@ -6,6 +6,7 @@ import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
 } from '@kontourai/station-contracts/connection-proof';
+import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import {
   connectionDescriptionDigest,
   signStationConnectionProof,
@@ -13,14 +14,27 @@ import {
 import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
 import { writeApplicationFrame } from '../core/applicationChannelFrames.js';
-import type { NativeDiagnosticSignalAnswer } from '../core/nativeDiagnosticEcho.js';
+import type { NativeApplicationPeerAnswer } from '../core/nativeApplicationTransport.js';
 
 const CLIENT_FP = Array(32).fill('AA').join(':');
 const STATION_FP = Array(32).fill('BB').join(':');
 const OFFER_SDP = `v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 ${CLIENT_FP}\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=sctp-port:5000\r\n`;
 const ANSWER_SDP = `v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 ${STATION_FP}\r\n`;
 const EXPIRES_AT = Date.now() + 30_000;
+const PEER_HANDLE = 'A'.repeat(43);
+const PEER_NONCE = 'B'.repeat(43);
+const PEER_EXPIRES_AT = Date.now() + 120_000;
 const ORIGIN = 'https://station.example';
+
+function peerDescriptor(connectionId = '33333333-3333-4333-8333-333333333333') {
+  return {
+    version: 'station-native-application-peer/v1',
+    peerHandle: PEER_HANDLE,
+    nonce: PEER_NONCE,
+    connectionId,
+    expiresAt: PEER_EXPIRES_AT,
+  };
+}
 
 class FakeChannel extends EventTarget {
   readonly label: string;
@@ -112,7 +126,20 @@ async function fixture() {
   };
   let current: ApprovedStationConnectionTrust | null = trust;
   const peer = new FakePeer();
-  let opened: { nonce: string; offerSdp: string } | undefined;
+  let opened:
+    | { peerHandle: string; nonce: string; offerSdp: string }
+    | undefined;
+  let peerOverride: Record<string, unknown> | undefined;
+  let prepareGate: Promise<unknown> | undefined;
+  let resolvePrepare!: (value: unknown) => void;
+  let unknownOpen = false;
+  let signGate: Promise<string> | undefined;
+  let resolveSign!: (value: string) => void;
+  let signalSignStarted!: () => void;
+  const signStarted = new Promise<void>((resolve) => {
+    signalSignStarted = resolve;
+  });
+  const lifecycle: string[] = [];
   let bindingOverride: Partial<StationConnectionProofBinding> = {};
   let revokeOnRead = false;
   let deferBeforeRemote = false;
@@ -128,36 +155,62 @@ async function fixture() {
   const signaling = {
     scope,
     surface,
-    open: vi.fn(async (value: { nonce: string; offerSdp: string }) => {
-      opened = value;
+    prepare: vi.fn(async () => {
+      lifecycle.push('prepare');
+      if (prepareGate) return prepareGate as never;
+      return (peerOverride ??
+        peerDescriptor(surface.clientInstanceId)) as never;
+    }),
+    open: vi.fn(async (peerHandle: string, offerSdp: string) => {
+      lifecycle.push('open');
+      opened = { peerHandle, nonce: PEER_NONCE, offerSdp };
+      if (unknownOpen) throw new Error('native_application_peer_open_unknown');
       return EXPIRES_AT;
     }),
-    read: vi.fn(async (): Promise<NativeDiagnosticSignalAnswer> => {
-      if (revokeOnRead) current = null;
-      const binding = {
-        stationId: trust.stationId,
-        enrollmentId: trust.enrollmentId,
-        generation: trust.generation,
-        connectionId: surface.clientInstanceId,
-        clientNonce: opened!.nonce,
-        clientFingerprint: CLIENT_FP,
-        stationFingerprint: STATION_FP,
-        offerSha256: await connectionDescriptionDigest(opened!.offerSdp),
-        answerSha256: await connectionDescriptionDigest(ANSWER_SDP),
-        ...bindingOverride,
-      };
-      return {
-        version: 'station-broker-native-connection-answer/v2' as const,
-        expiresAt: EXPIRES_AT,
-        answerSdp: ANSWER_SDP,
-        stationProof: await signStationConnectionProof({
-          trust,
-          binding,
-          signingKey: pair.privateKey,
-          now: Math.floor(Date.now() / 1000),
-        }),
-      };
-    }),
+    read: vi.fn(
+      async (peerHandle: string): Promise<NativeApplicationPeerAnswer> => {
+        lifecycle.push('read');
+        expect(peerHandle).toBe(PEER_HANDLE);
+        if (revokeOnRead) current = null;
+        const binding = {
+          stationId: trust.stationId,
+          enrollmentId: trust.enrollmentId,
+          generation: trust.generation,
+          connectionId: surface.clientInstanceId,
+          clientNonce: opened!.nonce,
+          clientFingerprint: CLIENT_FP,
+          stationFingerprint: STATION_FP,
+          offerSha256: await connectionDescriptionDigest(opened!.offerSdp),
+          answerSha256: await connectionDescriptionDigest(ANSWER_SDP),
+          ...bindingOverride,
+        };
+        return {
+          version: 'station-broker-native-connection-answer/v2' as const,
+          expiresAt: EXPIRES_AT,
+          answerSdp: ANSWER_SDP,
+          stationProof: await signStationConnectionProof({
+            trust,
+            binding,
+            signingKey: pair.privateKey,
+            now: Math.floor(Date.now() / 1000),
+          }),
+        };
+      },
+    ),
+    sign: vi.fn(
+      async (
+        _peerHandle: string,
+        _method: string,
+        _path: string,
+        _body: Uint8Array,
+        _signal: AbortSignal,
+      ) => {
+        lifecycle.push('sign');
+        signalSignStarted();
+        return signGate ?? 'a.b.c';
+      },
+    ),
+    close: vi.fn(async () => {}),
   };
   /** Pretend to be the station side of station-application-v1. */
   const respond = (channel: FakeChannel) => {
@@ -186,6 +239,11 @@ async function fixture() {
     if (label === APPLICATION_TRANSPORT_CHANNEL) respond(channel);
     return channel;
   }) as typeof peer.createDataChannel;
+  const createOffer = peer.createOffer;
+  peer.createOffer = vi.fn(async () => {
+    lifecycle.push('createOffer');
+    return createOffer();
+  });
   const controller = new AbortController();
   const transport = createNativeApplicationTransport({
     signaling,
@@ -212,6 +270,7 @@ async function fixture() {
     requests,
     surface,
     signaling,
+    lifecycle,
     respond,
     fetchSpy: vi.spyOn(globalThis, 'fetch'),
     substituteScope(value: Record<string, unknown>) {
@@ -222,6 +281,30 @@ async function fixture() {
     },
     overrideBinding(value: Partial<StationConnectionProofBinding>) {
       bindingOverride = value;
+    },
+    substitutePeer(value: Record<string, unknown>) {
+      peerOverride = value;
+    },
+    deferPrepare() {
+      prepareGate = new Promise((resolve) => {
+        resolvePrepare = resolve;
+      });
+      return {
+        resolve: (value: unknown = peerDescriptor(surface.clientInstanceId)) =>
+          resolvePrepare(value),
+      };
+    },
+    deferSign() {
+      signGate = new Promise((resolve) => {
+        resolveSign = resolve;
+      });
+      return {
+        started: signStarted,
+        resolve: (proof = 'a.b.c') => resolveSign(proof),
+      };
+    },
+    makeOpenUnknown() {
+      unknownOpen = true;
     },
     revokeOnRead() {
       revokeOnRead = true;
@@ -261,11 +344,44 @@ describe('native application transport client', () => {
       APPLICATION_TRANSPORT_CHANNEL,
     );
     expect(f.requests).toHaveLength(1);
+    expect(f.lifecycle.indexOf('prepare')).toBeLessThan(
+      f.lifecycle.indexOf('createOffer'),
+    );
+    expect(f.lifecycle).toEqual([
+      'prepare',
+      'createOffer',
+      'open',
+      'read',
+      'sign',
+    ]);
+    expect(f.signaling.open).toHaveBeenCalledWith(
+      PEER_HANDLE,
+      OFFER_SDP,
+      expect.any(AbortSignal),
+    );
+    expect(f.signaling.read).toHaveBeenCalledWith(
+      PEER_HANDLE,
+      expect.any(AbortSignal),
+    );
+    expect(f.signaling.sign).toHaveBeenCalledWith(
+      PEER_HANDLE,
+      'GET',
+      '/api/health',
+      new Uint8Array(0),
+      expect.any(AbortSignal),
+    );
     expect(f.requests[0]).toMatchObject({
       type: 'request',
       method: 'GET',
       path: '/api/health',
     });
+    expect(f.requests[0]?.headers).toEqual(
+      expect.arrayContaining([
+        ['x-proof-header', 'sdk'],
+        [NATIVE_DEVICE_PROOF_HEADER.toLowerCase(), 'a.b.c'],
+      ]),
+    );
+    expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
     expect(f.peer.closed).toBe(true);
     expect(f.peer.createdChannels[0]?.closed).toBe(true);
   });
@@ -275,9 +391,115 @@ describe('native application transport client', () => {
     await expect(
       f.transport.fetch('https://evil.example/api/health'),
     ).rejects.toThrow();
+    expect(f.signaling.prepare).not.toHaveBeenCalled();
     expect(f.signaling.open).not.toHaveBeenCalled();
     expect(f.fetchSpy).not.toHaveBeenCalled();
     expect(f.peer.closed).toBe(false);
+  });
+
+  test('requires the host peer connection id to match the prepared native surface', async () => {
+    const f = await fixture();
+    f.substitutePeer(peerDescriptor('44444444-4444-4444-8444-444444444444'));
+    await expect(
+      f.transport.fetch(new URL('/api/health', ORIGIN)),
+    ).rejects.toThrow('native_application_peer_invalid');
+    expect(f.peer.createOffer).not.toHaveBeenCalled();
+    expect(f.signaling.open).not.toHaveBeenCalled();
+    expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
+  });
+
+  test('a lost open reply is recovered by reading the same host peer once', async () => {
+    const f = await fixture();
+    f.makeOpenUnknown();
+    const response = await f.transport.fetch(new URL('/api/health', ORIGIN));
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(f.signaling.prepare).toHaveBeenCalledOnce();
+    expect(f.signaling.open).toHaveBeenCalledOnce();
+    expect(f.signaling.open).toHaveBeenCalledWith(
+      PEER_HANDLE,
+      OFFER_SDP,
+      expect.any(AbortSignal),
+    );
+    expect(f.signaling.read).toHaveBeenCalledWith(
+      PEER_HANDLE,
+      expect.any(AbortSignal),
+    );
+    expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
+  });
+
+  test('a late host prepare result is closed after client cancellation', async () => {
+    const f = await fixture();
+    const prepare = f.deferPrepare();
+    const running = f.transport.fetch(new URL('/api/health', ORIGIN));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(f.signaling.prepare).toHaveBeenCalledOnce();
+    f.controller.abort(new Error('test_cancelled'));
+    await expect(running).rejects.toThrow();
+    prepare.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(f.peer.createOffer).not.toHaveBeenCalled();
+    expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
+    expect(f.requests).toHaveLength(0);
+  });
+
+  test('request signing sees the exact copied body and contributes only the Device proof header', async () => {
+    const f = await fixture();
+    const body = '{"project":"demo"}';
+    const response = await f.transport.fetch(
+      new URL('/api/projects?slug=demo', ORIGIN),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(f.signaling.sign).toHaveBeenCalledWith(
+      PEER_HANDLE,
+      'POST',
+      '/api/projects?slug=demo',
+      new TextEncoder().encode(body),
+      expect.any(AbortSignal),
+    );
+    expect(f.requests[0]?.headers).toEqual(
+      expect.arrayContaining([
+        ['content-type', 'application/json'],
+        [NATIVE_DEVICE_PROOF_HEADER.toLowerCase(), 'a.b.c'],
+      ]),
+    );
+  });
+
+  test('caller credentials and Device proof headers are refused before signing or dispatch', async () => {
+    for (const name of [
+      'Authorization',
+      'Cookie',
+      NATIVE_DEVICE_PROOF_HEADER,
+    ]) {
+      const f = await fixture();
+      await expect(
+        f.transport.fetch(new URL('/api/projects', ORIGIN), {
+          headers: { [name]: 'caller-supplied' },
+        }),
+      ).rejects.toThrow('native_application_request_credential_conflict');
+      expect(f.signaling.sign).not.toHaveBeenCalled();
+      expect(f.requests).toHaveLength(0);
+      expect(f.fetchSpy).not.toHaveBeenCalled();
+      expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
+    }
+  });
+
+  test('cancelling a post-open sign call closes its host peer before dispatch', async () => {
+    const f = await fixture();
+    const signing = f.deferSign();
+    const running = f.transport.fetch(new URL('/api/projects', ORIGIN));
+    await signing.started;
+    f.controller.abort(new Error('test_cancelled'));
+    await expect(running).rejects.toThrow();
+    signing.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(f.requests).toHaveLength(0);
+    expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
   });
 
   test('a wrong Station proof never reaches setRemoteDescription or dispatch', async () => {
@@ -298,6 +520,7 @@ describe('native application transport client', () => {
     await expect(
       f.transport.fetch(new URL('/api/health', ORIGIN)),
     ).rejects.toThrow('native_application_trust_mismatch');
+    expect(f.signaling.prepare).not.toHaveBeenCalled();
     expect(f.signaling.open).not.toHaveBeenCalled();
     expect(f.fetchSpy).not.toHaveBeenCalled();
   });
@@ -310,6 +533,7 @@ describe('native application transport client', () => {
     await expect(
       f.transport.fetch(new URL('/api/health', ORIGIN)),
     ).rejects.toThrow('native_application_trust_mismatch');
+    expect(f.signaling.prepare).not.toHaveBeenCalled();
     expect(f.signaling.open).not.toHaveBeenCalled();
   });
 
@@ -351,6 +575,7 @@ describe('native application transport client', () => {
     await expect(
       f.transport.fetch(new URL('/api/health', ORIGIN)),
     ).rejects.toThrow();
+    expect(f.signaling.prepare).not.toHaveBeenCalled();
     expect(f.signaling.open).not.toHaveBeenCalled();
     expect(f.fetchSpy).not.toHaveBeenCalled();
   });
@@ -381,6 +606,7 @@ describe('native application transport client', () => {
     f.controller.abort(new Error('test_cancelled'));
     expect(f.peer.closed).toBe(true);
     expect(f.peer.createdChannels[0]?.closed).toBe(true);
+    expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
   });
 
   test('a rotated Station cannot deliver another application frame', async () => {

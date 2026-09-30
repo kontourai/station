@@ -50,16 +50,24 @@ they do not establish physical native-client or relay-only acceptance.
 ## Optional native application transport
 
 The `/native-application` source entry exports
-`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`.
-The host supplies v2 signaling and approved Station trust, including an
-authoritative asynchronous recheck. The client verifies the signed Station
-answer before setting the remote description and uses only the reliable,
-ordered `station-application-v1` DataChannel. It returns `fetch` and
-`openChannel`; abort or retired trust closes owned work. There is no direct
-HTTP fallback or grant-bearer exposure.
+`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`
+with an independent `NativeApplicationSignaling` contract. The host prepares an
+opaque peer handle, nonce and connection ID before SDP creation; the client
+opens and reads that same handle, verifies the signed Station answer before
+setting the remote description, and uses only the reliable, ordered
+`station-application-v1` DataChannel. After opening, the channel's
+`prepareRequest` calls the host signer with the exact bounded method, path and
+body and returns only the native Device-proof header. Caller-supplied
+Authorization, Cookie and Device-proof headers are refused. Abort, failed
+preparation or retired trust closes owned work. There is no direct HTTP
+fallback, grant-bearer exposure or signing-key exposure.
 
 This is an opt-in library surface, separate from ordinary saved-route selection.
-It does not approve a Device, authenticate an account or grant Project access.
+It does not enable a default UI route, enroll or activate a Device, authenticate
+an account or grant Project access. Account continuation proof remains a
+separate caller requirement. Focused source tests do not establish executed
+Tauri IPC, packaged-client, physical-device or complete authenticated
+Project-journey evidence.
 See the [package README](../../packages/connect/README.md#optional-native-application-transport)
 and [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the separate caller responsibilities. No physical native-client result is

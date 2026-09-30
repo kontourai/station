@@ -42,14 +42,22 @@ and the [host profile adapter](../../src-ui/src/platform/native/stationProfileSt
 ## Optional native application transport
 
 `@kontourai/station-connect/native-application` exports
-`createNativeApplicationTransport`. Its caller supplies host-owned v2 signaling,
-approved Station trust with an authoritative recheck, a Station origin and a
-lifetime signal. The client verifies the Station proof before applying the
+`createNativeApplicationTransport`. Its caller supplies an independent
+host-owned peer adapter, approved Station trust with an authoritative recheck,
+a Station origin and a lifetime signal. The adapter prepares a host-issued
+opaque peer handle and nonce before SDP creation, then opens and reads that same
+peer. The client verifies the complete Station proof before applying the
 answer and exposes `fetch` and `openChannel` over the reliable ordered
-`station-application-v1` DataChannel. It has no direct HTTP fallback and does
-not read the routing grant bearer. Device and account credentials remain with
-their existing owners. This opt-in library does not activate a saved Desktop
-route or establish a packaged native journey.
+`station-application-v1` DataChannel. After opening, `prepareRequest` asks the
+host to sign the exact bounded request for the approved Device; it refuses
+caller-supplied Authorization, Cookie or Device-proof headers. It has no direct
+HTTP fallback and does not read the routing-grant bearer or signing key.
+
+This remains an opt-in library contract. It does not enable a default UI route,
+enroll or activate a Device, authenticate an account, or grant Project access.
+The separate account-continuation proof is still required where applicable.
+Source and focused tests do not establish executed Tauri IPC, packaged-client,
+physical-device or complete authenticated Project-journey evidence.
 
 ## Optional self-hosted browser transport
 

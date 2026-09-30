@@ -89,31 +89,35 @@ The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 
 ### Desktop application signaling commands
 
-The Desktop command table registers three main-window-only signaling commands
-in [the native relay owner](../../src-desktop/src/native_relay_redemption.rs):
+The Desktop registers main-window-only commands for public binding metadata and
+the separate host-owned native application peer. The existing
+`station_native_relay_application_binding` command remains the source of the
+saved profile's public scope, client surface and approved Station trust view.
+The new peer commands in the [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+are:
 
-| Command | Caller input beyond the saved profile name and exact revision | Result |
+| Command | Caller input | Result |
 | --- | --- | --- |
-| `station_native_relay_application_binding` | None | Host-derived public profile, scope, native surface and approved Station trust metadata |
-| `station_native_relay_application_open` | Nonce and bounded offer SDP | Offer expiry |
-| `station_native_relay_application_read` | Existing offer nonce | Optional answer SDP and opaque Station proof, plus expiry |
+| `station_native_application_peer_prepare` | Saved profile name and exact profile revision | Versioned opaque peer handle, host nonce, client connection ID and expiry |
+| `station_native_application_peer_open` | Peer handle and bounded offer SDP | Peer expiry |
+| `station_native_application_peer_read` | Peer handle | Versioned answer, Station proof and expiry after host transcript verification |
+| `station_native_application_peer_sign` | Peer handle and exact method, path and bounded body bytes | Versioned native Device request proof |
+| `station_native_application_peer_close` | Peer handle | No result |
 
-These are application-named entry points to the same service used by the
-diagnostic commands. The host resolves the saved profile, approved Station key
-and an existing keyring-held routing grant; it rechecks custody after broker
-I/O. Input envelopes reject caller-supplied bearer, private key, broker URL or
-Project authority. Requests use fixed broker paths. An uncertain `open` may
-already have created an offer: retain its nonce and read that offer within its
-window rather than blindly opening it again.
+The host derives authority from the selected profile, approved Station trust,
+current Device receipt and existing routing custody. The renderer supplies no
+broker URL, bearer, key, nonce, Project authority, proof claims or audience.
+Uncertain `open` results are recovered by reading the same handle; the client
+does not open a second peer. The adapter is separate from diagnostic signaling.
+Connect verifies the Station proof before applying the answer, then uses the
+host signer for bounded per-request Device proof. Neither the saved route nor
+this opt-in library surface is enabled by default. Account continuation remains
+separate, so this is not account proof or a complete authenticated Project flow.
 
-The renderer's [application signaling adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
-wraps these names for one exact saved-profile revision and validates their
-results, but no ordinary native application caller composes it. The commands
-themselves do not open a DataChannel, verify the returned Station proof,
-carry application requests, select a route, sign in or enroll a Device. The
-account proof-key vault below remains separate and unwired. Command registration
-and source tests are not an executed Tauri IPC, packaged-platform or physical
-device receipt; no such execution is claimed by this review.
+The source adapter and focused tests do not establish executed Tauri IPC,
+packaged-platform behavior, physical-device qualification or a completed
+authenticated Project journey. The account proof-key vault below also remains
+separate from account sign-in and enrollment.
 
 ### Desktop account proof-key foundation
 
