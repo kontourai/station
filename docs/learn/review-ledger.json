@@ -2152,7 +2152,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2348,7 +2348,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -2410,7 +2410,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Station Documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Sources changed on this branch: the Browser pane contracts, server, toolbar and the module map (BrowserSessionService page-tools paragraph). Its index descriptions of the Browser guide, glossary and module map remain accurate. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Index descriptions remain accurate. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Index descriptions remain accurate. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
@@ -2829,7 +2830,7 @@
     {
       "path": "docs/adr/0017-browser-preview-host.md",
       "documentDigest": "9be14f3fe1a2cd87746feb09a90699767a0957a984a914dacbb21038f2319a85",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; keep original desktop choices/platform gaps and dated body. Added current Browser guide link in existing banner.",
@@ -3005,7 +3006,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -3056,12 +3057,13 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Keep browser-preview hosting adapter-local' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3254,7 +3256,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
@@ -3313,13 +3315,14 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'ADR 0018 — SSE is the realtime transport, because resume rides `Last-Event-ID`' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
       "documentDigest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated planned/unverified statements. Current implementation uses per-Project/principal profiles, bound tool grants, shared Device producer. CEF and multiplex plans are not current implementations. Added current guide link only.",
@@ -3495,7 +3498,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -3546,7 +3549,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'ADR 0019 — Host the Browser pane server-side, behind a host adapter' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
@@ -4034,7 +4038,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "ee27a24552decc3dcae0add44d3c0e13a2f0b71c297082748827959bd8a1bffe",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5510,7 +5514,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/hooks/orchestration/extensionHandlers.ts",
@@ -5787,7 +5791,8 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Edited on this branch: the BrowserSessionService section gained the page-tools paragraph (person-held dialogs, the answer route that refuses Agents, dialog-open refusal, browser-console-log.ts, captureScreenshot) and its new test files; this changed the document's digest. Re-read against the quiet toolbar change, which is presentational. Other sections not re-reviewed. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Shared live surface section now names LiveSurfaceInputRefusal / page-dialog-open; BrowserSessionService paragraph names the control-end dismissal, console generation and agent gate, and one screenshot in flight. Other sections not re-reviewed."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Shared live surface section now names LiveSurfaceInputRefusal / page-dialog-open; BrowserSessionService paragraph names the control-end dismissal, console generation and agent gate, and one screenshot in flight. Other sections not re-reviewed.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
@@ -6613,7 +6618,7 @@
     {
       "path": "docs/design/browser-preview-host-spike.md",
       "documentDigest": "054668c44ea7e835f73044ed1f004a832f5412d2da133d11f7958f8ba3211510",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated upstream/platform experiment and go/no-go rationale; source/current guide link added, no experiment rerun or current-upstream claim.",
@@ -6789,7 +6794,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -6840,13 +6845,14 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser-preview host spike (Station #1376)' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
       "path": "docs/design/browser-preview-pane-mvp.md",
       "documentDigest": "e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
@@ -7022,7 +7028,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -7073,7 +7079,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser Preview Pane MVP (Station #1375)' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Dated Browser design record. Sources changed on this branch: the Browser pane contracts and server (person-held dialogs, bounded console, screenshot route, explicit hand-back), the pane's toolbar, and a stale Browser Preview comment. None alters this record's dated claims, and its opening note already routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Dated Browser design record; none of this alters its dated claims. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
@@ -10446,7 +10453,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "94162529a4b5f49068eba87988143335d1224a5b25f5ec15bc1ea9316392b29b",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10662,7 +10669,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -10730,7 +10737,8 @@
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Glossary' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Edited on this branch: the control-lease entry says a holder can release control explicitly, through the Browser pane's driver chip (checked against releaseHumanControl and useLiveSurface.releaseControl). Other Browser entries re-read against the page-tools and toolbar changes; still accurate. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The control-lease entry (explicit release via the driver chip) remains accurate; no glossary term changes. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The control-lease entry (explicit release via the driver chip) remains accurate; no glossary term changes. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
@@ -11398,7 +11406,7 @@
     {
       "path": "docs/guides/browser-workspace.md",
       "documentDigest": "d4042dd1277c72068a041e4951959a3334234103e0f015e710c9bf565aee1067",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
@@ -11574,7 +11582,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -11626,7 +11634,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser workspace' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Edited on this branch: the page-tools section (person-held dialogs, bounded console, screenshots, one-tab popup folding) and the quiet one-row chrome (driver chip hand-back, Console count, ⋯ menu, 44px touch targets), each traced to the producer, live surfaces, routes, automation and pane code and exercised by the route, real-Chrome, pane tests and an isolated-Station run at 1280px and 390px. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Guide updated for each: held-dialog lifetime and the float's card, page-dialog-open, answer outcomes, console agent gate, one screenshot in flight. Traced to chromium-screencast-producer.ts, browser-live-surfaces.ts, routes/browser.ts, browser-session-registry.ts and FloatOverChatHost.tsx; exercised by browser-pane-page.routes.test.ts, browser-automation.test.ts, FloatOverChat.test.tsx and BrowserPane.pageTools.test.tsx."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. Guide updated for each: held-dialog lifetime and the float's card, page-dialog-open, answer outcomes, console agent gate, one screenshot in flight. Traced to chromium-screencast-producer.ts, browser-live-surfaces.ts, routes/browser.ts, browser-session-registry.ts and FloatOverChatHost.tsx; exercised by browser-pane-page.routes.test.ts, browser-automation.test.ts, FloatOverChat.test.tsx and BrowserPane.pageTools.test.tsx.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
@@ -15629,7 +15638,7 @@
     {
       "path": "docs/guides/mobile-device-workspace.md",
       "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
-      "sourceRevision": "d77459dfdecaece7a1da419124be528bcc717726",
+      "sourceRevision": "98d981682213d5f03cb5376548a5f5ee975e8e1a",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
@@ -15805,7 +15814,7 @@
         },
         {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "e61b7e115e623f46aaf5eb30a8eb4f88c36ed23d60afd642f9e12f2c9214a7a7"
+          "digest": "0d7897dedec6c764763bbd010fff7b31da268230f4a7f6d3b3da72df7845a8be"
         },
         {
           "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
@@ -15857,7 +15866,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Mobile device workspace' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Sources changed on this branch: the shared live-surface hook and canvas gained an optional releaseControl used only by the Browser pane, and the Browser pane itself changed. This guide's Device lease, input and screenshot-poll claims are unaffected. No prose change. Recorded on the merged bytes (merge with origin/main d3179f152).",
-        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The new refusal is optional for producers and the Device producer does not use it; this guide's Device input and lease claims are unaffected. No prose change."
+        "Review round (d77459dfd): live-surface gained a typed `page-dialog-open` input refusal; held dialogs are answerable in the float and dismissed when the person's control ends; answerDialog is bounded (504/409); one screenshot in flight per session; console reads by agent-capable requests need browserEvaluate; console views carry their generation. The new refusal is optional for producers and the Device producer does not use it; this guide's Device input and lease claims are unaffected. No prose change.",
+        "FloatOverChatHost.tsx changed after the last record only in presentation: the float's held-dialog card is now the compact variant (two-line text, icon Open in pane), which the Browser guide's statement that the same card appears in the float with Open in pane still describes. No other claim here depends on it. No prose change."
       ]
     },
     {
