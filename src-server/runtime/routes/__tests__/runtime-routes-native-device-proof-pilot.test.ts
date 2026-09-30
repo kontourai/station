@@ -25,9 +25,9 @@
  * continuation bodies or credentials.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   createApplicationChannelFetch,
   serveApplicationChannel,
@@ -59,6 +59,7 @@ import { Hono } from 'hono';
 import { exportJWK as exportJwkJose, generateKeyPair } from 'jose';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { NativeDeviceRequestAuthority } from '../../../security/native-device-request-authority.js';
 import {
@@ -124,6 +125,8 @@ const GUEST_GRANT = 'orchestration:read orchestration:operate';
 const operatorApproval = { kind: 'presented-credential' } as const;
 const NATIVE_VERSION = 'station.application-session-native/v1';
 
+const makeTempDir = trackTempDirs();
+
 function ownedTempRoot(prefix: string): string {
   const ambientRoot = process.env.STATION_ROOT
     ? resolve(process.env.STATION_ROOT)
@@ -134,9 +137,8 @@ function ownedTempRoot(prefix: string): string {
     base.startsWith(
       ambientRoot.endsWith(sep) ? ambientRoot : ambientRoot + sep,
     );
-  return mkdtempSync(
-    join(insideSharedRoot ? dirname(ambientRoot) : base, prefix),
-  );
+  const parent = insideSharedRoot ? dirname(ambientRoot) : base;
+  return makeTempDir(join(relative(base, parent), prefix));
 }
 
 async function p256Key(): Promise<{
@@ -239,8 +241,7 @@ describe('native Device request-proof pilot over the production composition', ()
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
     vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
+    directories.splice(0);
   });
 
   async function setup() {
