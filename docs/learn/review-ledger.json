@@ -9225,8 +9225,8 @@
     },
     {
       "path": "docs/design/plugin-authority-model.md",
-      "documentDigest": "a27f2d50547d3a172bd8c569abc524584e11f707b6c4a3df2749ed78fb48befa",
-      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
+      "documentDigest": "c93950f30b3f48e8bb9030debab5ccc9838ab3d2ba3edb5257f58db6690543ac",
+      "sourceRevision": "5aa5a00ce0147c5344f5da916b2441329b3fae89",
       "kind": "historical",
       "state": "classified",
       "summary": "August threat analysis preserved with current same-origin nonce-free vs cross-origin inline behavior, managed-update installer path, legacy grant rebinding and still-limited derived permissions.",
@@ -9266,7 +9266,8 @@
         "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
         "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-permissions.test.ts (restore-helper tests dropped); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); claims unaffected.",
-        "2026-09-29: added a dated amendment banner pointing to shell-plugins-distributions.md (answers open question 2; update re-prompt). Historical body unchanged; the banner claims only the new record's decisions."
+        "2026-09-29: added a dated amendment banner pointing to shell-plugins-distributions.md (answers open question 2; update re-prompt). Historical body unchanged; the banner claims only the new record's decisions.",
+        "2026-09-29: amendment banner reworded so the publisher-signed default reads as pending the owner, and to note the new record's tier-2 statement. Historical body unchanged."
       ]
     },
     {
@@ -10085,8 +10086,8 @@
     },
     {
       "path": "docs/design/shell-plugins-distributions.md",
-      "documentDigest": "dcffa3dc83f4ed58b7652d5fc638ffab66faa63162a46bbacf51489ca13011f9",
-      "sourceRevision": "2e8ddc0f774480d55159bdb07436537747a27032",
+      "documentDigest": "49b87ae94b9d7c6be10e42203847afc6ddee8568199ebae525329e858f26a7c9",
+      "sourceRevision": "5aa5a00ce0147c5344f5da916b2441329b3fae89",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted-direction record of the 2026-09-29 owner decisions (shell kernel, per-install trust, required slots, layout owner x subject, layout contract fields, distribution manifests, public plugins repo) with a source-inspected current-state section, threat notes, open items and a sliced delivery plan.",
@@ -10143,10 +10144,19 @@
         {
           "path": "src-ui/src/workspace-panes/workspacePaneRendererSelection.ts",
           "digest": "7050620c120bbdf48a658e1c210d1ea06281691a0b0b63bc0644430207a10cc8"
+        },
+        {
+          "path": "src-server/routes/agents/invoke.ts",
+          "digest": "55fdb13e6bb43918ab53fd268ee4fb05b7f48974d3c49686a5a651130813a818"
+        },
+        {
+          "path": "src-ui/src/core/remotePluginBundleConsent.ts",
+          "digest": "072d17e0411a6196054b37d74cc6325777d880455c8e90d7c419d89eea34e75c"
         }
       ],
       "checks": [
-        "2026-09-29 new record. Current-state claims checked by source inspection at 2e8ddc0f7: LayoutOwner/layoutOwner (no subject field); Board create/rename/promote routes and sidebar (section returns null with zero Boards; only rename calls the update mutation); instance layouts storage-only; plugin-visibility-service grants; manage-extensions owner-only in project-membership.ts; type==='coding' sites in project-layout-kind, ProjectLayoutRenderer, ProjectPage, useChatDockViewModel, LayoutWorkspacePane, workspacePaneDirectRoute, builtinWorkspacePaneCanonical; board-pane/basis-pane private and imported by src-ui; Home role grant via consent listener in plugin-home-role-routes.ts and built-in Home floor in workspace-home-role.ts (its 'NO production caller' docstring is stale); renderer capability selection; executeBundleInline still assigns the shell nonce (PluginRegistry.ts:686), same-origin path nonce-free; grant digest binding in plugin-permissions.ts; globalThis.require shim in packages/shared/src/build.ts; branding provider and branding-theme.ts contrast refusal; DistributionProfile contract and guide. Design proposals are not claims of behavior. No tests executed."
+        "2026-09-29 new record. Current-state claims checked by source inspection at 2e8ddc0f7: LayoutOwner/layoutOwner (no subject field); Board create/rename/promote routes and sidebar (section returns null with zero Boards; only rename calls the update mutation); instance layouts storage-only; plugin-visibility-service grants; manage-extensions owner-only in project-membership.ts; type==='coding' sites in project-layout-kind, ProjectLayoutRenderer, ProjectPage, useChatDockViewModel, LayoutWorkspacePane, workspacePaneDirectRoute, builtinWorkspacePaneCanonical; board-pane/basis-pane private and imported by src-ui; Home role grant via consent listener in plugin-home-role-routes.ts and built-in Home floor in workspace-home-role.ts (its 'NO production caller' docstring is stale); renderer capability selection; executeBundleInline still assigns the shell nonce (PluginRegistry.ts:686), same-origin path nonce-free; grant digest binding in plugin-permissions.ts; globalThis.require shim in packages/shared/src/build.ts; branding provider and branding-theme.ts contrast refusal; DistributionProfile contract and guide. Design proposals are not claims of behavior. No tests executed.",
+        "2026-09-29 revision after report-only review of 5aa5a00ce: added 'Tier 2 is the kernel's own realm' with its four consequences and OPEN-11 (approval decisions); checked POST /tool-approval/:approvalId accepts {approved} on the session credential (src-server/routes/agents/invoke.ts, toolApprovalSchema) and the device-local remotePluginBundlesAllowed localStorage store (src-ui/src/core/remotePluginBundleConsent.ts, PluginRegistryGate.tsx:56), which the record now retires in slice d3. Reframed OPEN-2, marked coordinator-proposed defaults as PROPOSED, noted decision 11 supersedes decision 2's no-Home clause, stated default fillers cannot be disabled and their failure enters safe mode, and rewrote the delivery plan (a, b, c, d1-d4, e resolver, f safe mode, g, h, i1-i3, j, k, l, m) with migration steps and common acceptance criteria. Design proposals are not behavior claims; no tests executed."
       ]
     },
     {

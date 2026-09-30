@@ -155,6 +155,13 @@ given; the engineering reading that follows them says where it adds rules.
     - Safe mode remains the floor for the broader "plugins are broken" case.
       Home does not wait on it.
 
+**Reading note (this record).** Decision 11 supersedes the Home half of
+decision 2. Decision 2 says Station boots into safe mode "if installed
+plugins leave no Home"; under decision 11 that state cannot occur, because
+"no Home" is inexpressible and the default filler always resolves. Safe mode
+still covers the rest of decision 2: no working layout, or a default filler
+that itself fails to load.
+
 ## Current state (verified 2026-09-29, source inspection at `2e8ddc0f7`)
 
 What each item below establishes is location and code shape, not executed
@@ -246,6 +253,19 @@ behavior.
 - Every plugin bundle's build shim still assigns `globalThis.require`
   ([build.ts](../../packages/shared/src/build.ts)), so in-process plugins
   share one module resolver.
+- In-process plugin code runs in the shell's own document. The authority
+  model records that it holds the operator's session credential, the shell
+  DOM, and the SDK's credentialed client
+  ([why enforcement needs a boundary](plugin-authority-model.md#why-enforcement-needs-a-boundary-precisely)).
+- A tool approval is decided by `POST /tool-approval/:approvalId` with body
+  `{ approved }` on the ordinary session credential
+  ([invoke.ts](../../src-server/routes/agents/invoke.ts)). Any code holding
+  that credential can therefore send the decision.
+- A device-local trust store admits a remote Station's bundles into this
+  device's webview: `remotePluginBundlesAllowed`, kept in `localStorage` per
+  connection ([remotePluginBundleConsent.ts](../../src-ui/src/core/remotePluginBundleConsent.ts),
+  read by [PluginRegistryGate.tsx](../../src-ui/src/components/registry/PluginRegistryGate.tsx)).
+  Code already admitted can write that store.
 
 **Branding, sign-in and defaults**
 
@@ -298,6 +318,12 @@ filler. Candidates are Home and the primary chat and approval surface.
   kernel trusts.
 - Resolution is derived on every read from the live installation, never a
   stored "active filler" label.
+- **The operator cannot disable a default filler**, only override it.
+  Disabling would be removal by another name. An operator who wants a
+  different Home installs an override; a member's personal hide does not
+  apply to slot fillers (see OPEN-9).
+- **If the default filler itself fails to load**, the slot cannot resolve and
+  Station enters safe mode. That is the only path from a slot to safe mode.
 
 ### Contribution scopes
 
@@ -320,10 +346,10 @@ An **install trust record** is kept per installed plugin:
   contentDigest, tier: 2 | 3, grants[], decidedBy, decidedAt, affected }
 ```
 
-- **Defaults.** Kontour-signed starts at tier 2 and unsigned at tier 3.
-  Publisher-signed starts at tier 3 until the operator raises it (see OPEN-3).
-  Lowering is always allowed. Raising an unsigned plugin shows an explicit
-  warning.
+- **Defaults.** Kontour-signed starts at tier 2 and unsigned at tier 3 (owner
+  decision 3). The owner did not decide publisher-signed. Its default is
+  OPEN-3; the proposed default is tier 3. Lowering is always allowed. Raising
+  an unsigned plugin shows an explicit warning.
 - **Tier maps onto the renderer capabilities that already exist.** The host
   offers capabilities per plugin, from its trust record, instead of one
   client-wide flag:
@@ -343,13 +369,61 @@ An **install trust record** is kept per installed plugin:
   - An update requesting any capability not previously granted re-prompts
     before its code activates. This closes "updates launder consent".
   - An unsigned plugin has no key, so every content change re-prompts.
-- **High-risk grants** require a tier-2 install. Illustrative names (see
-  OPEN-7): `approvals.render` (fill the approval slot) and `layout.primaryChat`
-  (be a layout's `primary: 'chat'` renderer). The consent copy names the grant
-  and who is affected.
 - **Who is affected.** On a shared Station, trust and grant prompts list the
   scope of effect: all members and all paired devices, because in-process
   code runs on every device that renders it.
+- **Remote-Station bundles.** The device-local `remotePluginBundlesAllowed`
+  store is **retired** in slice d3. A remote Station's bundles run on this
+  device at tier 3 only. The store sits in `localStorage`, which admitted
+  code can rewrite, and it records an origin, not a key and digest. Folding
+  it into the operator's record would not help either: the operator of the
+  remote Station is not the person whose device runs the code. An in-process
+  admission for a remote Station would need a device-side record outside
+  webview-writable storage, and this record does not design one.
+
+#### Tier 2 is the kernel's own realm
+
+Tier 2 is not just a realm that plugins share with each other. A tier-2
+plugin runs in the shell's own document, with:
+
+- the operator's session credential;
+- the shell DOM, including every kernel surface drawn there;
+- the SDK's credentialed client.
+
+It can do anything the signed-in user can do from that device, and the
+server cannot tell its requests from the user's. Four consequences follow:
+
+1. **High-risk grants cannot be enforced against tier-2 code.** A tier-2
+   plugin without `approvals.render` can still draw an approval card and call
+   the decision route. Against tier-2 code the grant is a label that nothing
+   derives.
+2. **Limit 1's fixed kernel frame stops branding-based spoofing, not tier-2
+   code.** A tier-2 plugin can draw a copy of the frame, or modify the real
+   one.
+3. **The server cannot tell a tier-2 plugin's approval from the user's.**
+   `POST /tool-approval/:approvalId` accepts `{ approved }` on the session
+   credential. A decision "refused when forged" can be refused only when it
+   arrives from outside the credential.
+4. **Raising a plugin to tier 2 grants full session authority, approvals
+   included.** The raise prompt must say exactly that, in those words, for
+   every plugin: "This plugin will be able to act as you in Station on every
+   device that shows it, including approving agent actions."
+
+The honest design consequence:
+
+- **High-risk grants mean two things only:**
+  - (a) a gate on which installs may be *raised* to tier 2 at all; a plugin
+    whose manifest requests one needs a tier-2 decision to hold it;
+  - (b) enforcement for tier-3 and server-side contributions, where a
+    boundary exists to enforce it.
+- Illustrative names (OPEN-7): `approvals.render` (fill the approval slot)
+  and `layout.primaryChat` (be a layout's `primary: 'chat'` renderer).
+- **The server-side approval authority must not rely on a decision rendered
+  in the client realm alone.** Options are in OPEN-11. The record's own
+  proposal is option (b): a kernel-owned confirmation, outside the shell
+  document, for high-risk approvals. The record also states plainly that
+  ordinary approvals stay decidable by tier-2 code for as long as tier 2
+  exists.
 
 ### Shared Stations
 
@@ -496,6 +570,10 @@ The manifest adds no second path for any of these.
      one. The consent listener already serves consent pages from a distinct
      origin and does not read branding. That property must hold, and the
      in-shell prompts must meet the same rule.
+   - This limit constrains *branding*. It does not constrain tier-2 code,
+     which runs in the same document as the in-shell frame (see
+     [tier 2 is the kernel's own realm](#tier-2-is-the-kernels-own-realm)).
+     Only the distinct-origin consent pages are out of tier-2 reach.
 2. **Native binary identity is build-time.** The desktop, iOS and Android app
    name, icon and bundle id live in build configuration (`tauri*.conf.json`,
    the Apple project). A distribution manifest cannot change them.
@@ -554,24 +632,35 @@ repository is public, so its fixtures use generic names and hosts.
 
 ## Threat notes: what operator discretion cannot cover
 
+- **Tier 2 is the kernel's realm.** An operator who raises a plugin to tier 2
+  gives it the user's session, the shell DOM and the approval route (see
+  [above](#tier-2-is-the-kernels-own-realm)). No grant, frame or prompt
+  inside that document constrains it afterwards. Only content pinning, the
+  distinct-origin consent pages and server-side re-validation outside the
+  credential still hold.
+- **Approvals decided from the client realm.** `POST
+  /tool-approval/:approvalId` accepts any holder of the session credential.
+  Once any tier-2 plugin exists, the server cannot attribute an approval to a
+  person. This is OPEN-11.
 - **Consent cannot attest a person.** Any caller holding a Station credential
   can preview and install, including an agent with a shell tool
   ([authority model](plugin-authority-model.md#where-consent-belongs)). A
   trust *raise* or a high-risk grant must therefore be decided on the
   distinct-origin consent listener, like the Home role, not on an ordinary
   authenticated route. Otherwise "the operator raised it" is not a fact.
-- **Tier 2 plugins are not isolated from each other.** Every bundle's shim
-  assigns `globalThis.require`, so the first in-process plugin loaded controls
-  module resolution for the rest. Trusting one unsigned plugin at tier 2
-  therefore extends to every tier-2 plugin, Kontour's approval renderer
-  included. Tier 2 is one realm (OPEN-2).
+- **Module resolution is shared with the kernel's realm.** Every bundle's
+  shim assigns `globalThis.require`, so the first in-process plugin loaded
+  controls how later plugins resolve `react` and the credentialed SDK client.
+  This is one visible instance of the realm problem above, not a separate
+  plugin-to-plugin issue (OPEN-2).
 - **Digest pinning covers bytes on disk, not code fetched at runtime.**
   [`plugin-content-integrity.ts`](../../src-server/services/plugins/plugin-content-integrity.ts)
-  states this limit. The remaining nonce assignment on the cross-origin inline
-  path is how in-process code mints undeclared scripts. The tier-3 frame
-  receives no nonce, so the owner's "fix the nonce before claiming sandboxed"
-  is discharged for frames. It still gates any claim that a tier-2 pin bounds
-  what runs.
+  states this limit. The remaining nonce assignment on the cross-origin
+  inline path is how in-process code mints undeclared scripts.
+  - *This record's reading* of the owner's condition ("fix the CSP-nonce
+    handoff before claiming sandboxed") is that it is already met for tier-3
+    frames, which receive no nonce.
+  - It still gates any claim that a tier-2 pin bounds what runs.
 - **Server-side contributions are unconfined at every tier.** Only disclosure
   and grants bound them.
 - **Paired devices inherit tier-2 code.** An in-process plugin runs with the
@@ -592,12 +681,16 @@ repository is public, so its fixtures use generic names and hosts.
     possible future" becomes this decision.
   - Its Home row moves from "pane" to "required slot filled by a plugin".
 - **[plugin-authority-model.md](plugin-authority-model.md)**
-  - Open question 2 is answered: install consent defaults to full trust only
-    for Kontour-signed plugins, per install, and the operator can lower it.
+  - Open question 2 is answered by the owner: install consent starts at full
+    trust for Kontour-signed plugins and sandboxed for unsigned ones, per
+    install, and the operator can change either. The publisher-signed default
+    remains open (OPEN-3).
   - "Updates launder consent" is addressed by re-prompting on new
     capabilities and a new key.
   - Its per-contribution question (1) keeps its answer: panes are confinable,
     `serverModule` only disclosable.
+  - Its "attribution is the missing ingredient" argument is why high-risk
+    grants cannot be enforced at tier 2.
 - **[shell-ownership-and-boards.md](shell-ownership-and-boards.md)**
   - D1 gains the subject axis, clone, templates and project policy. D2 stands
     and gains a personal hide/disable layer.
@@ -608,64 +701,117 @@ repository is public, so its fixtures use generic names and hosts.
 
 ## Open items
 
-- **OPEN-1. Exact slot set.** Home and the approval surface are slots. Is the
-  primary chat surface one slot with approvals, or two? A split lets a
-  third-party chat exist without approval-render authority.
-- **OPEN-2. Plugin-to-plugin isolation at tier 2.** The shared
-  `globalThis.require` shim means operator trust in one tier-2 plugin is trust
-  in all of them. Should a raised unsigned plugin share a realm with the
-  approval-slot filler, or must high-risk slot fillers load before, and apart
-  from, operator-raised code? Evidence: [build.ts](../../packages/shared/src/build.ts),
-  [authority model](plugin-authority-model.md#a-threat-no-disclosure-can-express).
+"Proposed" marks a default suggested by the coordinating review of this
+record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
+
+- **OPEN-1. Exact slot set.** Is the approval surface one slot with the
+  primary chat, or its own? A split lets a third-party chat exist without
+  approval-render authority.
+  *Proposed:* approvals is its own required slot, separate from chat.
+- **OPEN-2. Module resolution in the kernel's realm.** The shared
+  `globalThis.require` shim
+  ([build.ts](../../packages/shared/src/build.ts);
+  [authority model](plugin-authority-model.md#a-threat-no-disclosure-can-express))
+  lets any in-process plugin substitute the modules later plugins, and
+  kernel-adjacent code, resolve. Fixing the shim (per-bundle resolution from a
+  host-frozen table) removes one attack path. It does not change the
+  tier-2 conclusion above, because tier-2 code can reach the originals
+  anyway. Options:
+  - fix the shim as hygiene and keep the tier-2 statement unchanged;
+  - load the approval-slot filler before any operator-raised plugin, and
+    accept that ordering is not a boundary;
+  - restrict tier 2 to Kontour-signed plugins while any high-risk slot is
+    filled in-process.
 - **OPEN-3. Publisher-signed default.** The owner fixed defaults for
-  Kontour-signed and unsigned only. This record proposes tier 3 for
-  publisher-signed until raised, because `keyId` is a label, not a verified
+  Kontour-signed and unsigned only. `keyId` is a label, not a verified
   publisher identity ([registry-trust-policy.md](registry-trust-policy.md)).
+  *Proposed:* publisher-signed plugins start sandboxed; only Kontour's key
+  starts trusted.
 - **OPEN-4. Kontour key custody.** "Kontour-signed" needs a shipped anchor key,
   a rotation rule and a revocation path. Today's anchors are per-registry
   operator configuration. The relationship to ADR 0020's split updater keys
-  is undecided.
+  is undecided. Release signing for station-plugins lands wherever this is
+  decided.
 - **OPEN-5. Who installs project layouts.** The owner said "admin or
-  operator", but `manage-extensions` belongs only to `owner` today. Widening
-  it to `admin` is a membership change with its own review.
+  operator", but `manage-extensions` belongs only to `owner` today.
+  *Proposed:* add a project-scoped "manage layouts" permission for project
+  admins; instance installs stay owner-only.
 - **OPEN-6. Sign-in in a manifest.** A manifest may configure the kernel's
   OIDC adapter. Selecting an authentication *module*
   (`STATION_AUTHENTICATION_MODULE`) loads code into the kernel's sign-in
-  path. This record keeps module selection an operator deployment choice
-  outside manifests, pending owner confirmation.
+  path.
+  *Proposed:* a manifest may configure sign-in; selecting a code module needs
+  a trusted install plus an explicit operator grant.
 - **OPEN-7. Grant names and vocabulary.** `approvals.render` and
   `layout.primaryChat` are illustrative. The typed permission vocabulary
   (archive#3534) may own them.
-- **OPEN-8. Instance-shared Boards role.** Carried from
-  shell-ownership-and-boards: is operator-only authorship enough?
-- **OPEN-9. Member disable of a slot filler.** May a member hide an
-  operator-overridden Home and see the default filler instead? This record
-  assumes yes, as a personal preference.
+- **OPEN-8. Instance-shared Boards authorship.** Carried from
+  shell-ownership-and-boards.
+  *Proposed:* the operator, plus members the operator grants it to, may author
+  instance-shared Boards.
+- **OPEN-9. Member hiding of a slot override.** May a member hide an
+  operator-overridden Home and see the default filler instead?
+  *Proposed:* no. Members may not hide the operator's Home override.
 - **OPEN-10. Brand rule source.** The `@kontourai/ui` DESIGN.md rules could not
-  be verified from the installed package. The validator comment points at a
-  later `@kontourai/ui/contrast` module (1.16.0) that Station does not yet use.
+  be verified from the installed package (1.12.0). The validator comment
+  points at a later `@kontourai/ui/contrast` module (1.16.0).
+  *Proposed:* bump `@kontourai/ui` to current in slice h.
+- **OPEN-11. Approval decisions from the client realm.** The server accepts a
+  tool-approval decision from any session-credential holder, which includes
+  every tier-2 plugin. Options:
+  - (a) Decide every approval on a kernel-owned channel outside the shell
+    document: the distinct-origin consent listener, or a native dialog on
+    desktop and mobile. This is strongest and costs a context switch per
+    approval.
+  - (b) Re-confirm only high-risk approvals on that channel. Examples are
+    full-access posture, destructive tools, and anything an approval policy
+    marks. Ordinary approvals stay decidable in the shell.
+  - (c) Allow tier 2 only for Kontour-signed plugins while approvals are
+    decided in-shell, so the realm holds only code Kontour signed.
+  - (d) Accept and disclose: tier 2 equals the user. The raise prompt says so,
+    and nothing else changes.
+
+  *This record's proposal* is (b), with (d)'s disclosure in every raise
+  prompt. It is not an owner decision.
 
 ## Delivery plan
 
 Each slice is one pull request unless noted. **[security]** marks a slice
 that touches a security boundary and needs an independent security review
-before merge. Every named test must fail when the slice's behavior is
-reverted; each slice records that fault injection in its pull request.
+before merge.
+
+**Common acceptance criteria for every slice:**
+
+- Every named test fails when the slice's behavior is reverted, and the pull
+  request records that fault injection.
+- An existing user's persisted state survives the slice. Where a slice
+  changes how stored data is read, it names a migration test that starts
+  from a fixture in the exact shape today's writer produces.
+- The slice updates the guides, references and review-ledger records it
+  affects. Documentation is not deferred to slice m.
 
 | Slice | Depends on | Security |
 | --- | --- | --- |
 | a. Layout contract fields and generic host | — | |
 | b. Owner × subject | — | [security] |
 | c. Board UX | b (for save-as) | |
-| d. Trust model and CSP nonce | — | [security] |
-| e. Safe mode | — | [security] |
-| f. Distribution manifest, precedence, reset | d | [security] |
-| l. Distribution branding and defaults | f | [security] |
-| g. station-plugins repo, Board extraction, manifests | d, f, l | [security] |
-| h. Coding → plugin | a, g | |
-| i. Home → plugin (slot) | g, required-slot resolver from e or its own sub-slice | [security] |
-| j. Inbox/Chat → plugin | a, d, h, i's slot resolver | [security] |
-| k. Plugin authoring catch-up | docs part: —; signing and registry: d | [security] (signing) |
+| d1. Trust records, key and digest pinning, migration | #1521 | [security] |
+| d2. Per-plugin capabilities, high-risk class, update re-prompt | d1 | [security] |
+| d3. Raise on the consent listener; retire the remote-bundle store | d1 | [security] |
+| d4. Cross-origin nonce fix | — | [security] |
+| e. Required-slot resolver | — | [security] |
+| f. Safe mode | e | [security] |
+| g. Distribution manifest, precedence, reset | d1, OPEN-4 | [security] |
+| h. Distribution branding and defaults | g | [security] |
+| i1. station-plugins repo scaffold and starter template | — | |
+| i2. Board extraction as an installed plugin, with migration | d1, i1 | [security] |
+| i3. kontour-default and acme manifests | g, h, i2, OPEN-4 | [security] |
+| j. Coding → plugin, with migration | a, i2 | |
+| k. Home → plugin, with migration | e, i2 | [security] |
+| l. Inbox/Chat → plugin, approval decisions | a, d2, e, j, OPEN-11 | [security] |
+| m. Plugin authoring | docs part: —; signing and registry: d1, OPEN-4 | [security] (signing) |
+
+Browser and Device panes follow i2's pattern as their own slices.
 
 ### a. Layout contract fields and a generic host
 
@@ -691,7 +837,7 @@ Proof: a real-browser parity spec that runs the same assertions against
 built-in Coding and against the fixture layout. Reverting the generic
 derivation (so only `type === 'coding'` works) must fail the fixture half.
 
-### b. Owner × subject
+### b. Owner × subject [security]
 
 - Add a `subject` contract field with one derivation function.
 - Personal project layouts, templates, clone, and the per-project
@@ -707,9 +853,11 @@ Acceptance:
   `allowed-plugins`, it is allowed only from the allowed list.
 - Clone leaves the source unchanged.
 - A template opened on P binds to P without writing to P.
+- Migration: existing Boards (principal-owned, no subject) read unchanged.
 
 Proof: server route tests with two authenticated principals. Removing the
-subject check or the policy check must fail them.
+subject check or the policy check must fail them. A fixture of today's Board
+record must round-trip.
 
 ### c. Board UX
 
@@ -719,60 +867,131 @@ subject check or the policy check must fail them.
   `PUT /api/me/layouts/:slug`.
 - Reorder Boards.
 - "Save as my layout" (from slice b).
-- Instance-shared Boards: operator-only route and UI, listed after personal
-  Boards and marked shared.
+- Instance-shared Boards: route and UI for their authors (OPEN-8), listed
+  after personal Boards and marked shared.
 
 Acceptance:
 
 - A new user with zero Boards sees the `+`.
 - Adding a pane persists across reload and a second device.
 - Reorder persists.
-- A non-operator cannot create or edit an instance Board (403). A member
-  sees it as read-only.
+- A principal without authorship cannot create or edit an instance Board
+  (403). A member sees it as read-only.
 
 Proof: a real-browser spec for the first-Board path and add-pane, and route
 tests for instance-Board authority. Hiding the `+` again must fail the first.
 
-### d. Trust model and CSP nonce [security]
+### d1. Trust records, key and digest pinning, migration [security]
 
-- Install trust records pinned to key plus digest, with provenance
-  classification from verified signatures (building on #1521).
-- Per-plugin capability offering, mapping tier to renderer capabilities.
-- Update re-prompt on a new capability or a different key.
-- The high-risk grant class.
-- Trust raises decided on the distinct-origin consent listener.
-- Remove the nonce assignment from the cross-origin inline bundle path, by
-  serving the bundle by URL or refusing it.
+- Add the install trust record, with provenance from verified signatures.
+  This depends on #1521 consuming verified claims, and on OPEN-4 for what
+  "Kontour-signed" verifies against.
+- Pin to key plus digest.
+- **Migration:** every plugin installed before d1 gets a grandfathered record
+  at its current effective tier, marked `grandfathered`, with its current
+  digest and the tier it runs at today. The plugin manager surfaces
+  grandfathered records for an explicit operator decision. Nothing drops to
+  tier 3 silently, and no existing pane mounts `unavailable` because of d1.
 
 Acceptance:
 
-- An unsigned plugin installs at tier 3 and its pane mounts in a frame.
-- The same plugin raised by the operator mounts in-process. A raise attempted
-  through an ordinary authenticated route is refused.
-- An update adding `agents.invoke` does not activate until consent is given.
-- An update signed by another key lands untrusted.
-- No bundle script element carries the shell nonce on any path.
+- A new unsigned install records tier 3.
+- A new Kontour-signed install records tier 2.
+- A changed digest on the same key keeps the tier.
+- A different key produces a new, untrusted decision.
+- A Station upgraded with an in-process plugin already installed still
+  mounts that plugin in-process, and lists it as grandfathered.
+
+Proof: installer unit tests per rule, and a migration test that starts from
+today's installation and grant files (exact writer shape) and asserts the
+pane still selects `trusted-plugin-react`.
+
+### d2. Per-plugin capabilities, high-risk class, update re-prompt [security]
+
+- The host offers renderer capabilities per plugin from its trust record,
+  replacing the client-wide frames flag.
+- The high-risk grant class, enforceable for tier-3 and server-side
+  contributions. For tier 2 it gates the raise only.
+- An update requesting any new capability does not activate until consent
+  is given.
+
+Acceptance:
+
+- A tier-3 plugin cannot select `trusted-plugin-react`.
+- An update adding `agents.invoke` stays inactive until consent is given.
+- A tier-3 plugin requesting `approvals.render` is refused.
+
+Proof: frame-mount and installer tests, each failing when its rule is
+reverted.
+
+### d3. Raise on the consent listener; retire the remote-bundle store [security]
+
+- Raising a plugin to tier 2, and any high-risk grant, is decided only on the
+  distinct-origin consent listener.
+- The prompt uses the exact tier-2 disclosure wording from
+  [tier 2 is the kernel's own realm](#tier-2-is-the-kernels-own-realm) and
+  lists who is affected.
+- Retire `remotePluginBundlesAllowed`: remote-Station bundles run at tier 3
+  on the device.
+- **Migration:** a device that had admitted a remote Station's bundles sees
+  them in frames, or `unavailable` with a reason, and is told why once.
+
+Acceptance:
+
+- A raise sent to an ordinary authenticated route is refused.
+- The consent page shows the disclosure text.
+- A stored `allowRemoteBundles` value no longer admits in-process code.
 
 Proof:
-- installer and route tests for each rule;
-- a CSP test asserting no plugin script receives a nonce, including the
-  cross-origin path;
-- a frame-mount test proving tier 3 cannot select `trusted-plugin-react`.
+- a route test for the refused raise;
+- a consent-page render test asserting the disclosure string;
+- a browser test with the legacy `localStorage` key set, asserting no
+  in-process remote bundle loads.
 
-Each must fail when its rule is reverted.
+### d4. Cross-origin nonce fix [security]
 
-### e. Safe mode [security]
+- Serve cross-origin bundles by URL, or refuse them. Drop the nonce
+  assignment in `executeBundleInline`.
+
+Acceptance:
+
+- No plugin script element carries the shell nonce on any path.
+
+Proof: a CSP test covering the cross-origin path. Restoring the assignment
+must fail it.
+
+### e. Required-slot resolver [security]
+
+- One resolver for the required slots (OPEN-1). It is derived on every read
+  from the live installation.
+- Overrides can be added and removed. The default filler can be neither
+  uninstalled nor disabled.
+- It returns the safe-mode signal only when the default filler fails.
+
+Acceptance:
+
+- The parser and installer reject each of these, and a test pins each
+  rejection:
+  - a manifest or configuration that sets a slot to null, empty or `none`;
+  - uninstalling a default filler;
+  - disabling a default filler.
+- A broken, disabled or uninstalled override resolves to the default filler.
+
+Proof: resolver unit tests and route tests for the refusals. A resolver
+that can return an empty slot must fail them.
+
+### f. Safe mode [security]
 
 - Kernel boot state with explicit entry: a CLI flag, a Settings action and a
   reserved URL.
-- Automatic entry when no slot or working layout resolves.
+- Automatic entry when no working layout resolves or a default filler fails.
 - It loads no plugin browser code.
 - Add its path to the reserved plugin identities.
 
 Acceptance:
 
-- With every plugin failing to load, Station boots into safe mode showing the
-  plugin manager.
+- With every plugin, default fillers included, failing to load, Station
+  boots into safe mode showing the plugin manager.
 - In safe mode, no plugin bundle request is made.
 - An operator can disable a plugin and leave.
 - A plugin claiming the safe-mode path is refused at install.
@@ -781,14 +1000,18 @@ Proof: a real-browser spec with a broken plugin set, asserting both the
 rendered surface and zero bundle requests. Removing the automatic entry must
 fail it.
 
-### f. Distribution manifest, precedence and reset [security]
+### g. Distribution manifest, precedence and reset [security]
 
-- Add the `distribution` contribution kind: plugins with pins and keys,
-  extends/replaces, a policy section that produces a `DistributionProfile`,
-  and trust proposals shown item by item at install.
+- Add the `distribution` contribution kind:
+  - plugins with pins and keys;
+  - extends or replaces;
+  - a policy section that produces a `DistributionProfile`;
+  - trust proposals shown item by item at install.
 - Three-layer precedence.
 - "Reset to distribution defaults".
 - Install at first run, later, or from configuration.
+- **Migration:** a Station with an inline `distributionProfile` and no
+  manifest keeps its catalog exactly.
 
 Acceptance:
 
@@ -799,11 +1022,12 @@ Acceptance:
   records unchanged.
 - A manifest pinning a key that does not match the fetched plugin is refused
   before any tree write.
+- The legacy inline profile fixture produces the same catalog as before.
 
-Proof: installer and precedence unit tests, plus one route test with a
-mismatched key.
+Proof: installer and precedence unit tests, one route test with a mismatched
+key, and a catalog-equality test for the legacy profile.
 
-### l. Distribution branding and defaults [security]
+### h. Distribution branding and defaults [security]
 
 - Manifest sections for brand, setup and defaults, grounded on the existing
   `branding` provider, the theme validator, the OIDC configuration file and
@@ -811,113 +1035,154 @@ mismatched key.
 - New hooks for favicon, title, onboarding copy, empty states, help links and
   legal links.
 - A fixed kernel-prompt frame with a provenance line.
+- Bump `@kontourai/ui` if OPEN-10's proposal is accepted.
 
 Acceptance:
 
 - The acme example changes the product name, logo, favicon, theme tokens and
-  onboarding copy.
-- Kernel prompts rendered under acme branding (consent, approval, sign-in
-  recovery, safe mode) keep the Station frame, show "acme-distribution by
-  <publisher>", and accept only tint.
-- A low-contrast token set is refused as a whole and the defaults stay.
+  onboarding copy. Each is asserted from the rendered DOM and computed
+  styles.
+- Under acme branding, the kernel prompts (consent, approval, sign-in
+  recovery, safe mode) keep the Station frame and the provenance line
+  "acme-distribution by <publisher>". A theme that tries to hide or restyle
+  the frame beyond tint is refused.
+- A low-contrast token set is refused as a whole and the defaults stay. A
+  rendered-contrast assertion on the kernel frame's text meets AA under the
+  acme theme.
 
-Proof:
-- a real-browser spec with screenshots reviewed for the acme case and the
-  kernel frames;
-- a unit test that feeds a low-contrast set and asserts refusal;
-- a test that an acme theme cannot remove the provenance line.
+Proof: a real-browser spec asserting the computed values above, and unit
+tests for the two refusals.
 
-### g. station-plugins repo, Board extraction and manifests [security]
+### i1. station-plugins repo scaffold and starter template
 
-- Scaffold `kontourai/station-plugins` with its release and signing
-  workflow.
-- Move `board-pane` there as an installed plugin; `src-ui` no longer imports
-  it.
-- Publish `kontour-default` and `examples/acme-distribution`.
-- Station CI installs pinned released versions.
+- Create `kontourai/station-plugins` with `plugins/`, `distributions/`,
+  `examples/` and `templates/plugin-starter`, plus its CI.
 
 Acceptance:
 
-- A fresh Station with kontour-default renders the Console Board through the
-  installer, not a compiled import.
+- The starter template builds and installs into a test Station through the
+  ordinary consent install.
+
+Proof: the repo's CI builds the starter, and a Station e2e test installs it.
+
+### i2. Board extraction as an installed plugin, with migration [security]
+
+- Move `board-pane` to station-plugins; `src-ui` no longer imports it.
+- Station CI installs a pinned released version.
+- **Migration:** D2 fails closed on plugin panes. Existing Boards, project
+  layouts and dock placements that reference the Board pane keep rendering:
+  the extracted Board plugin gets a grandfathered visibility grant for every
+  principal who could see the built-in, and the pane id is preserved or
+  mapped once.
+
+Acceptance:
+
+- A fresh Station renders the Console Board through the installer.
 - `src-ui` has no dependency on the board package.
-- CI fails when the pinned Board release is missing or its signature does
-  not verify.
+- A Station upgraded with a personal Board holding the Board pane still
+  renders it for its owner.
+- CI fails when the pinned release is missing.
 
 Proof:
-- a dependency scan asserting no `@kontourai/station-board-pane` import in
-  `src-ui`;
-- an end-to-end spec installing from the pinned release;
-- a CI job run against a deliberately tampered artifact.
+- a dependency scan (structural, paired with the behavioral tests);
+- an end-to-end install from the pinned release;
+- a migration test from a Board record in today's exact shape.
 
-Browser and Device panes follow as sub-slices of g.
+### i3. kontour-default and acme manifests [security]
 
-### h. Coding → plugin
+- Publish `distributions/kontour-default` and `examples/acme-distribution`.
+- Release signing uses whatever OPEN-4 decides.
+
+Acceptance:
+
+- A fresh Station installing kontour-default matches today's default
+  experience.
+- acme extends it, swaps the Coding layout and Home, and sets branding and
+  SSO configuration.
+- A tampered artifact fails verification in CI.
+
+Proof: e2e install of both manifests, and a CI run against a tampered
+artifact.
+
+### j. Coding → plugin, with migration
 
 - Coding ships from station-plugins using slice a's fields.
 - Delete every `type === 'coding'` site.
+- **Migration:** persisted project layouts with `type: 'coding'` are read
+  as the Coding plugin's layout, with their configuration preserved. The
+  mapping is one explicit rule, not a remaining special case, and it is
+  removed only after a recorded migration of stored records.
 
 Acceptance:
 
 - Slice a's parity spec passes with Coding installed as a plugin.
-- The acme example's replacement Coding layout renders in its place.
+- The acme replacement Coding layout renders in its place.
+- A project with a stored `type: 'coding'` layout from today opens unchanged.
 
-Proof: the parity spec, plus a scan asserting no `type === 'coding'` in
-`src-ui` (a structural rule, paired with the behavioral spec).
+Proof: the parity spec; a migration test from today's stored layout shape;
+a scan asserting no `type === 'coding'` in `src-ui` (structural, paired with
+the behavioral spec).
 
-### i. Home → plugin (required slot) [security]
+### k. Home → plugin, with migration [security]
 
-- Add the required-slot resolver, built here if slice e has not landed.
-- Kontour's Home ships as the default filler: bundled with the default set,
-  not uninstallable, overridable.
+- Kontour's Home ships as the default filler of the Home slot through slice
+  e's resolver.
 - Overrides requesting elevated grants go through the existing Home-role
   consent channel.
+- **Migration:** an existing `workspace-home-role.json` grant becomes a Home
+  slot override with the same standing rules (`lapsed` on uninstall, version
+  or byte change).
 
 Acceptance:
 
 - Uninstalling or breaking an override returns the root route to the default
   Home.
-- Uninstalling the default filler is refused.
-- "No Home" cannot be expressed in any configuration.
+- An existing granted Home still mounts after the upgrade. A lapsed one
+  still falls back.
 
-Proof: resolver unit tests over the live installation and a real-browser
-spec that breaks the override. A resolver that returns an empty slot must
-fail them.
+Proof: a real-browser spec that breaks the override, and a migration test
+from today's grant file shape.
 
-### j. Inbox/Chat → plugin, with approval-render grants [security]
+### l. Inbox/Chat → plugin, approval decisions [security]
 
-- Kontour's chat and inbox ship as the default filler of the chat and
-  approval slot (or slots; OPEN-1), holding `approvals.render` and
-  `layout.primaryChat` through a tier-2 install.
-- The server remains the only authority that decides an approval.
+- Kontour's chat and inbox ship as default fillers of the chat and approval
+  slots (OPEN-1). They are tier 2 by Kontour signature and hold
+  `approvals.render` and `layout.primaryChat`.
+- The server stays the only authority that decides an approval.
+- Implement OPEN-11's chosen option. Under the proposal, high-risk approvals
+  are re-confirmed on a kernel-owned channel outside the shell document.
 
 Acceptance:
 
 - A tier-3 plugin requesting `approvals.render` is refused.
 - With the chat plugin overridden by a broken plugin, pending approvals
   still render through the default filler.
-- An approval decision made from a plugin surface is re-validated server
-  side.
+- Under the proposal: a high-risk approval sent only through
+  `POST /tool-approval/:approvalId` with the session credential is held until
+  the kernel-channel confirmation arrives.
+- A test demonstrates the disclosed limit: an ordinary approval from the
+  session credential is still accepted.
 
-Proof: grant refusal tests, a fallback spec with a broken override, and a
-server test that a forged decision is refused.
+Proof: grant-refusal tests, a fallback spec with a broken override, and
+server tests for both the held high-risk decision and the documented
+ordinary-approval behavior.
 
-### k. Plugin authoring
+### m. Plugin authoring
 
 1. Docs catch-up: update build-your-first-plugin.md and plugins.md for the
    preview pane, proposals in Needs attention, and Publish to git.
 2. One-click install from preview, still through the ordinary consent
    install.
-3. Signing at publish.
+3. Signing at publish, per OPEN-4.
 4. Registry publish.
 
 Acceptance:
 
 - Preview's install action opens the same consent flow as the Plugins page
   and cannot skip it.
-- A published package verifies against the publisher key and installs as
-  publisher-signed.
+- A published package verifies against the publisher key and installs with
+  publisher-signed provenance.
 
-Proof: a route test that the preview install carries a consent decision; a
-publish-then-install test with signature verification. Parts 3 and 4 are
+Proof: a route test that the preview install carries a consent decision, and
+a publish-then-install test with signature verification. Parts 3 and 4 are
 [security].

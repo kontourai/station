@@ -14,12 +14,14 @@
 > every contribution, framework, or external product mentioned below.
 
 > **Amended 2026-09-29.** [shell-plugins-distributions.md](shell-plugins-distributions.md)
-> records owner answers to open question 2 below: install trust is per install,
-> pinned to publisher key plus content digest, defaulting to in-process only for
-> Kontour-signed plugins. An update from a different key or requesting new
-> capabilities re-prompts, which is that record's answer to "updates launder
-> consent". It keeps this note's threat findings as open items rather than
-> treating them as resolved.
+> records owner answers to open question 2 below. Install trust is per install
+> and pinned to publisher key plus content digest. Kontour-signed plugins start
+> in-process and unsigned plugins start sandboxed. The default for
+> publisher-signed plugins is a proposal pending the owner. An update from a
+> different key, or one requesting new capabilities, re-prompts; that is the
+> record's answer to "updates launder consent". The record keeps this note's
+> threat findings as open items rather than treating them as resolved, and it
+> states that in-process (tier 2) code runs with the kernel's own authority.
 
 Status: design note, 2026-08-25. Written while shaping station#4220 (one plugin
 format, user-chosen runtime) and station#4190 (dogfood the iframe tier).
