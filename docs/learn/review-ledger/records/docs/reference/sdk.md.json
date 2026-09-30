@@ -494,7 +494,7 @@
 
     {"path":"packages/contracts/src/connection-recovery.ts","digest":"1bac2d14d557e109df4b1f28654f80f2cf83f712ee63995646d911f57f4a6dea","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
 
-    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"cf074035f01b52f49bc0cf675075b1657083c9218150630f97d2408d6db561fd","revision":"a989e51f737e2bed93b379db3032a6cb04c940d1"}
+    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"7c23eeae782d1d02efe8af19fad1d1ab37583a19ea8e33d706a621fcf4489981","revision":"51eff3e3c132dc9d4816cc9f1cd62fc9c48764b6"}
   ],
 
   "checks": [
