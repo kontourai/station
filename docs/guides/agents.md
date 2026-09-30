@@ -389,10 +389,11 @@ caution, negative and active `.tone-*` classes with AA-checked pairs. Custom sta
 styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
 `--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
 `--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
-soft fill), and always carry a text label; color only reinforces it. Newer tokens
-such as `--k-status-contrast`, `--k-trust-*`, `--k-action` and `--k-focus`
-exist only in later package versions (1.12.0 defines none of them), so check
-`node_modules/@kontourai/ui/tokens/tokens.css` before using one. Follow the
+soft fill), and always carry a text label; color only reinforces it. The
+installed package (1.16.0) also defines `--k-status-contrast` (text on a
+status fill), the `--k-trust-*` trust-state inks, fills and line styles, and
+the `--k-action` and `--k-focus` interaction roles; check
+`node_modules/@kontourai/ui/tokens/tokens.css` before using a token. Follow the
 owning component's button style and [frontend guidance](../patterns/frontend.md).
 
 ### Styling

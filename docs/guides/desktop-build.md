@@ -110,7 +110,7 @@ latest upstream releases:
 - Rust `tauri` 2.11.5
 - Rust `tauri-build` 2.6.3
 - npm `@tauri-apps/api` `^2.11.1`
-- npm `@tauri-apps/cli` `^2.11.4`
+- npm `@tauri-apps/cli` `^2.11.5`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The

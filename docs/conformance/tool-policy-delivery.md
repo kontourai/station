@@ -2,7 +2,7 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.261; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.278; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
@@ -19,9 +19,10 @@ for plain calls only (#2933). A pattern never answers an escalation or a plan
 exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
 `tool` or `edit-mode` case of the session-grant computation below. An
 autoApprove match in the staged evaluator (`toolGrant`) is therefore not
-returned as a `PreToolUse` allow. Claude Code 2.1.261 re-checks only deny
-rules, ask rules, safety checks and user-interaction tools after a hook allow,
-so the allow would have skipped its working-directory check. The hook states no
+returned as a `PreToolUse` allow. After a hook allow, Claude Code 2.1.278
+(read in its bundled binary, as 2.1.261 was first) re-checks only deny rules,
+ask rules, safety checks and user-interaction tools, so the allow would have
+skipped its working-directory check. The hook states no
 opinion, and the engine asks `canUseTool` for anything it does not allow
 itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
 (`switch_mode` kind or `ExitPlanMode`). A session answer to an ACP plan exit is
@@ -90,9 +91,10 @@ falls back to its title/tool label. The Ask-mode chip copy says the engine asks 
 do not already allow, rather than claiming a floor Station does not impose.
 
 The standing grant covers calls to the tool, never an escalation beyond the
-call (#2915; #2911 set the same rule for Codex). The lockfile pins Agent SDK
-0.3.261, which bundles Claude Code 2.1.261, and that engine signals
-escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
+call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
+SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
+escalations in several shapes, first read in 2.1.261 and re-checked in
+2.1.278. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
 `Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
 drops the reason's type. Edit and Write outside them suggest `addDirectories`

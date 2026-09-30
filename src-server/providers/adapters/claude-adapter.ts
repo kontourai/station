@@ -922,8 +922,8 @@ function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
   // from the tool name alone, before the engine has checked the call. A hook
   // `allow` would skip the engine's working-directory check outright, so an
   // autoApproved Read outside the session's directories would run unasked
-  // (Claude Code 2.1.261 re-checks only deny rules, ask rules, safety checks
-  // and user-interaction tools after a hook allow). Express no opinion
+  // (Claude Code 2.1.278, as 2.1.261 before it, re-checks only deny rules,
+  // ask rules, safety checks and user-interaction tools after a hook allow). Express no opinion
   // instead: the engine allows what it allows itself and asks `canUseTool`
   // for the rest, where the same patterns answer plain calls and every
   // escalation or plan exit reaches a person.
