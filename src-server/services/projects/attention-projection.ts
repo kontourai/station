@@ -1193,10 +1193,7 @@ export class AttentionProjectionService {
             // only when true; a session tier that cannot pass the pairing
             // family's authorization gets the remedy instead of dead buttons.
             viewerCanDecide,
-            // The Connections hub is where pairing/device management lives;
-            // the decision itself happens through this item's own
-            // Approve/Deny, which call the gated `/api/pairing` routes.
-            openHref: '/connections',
+            openHref: `/notifications?pairing=${encodeURIComponent(request.requestId)}`,
             source: {
               requestId: request.requestId,
               ...(notificationId ? { notificationId } : {}),

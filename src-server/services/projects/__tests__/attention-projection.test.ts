@@ -2532,7 +2532,7 @@ describe('device pairing requests need attention (#765 D5)', () => {
         // No viewer capability supplied — an unknown caller fails closed:
         // the projection must never claim decidability nothing derived.
         viewerCanDecide: false,
-        openHref: '/connections',
+        openHref: '/notifications?pairing=pair-req-1',
         source: { requestId: 'pair-req-1' },
       },
     ]);

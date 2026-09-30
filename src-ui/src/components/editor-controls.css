@@ -317,14 +317,15 @@
  * which is what a floor declared per page looks like on the way to being
  * missing on the next one.
  *
- * `@media (pointer: coarse)` unqualified, not the width-first mobile query:
- * a tablet at 834x1112 matches neither `max-width: 768px` nor
- * `(max-height: 540px) and (pointer: coarse)` while its user still has a
- * thumb. Same form as `WorkspacePaneAvailabilityList.css` and `chat.css` use
- * for their own targets (WCAG 2.5.5). `--icon` keeps its own width floor
- * because a 32px square needs both dimensions raised.
+ * Narrow layouts and coarse pointers both need the 44px floor, including
+ * tablets wider than the phone breakpoint. Icon buttons need both dimensions.
  */
-@media (pointer: coarse) {
+@media (max-width: 768px), (pointer: coarse) {
+  .editor-input,
+  .editor-select {
+    min-height: 44px;
+  }
+
   .editor-btn,
   .editor-btn--small {
     min-height: 44px;
