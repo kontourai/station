@@ -10163,8 +10163,8 @@
     },
     {
       "path": "docs/design/shell-plugins-distributions.md",
-      "documentDigest": "49b87ae94b9d7c6be10e42203847afc6ddee8568199ebae525329e858f26a7c9",
-      "sourceRevision": "5aa5a00ce0147c5344f5da916b2441329b3fae89",
+      "documentDigest": "40f3eadb43473a87293221ad6b16799651ec5578d802eed1d358ab6668912e04",
+      "sourceRevision": "7e020f1fa8e56b768be9d3f8973f237030b81e5c",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted-direction record of the 2026-09-29 owner decisions (shell kernel, per-install trust, required slots, layout owner x subject, layout contract fields, distribution manifests, public plugins repo) with a source-inspected current-state section, threat notes, open items and a sliced delivery plan.",
@@ -10229,11 +10229,16 @@
         {
           "path": "src-ui/src/core/remotePluginBundleConsent.ts",
           "digest": "072d17e0411a6196054b37d74cc6325777d880455c8e90d7c419d89eea34e75c"
+        },
+        {
+          "path": "src-server/services/approvals/approval-registry.ts",
+          "digest": "3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff"
         }
       ],
       "checks": [
         "2026-09-29 new record. Current-state claims checked by source inspection at 2e8ddc0f7: LayoutOwner/layoutOwner (no subject field); Board create/rename/promote routes and sidebar (section returns null with zero Boards; only rename calls the update mutation); instance layouts storage-only; plugin-visibility-service grants; manage-extensions owner-only in project-membership.ts; type==='coding' sites in project-layout-kind, ProjectLayoutRenderer, ProjectPage, useChatDockViewModel, LayoutWorkspacePane, workspacePaneDirectRoute, builtinWorkspacePaneCanonical; board-pane/basis-pane private and imported by src-ui; Home role grant via consent listener in plugin-home-role-routes.ts and built-in Home floor in workspace-home-role.ts (its 'NO production caller' docstring is stale); renderer capability selection; executeBundleInline still assigns the shell nonce (PluginRegistry.ts:686), same-origin path nonce-free; grant digest binding in plugin-permissions.ts; globalThis.require shim in packages/shared/src/build.ts; branding provider and branding-theme.ts contrast refusal; DistributionProfile contract and guide. Design proposals are not claims of behavior. No tests executed.",
-        "2026-09-29 revision after report-only review of 5aa5a00ce: added 'Tier 2 is the kernel's own realm' with its four consequences and OPEN-11 (approval decisions); checked POST /tool-approval/:approvalId accepts {approved} on the session credential (src-server/routes/agents/invoke.ts, toolApprovalSchema) and the device-local remotePluginBundlesAllowed localStorage store (src-ui/src/core/remotePluginBundleConsent.ts, PluginRegistryGate.tsx:56), which the record now retires in slice d3. Reframed OPEN-2, marked coordinator-proposed defaults as PROPOSED, noted decision 11 supersedes decision 2's no-Home clause, stated default fillers cannot be disabled and their failure enters safe mode, and rewrote the delivery plan (a, b, c, d1-d4, e resolver, f safe mode, g, h, i1-i3, j, k, l, m) with migration steps and common acceptance criteria. Design proposals are not behavior claims; no tests executed."
+        "2026-09-29 revision after report-only review of 5aa5a00ce: added 'Tier 2 is the kernel's own realm' with its four consequences and OPEN-11 (approval decisions); checked POST /tool-approval/:approvalId accepts {approved} on the session credential (src-server/routes/agents/invoke.ts, toolApprovalSchema) and the device-local remotePluginBundlesAllowed localStorage store (src-ui/src/core/remotePluginBundleConsent.ts, PluginRegistryGate.tsx:56), which the record now retires in slice d3. Reframed OPEN-2, marked coordinator-proposed defaults as PROPOSED, noted decision 11 supersedes decision 2's no-Home clause, stated default fillers cannot be disabled and their failure enters safe mode, and rewrote the delivery plan (a, b, c, d1-d4, e resolver, f safe mode, g, h, i1-i3, j, k, l, m) with migration steps and common acceptance criteria. Design proposals are not behavior claims; no tests executed.",
+        "2026-09-29 delta-review fixes: approval wording now says POST /tool-approval/:approvalId accepts {approved} from any caller holding the requesting session's authority (invoke.ts resolveAuthorized with readAuthorityForRequest and client origin; approval-registry.ts binds to the entry), which tier-2 code holds; d3 acceptance names the persisted remotePluginBundlesAllowedKey localStorage entry. Revision note: the current-state claims were inspected at 2e8ddc0f7; every cited source is byte-identical at 7e020f1fa8e56b768be9d3f8973f237030b81e5c (git diff 2e8ddc0f7 7e020f1fa8e56b768be9d3f8973f237030b81e5c over the recorded sources is empty), which is this record's sourceRevision."
       ]
     },
     {

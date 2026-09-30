@@ -258,9 +258,12 @@ behavior.
   DOM, and the SDK's credentialed client
   ([why enforcement needs a boundary](plugin-authority-model.md#why-enforcement-needs-a-boundary-precisely)).
 - A tool approval is decided by `POST /tool-approval/:approvalId` with body
-  `{ approved }` on the ordinary session credential
-  ([invoke.ts](../../src-server/routes/agents/invoke.ts)). Any code holding
-  that credential can therefore send the decision.
+  `{ approved }` ([invoke.ts](../../src-server/routes/agents/invoke.ts)). The
+  route is authority-bound. `resolveAuthorized` checks the request's
+  authority and client origin against the pending entry
+  ([approval-registry.ts](../../src-server/services/approvals/approval-registry.ts)).
+  It accepts the decision from any caller holding the requesting session's
+  authority, and code running in the shell's document holds it.
 - A device-local trust store admits a remote Station's bundles into this
   device's webview: `remotePluginBundlesAllowed`, kept in `localStorage` per
   connection ([remotePluginBundleConsent.ts](../../src-ui/src/core/remotePluginBundleConsent.ts),
@@ -401,9 +404,10 @@ server cannot tell its requests from the user's. Four consequences follow:
    code.** A tier-2 plugin can draw a copy of the frame, or modify the real
    one.
 3. **The server cannot tell a tier-2 plugin's approval from the user's.**
-   `POST /tool-approval/:approvalId` accepts `{ approved }` on the session
-   credential. A decision "refused when forged" can be refused only when it
-   arrives from outside the credential.
+   `POST /tool-approval/:approvalId` accepts `{ approved }` from any caller
+   holding the requesting session's authority, and tier-2 code holds it. A
+   decision "refused when forged" can be refused only when it arrives from
+   outside that authority.
 4. **Raising a plugin to tier 2 grants full session authority, approvals
    included.** The raise prompt must say exactly that, in those words, for
    every plugin: "This plugin will be able to act as you in Station on every
@@ -639,7 +643,8 @@ repository is public, so its fixtures use generic names and hosts.
   distinct-origin consent pages and server-side re-validation outside the
   credential still hold.
 - **Approvals decided from the client realm.** `POST
-  /tool-approval/:approvalId` accepts any holder of the session credential.
+  /tool-approval/:approvalId` accepts `{ approved }` from any caller holding
+  the requesting session's authority, which tier-2 code does.
   Once any tier-2 plugin exists, the server cannot attribute an approval to a
   person. This is OPEN-11.
 - **Consent cannot attest a person.** Any caller holding a Station credential
@@ -757,8 +762,8 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
   points at a later `@kontourai/ui/contrast` module (1.16.0).
   *Proposed:* bump `@kontourai/ui` to current in slice h.
 - **OPEN-11. Approval decisions from the client realm.** The server accepts a
-  tool-approval decision from any session-credential holder, which includes
-  every tier-2 plugin. Options:
+  tool-approval decision from any caller holding the requesting session's
+  authority, which includes every tier-2 plugin. Options:
   - (a) Decide every approval on a kernel-owned channel outside the shell
     document: the distinct-origin consent listener, or a native dialog on
     desktop and mobile. This is strongest and costs a context switch per
@@ -940,7 +945,8 @@ Acceptance:
 
 - A raise sent to an ordinary authenticated route is refused.
 - The consent page shows the disclosure text.
-- A stored `allowRemoteBundles` value no longer admits in-process code.
+- A persisted `remotePluginBundlesAllowedKey` entry in `localStorage` no
+  longer admits in-process code.
 
 Proof:
 - a route test for the refused raise;
@@ -1158,10 +1164,10 @@ Acceptance:
 - With the chat plugin overridden by a broken plugin, pending approvals
   still render through the default filler.
 - Under the proposal: a high-risk approval sent only through
-  `POST /tool-approval/:approvalId` with the session credential is held until
+  `POST /tool-approval/:approvalId` with the session's authority is held until
   the kernel-channel confirmation arrives.
-- A test demonstrates the disclosed limit: an ordinary approval from the
-  session credential is still accepted.
+- A test demonstrates the disclosed limit: an ordinary approval carrying the
+  session's authority is still accepted.
 
 Proof: grant-refusal tests, a fallback spec with a broken override, and
 server tests for both the held high-risk decision and the documented
