@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -51,7 +51,9 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -63,7 +65,7 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -79,7 +81,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -116,7 +118,9 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -128,7 +132,7 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
@@ -148,7 +152,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -189,7 +193,9 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -201,7 +207,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -229,7 +235,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -261,7 +267,9 @@
         "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): #2917 changed .tool-call__row/.tool-call__line/.tool-call__actions to wrap and restyled .tool-call__approve-btn states; this branch changes which session button ToolCallDisplay renders and its label (none for a plan exit or when nothing can be forwarded; 'Allow reading this folder\u2026', 'Allow access to this folder\u2026', 'Auto-accept file edits\u2026'). Checked together: the #2917 e2e spec passes on the merged tree, and a render of the longest labels at 360px and 720px shows the actions wrapping below the label with no horizontal overflow. The capture shows the request inspector (Approve once and Deny), which neither change alters; both sides' review notes are kept.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
         "Merge review (origin/main e8cbb9412 into #2915/#2916): Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The capture shows the request inspector (Approve once and Deny); neither the channel text colours nor the session button appears in it. Both sides' review notes are kept.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -273,7 +281,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -301,7 +309,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -332,7 +340,9 @@
         "Merge review (origin/main 91472e665 #2940/#2917 into #2915/#2916): #2917 changed .tool-call__row/.tool-call__line/.tool-call__actions to wrap and restyled .tool-call__approve-btn states; this branch changes which session button ToolCallDisplay renders and its label (none for a plan exit or when nothing can be forwarded; 'Allow reading this folder\u2026', 'Allow access to this folder\u2026', 'Auto-accept file edits\u2026'). Checked together: the #2917 e2e spec passes on the merged tree, and a render of the longest labels at 360px and 720px shows the actions wrapping below the label with no horizontal overflow. The recording inspects and closes a request without a decision, so neither change alters it; both sides' review notes are kept.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
         "Merge review (origin/main e8cbb9412 into #2915/#2916): Main's side (#2944) changed channel brand text colours in src-ui/src/index.css (no .tool-call rule) and re-recorded capture metadata; this branch's side is the session-grant notes and the inspect-request re-recording. The recording inspects and closes a request without a decision; neither change appears in it. Both sides' review notes are kept.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -344,7 +354,7 @@
       "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -356,7 +366,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -395,7 +405,9 @@
         "#2917 round 2 changes only .tool-call__approve-btn (transparent 1px border on filled variants; disabled unfilled, dashed, --text-muted; no opacity transition) in src-ui/src/index.css, plus a right-dock desktop case in tests/orchestration-chat-flow.spec.ts. Previously viewed this capture (and frame-sampled the videos); it shows no tool-call row or approval card, so none of the changed .tool-call__approve-btn selectors appears in it.",
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -407,7 +419,7 @@
       "scenario": "Knowledge Library \u2192 selected repository record",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -467,7 +479,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -484,7 +496,9 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
         "Rechecked the repository-knowledge capture: the only change in its source knowledge.ts is the body-read deadline guard in the unwrap, which alters no screen state shown.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     },
     {
@@ -496,7 +510,7 @@
       "scenario": "Knowledge Library \u2192 narrow layout",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "ef15303ade3f3a2ac68967376f15be29273b58cd",
+      "reviewedRevision": "bac5568301597a79720a56517330b13dde51bf83",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -556,7 +570,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "43966af155282afc57b95ca51fad6ed916c62ce4b7b5b8250008c4d32bb53a53"
+          "digest": "db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -573,7 +587,9 @@
         "Merge of origin/main (#2902 white-label branding roles and later) with #2917: re-checked against the combined src-ui/src/index.css, where main's hunks (channel --k-action/--k-action-contrast/--k-focus roles; --accent-primary, --text-on-accent and --accent-darker reading the action role with brand fallback) and #2917's .tool-call row/actions/approve-btn rules are both present unchanged (hunk-for-hunk against each parent). Capture bytes unchanged by either side; it shows no approval card. Main's branding-role change can shift accent-filled controls only under channel/white-label roles, which this default-channel capture does not use. No re-capture needed.",
         "#2905 index.css delta changes only the dev/beta/nightly channel blocks and comments. This capture is the release web app (no channel retint applies), so its colours and layout are unchanged. | #2905 index.css delta changes the dev/beta/nightly channel blocks, the chat-dock resize grip hover/focus fill and comments. This capture is the release web app (no channel retint applies) and its scenario does not hover or focus the dock resize handle (REASONED from the scenario, frames not re-inspected), so its pixels are unchanged.",
         "Rechecked the repository-knowledge capture: the only change in its source knowledge.ts is the body-read deadline guard in the unwrap, which alters no screen state shown.",
-        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture."
+        "index.css change in this branch is only the focus-visible outline colour rule. With no device accent and no white-label theme the painted colours are unchanged (branding-role-cascade.test.ts measures the release and channel rings), and this capture shows no device accent focus ring, so it stays current.",
+        "Checked this capture against this branch's index.css/tokens.css deltas (chat tool rows, badges, progress row, chat-pane transcript top inset, --ease-spring). The capture shows no chat pane transcript, tool rows or status pill, so its pixels are unaffected. No recapture.",
+        "Merge of origin/main (a4dfd0454 #2952 branding-theme validation and @kontourai/ui 1.16.0; e27600d1f #3015 provider diagnostics off outward responses) into the chat tool-rows/approvals branch. Each side had already reviewed this record against its own delta (both notes are kept above). Checked the combination: the two index.css deltas are disjoint hunks (main: branding tokens near line 115-160; branch: tool-call row, badge and status-pill rules near 4174-6021) and merged without conflict; main alone changed package.json, pnpm-lock.yaml, runtime-http.ts and branding-theme.ts, and the branch alone changed the ACP adapter, runtime events, approvals and chat-dock sources. No claim in this document or capture depends on the interaction, so no prose or capture change."
       ]
     }
   ]

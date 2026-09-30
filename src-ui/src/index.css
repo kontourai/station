@@ -115,7 +115,17 @@
 
 /* Keyboard focus is a product-level invariant. The narrow !important is
    intentional: it restores a visible ring over legacy component :focus rules
-   that suppress outlines. Pointer focus remains visually unchanged. */
+   that suppress outlines. Pointer focus remains visually unchanged.
+
+   The ring follows `--k-focus` where something chose a focus colour: a
+   white-label theme, or a Dev, Beta or Nightly build (the channel blocks
+   above). Everywhere else it follows the accent, so a device accent chosen
+   in Appearance colours it. The installed @kontourai/ui tokens always define
+   `--k-focus`, so "is it defined" cannot tell those apart; instead
+   applyBrandingTheme marks the root with `data-brand-focus` while the
+   applied theme sets it for the current mode (lib/branding-theme.ts).
+   Without a device accent the accent is the action role, which equals the
+   shipped focus colour. */
 :where(
   a[href],
   button,
@@ -127,8 +137,28 @@
   [role="link"],
   [tabindex]:not([tabindex="-1"])
 ):focus-visible {
-  outline: 2px solid var(--k-focus, var(--accent-primary)) !important;
+  outline: 2px solid var(--accent-primary) !important;
   outline-offset: 2px !important;
+}
+
+:is(
+    :root[data-brand-focus],
+    :root.is-dev-build,
+    :root[data-app-channel="beta"],
+    :root[data-app-channel="nightly"]
+  )
+  :where(
+    a[href],
+    button,
+    input,
+    textarea,
+    select,
+    summary,
+    [role="button"],
+    [role="link"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+  outline-color: var(--k-focus) !important;
 }
 
 /*
