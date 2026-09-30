@@ -2531,7 +2531,7 @@
     },
     {
       "path": "docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "design",
       "state": "classified",
       "summary": "The 2026-07-05 split and sqlite-vec selection remain decision rationale. A new status note distinguishes historical single-store/single-personal-root descriptions from current registered roots, derived index, and coexisting legacy API, and routes operating instructions to the Knowledge guide.",
@@ -2566,7 +2566,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904's runtime-routes changes are limited to the full-access refusal identity middleware and pairing revocation reports. Nothing in them touches knowledge roots, the derived index or the legacy API that the status note describes. Classification and prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential security wiring in runtime-routes.ts. It does not touch knowledge store roots, the derived index or the legacy API composition, so the ADR's status note and decision rationale are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Re-read 'Treat knowledge stores as canonical and the index as derived' against C2b: runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Treat knowledge stores as canonical and the index as derived' against C2b: runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -3867,7 +3868,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -4053,7 +4054,8 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Its findings cite neither the upgrade port handling nor the respond path. Prose accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -12154,7 +12156,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12162,7 +12164,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12680,7 +12682,8 @@
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -15057,7 +15060,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -15065,7 +15068,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -15228,7 +15231,8 @@
         "Re-read 'Knowledge: stores and the retrieval index' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Knowledge Library claims involve neither change. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -19333,7 +19337,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -19341,7 +19345,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -19591,7 +19595,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its inspect-approval flow opens a request without deciding it. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -21196,7 +21201,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -21204,7 +21209,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21430,7 +21435,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. The request-inspection scene inspects without deciding; the knowledge walkthrough's only change is main's deadline guard. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -22110,7 +22116,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -22118,7 +22124,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -22217,7 +22223,8 @@
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the captures this page cites and their evidence text are unchanged, so its claims hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its evidence cites only the connections-models capture. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -24628,7 +24635,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -24636,7 +24643,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -24729,7 +24736,8 @@
         "Re-read 'Project/Task room collaboration acceptance' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its evidence cites only the shared-task-document capture. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -27541,7 +27549,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "0bf65df71b04f48768c1f5bdb16db77e361a3177",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27562,7 +27570,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -27753,7 +27761,8 @@
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Its upgrade and port guidance holds with the recorded-port fix; Approve once and Deny behave as before. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery."
+        "Bounded #2948 delta review: normalized question events and exact validated batch replies are additive; known question callbacks bypass wildcard grants without changing ordinary tool consent. Checked affected request, approval, snapshot, authority and package-export claims against adapter/service/UI callers. Updated canonical agent, Session API, SDK, shared/contracts and module routes; historical probes remain historical. Optional Codex questions do not pause progress; private drafts are excluded, not engine-history secrecy. Focused process/SDK fixtures and browser card evidence do not establish live vendor delivery.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
@@ -28645,7 +28654,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "b4cae4a1ee29731a8eda30cdbc4b7b0202de78ce",
+      "sourceRevision": "3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -28653,7 +28662,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bc03998044b5a574f7fdf40486799a3a4514cfe25d875d4b138b295226301880"
+          "digest": "8029db6741adb9c389a5601b5ba1516f1c0418327e8b5c12a46b40f140de83ec"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -28770,7 +28779,8 @@
         "Re-read 'Knowledge Library' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Its Knowledge Library claims involve neither change. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate."
+        "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
+        "Bounded capture metadata delta review: inspected the ordinary fixture_read request image and source/scenario path. Only review notes and source hashes in media.json changed; image/video bytes, captions, linked learning scenarios and their evidence limits are unchanged. Question-only inspector actions are outside these retained ordinary-tool captures; video frame equivalence is inferred, not freshly observed."
       ]
     },
     {
