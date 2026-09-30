@@ -43,10 +43,11 @@ function conversationIdentity(session: OrchestrationSessionSummary): string {
  * - Flat delegated sessions are exempt too — delegation is run-groups.ts'
  *   population, and folding a stray worker under a chat row would misfile it.
  * - The representative is the FIRST member in input order. The caller feeds
- *   lane-partitioned rows (Needs you → Active now → Recently finished →
- *   Earlier, newest-first within a lane), so the representative is the
- *   highest-priority, newest member — newest state wins, and a conversation
- *   with an active turn renders in Active now, not once per finished turn.
+ *   lane-partitioned rows (Needs you → Running → Idle → Drafts → Recently
+ *   finished → Earlier, newest-first within a lane), so the representative
+ *   is the highest-priority, newest member — newest state wins, and a
+ *   conversation with an active turn renders in Running, not once per
+ *   finished turn.
  * - `pinnedThreadId` (the selected session) exempts its whole conversation:
  *   a deep link or explicit selection of an older turn keeps every turn
  *   visible while the reader is inspecting it, so the selected row cannot

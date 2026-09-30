@@ -76,7 +76,7 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
         'Running',
         'Stopped',
         'Unanswerable',
-        // #2310: a Draft moved out of Active now says so on the row.
+        // #2310: a Draft moved out of the live lanes says so on the row.
         'Draft',
       ].sort(),
     );
