@@ -1,48 +1,36 @@
 //! Desktop-only custody for Station's host account proof key.
 //!
 //! This vault is deliberately separate from the native broker routing proof
-//! key (`native_relay_proof_key`): it uses a distinct keyring service and
+//! key (`native_relay_proof_key`) and the native Device proof key vault
+//! (`native_device_proof_key`): it uses a distinct keyring service and
 //! account namespace, and its records bind to a typed exact owner that also
 //! names the Station ID and the approved Device ID. Private PKCS#8 bytes never
-//! leave this module, never reach logs, and there is no plaintext fallback.
-//! There is no Tauri IPC command here yet; signing is Rust-internal only.
+//! leave the desktop crate, never reach logs, and there is no plaintext
+//! fallback. There is no Tauri IPC command here yet; signing is Rust-internal
+//! only. The storage and crypto core is shared with the sibling proof-key
+//! vaults via `native_proof_key_core`; only the owner type and keyring
+//! namespace live here, and the account keyring record format is unchanged.
 
-use crate::native_relay_proof_key::{NativeProofKeyChannel, P256PublicJwk};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine as _;
-use ring::rand::{SecureRandom as _, SystemRandom};
-use ring::signature::{self, KeyPair as _};
+use crate::native_proof_key_core::{
+    proof_key_account, valid_app_identifier, KeyringSecretBackend, ProofKeyOwner,
+};
+use crate::native_relay_proof_key::NativeProofKeyChannel;
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
-use std::collections::HashMap;
-#[cfg(test)]
-use std::sync::Arc;
-use std::sync::Mutex;
 use uuid::Uuid;
-use zeroize::{Zeroize, Zeroizing};
+
+#[cfg(test)]
+pub(crate) use crate::native_proof_key_core::{
+    MemorySecretBackend as MemoryAccountSecretBackend,
+    ProofKeySecretBackend as AccountSecretBackend, StoredProofKey as StoredAccountProofKey,
+};
+pub(crate) use crate::native_proof_key_core::{
+    ProofKeyError as AccountProofKeyError,
+    ProofKeyPublicMetadata as NativeAccountProofKeyPublicMetadata,
+    ProofKeyResult as AccountProofResult, ProofKeyVaultCore as AccountProofKeyVault,
+};
 
 const KEYRING_SERVICE: &str = "io.kontourai.station.account-proof";
 const ACCOUNT_PREFIX: &str = "native-account-proof:v1";
-const RECORD_VERSION: u8 = 1;
-const MAX_PKCS8_BYTES: usize = 1024;
-const MAX_PKCS8_BASE64_BYTES: usize = MAX_PKCS8_BYTES.div_ceil(3) * 4;
-// Tauri's per-application single-instance guard excludes a second Station
-// process for the same channel/app identifier. This process-wide lock also
-// serializes independently constructed vault handles over the shared keyring
-// and is distinct from the relay proof-key lock.
-static ACCOUNT_PROOF_KEY_OPERATION: Mutex<()> = Mutex::new(());
-
-pub(crate) type AccountProofResult<T> = Result<T, AccountProofKeyError>;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AccountProofKeyError {
-    InvalidOwner,
-    Missing,
-    AlreadyExists,
-    Corrupt,
-    Store,
-    Signing,
-}
 
 /// Typed exact owner for an account proof key. Every field must match on
 /// every read; a record minted for one owner is unusable by any other.
@@ -90,120 +78,30 @@ impl NativeAccountProofKeyOwner {
 
     /// The keyring account is a domain-separated digest of the full typed
     /// owner, so no owner field is a path into another record and the
-    /// account/service namespace stays distinct from the relay proof key.
+    /// account/service namespace stays distinct from the relay and Device
+    /// proof keys.
     fn account(&self) -> String {
-        let parts = [
-            self.app_identifier.as_bytes(),
-            self.channel.keyring_label().as_bytes(),
-            self.client_instance_id.as_bytes(),
-            self.station_id.as_bytes(),
-            self.approved_device_id.as_bytes(),
-        ];
-        let mut canonical = Vec::from(format!("{ACCOUNT_PREFIX}\0"));
-        for part in parts {
-            canonical.extend_from_slice(&(part.len() as u64).to_le_bytes());
-            canonical.extend_from_slice(part);
-        }
-        format!(
-            "{ACCOUNT_PREFIX}:{}",
-            URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &canonical))
+        proof_key_account(
+            ACCOUNT_PREFIX,
+            &[
+                self.app_identifier.as_bytes(),
+                self.channel.keyring_label().as_bytes(),
+                self.client_instance_id.as_bytes(),
+                self.station_id.as_bytes(),
+                self.approved_device_id.as_bytes(),
+            ],
         )
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct NativeAccountProofKeyPublicMetadata {
-    jwk: P256PublicJwk,
-    thumbprint: String,
-}
-
-impl NativeAccountProofKeyPublicMetadata {
-    pub(crate) fn jwk(&self) -> &P256PublicJwk {
-        &self.jwk
-    }
-
-    pub(crate) fn thumbprint(&self) -> &str {
-        &self.thumbprint
-    }
-}
-
-trait AccountSecretBackend: Send + Sync {
-    fn read(&self, account: &str) -> AccountProofResult<Option<Zeroizing<String>>>;
-    fn write(&self, account: &str, value: &str) -> AccountProofResult<()>;
-    fn delete(&self, account: &str) -> AccountProofResult<()>;
-}
-
-struct KeyringAccountSecretBackend;
-
-impl KeyringAccountSecretBackend {
-    fn entry(account: &str) -> AccountProofResult<keyring_core::Entry> {
-        super::initialize_credential_store().map_err(|_| AccountProofKeyError::Store)?;
-        keyring_core::Entry::new(KEYRING_SERVICE, account).map_err(|_| AccountProofKeyError::Store)
-    }
-}
-
-impl AccountSecretBackend for KeyringAccountSecretBackend {
-    fn read(&self, account: &str) -> AccountProofResult<Option<Zeroizing<String>>> {
-        match Self::entry(account)?.get_password() {
-            Ok(value) => Ok(Some(Zeroizing::new(value))),
-            Err(keyring_core::Error::NoEntry) => Ok(None),
-            // A locked or unavailable keyring fails closed; there is no
-            // plaintext fallback for account proof keys.
-            Err(_) => Err(AccountProofKeyError::Store),
-        }
-    }
-
-    fn write(&self, account: &str, value: &str) -> AccountProofResult<()> {
-        Self::entry(account)?
-            .set_password(value)
-            .map_err(|_| AccountProofKeyError::Store)
-    }
-
-    fn delete(&self, account: &str) -> AccountProofResult<()> {
-        match Self::entry(account)?.delete_credential() {
-            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
-            Err(_) => Err(AccountProofKeyError::Store),
-        }
-    }
-}
-
-#[cfg(test)]
-#[derive(Clone, Default)]
-pub(crate) struct MemoryAccountSecretBackend(Arc<Mutex<HashMap<String, String>>>);
-
-#[cfg(test)]
-impl AccountSecretBackend for MemoryAccountSecretBackend {
-    fn read(&self, account: &str) -> AccountProofResult<Option<Zeroizing<String>>> {
-        self.0
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)
-            .map(|values| {
-                values
-                    .get(account)
-                    .map(|value| Zeroizing::new(value.clone()))
-            })
-    }
-
-    fn write(&self, account: &str, value: &str) -> AccountProofResult<()> {
-        self.0
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?
-            .insert(account.to_owned(), value.to_owned());
-        Ok(())
-    }
-
-    fn delete(&self, account: &str) -> AccountProofResult<()> {
-        self.0
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?
-            .remove(account);
-        Ok(())
+impl ProofKeyOwner for NativeAccountProofKeyOwner {
+    fn account(&self) -> String {
+        Self::account(self)
     }
 }
 
 pub(crate) struct NativeAccountProofKeyVault {
-    inner: AccountProofKeyVault<KeyringAccountSecretBackend>,
+    inner: AccountProofKeyVault<KeyringSecretBackend>,
 }
 
 impl Default for NativeAccountProofKeyVault {
@@ -215,7 +113,7 @@ impl Default for NativeAccountProofKeyVault {
 impl NativeAccountProofKeyVault {
     pub(crate) fn new() -> Self {
         Self {
-            inner: AccountProofKeyVault::new(KeyringAccountSecretBackend),
+            inner: AccountProofKeyVault::new(KeyringSecretBackend::new(KEYRING_SERVICE)),
         }
     }
 
@@ -247,8 +145,8 @@ impl NativeAccountProofKeyVault {
     pub(crate) fn public_jwk(
         &self,
         owner: &NativeAccountProofKeyOwner,
-    ) -> AccountProofResult<P256PublicJwk> {
-        Ok(self.inner.restore(owner)?.jwk)
+    ) -> AccountProofResult<crate::native_relay_proof_key::P256PublicJwk> {
+        Ok(self.inner.restore(owner)?.jwk().clone())
     }
 
     /// ES256 signature over the exact JWS `header.payload` bytes in P1363
@@ -307,8 +205,8 @@ impl MemoryNativeAccountProofKeyVault {
     pub(crate) fn public_jwk(
         &self,
         owner: &NativeAccountProofKeyOwner,
-    ) -> AccountProofResult<P256PublicJwk> {
-        Ok(self.inner.restore(owner)?.jwk)
+    ) -> AccountProofResult<crate::native_relay_proof_key::P256PublicJwk> {
+        Ok(self.inner.restore(owner)?.jwk().clone())
     }
 
     pub(crate) fn revoke(&self, owner: &NativeAccountProofKeyOwner) -> AccountProofResult<()> {
@@ -328,227 +226,14 @@ impl MemoryNativeAccountProofKeyVault {
     }
 }
 
-struct AccountProofKeyVault<B> {
-    backend: B,
-}
-
-impl<B: AccountSecretBackend> AccountProofKeyVault<B> {
-    fn new(backend: B) -> Self {
-        Self { backend }
-    }
-
-    fn create(
-        &self,
-        owner: &NativeAccountProofKeyOwner,
-    ) -> AccountProofResult<NativeAccountProofKeyPublicMetadata> {
-        let _guard = ACCOUNT_PROOF_KEY_OPERATION
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?;
-        let account = owner.account();
-        if self.backend.read(&account)?.is_some() {
-            return Err(AccountProofKeyError::AlreadyExists);
-        }
-        let stored = generate_record(owner)?;
-        let public = stored.public.clone();
-        self.persist(&account, &stored)?;
-        Ok(public)
-    }
-
-    fn restore(
-        &self,
-        owner: &NativeAccountProofKeyOwner,
-    ) -> AccountProofResult<NativeAccountProofKeyPublicMetadata> {
-        let _guard = ACCOUNT_PROOF_KEY_OPERATION
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?;
-        Ok(self.read_record(owner)?.public)
-    }
-
-    fn replace(
-        &self,
-        owner: &NativeAccountProofKeyOwner,
-    ) -> AccountProofResult<NativeAccountProofKeyPublicMetadata> {
-        let _guard = ACCOUNT_PROOF_KEY_OPERATION
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?;
-        let account = owner.account();
-        if self.backend.read(&account)?.is_none() {
-            return Err(AccountProofKeyError::Missing);
-        }
-        let stored = generate_record(owner)?;
-        let public = stored.public.clone();
-        self.persist(&account, &stored)?;
-        Ok(public)
-    }
-
-    fn revoke(&self, owner: &NativeAccountProofKeyOwner) -> AccountProofResult<()> {
-        let _guard = ACCOUNT_PROOF_KEY_OPERATION
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?;
-        let account = owner.account();
-        if self.backend.read(&account)?.is_none() {
-            return Err(AccountProofKeyError::Missing);
-        }
-        self.backend.delete(&account)
-    }
-
-    fn sign_es256_p1363(
-        &self,
-        owner: &NativeAccountProofKeyOwner,
-        message: &[u8],
-    ) -> AccountProofResult<Vec<u8>> {
-        let _guard = ACCOUNT_PROOF_KEY_OPERATION
-            .lock()
-            .map_err(|_| AccountProofKeyError::Store)?;
-        let stored = self.read_record(owner)?;
-        let rng = SystemRandom::new();
-        let key_pair = signature::EcdsaKeyPair::from_pkcs8(
-            &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-            stored.private_pkcs8.0.as_slice(),
-            &rng,
-        )
-        .map_err(|_| AccountProofKeyError::Corrupt)?;
-        key_pair
-            .sign(&rng, message)
-            .map(|signature| signature.as_ref().to_vec())
-            .map_err(|_| AccountProofKeyError::Signing)
-    }
-
-    fn read_record(
-        &self,
-        owner: &NativeAccountProofKeyOwner,
-    ) -> AccountProofResult<StoredAccountProofKey> {
-        let secret = self
-            .backend
-            .read(&owner.account())?
-            .ok_or(AccountProofKeyError::Missing)?;
-        let stored: StoredAccountProofKey =
-            serde_json::from_str(&secret).map_err(|_| AccountProofKeyError::Corrupt)?;
-        if stored.version != RECORD_VERSION || stored.owner != *owner {
-            return Err(AccountProofKeyError::Corrupt);
-        }
-        // Re-derive the public metadata from the private key on every read;
-        // a stored record whose advertised public half disagrees with the
-        // actual key is corrupt and fails closed.
-        let derived = public_metadata(&stored.private_pkcs8)?;
-        if derived != stored.public {
-            return Err(AccountProofKeyError::Corrupt);
-        }
-        Ok(stored)
-    }
-
-    fn persist(&self, account: &str, stored: &StoredAccountProofKey) -> AccountProofResult<()> {
-        let serialized = Zeroizing::new(
-            serde_json::to_string(stored).map_err(|_| AccountProofKeyError::Corrupt)?,
-        );
-        self.backend.write(account, &serialized)
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct StoredAccountProofKey {
-    version: u8,
-    owner: NativeAccountProofKeyOwner,
-    private_pkcs8: SecretPkcs8,
-    public: NativeAccountProofKeyPublicMetadata,
-}
-
-struct SecretPkcs8(Zeroizing<Vec<u8>>);
-
-impl Serialize for SecretPkcs8 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut encoded = URL_SAFE_NO_PAD.encode(self.0.as_slice());
-        let result = serializer.serialize_str(&encoded);
-        encoded.zeroize();
-        result
-    }
-}
-
-impl<'de> Deserialize<'de> for SecretPkcs8 {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let mut encoded = String::deserialize(deserializer)?;
-        if encoded.len() > MAX_PKCS8_BASE64_BYTES {
-            encoded.zeroize();
-            return Err(serde::de::Error::custom("PKCS#8 record is too large"));
-        }
-        let mut decoded = Zeroizing::new(Vec::with_capacity(MAX_PKCS8_BYTES));
-        let result = URL_SAFE_NO_PAD.decode_vec(encoded.as_bytes(), &mut decoded);
-        encoded.zeroize();
-        result.map_err(serde::de::Error::custom)?;
-        if decoded.is_empty() || decoded.len() > MAX_PKCS8_BYTES {
-            return Err(serde::de::Error::custom("invalid PKCS#8 record length"));
-        }
-        Ok(Self(decoded))
-    }
-}
-
-fn generate_record(
-    owner: &NativeAccountProofKeyOwner,
-) -> AccountProofResult<StoredAccountProofKey> {
-    let rng = SystemRandom::new();
-    let generated =
-        signature::EcdsaKeyPair::generate_pkcs8(&signature::ECDSA_P256_SHA256_FIXED_SIGNING, &rng)
-            .map_err(|_| AccountProofKeyError::Signing)?;
-    let private_pkcs8 = SecretPkcs8(Zeroizing::new(generated.as_ref().to_vec()));
-    let public = public_metadata(&private_pkcs8)?;
-    Ok(StoredAccountProofKey {
-        version: RECORD_VERSION,
-        owner: owner.clone(),
-        private_pkcs8,
-        public,
-    })
-}
-
-fn public_metadata(
-    private_pkcs8: &SecretPkcs8,
-) -> AccountProofResult<NativeAccountProofKeyPublicMetadata> {
-    let rng = SystemRandom::new();
-    let key_pair = signature::EcdsaKeyPair::from_pkcs8(
-        &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-        private_pkcs8.0.as_slice(),
-        &rng,
-    )
-    .map_err(|_| AccountProofKeyError::Corrupt)?;
-    let public = key_pair.public_key().as_ref();
-    if public.len() != 65 || public[0] != 0x04 {
-        return Err(AccountProofKeyError::Corrupt);
-    }
-    let jwk = P256PublicJwk::from_verified_p256_coordinates(
-        URL_SAFE_NO_PAD.encode(&public[1..33]),
-        URL_SAFE_NO_PAD.encode(&public[33..65]),
-    );
-    let canonical = format!(
-        "{{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"{}\",\"y\":\"{}\"}}",
-        jwk.x(),
-        jwk.y()
-    );
-    let thumbprint = URL_SAFE_NO_PAD.encode(ring::digest::digest(
-        &ring::digest::SHA256,
-        canonical.as_bytes(),
-    ));
-    Ok(NativeAccountProofKeyPublicMetadata { jwk, thumbprint })
-}
-
-fn valid_app_identifier(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|first| first.is_ascii_alphanumeric())
-        && value.len() <= 255
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ring::signature::UnparsedPublicKey;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+    use ring::rand::SystemRandom;
+    use ring::signature::{self, UnparsedPublicKey};
+    use zeroize::Zeroizing;
 
     const APP: &str = "io.kontourai.station";
     const CLIENT: &str = "33333333-3333-4333-8333-333333333333";
@@ -567,7 +252,11 @@ mod tests {
             .unwrap()
     }
 
-    fn verify_p1363(jwk: &P256PublicJwk, message: &[u8], signature: &[u8]) -> bool {
+    fn verify_p1363(
+        jwk: &crate::native_relay_proof_key::P256PublicJwk,
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool {
         let x = URL_SAFE_NO_PAD.decode(jwk.x()).unwrap();
         let y = URL_SAFE_NO_PAD.decode(jwk.y()).unwrap();
         let mut point = Vec::with_capacity(65);
@@ -682,15 +371,14 @@ mod tests {
         let account = owner.account();
 
         // Truncated JSON.
-        *backend.0.lock().unwrap().get_mut(&account).unwrap() =
-            "{\"version\":1,\"owner\":".to_owned();
+        *backend.lock().get_mut(&account).unwrap() = "{\"version\":1,\"owner\":".to_owned();
         assert_eq!(
             vault.restore(&owner).unwrap_err(),
             AccountProofKeyError::Corrupt
         );
 
         // Valid JSON but an unsupported record version.
-        *backend.0.lock().unwrap().get_mut(&account).unwrap() = format!(
+        *backend.lock().get_mut(&account).unwrap() = format!(
             r#"{{"version":99,"owner":{},"privatePkcs8":"AA","public":{{"jwk":{{"kty":"EC","crv":"P-256","x":"a","y":"a"}},"thumbprint":"t"}}}}"#,
             serde_json::to_string(&owner).unwrap()
         );
@@ -701,7 +389,7 @@ mod tests {
 
         // Advertised public half that disagrees with the actual private key.
         let tampered = StoredAccountProofKey {
-            version: RECORD_VERSION,
+            version: 1,
             owner: owner.clone(),
             private_pkcs8: {
                 let generated = signature::EcdsaKeyPair::generate_pkcs8(
@@ -709,15 +397,16 @@ mod tests {
                     &SystemRandom::new(),
                 )
                 .unwrap();
-                SecretPkcs8(Zeroizing::new(generated.as_ref().to_vec()))
+                crate::native_proof_key_core::SecretPkcs8(Zeroizing::new(
+                    generated.as_ref().to_vec(),
+                ))
             },
             public: NativeAccountProofKeyPublicMetadata {
                 jwk: created.jwk().clone(),
                 thumbprint: created.thumbprint().to_owned(),
             },
         };
-        *backend.0.lock().unwrap().get_mut(&account).unwrap() =
-            serde_json::to_string(&tampered).unwrap();
+        *backend.lock().get_mut(&account).unwrap() = serde_json::to_string(&tampered).unwrap();
         assert_eq!(
             vault.restore(&owner).unwrap_err(),
             AccountProofKeyError::Corrupt
@@ -823,7 +512,12 @@ mod tests {
     fn account_namespace_is_distinct_from_the_relay_proof_key() {
         let owner = owner();
         let account = owner.account();
-        assert!(account.starts_with("native-account-proof:v1:"));
+        // Pinned from the pre-refactor account derivation: an existing
+        // Keychain record must remain addressable after the shared-core move.
+        assert_eq!(
+            account,
+            "native-account-proof:v1:w1CQKqVxj3t58V7EHhFjaJ-GSFz_Y2AWcu-LZRkrTl0"
+        );
         // Same owner fields as the relay vault would hash differently, and the
         // service string is separate, so keyring entries cannot collide.
         assert!(!account.starts_with("native-proof:"));

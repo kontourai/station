@@ -9,14 +9,14 @@
 
   "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability. Native diagnostic echo is identified only as a source export, not a validated physical-device diagnostic journey.",
 
-  "document": {"digest":"9f57c31107eeac1b8b6f53aa66bef85810b2a4502cacaedb3b5bbedcfd4183f3","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+  "document": {"digest":"ad9c5fe804fe6d45843985d8afed0350ca9e482ef4d97e0fce0426e285cde3a4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
   "sources": [
-    {"path":"packages/connect/package.json","digest":"ec6232eaf0fdc6a957e7e232220de0c8cfe17d41f1363f3b160ee21c192c1c00","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"packages/connect/package.json","digest":"59e9704946b62090199e1797e07a151c67c202813c5abe1f6187505a4fd5f657","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"packages/connect/src/core/applicationChannel.ts","digest":"340a746de265ada1eb052d6cee95b5d5459826a3e3bf904faac19f79d5a9332b","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
@@ -32,9 +32,9 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"aa5ec04dbafae74f8cdf0b9ab77f1e0cca319c7f69cdc6327455f47f4968456e","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"cb980b7cbbb75e7a17558b9b02c8e85a761377eb09915a494763f5b41a09d1f4","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
   ],
 
   "checks": [

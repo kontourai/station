@@ -18,7 +18,10 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { getCachedUser } from '../../routes/system/auth.js';
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  getRuntimeNativeDeviceProofPrincipal,
+} from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type DeploymentAuthenticationService,
@@ -106,6 +109,16 @@ export interface OrchestrationRequestPrincipalDeps {
     'resolvePrincipal'
   >;
   hostedTenantRegistry?: unknown;
+  /**
+   * #2893 pilot: the shared native current-Device resolver. A proven native
+   * request resolves ONLY to its Device's matching authenticated account
+   * principal — never an operator or home-possession fallback.
+   */
+  resolveNativeDevice?: (request: Request) =>
+    | {
+        accountBinding: Extract<DevicePrincipalBinding, { kind: 'account' }>;
+      }
+    | undefined;
 }
 
 /**
@@ -142,6 +155,34 @@ export function createOrchestrationRequestPrincipalResolver(
   };
   return memoizePerRequest((c) => {
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    // #2893 pilot: a proven native Device request resolves to its matching
+    // authenticated account principal and nothing else.
+    const nativeDevice = deps.resolveNativeDevice?.(c.req.raw);
+    if (getRuntimeNativeDeviceProofPrincipal(c.req.raw) && !nativeDevice)
+      throw new PrincipalUnresolvedError(
+        'the native Device request is no longer current',
+      );
+    if (nativeDevice) {
+      const verifiedPerson = deploymentAccountPrincipal(
+        nativeDevice.accountBinding.issuer,
+        nativeDevice.accountBinding.subject,
+        nativeDevice.accountBinding.displayName,
+      );
+      const ingressIdentity = identifyIngress(c);
+      if (ingressIdentity)
+        throw new PrincipalUnresolvedError(
+          'Native Device account binding conflicts with the current ingress identity',
+        );
+      const account = deps.deploymentAuthentication?.resolvePrincipal(
+        c.req.raw,
+        [verifiedPerson],
+      );
+      if (!account || account.id !== verifiedPerson.id)
+        throw new PrincipalUnresolvedError(
+          'the native Device has no current matching authenticated account',
+        );
+      return account;
+    }
     // #2377 slice B (decision 2): a station-control tool call acts for the
     // owner Station recorded for its session, at every assurance level, not
     // for the operator the internal token's home-possession used to name. A

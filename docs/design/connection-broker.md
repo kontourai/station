@@ -439,6 +439,202 @@ Real encrypted SDK login, Project traffic, reconnection and native delivery
 remain required before enabling the connector. This seam alone does not satisfy
 those acceptance requirements.
 
+### Native Device proof on the application channel (#2893)
+
+**Decision for the first native pilot; server admission is source opt-in.** The Tauri host
+keeps a paired Device bearer in its OS keyring and attaches it to host-owned
+HTTP requests in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
+native WebRTC application client in [#2856](https://github.com/kontourai/station/pull/2856)
+runs in the WebView, so that HTTP attachment does not reach its DataChannel.
+Returning the bearer to JavaScript would break native credential custody.
+Broker routing proof, Station signing trust, Device authority and account
+continuation remain separate; none can substitute for another.
+
+For relay-only protected requests, bind a **separate P-256 Device proof key**
+at explicit operator Device approval. The account key in
+[`native_account_proof_key.rs`](../../src-desktop/src/native_account_proof_key.rs)
+is a custody pattern, not the Device key. The binding protocol requires the
+host to mint a **provisional canonical UUIDv4 candidate binding ID** before
+creating its Device proof key and include it — with the exact Station ID, the
+approved Device ID, the full native
+surface, and the Device public JWK plus its RFC 7638 thumbprint — in the
+binding candidate it presents for approval ([contract shape](../../packages/contracts/src/native-device-proof.ts)).
+The candidate carries no secret: the UUID itself grants nothing. The Station
+operator explicitly approves that exact tuple for the create or revoke
+operation, the server freezes the tuple, recomputes the thumbprint, and accepts
+the host-proposed ID instead of minting an independent server ID. The binding
+ID must be unique across active and revoked historical records before any previous binding is
+replaced; retrying the exact active candidate returns its recorded state
+without re-approving or recreating. Revocation must name the exact reviewed
+binding ID and public key; a delayed approval cannot revoke a newer replacement
+on the same native surface. Host-side reconciliation is bounded: if a
+transport failure leaves the commit outcome unknown, or an exact-ID readback is
+absent, the host MUST retain its provisional proof key — a binding may have
+committed even when no readback confirms it. Key cleanup requires a
+definitive terminal outcome or a confirmed cancellation. Station stores the Device public key,
+the approved binding ID, the approved native surface and grant scope in a private
+sidecar that rechecks the current paired Device. The host stores its private key in a distinct keyring namespace
+bound to the selected Station, Device and binding ID. An existing bearer Device
+needs an explicit operator-approved binding ceremony; a saved profile or broker
+grant cannot upgrade it silently. Local solo use still needs no person account.
+
+The Desktop source now creates or resumes this provisional candidate through
+the main-window-guarded `station_native_device_binding_candidate` IPC. Under one
+locked profile-store snapshot, the selected relay-route profile supplies
+Station, approved trust, route grant and surface; the separately
+host-authorized profile supplies the active paired Device. They must share the
+same store revision, client instance and exact Station origin. The Keychain
+manager persists that owner snapshot and candidate ID before provisioning the
+Device proof key, then returns only the contract's public JWK and thumbprint.
+It retains the initial Device-authorization epoch and resumes the same key
+after reauthorization while keeping profile revision, Station, Device, trust,
+route and surface exact. The IPC does not submit the candidate to the operator
+route, reconcile an approval receipt, bind it to a peer session or sign
+requests; no renderer caller currently consumes it. See the
+[candidate producer](../../src-desktop/src/native_relay_redemption.rs) and
+[candidate manager](../../src-desktop/src/native_device_binding_candidate.rs).
+
+The request-signing protocol requires the host to sign one short-lived proof over the exact Station
+audience, Station and Device IDs, binding ID, native surface, unique Pion peer
+nonce, uppercase method, path **including query**, SHA-256 digest of the exact
+transmitted body bytes, JTI and expiry. The WebView may carry this one-request
+proof through the encrypted application channel but never receives the Device
+bearer or private key. The [host peer owner](../../src-desktop/src/native_application_peer.rs)
+now constructs this Device proof after verifying Station's exact signed nonce,
+connection identity, both SDP digests and DTLS fingerprints. It checks current
+profile/epoch, trust, grant and positively reconciled Device binding, then permits
+one proof per opaque handle for the pilot's bounded method/path/query/body.
+The renderer supplies no claims, hashes, signing bytes or connected assertion.
+Browser RTC remains renderer-owned; a verified transcript is not proof that
+DTLS is connected. Station verifies the signature
+against the *current* Device grant, independently hashes the received body,
+consumes the JTI before dispatch, and compares the proof's peer nonce/surface
+to private Pion provenance. Only then do ordinary Device scope, account,
+Project, resource and compute checks run. Direct HTTPS cookie/bearer paths
+remain unchanged. A revoked Device or binding fails on every subsequent
+request; account signout does not silently revoke or renew the Device.
+
+The runtime's authenticated Request principal must name this as a distinct
+native Device-proof authority. It must not place a fabricated bearer in the
+existing `credential` field or let a proof inherit operator/home-possession
+status. Freshness and delayed-response checks re-resolve the exact Device and
+binding ID from the pairing owner; scope comes from that current grant. This
+keeps a proof-bearing WebView request from entering the legacy bearer-only
+paths that authorize pairing, consent or other privileged operations.
+
+This approach reuses the existing JavaScript DataChannel and Station virtual
+application ingress without a second native WebRTC implementation. A host-owned
+native DataChannel could keep the bearer out of JavaScript too, but Station has
+no such desktop client today; it remains an alternative if the proof protocol
+cannot satisfy the packaged acceptance. Source and SDK proof tests, executed
+Tauri IPC, a packaged Project read/reconnect/revoke, and physical two-person
+evidence are distinct proof layers. Source registration of the candidate
+command is not executed IPC or packaged/device evidence.
+
+The current foundations are the [Device binding service](../../src-server/services/ssh/native-device-proof-binding-service.ts),
+[request verifier](../../src-server/services/identity/native-device-proof-verifier.ts),
+[durable replay store](../../src-server/services/identity/native-device-replay-store.ts),
+and the credential-free Request principal in [runtime request security](../../src-server/security/runtime-request-security.ts).
+The binding service requires an exact approved app, channel, client instance and
+route-key thumbprint, with a separate Device key. Private Pion Request facts
+carry the offer nonce through bounded-body replacement.
+
+**Pilot composition (source opt-in; not product UI).** `configureRuntimeHttp`
+now admits a presented Device proof BEFORE deployment-account authentication:
+cheap private peer/route/rate checks, a bounded exact-body read (16 KiB) whose
+bytes build the final Request and carry the private peer provenance at that one
+byte-copy owner, then Device JWS/JTI admission, then Device scope against the
+central route declaration, then the native account continuation
+(challenge/exchange) or a required current account session. A proof attempt
+never falls back to a bearer or cookie; a conflicting credential, missing
+private Pion provenance, unsupported configuration or non-pilot route refuses
+closed. The pilot allowlist is exactly the native challenge/exchange POSTs and
+`GET/HEAD /api/projects` and `/api/projects/:slug`; privileged, terminal,
+plugin, pairing, consent and operator routes refuse proof authority even when
+the proven Device holds broad scopes. The one [native Device request
+authority](../../src-server/security/native-device-request-authority.ts) mints
+the credential-free principal on the final Request, and every later seam
+(account-bound gate, orchestration principal, Project membership authority,
+native account continuation) re-reads binding, paired Device and account
+binding through it — including before and after each provider await — never
+carrying identity from headers. Station-runtime composes binding, replay and
+admission only behind `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with a supported
+provider/session capability and native connector; `0` disables the pilot and
+unsupported opt-in configurations fail closed at startup. The
+exchange attempt limiter is keyed by the verified Device identity, not the
+absent-Authorization bucket.
+
+**Evidence boundaries.** The production-composition suite
+([runtime-routes native pilot](../../src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts))
+drives the real HTTP admission, real application channel and Pion adapter with
+a faked peer transport, real pairing/binding/replay/membership stores and the
+real local-account provider. It does not prove a packaged Tauri host, the
+host-signing IPC, physical devices or a production identity provider. The
+approval-context factory still does not authenticate an operator. The opt-in
+runtime mounts an operator-credential-only approval/readback route that checks
+current authority and the exact binding tuple. Native Device proofs, account
+membership and home possession cannot approve a binding. Host Device and account
+proof commands are now registered. The separate
+[native Project pilot](../guides/native-shell-verification.md#native-protected-project-pilot)
+exercises their real macOS debug WebView/IPC composition. Its dated frozen-harness
+receipt covers protected reads, reconnect and account/Device revocation. It does
+not qualify ordinary route/sign-in
+UI, packaged/physical acceptance or fresh relay-only enrollment.
+
+The opt-in runtime also mounts a [protected Device self-receipt](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts)
+at `GET/HEAD /api/auth/native-device-bindings/:bindingId/receipt`. Only a current
+ordinary Device bearer with `orchestration:read` can observe its own exact
+public binding record. This exact self-read precedes the account-bound Device
+gate's account-session requirement; it supplies no account principal or Project
+authority. One sidecar snapshot supplies historical state and currentness,
+and the route rechecks the current bearer before publication. Missing and
+foreign records have the same refusal. The mounted runtime tests cover the
+account-free read, ownership, revocation, scope withdrawal and corrupt storage;
+they do not establish an executed native IPC or relay-only retrieval.
+
+The Desktop source now registers `station_native_device_binding_self_receipt`
+in the [native relay owner](../../src-desktop/src/native_relay_redemption.rs).
+It restores an existing candidate, reads only its fixed Station receipt URL
+through the private native HTTP collector, and compares the full public tuple.
+The bearer stays in Rust. The 45-second HTTP deadline includes capacity wait;
+the complete response is capped at 4 KiB. Final profile/authority locks cover
+owner and epoch revalidation, observation persistence and public result
+construction. A nonblocking process-wide guard prevents overlapping reads from
+overwriting newer observations. The host epoch is not the proof binding UUID.
+
+Fresh matching receipts return `current` or `not-current`; a closed versioned
+404 returns `not-found`. Transport outages or a versioned unavailable response
+may return an earlier `cached-observation` with its original timestamp, labeling
+a prior positive state `previously-confirmed-current`. Malformed or unrelated
+errors remain unavailable, and every refusal retains the provisional key.
+Its positive owner/epoch-bound observation is required by the peer and account
+owners, but ordinary route-selection UI does not invoke it automatically. It
+grants no account or Project authority. The manual pilot has executed real
+host-receipt evidence on the exercised macOS debug bundle; packaged use and fresh
+relay-only enrollment remain unverified.
+
+The [application Fetch adapter](../../packages/connect/src/core/applicationChannel.ts)
+now supports a channel-owned `prepareRequest` hook after peer admission. It
+passes copied request bytes and headers while retaining the original target,
+query and body for dispatch. Added headers cannot replace existing headers;
+cancellation or failed preparation closes without dispatch. This public hook
+does not activate ordinary client transport. The native bridge now consumes the
+host handle lifecycle and adds the host Device proof through this hook. A lost
+open reply is read through the same handle; read expiry can shorten but cannot
+extend a prior deadline. Cancellation, late replies and expiry retire handles.
+
+The independent [account operations](../../src-desktop/src/native_account_operations.rs)
+and SDK typed proof provider prepare the local username/password exchange body
+before the Device hook freezes/signs it. Account claims/hashes/JTI/time come from
+the host, with a separate key and bounded owner-fenced context. One exchange,
+full host challenge-consumption retention and post-sign expiry/key checks prevent
+replay or expiry-hint laundering. Native challenge/exchange still need an already
+account-bound approved Device and real supported provider login; no principal,
+cookie or Device bearer is manufactured. The manual pilot composes these owners
+with real local-provider login and separately accepted Project membership.
+Its dated debug-shell receipt is separate from packaged acceptance and default
+transport enablement.
+
 ### Transport qualification
 
 The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)
