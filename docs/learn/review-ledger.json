@@ -4043,7 +4043,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "a089477c81ad23807a3ff261af24a424647fbc1a8b67d31fdf582757b11a3333",
-      "sourceRevision": "fb1badd8a89b7c0b8905258b77d7c73840f60b09",
+      "sourceRevision": "45e0e1ea7a31088f7c5ef373bdf48ca5fc2f8435",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5759,15 +5759,15 @@
         },
         {
           "path": "src-server/services/ssh/native-device-proof-binding-service.ts",
-          "digest": "49e57b0235a5addf796d9fb2b52edb8e144379c67d4464b50bbdeef997f32c26"
+          "digest": "e1e6e55cea63308b747f7df5878e37c014d7e4318b730b30d4c5637428850e5e"
         },
         {
           "path": "src-server/services/identity/native-device-proof-verifier.ts",
-          "digest": "531093ba3bc83803afc4d37c2a59d27f65bd1410c8b2f2cb66bdf9c097c78fbd"
+          "digest": "f1794b4fd0d97e4283d3018ed6716e9ae23560ad6ef4d3a660950dd36b8304d8"
         },
         {
           "path": "src-server/services/identity/native-device-replay-store.ts",
-          "digest": "d2c4e36f306261d30c69e1a9568b2514eecabfcdbdb3c039c4a401567de242d6"
+          "digest": "bed8a3bd397948ad7f908abdd34c3836421811d437ab4fc54b41b2cae697a9ac"
         },
         {
           "path": "src-desktop/src/native_device_proof_key.rs",
@@ -5821,7 +5821,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The CLI lifecycle and orchestration sections' ownership is unchanged by both. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Traced the native Device proof vault, binding sidecar, verifier, replay owner, private peer nonce and credential-free Request principal. Added their source navigation and explicit unmounted/operator-authentication/host-IPC limits; account keyring storage compatibility is preserved. Source tests do not establish packaged Project access."
+        "Traced the native Device proof vault, binding sidecar, verifier, replay owner, private peer nonce and credential-free Request principal. Added their source navigation and explicit unmounted/operator-authentication/host-IPC limits; account keyring storage compatibility is preserved. Source tests do not establish packaged Project access.",
+        "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled."
       ]
     },
     {
@@ -7582,7 +7583,7 @@
     {
       "path": "docs/design/connection-broker.md",
       "documentDigest": "3e63754c71ec4df0f03be5233bdf010c5647bd1ee8a43517a9988baea6f918b4",
-      "sourceRevision": "fb1badd8a89b7c0b8905258b77d7c73840f60b09",
+      "sourceRevision": "45e0e1ea7a31088f7c5ef373bdf48ca5fc2f8435",
       "kind": "design",
       "state": "classified",
       "summary": "Dated requirements and local milestones mapped to broker/connector/protected dispatcher/Device enrollment owners; preserves production/native enablement boundary.",
@@ -7622,15 +7623,15 @@
         },
         {
           "path": "src-server/services/ssh/native-device-proof-binding-service.ts",
-          "digest": "49e57b0235a5addf796d9fb2b52edb8e144379c67d4464b50bbdeef997f32c26"
+          "digest": "e1e6e55cea63308b747f7df5878e37c014d7e4318b730b30d4c5637428850e5e"
         },
         {
           "path": "src-server/services/identity/native-device-proof-verifier.ts",
-          "digest": "531093ba3bc83803afc4d37c2a59d27f65bd1410c8b2f2cb66bdf9c097c78fbd"
+          "digest": "f1794b4fd0d97e4283d3018ed6716e9ae23560ad6ef4d3a660950dd36b8304d8"
         },
         {
           "path": "src-server/services/identity/native-device-replay-store.ts",
-          "digest": "d2c4e36f306261d30c69e1a9568b2514eecabfcdbdb3c039c4a401567de242d6"
+          "digest": "bed8a3bd397948ad7f908abdd34c3836421811d437ab4fc54b41b2cae697a9ac"
         },
         {
           "path": "src-desktop/src/native_device_proof_key.rs",
@@ -7646,7 +7647,8 @@
         "91 focused tests across4files passed; actual handler/store/service budget probe retained privately.",
         "Relevant frozen upstream source deltas independently reviewed; classification scope and historical/runtime evidence limits retained.",
         "Required merge-queue recovery through 421517851: Qualified the current native note: library/server opt-in application lane now exists, ordinary saved-route activation remains unwired; dated requirements and original transport receipts remain historical.. Changed inputs reviewed: docs/design/connection-broker.md, src-server/services/connections/virtual-application.ts, packages/connect/src/core/nativeApplicationTransport.ts, src-server/services/connections/native-v2-pion-application-adapter.ts, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Traced the native Device proof vault, binding sidecar, verifier, replay owner, private peer nonce and credential-free Request principal. Added their source navigation and explicit unmounted/operator-authentication/host-IPC limits; account keyring storage compatibility is preserved. Source tests do not establish packaged Project access."
+        "Traced the native Device proof vault, binding sidecar, verifier, replay owner, private peer nonce and credential-free Request principal. Added their source navigation and explicit unmounted/operator-authentication/host-IPC limits; account keyring storage compatibility is preserved. Source tests do not establish packaged Project access.",
+        "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled."
       ]
     },
     {
@@ -12158,7 +12160,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "fb1badd8a89b7c0b8905258b77d7c73840f60b09",
+      "sourceRevision": "45e0e1ea7a31088f7c5ef373bdf48ca5fc2f8435",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12414,7 +12416,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "40c42a294fac31b41966458b5af035f4ea762da88a4eae43a083d27b17ca0d2d"
+          "digest": "726767d634ee3debf24556f6afb968feb99a37d0097997de22ac22dd8e67591b"
         },
         {
           "path": "src-server/security/station-browser-origins.ts",
@@ -12683,7 +12685,8 @@
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Main re-read it for C2b; its approval mentions are signing-key approval, unaffected by this branch. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled."
+        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
+        "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled."
       ]
     },
     {
@@ -23383,7 +23386,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "fb1badd8a89b7c0b8905258b77d7c73840f60b09",
+      "sourceRevision": "45e0e1ea7a31088f7c5ef373bdf48ca5fc2f8435",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23564,7 +23567,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "40c42a294fac31b41966458b5af035f4ea762da88a4eae43a083d27b17ca0d2d"
+          "digest": "726767d634ee3debf24556f6afb968feb99a37d0097997de22ac22dd8e67591b"
         },
         {
           "path": "src-server/security/station-control-authority-guard.ts",
@@ -23668,12 +23671,13 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. defaultApprovalMode still applies at session start below a recorded pick; no config key changed. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled."
+        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
+        "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled."
       ]
     },
     {
       "path": "docs/reference/connect.md",
-      "sourceRevision": "fb1badd8a89b7c0b8905258b77d7c73840f60b09",
+      "sourceRevision": "45e0e1ea7a31088f7c5ef373bdf48ca5fc2f8435",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Previous declaration/health/endpoint/CLI review unchanged by source hashes. Finished store selection and legacy migration, React asynchronous broker activation, profile normalization, pairing offer/QR/exchange/cookie/native host custody and revocation admission callers. Corrected setActive boolean/refusals, React Promise<void>, retained migration key, source-ranked candidate ordering, server-versus-decoder HTTP difference and blanket existing-socket revocation wording. Public endpoint ownership limitation retained without further security probing.",
@@ -23810,7 +23814,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "40c42a294fac31b41966458b5af035f4ea762da88a4eae43a083d27b17ca0d2d"
+          "digest": "726767d634ee3debf24556f6afb968feb99a37d0097997de22ac22dd8e67591b"
         },
         {
           "path": "src-server/security/websocket-auth.ts",
@@ -23890,7 +23894,8 @@
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged); terminal WebSocket query-credential refusals now record the auth failure under the normalized peer key the auth-frame limiter checks. Pairing, access-request and connection claims are unchanged, so the prose remains accurate. Source review only.",
         "Re-read '@kontourai/station-connect' against C2b: environment.ts changes only a comment naming the forwarder; the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/connect/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
-        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled."
+        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
+        "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled."
       ]
     },
     {
@@ -26590,7 +26595,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "fb1badd8a89b7c0b8905258b77d7c73840f60b09",
+      "sourceRevision": "45e0e1ea7a31088f7c5ef373bdf48ca5fc2f8435",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -26682,7 +26687,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "40c42a294fac31b41966458b5af035f4ea762da88a4eae43a083d27b17ca0d2d"
+          "digest": "726767d634ee3debf24556f6afb968feb99a37d0097997de22ac22dd8e67591b"
         },
         {
           "path": "src-server/security/station-browser-origins.ts",
@@ -26827,7 +26832,8 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled."
+        "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
+        "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled."
       ]
     },
     {
