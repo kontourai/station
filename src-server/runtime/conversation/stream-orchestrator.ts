@@ -235,7 +235,12 @@ export async function writeSSEChunk(
   streamWriter: any,
   chunk: any,
 ): Promise<void> {
-  await streamWriter.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  // Step payloads are provider diagnostics; no Station client consumes them.
+  const outward =
+    chunk.type === 'start-step' || chunk.type === 'finish-step'
+      ? { type: chunk.type }
+      : chunk;
+  await streamWriter.write(`data: ${JSON.stringify(outward)}\n\n`);
 }
 
 /**
