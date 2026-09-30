@@ -656,6 +656,30 @@ describe('verifyNativeDeviceRequestProof', () => {
     expect(h.store.consumed).toHaveLength(0);
   });
 
+  test.each([
+    { advance: 31, reason: 'expired' },
+    { advance: Number.NaN, reason: 'invalid_claims' },
+  ])(
+    'rechecks the proof clock after replay consumption ($reason)',
+    async ({ advance, reason }) => {
+      const h = await harness();
+      let clock = h.nowSeconds();
+      const proof = await h.buildProof();
+      await expect(
+        verifyNativeDeviceRequestProof(proof, request(), h.authority, {
+          nowSeconds: () => clock,
+          replayStore: {
+            async consume(jti, expiresAt) {
+              await h.store.consume(jti, expiresAt);
+              clock += advance;
+            },
+          },
+        }),
+      ).rejects.toMatchObject({ reason });
+      expect(h.store.consumed).toHaveLength(1);
+    },
+  );
+
   test('rejects an extra claim and an extra header parameter', async () => {
     const h = await harness();
     const claims = await baseClaims(h);

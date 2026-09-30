@@ -130,6 +130,21 @@ export interface NativeDeviceProofVerifierDeps {
   readonly nowSeconds?: () => number;
 }
 
+function verificationClock(deps: NativeDeviceProofVerifierDeps): number {
+  const clockSource = deps.nowSeconds ? deps.nowSeconds() : Date.now() / 1000;
+  const clock = Math.floor(clockSource);
+  if (
+    !Number.isFinite(clockSource) ||
+    !Number.isSafeInteger(clock) ||
+    clock < 0
+  )
+    throw new NativeDeviceProofRejectedError(
+      'invalid_claims',
+      'Native Device proof verification clock is invalid.',
+    );
+  return clock;
+}
+
 const base64urlDecode = (segment: string): Uint8Array => {
   const normalized = segment.replace(/-/g, '+').replace(/_/g, '/');
   const binary = atob(normalized);
@@ -540,17 +555,7 @@ export async function verifyNativeDeviceRequestProof(
   },
   deps: NativeDeviceProofVerifierDeps,
 ): Promise<NativeDeviceProofVerification> {
-  const clockSource = deps.nowSeconds ? deps.nowSeconds() : Date.now() / 1000;
-  const clock = Math.floor(clockSource);
-  if (
-    !Number.isFinite(clockSource) ||
-    !Number.isSafeInteger(clock) ||
-    clock < 0
-  )
-    throw new NativeDeviceProofRejectedError(
-      'invalid_claims',
-      'Native Device proof verification clock is invalid.',
-    );
+  const clock = verificationClock(deps);
 
   if (
     !(request.body instanceof Uint8Array) ||
@@ -754,5 +759,7 @@ export async function verifyNativeDeviceRequestProof(
       'Native Device peer changed before dispatch.',
     );
 
+  // The crypto, replay and authority reads may outlive the signed window.
+  validateClaims(claims, verificationClock(deps));
   return { deviceId: binding.deviceId, bindingId: binding.bindingId };
 }
