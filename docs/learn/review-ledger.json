@@ -3549,7 +3549,7 @@
         },
         {
           "path": "src-server/routes/system/archive-update.ts",
-          "digest": "97a36602f6d3d0b0ad2e19d566784adad7c1caafece78d961c849167232003f9"
+          "digest": "11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9"
         },
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -3626,15 +3626,16 @@
         "Delta-review fixes: hold rule requires a strictly greater core (equal cores hide newer nightly code); D4 verifies only under a pinned or verified-archive Node; D6 rotation bootstrap (signed with the shared key, then retire it from nightly); migration labels split; baked-ring copy qualified.",
         "Wording: nightly core reason corrected; lines re-wrapped.",
         "Source ADR 0015 changed by the merged #2957 evidence addendum (e8dc2e22). ADR 0020's NOT_VERIFIED carry-list and the addendum anchor match the landed text (Windows readiness and watchdog timings, stale sidecar entries, shared roots refusing first launch).",
-        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold."
+        "Also reviewed the lifecycle.ts delta from #2954 (335f38acc): it keeps recorded ports across station upgrade and does not change ring or install-state handling; the ADR's station upgrade claims hold.",
+        "Re-reviewed against #2975 (76fbd9f4a): archive-update.ts follows up to 5 https-only redirect hops before the unchanged signature verification; the ADR's claims are unaffected. Source review only."
       ],
       "documentDigest": "d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372",
-      "sourceRevision": "54e0ffb5c1ae765b4127f031e525793087fb9669"
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04"
     },
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3738,7 +3739,7 @@
         },
         {
           "path": "src-server/runtime/conversation/stream-orchestrator.ts",
-          "digest": "9992d0781e384149a4611cf5676a4642f2faed472a1d7da866bada4c2bbe708a"
+          "digest": "0c5907d6b5073d300b2b37ce9e9e107d654fc90934c89cda17196143f6027111"
         },
         {
           "path": "src-server/runtime/mcp/mcp-manager.ts",
@@ -3823,7 +3824,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Station Architecture' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json, packages/connect/package.json, packages/sdk/package.json, packages/shared/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/cli/package.json, packages/connect/package.json, packages/sdk/package.json, packages/shared/package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -4014,7 +4016,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "68410b4705c5bbc4395823d9568c718e8f44331e95f7900f7d44b5f0d933a306",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4370,7 +4372,7 @@
         },
         {
           "path": "src-server/knowledge-store/adapters/conversation-store.ts",
-          "digest": "349b4e7f4f0620b306d1ac82f816cd36446f1c31a843878b3fcbcf2484701c9d"
+          "digest": "f49321e1e2ba42b416887ccec379cd71d7725d34b12c56d2511af3e7b30673f9"
         },
         {
           "path": "src-server/knowledge-store/adapters/default-store.ts",
@@ -4422,7 +4424,7 @@
         },
         {
           "path": "src-server/providers/adapters/station-agent-adapter.ts",
-          "digest": "28ae9ecb204f2a9653577f674a5faae2076a1f7c93038e94cdc143d99d03b8f1"
+          "digest": "816a95380f960a7d06c9ffd37744d8d9f2d710aebb75a14cdc5f5e6e5149be17"
         },
         {
           "path": "src-server/providers/finish-reason-authority.ts",
@@ -4474,11 +4476,11 @@
         },
         {
           "path": "src-server/routes/chat/chat-primary-stream.ts",
-          "digest": "e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e"
+          "digest": "ff7c778d975c7ed813ee07c5ee8cecefea35ff02e3007312f6267b94748c67c6"
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
+          "digest": "db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841"
         },
         {
           "path": "src-server/routes/connections/acp.ts",
@@ -5765,7 +5767,8 @@
         "2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts, src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked StationControlDispatchScope (scope decided before contacting another Station, which C2b's route refusals reinforce) and the SDK/http module rows; no claim names the removed caller-delegation route or the tool-side peer path. After merging main 91472e665, re-read main's edit here (the scheduler paragraph drops addProvider and the legacy-provider receipt wording); it names no station-control forwarding, caller-delegation or SDK body-read behaviour, so the above still holds.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -7176,7 +7179,7 @@
     {
       "path": "docs/design/chat-composer.md",
       "documentDigest": "aeb418f15c683c45acf0d100105617212985aaa7f34c61410d860ca6f4e5af7b",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "policy",
       "state": "classified",
       "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
@@ -7188,7 +7191,7 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
+          "digest": "db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841"
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
@@ -7211,7 +7214,8 @@
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
-        "Re-read 'Design: Chat composer & the agent-navigability principle' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold."
+        "Re-read 'Design: Chat composer & the agent-navigability principle' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -7423,7 +7427,7 @@
     {
       "path": "docs/design/conduit-runtime-integration.md",
       "documentDigest": "92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
@@ -7459,7 +7463,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/strands-adapter.ts",
-          "digest": "46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459"
+          "digest": "ef04cefe6b81a84570095ae3639ed663e53222f345cbf343b54d2e642925148f"
         },
         {
           "path": "src-server/runtime/frameworks/strands-agent-hooks.ts",
@@ -7477,7 +7481,8 @@
         "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read. | Cites station-runtime-conformance.json, whose only change is the station-strands hostVersion (1.15.0 to 1.18.0) from the #2599 dependency bump. Searched this page for 1.15.0, 1.18.0 and hostVersion and found none, and it states no capability or verdict that moved, so its statements still hold. Checked by search plus the generated diff, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read. | Cites station-runtime-conformance.json, whose only change is the station-strands hostVersion (1.15.0 to 1.18.0) from the #2599 dependency bump. Searched this page for 1.15.0, 1.18.0 and hostVersion and found none, and it states no capability or verdict that moved, so its statements still hold. Checked by search plus the generated diff, not a full re-read.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -10740,7 +10745,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "7d865d177cd57a733bba5caad0e3c575dcb98ae752733dc26194bba6af92ba3f",
-      "sourceRevision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10848,7 +10853,7 @@
         },
         {
           "path": "src-server/routes/chat/chat-primary-stream.ts",
-          "digest": "e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e"
+          "digest": "ff7c778d975c7ed813ee07c5ee8cecefea35ff02e3007312f6267b94748c67c6"
         },
         {
           "path": "src-server/routes/connections/app-home.ts",
@@ -11069,7 +11074,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by connection-env.ts (CONNECTION_CONFIG_HOME_ENV_KEYS unexported); attached-session-adoption.ts (comment only); orchestration-service.ts (comment rewording and the dropped never-read provider argument); attention-projection.ts (comment only); claims unaffected.",
         "2026-09-28 follow-up: src-server/tools/station-control-policy.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "#2862: rewrote Theming & Colors; the only other change to this record is the added source station-tones.ts. Checked against installed @kontourai/ui 1.12.0: tokens.css defines --k-positive/--k-caution/--k-negative/--k-active/--k-neutral and --k-positive-soft/--k-caution-soft/--k-negative-soft/--k-active-soft (no neutral soft fill), and no --k-status-contrast, --k-trust-*, --k-action or --k-focus; Badge and StatusBadge take a tone and render their label; station-tones.ts is Station's domain-to-tone mapping; index.css restyles .tone-positive/caution/negative/active (positive-status-contrast.test.ts checks AA). DESIGN.md is linked upstream because 1.12.0 does not ship it. The rest of the guide is unchanged.",
-        "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines."
+        "Re-read 'Agent Development Guide' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; request-delegation.ts drops createCallerDelegationDeriver; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; EnvironmentAccess.requestOptions gains an optional timeoutMs; station-control-delegation.ts now has tools relay a saved Environment to this Station's route, which forwards through the forwarder with a route-owned bound and fixed copy for another Station's refusals; the policy table adds GET /api/orchestration/delegations to dispatch routes and routes list_delegation_targets through POST /delegations/options. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit here (UI styling now points at @kontourai/ui DESIGN.md, --k-* tokens and station-tones); it makes no claim about delegation, forwarding or SDK deadlines.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -14706,7 +14712,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14742,7 +14748,7 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54"
+          "digest": "48e1e944540bc28ff2fad07c89dc445afdb5e6032b72868aaae7b8eb4c4f4c7c"
         },
         {
           "path": "docs/reference/cli.md",
@@ -14801,7 +14807,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Re-read 'Integrating Station into your company or project' against C2b: station-runtime.ts builds the Discord continue path's remote forwarder once at composition. The document makes no claim about those behaviours, so its statements still hold.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -16068,7 +16075,7 @@
     {
       "path": "docs/guides/monitoring.md",
       "documentDigest": "5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
@@ -16096,7 +16103,7 @@
         },
         {
           "path": "src-server/routes/chat/chat-lifecycle.ts",
-          "digest": "afca720b097f5326b1b8a393136fe0924876f4847ab577d08eaf26fd966dd86a"
+          "digest": "9b8c9f752c22eb9d3986331263f5ce25f5c86f91466fb8fbd1f65cd4db36efb8"
         },
         {
           "path": "src-server/routes/operations/insights.ts",
@@ -16152,7 +16159,8 @@
         "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
         "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed the createInstallationIdHash seam. The resource attributes are unchanged (service.installation.id from the persisted otel-installation-id hash, os.type), and the header now says import order is insufficient. pnpm-lock only dropped bearing/forage. Resource-attribute and async-startup prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by project-resource-shadow-record.ts (outcome list made an as-const literal with comments (same members)); claims unaffected.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -21943,12 +21951,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "3b5d2e09a30b6c2e39c51535dffe2e291c06d18b80f4c67223639d99c462ab54",
+      "documentDigest": "48e1e944540bc28ff2fad07c89dc445afdb5e6032b72868aaae7b8eb4c4f4c7c",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -22184,11 +22192,11 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
+          "digest": "db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841"
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
-          "digest": "919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17"
+          "digest": "d96099cd4787a5dc4f5707cc66b1dbe723dcedbd76991a4f81ec0cad64b333f4"
         },
         {
           "path": "src-server/routes/connections/bedrock.ts",
@@ -22654,7 +22662,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now. 2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Documented routes, the station-control caller-scoped checks and principal resolution are unchanged, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Rechecked the continuation-caller paragraph (it still rebuilds the target from the binding and forwards the model choice, now via this Station's route for a saved Environment) and the pairing-scope and deadline statements; none lists the removed credential or caller-delegation routes. After merging main 91472e665, re-read main's edits (the /api/branding theme override surface, and dropping the legacy scheduler provider sentence); neither touches the continuation-caller, pairing-scope or deadline statements checked above.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge of origin/main into feat/activity-failure-reason: the Get Conversation Messages paragraph (authored in this branch) matches the code at this revision — failed-turn markers persist only outward-safe text, pre-fix markers are scrubbed on every served read (messages, export, fork, summary) and excluded from every model input (Station engine prompt, native memory, Strands, title, summary)."
       ]
     },
     {
@@ -23085,7 +23094,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -23178,7 +23187,7 @@
         },
         {
           "path": "src-server/routes/chat/chat.ts",
-          "digest": "530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a"
+          "digest": "db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841"
         },
         {
           "path": "src-server/routes/orchestration/attachments.ts",
@@ -23238,7 +23247,7 @@
         },
         {
           "path": "src-server/runtime/frameworks/strands-adapter.ts",
-          "digest": "46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459"
+          "digest": "ef04cefe6b81a84570095ae3639ed663e53222f345cbf343b54d2e642925148f"
         },
         {
           "path": "src-server/runtime/frameworks/strands-tool-loader.ts",
@@ -23363,7 +23372,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); builtin-scheduler.ts (owns the announced-run set); claims unaffected.",
         "Source review of this branch's audit follow-ups: removed the unused isLocalRuntimeCaller wrapper (production already derives local-operator status only through bindRuntimeLocalOperator/isBoundRuntimeLocalOperator; behavior unchanged). Log redaction is still decided by the bound home-possession locality and the station-control guard's withdrawal; the documented log-read and redaction behavior remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Re-read 'config reference' against C2b: orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; station-runtime.ts builds the Discord continue path's remote forwarder once at composition; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route; pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold.",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -23935,7 +23945,7 @@
     },
     {
       "path": "docs/reference/env-vars.md",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
@@ -23984,7 +23994,7 @@
         },
         {
           "path": "src-server/routes/chat/chat-primary-stream.ts",
-          "digest": "e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e"
+          "digest": "ff7c778d975c7ed813ee07c5ee8cecefea35ff02e3007312f6267b94748c67c6"
         },
         {
           "path": "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
@@ -24071,7 +24081,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). STATION_API_BASE/STATION_PORT resolution in station-control-shared.ts is unchanged; STATION_CONTROL_CALLER_TOKEN was never documented here and is not a supported variable. Prose remains accurate. Source review only.",
         "Added STATION_REMOTE_REQUEST_TIMEOUT_MS (default 30000, 1..600000, validated at startup, headers and body, not SSH connect). The other server rows do not depend on the forwarder wiring C2b added to runtime-routes and station-runtime. | Restored src-server/services/remote-stations/remote-station-forwarder.ts as a recorded source: it was cited by this branch's review before the merge with main and was dropped when main's ledger file was taken. No prose changed; the earlier review of this page's forwarding claims stands.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -24387,7 +24398,7 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "8012fb77b1b95d1461c59827bf9690884526f30c",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -24860,7 +24871,7 @@
         },
         {
           "path": "src-server/providers/adapters/station-agent-adapter.ts",
-          "digest": "28ae9ecb204f2a9653577f674a5faae2076a1f7c93038e94cdc143d99d03b8f1"
+          "digest": "816a95380f960a7d06c9ffd37744d8d9f2d710aebb75a14cdc5f5e6e5149be17"
         },
         {
           "path": "src-server/routes/agents/invoke-agent.ts",
@@ -25389,7 +25400,8 @@
         "removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only.",
         "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Rechecked the SDK reference against the body-read deadline change: it documents no unreadable-body message for a timeout, and the typed error surfaces it names are unchanged; the changeset carries the new behaviour. After merging main 91472e665, re-read main's new useBrandingQuery and usePullRequestMergeabilityQuery entries. useBrandingQuery's 'an error answer rejects rather than resolving as no branding' still holds; on the combined tree fetchBranding's body-read catch now uses unlessDeadline, so a mid-body deadline rejects as StationRequestTimeoutError rather than 'Branding request was not successful' (the changeset's every-.catch claim now covers it).",
-        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read."
+        "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/sdk/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
@@ -27152,7 +27164,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80",
+      "sourceRevision": "b517dd8cbe910cccaad968b62c162f2c2c722e04",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27205,7 +27217,7 @@
         },
         {
           "path": "src-server/routes/chat/conversations.ts",
-          "digest": "919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17"
+          "digest": "d96099cd4787a5dc4f5707cc66b1dbe723dcedbd76991a4f81ec0cad64b333f4"
         },
         {
           "path": "src-server/routes/knowledge/knowledge-source-routes.ts",
@@ -27353,7 +27365,8 @@
         "#2905 index.css delta: the dev/beta/nightly channel blocks (brand, brand-contrast and role values per mode), the chat-dock resize grip hover/focus fill (now --text-primary), and comments. Release-channel tokens, layout and other component rules are unchanged. Grepped the page for channel, brand, colour, contrast and resize-grip claims: none concern what changed. docs/learn/media.json changed only in this PR's re-recorded capture reviews (reviewedRevision, index.css digest and a review note); no capture identity, image or caption changed. Its beta/Nightly install and channel text is about distribution, not colours.",
         "Own edit: only the archive-install guide's link target changed, from the repo-relative ../guides/release-channel-ports.md to the absolute repository blob URL for the same file and the same #prebuilt-archives-and-source-releases anchor, so the published Start Here page no longer links to an ungenerated target. The surrounding claims (STATION_INSTALL_PUBLIC_MANIFEST_URL, the signed platform-v2 prebuilt archive, bundled Node.js, and the published-manifest requirement) are untouched. Verified docs:links:check re-resolves the blob URL as a local link and validates the anchor in 423 Markdown files.",
         "Rechecked against the media.json change: only the two repository-knowledge capture records gained a review revision, source digest and review note; the getting-started captures and steps are unchanged, so the page holds.",
-        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "Merge of origin/main into feat/activity-failure-reason: sources changed only by this branch's failure-text work (status-derived runtime.error wording, outward-safe persisted/served failed-turn markers, mid-stream error-part handling, provider-error unwrapping). Scanned the document: it makes no claim about chat failure text, failed-turn markers or SSE error frames (the only near matches describe log-reader redaction and auth-health runtime.error supersession, both unaffected); claims remain accurate."
       ]
     },
     {
