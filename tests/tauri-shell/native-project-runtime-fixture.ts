@@ -12,7 +12,9 @@ import type {
   NativeDeviceBindingCandidateV1,
   NativeDeviceProofBindingReadbackV1,
 } from '@kontourai/station-contracts/native-device-proof';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import type { AccountSessionView } from '@kontourai/station-sdk/account-authentication';
 import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { Hono } from 'hono';
@@ -432,6 +434,55 @@ export async function startNativeProjectRuntimeFixture(input: {
           .join('; ');
         assert(cookie, 'Real provider did not issue its account cookie');
         await login.arrayBuffer();
+        const accepted = await fetch(
+          `${stationBase}/api/account-auth/accept-invitation`,
+          {
+            method: 'POST',
+            headers: {
+              Origin: stationBase,
+              Cookie: cookie,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token: fixture.browser.invitation }),
+            signal: AbortSignal.any([
+              input.signal,
+              AbortSignal.timeout(15_000),
+            ]),
+            redirect: 'error',
+          },
+        );
+        assert.equal(
+          accepted.status,
+          200,
+          'Real Project invitation acceptance failed',
+        );
+        const acceptance = (await accepted.json()) as {
+          data: {
+            scope: ProjectMembershipScope;
+            grantsDeviceAccess: boolean;
+          };
+        };
+        assert.equal(acceptance.data.scope.stationId, station.stationId);
+        assert.equal(
+          acceptance.data.scope.localProjectSlug,
+          fixture.sharedWork.slug,
+        );
+        assert.equal(acceptance.data.grantsDeviceAccess, false);
+        const session = await fetch(`${stationBase}/api/account-auth/session`, {
+          headers: { Origin: stationBase, Cookie: cookie },
+          signal: AbortSignal.any([input.signal, AbortSignal.timeout(15_000)]),
+          redirect: 'error',
+        });
+        assert.equal(
+          session.status,
+          200,
+          'Real fixture account session lookup failed',
+        );
+        const { data: accountSession } = (await session.json()) as {
+          data: AccountSessionView;
+        };
+        assert(accountSession.principal.id);
+        await fixture.verifyMembership(accountSession.principal.id);
         const offer = await fixture.createBoundDeviceOffer();
         const requested = await fetch(
           stationBase + PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
