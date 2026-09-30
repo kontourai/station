@@ -1454,7 +1454,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1511,7 +1511,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -1519,7 +1520,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ff3b1945fb2a86d343d766033a632e1424ff758b7d45b5a0fd404358bb745fce",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
       "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
       "sources": [
@@ -1576,7 +1577,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -1593,7 +1595,7 @@
     {
       "path": "README.md",
       "documentDigest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
@@ -1690,7 +1692,8 @@
         "Re-read every container claim against the Dockerfile change. README describes the runtime image and install channels, not the build context or the COPY list, so no prose change is needed. The edit adds COPY docs ./docs at Dockerfile line 46, inside the build stage that ends before FROM ... AS runtime at line 63; the runtime stage pulls no docs path, so image contents, layering and size are unchanged. Also confirmed README is not in docs/pages/public-docs.json, so its relative link to docs/guides/release-channel-ports.md is never converted to a published .html and needed no rewrite. | Re-read the Self-host with Docker section against the follow-up Dockerfile/.dockerignore change (build stage now also copies biome.json, .gitignore and config/ wholesale). README claims only that you can build the image from this checkout and select it with STATION_IMAGE; that claim was false on the prior head (docker build failed: stale shipped docs without biome.json, then unresolved config/release-manifest-keys.json) and is true now: a local docker build of this tree succeeded and scripts/container-smoke.sh passed (arm64 Docker Desktop, not the x64 CI host). README enumerates no image contents or build context, so no prose change is needed.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -2152,7 +2155,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2410,7 +2413,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Station Documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -2749,7 +2753,7 @@
     },
     {
       "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "design",
       "state": "classified",
       "summary": "Decision text unchanged. A dated #2957 addendum records packaged-build runs of nightly 0.1.11-nightly.2463.2 against the NOT_VERIFIED list: signed and notarized macOS items executed, unsigned Windows NSIS partly executed, MSI/Linux/AppImage and real reboot NOT_VERIFIED. It also records findings: Windows readiness and watchdog timings, stale sidecar entries after abrupt death, and shared roots without saved metadata refusing first launch.",
@@ -2766,7 +2770,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/service_state.rs",
@@ -2793,7 +2797,8 @@
         "Review fix round: corrected tray-owner claim (unbound profile, owner status NOT_VERIFIED), Windows first launch to NOT_VERIFIED with log detail, scrubbed-env scope, Finder/Explorer proxies, port-injection evidence (app process env), stale registry entries after abrupt death; updated summary and limits.",
         "Delta-review fix: withdraws the earlier 'tray service-owner report' divergence (unbound profile, not a tray defect). Windows first-launch timing split into pairing (~51 s) and streams/focus (~68 s) with unattributed origin; abrupt-death clocks stated. Windows stale-entry and reboot-proxy port claims rest on transcribed session output retained with the run logs.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -3857,7 +3862,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -4043,13 +4048,14 @@
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Its findings cite neither the upgrade port handling nor the respond path. Prose accurate.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "fc66ce5d5cf0dc50d0dbaac7bbbc35a966b55315b21da7c8f9aa3ddfd897edd3",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4325,7 +4331,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/login_shell.rs",
@@ -5836,7 +5842,8 @@
         "Reviewed shared 4096-character compact Device proof limit and SDK pre-sign refusal against the verifier and the executed maximum-surface/path regression. SDK documentation now states the 2048 path and aggregate bound. Module-map unmounted status, integration navigation and SDK scope instructions remain accurate; no admission capability is activated.",
         "Rechecked the native Device foundations entry against the station#2893 candidate-ID slice: the binding sidecar now accepts the host-proposed canonical UUIDv4 binding ID under a tuple-bound approval context; it remains unmounted with no operator authentication or request admission, so the recorded claims stay accurate.",
         "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed.",
-        "Added private paired-Device custody owner navigation and linked canonical native capability boundary. Source review confirms no new signing IPC or native Project composition. Retirement identity/locks and Windows2560UTF16-byte journal floor are internal; software account vault format and other module claims remain unchanged."
+        "Added private paired-Device custody owner navigation and linked canonical native capability boundary. Source review confirms no new signing IPC or native Project composition. Retirement identity/locks and Windows2560UTF16-byte journal floor are internal; software account vault format and other module claims remain unchanged.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -7901,7 +7908,7 @@
     {
       "path": "docs/design/event-store-ledger-migration.md",
       "documentDigest": "6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed extraction dispositions, durable turn/recovery/credential owners and their actual EventStore/module composition. Added reserved/commit-pending states and the startup-scan unavailable-as-empty limitation tracked in #2823.",
@@ -7965,7 +7972,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); attached-session-adoption.ts (comment only); event-store.ts (positional private fault seams folded into one named faults object (no production caller)); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
         "Merge review (origin/main f287e7538 into #2915/#2916): orchestration-service.ts changed on both sides. This branch's respondToRequest computes the session grant before answering, records Auto only for a command-route edit-mode answer with no newer decision, and otherwise sends a one-call accept; main (#2918) rewrote seam comments and dropped a never-read provider argument from sessionAgentStartUnavailableReason, with no behaviour change. EventStore extraction owners are untouched; the Auto decision is an ordinary session.approval-mode-set append. Prose accurate.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -8097,7 +8105,7 @@
     {
       "path": "docs/design/instance-registry.md",
       "documentDigest": "6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed schema/read/publish/lock and production producer/consumer claim review. Distinguished minimal optional metadata validation, adoption/protected-type ordering, atomic rename versus writer locking and post-rename failure, Windows ACL/fsync limits and exact two-child test scope. Corrected Desktop service ownership reporting without automatic attachment; retained separate CLI state and conservative liveness boundaries.",
@@ -8141,7 +8149,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-server/tools/instance-registry-bridge.ts",
@@ -8159,7 +8167,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds the fixed launcher install, update-home and update status; service liveness publishing moves to service-liveness.ts with a hand-off to the launcher pid during an update; lifecycle.ts forwards STATION_SERVICE_LAUNCHER; the doc's claims (service install producer, installer-owned archives upgrade through the recorded installer, loose archives need manual replacement) still hold; prose accurate. Source review is separate from executed test evidence.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -8537,7 +8546,7 @@
     },
     {
       "path": "docs/design/mobile-credential-authority.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "historical",
       "state": "classified",
       "summary": "Historical blocker superseded at source level. Current owner pointers identify mobile host credential registration, OS keyring selection, iOS device-only accessibility, Android resolver and generated backup exclusions.",
@@ -8554,7 +8563,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-ui/src/platform/native/stationProfileStorage.ts",
@@ -8573,7 +8582,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: lib.rs removed the dormant notification_watch commands and state, and added a native HTTP TLS-backend test. The historical record and its current-owner pointers (mobile broker registration, keyring selection, Android resolver) are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -8642,7 +8652,7 @@
     {
       "path": "docs/design/native-capabilities.md",
       "documentDigest": "530790a08f895d54c3e320adc11a0079dfcd3004dd7608d6e8feeed1b1767fa8",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
@@ -8662,7 +8672,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/local_access_watch.rs",
@@ -8763,13 +8773,14 @@
         "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Desktop application signaling commands: replaced 'No renderer adapter ... currently invokes these names' because this branch adds createNativeApplicationSignalingBridge, which invokes station_native_relay_application_binding/open/read for one exact saved-profile revision and validates binding, open receipt and answer shapes (exact keys match the host's deny_unknown_fields serde structs in native_relay_redemption.rs). No ordinary native application caller composes it (grep: only its test). Command-side limits (no DataChannel, proof verification, route selection, sign-in or enrollment) unchanged. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC or packaged-platform receipt.",
         "Reviewed the desktop-only account refactor and new separate Device vault against lib.rs registration and Rust owners. Added the Device namespace/binding-ID/software-key explanation and explicit absence of IPC, renderer capability or production signing caller.",
-        "Added distinct paired-Device identity custody section after independent Sol/Luna source review. Documents authenticated capture, v2 app/channel/ref/hash/origin/Station/client companion, locked currentness, cleanup-only original-hash retirement, manual quarantine and confirmed-absent release without deletion. Pending pairing handles are not durable. Source/Keychain evidence is not packaged/physical native acceptance."
+        "Added distinct paired-Device identity custody section after independent Sol/Luna source review. Documents authenticated capture, v2 app/channel/ref/hash/origin/Station/client companion, locked currentness, cleanup-only original-hash retirement, manual quarantine and confirmed-absent release without deletion. Pending pairing handles are not durable. Source/Keychain evidence is not packaged/physical native acceptance.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/design/notification-delivery.md",
       "documentDigest": "f798be5ec16f66d9383acb89d695b1a61561bbb19b94bbb7009b6d2933e0827a",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented protocol/caller review of registration, per-principal projection, sealed payloads and phone pinning, FCM/APNs lifecycle, bounded retry/queue/replay behavior, native tap routes and desktop feed ownership. Corrected gateway state/kinds, iOS18 implementation floor, soft queue cap, scoped sweep recovery, historical Rust/watch conclusions and implemented Kotlin CI. All provisioning and physical delivery receipts remain historical.",
@@ -8841,7 +8852,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/local_access_watch.rs",
@@ -8938,7 +8949,8 @@
         "Integration source review through e0314c727: main deleted the host notification watch (lib.rs commands, notification_watch.rs, the notifier.ts watch/unwatch wrapper and the feed comment), moved the TLS listener guard into lib.rs as native_http_agent_can_actually_speak_tls, and un-exported the sweep limits with values unchanged; the merge already marked the watch retired. Two 'Rules this area has earned' bullets still described the deleted watch in the present tense, so they were changed to past tense. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds only a read-only `deviceHoldsScope(deviceId, scope)` to device-pairing-service, which checks for a live, non-pending device holding the scope. It changes no revoke, replace, scope-change notification (`onDeviceAccessChanged`) or registration behaviour that the design describes. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -10106,7 +10118,7 @@
     {
       "path": "docs/design/settings-architecture.md",
       "documentDigest": "eb80eac4602bdb8376220ce11f8f5dcd4155c90315b250fa45e0a777afc068ce",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read the full design, separating the dated problem inventory/target slices from current implementation. Checked registry descriptors, three Project overrides, provenance-only GET scope, independent Save writes, device migration ownership and canonical reveal behavior. Corrected the inert Knowledge flag claim and replaced the obsolete example with an actual registry entry.",
@@ -10173,7 +10185,8 @@
         "Reviewed integration deltas: src-ui/src/views/settings/settings-catalog.ts: Removed test-only visibleCatalogIds helper; actual Settings catalog and palette projection are unchanged; tests now own their expected-ID fixture.",
         "Integration source review through d72f79b08: #2904 added a `defaultApprovalMode` row to config.md, covering its full-access authority and the 403 approval-full-access-not-granted refusal. The CLI's parseFullEnvelope in config.ts now keeps the envelope code, status and details. The config route returns fullAccessRefusal(). The design does not describe defaultApprovalMode or refusal shapes. Its dated problem inventory, including the #175 'config set bypasses the route' item that line 309 records as closed, is still correctly framed as history. Prose accurate. Source review is separate from executed test evidence.",
         "Re-read 'Settings Architecture: scope-first settings for Station' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -10300,7 +10313,7 @@
     {
       "path": "docs/design/ssh-launched-environments.md",
       "documentDigest": "2590a6e3c1723f7c66b04ce9333756755f25750762b271480dcffe17d1d04b69",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "historical",
       "state": "classified",
       "summary": "Retained native implementation separated from removed launch/pairing UI; actual Add computer path creates server-owned SSH environment, while saved-forward rows retain status and SHA warning behavior.",
@@ -10312,7 +10325,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/ssh_launcher.rs",
@@ -10360,7 +10373,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: the only lib.rs change is removal of the dormant notification_watch commands and state. The retained native SSH implementation and Add computer path descriptions are unaffected and accurate. Classification review only.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -10595,7 +10609,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10881,7 +10895,8 @@
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
         "Checked the native-device-proof candidate-shape and host-proposed binding-ID additions in the contracts reference against packages/contracts/src/native-device-proof.ts; this document makes no claim about who mints the binding ID, so the station#2893 slice leaves its statements accurate.",
         "Reviewed host-proposed binding candidate contract and repaired approval owner: strict canonical tuple validation, runtime freezing of context/surface/JWK, exact independent revocation ID/key matched to active stored state before consumption, and read-only exact active retry. Broker prose separates the required future host ceremony from currently unmounted foundations and retains provisional keys on unknown outcomes. Protocol data grants no Device, account or Project authority; existing module navigation, integration routes and vocabulary remain accurate. Sol reproduced both pre-fix approval failures and focused owner/consumer suites passed after repair; no packaged native access is claimed.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -11273,7 +11288,7 @@
     {
       "path": "docs/guides/android-build.md",
       "documentDigest": "37d8dffe745a92d090cb31abdd509507d7666139868987c50cac217887a11d49",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Android build, generated-project ownership, provenance and verification boundaries. Full baseline read. Traced debug/release/Nightly workflow callers, managed bootstrap and app-directory selection, Kotlin geometry/native permissions, packaged provenance writer and Settings consumer, ELF/ZIP alignment owner, signing handoff and emulator checks. No builds or recipes executed.",
@@ -11441,7 +11456,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/service_state.rs",
@@ -11555,7 +11570,8 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -12192,7 +12208,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -12288,7 +12304,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/native_relay_key_approval.rs",
@@ -12719,7 +12735,8 @@
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
         "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -13480,7 +13497,7 @@
     {
       "path": "docs/guides/desktop-build.md",
       "documentDigest": "86bb87f004892c11d9eca946680a914572d9078d43fbf82a68d6e80502e4cbb1",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop compile/update/CSP contract and bounded packaged Browser Preview fixture. Full baseline read. Traced clean-checkout status-entry verifier, update UI/native registration and capabilities, manifest/lock versions, CSP config and trusted registry caller. Independently probed actual fixture helpers/shared schema; traced earlier native profile-genesis refusal. No native launch or package build.",
@@ -13652,7 +13669,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/service_state.rs",
@@ -13770,13 +13787,14 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/guides/desktop-tray.md",
       "documentDigest": "65ed27eebefb1258681b81b175dd06c183fdaec0a3c3294e79215a4ba68acdc4",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Desktop-owned service/sidecar tray health, controls, companion lifetime and logs. Full baseline read. Traced tray snapshot/action/destination decisions and ten-second health cadence, service-command identity arguments, Windows Task Scheduler implementation, companion caller after backend health, logging registration and pinned dependency rotation. Runtime/tray OS behavior remains unverified.",
@@ -13944,7 +13962,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/notification_feed.rs",
@@ -14075,7 +14093,8 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -15276,7 +15295,7 @@
     {
       "path": "docs/guides/local-collaboration-lab.md",
       "documentDigest": "23cebd66c9b548a70e1f3199e1212c52d89af935d8fd2da9c3c511d79658d748",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented stage selection/exit/retention, TLS and signing trust, persistence/caller currentness, application framing, account/protocol versus UI profiles, cross-machine SSH fixture and native-v2 diagnostic boundaries. Historical receipts stay dated. Corrected the signing-command ownership statement and matching CLI help scope.",
@@ -15380,7 +15399,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/native_relay_key_approval.rs",
@@ -15620,7 +15639,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. Its node-datachannel 0.33.3 mention is an explicitly dated observed-test receipt, not a current-version claim, so it stays as recorded.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -16067,7 +16087,7 @@
     {
       "path": "docs/guides/mobile-release.md",
       "documentDigest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
@@ -16267,7 +16287,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-server/services/notifications/agent-activity-publisher.ts",
@@ -16319,7 +16339,8 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -16416,7 +16437,7 @@
     {
       "path": "docs/guides/native-releases.md",
       "documentDigest": "0b2728e32cb46904ceb2c4738d4c45c6ec6f3deb690681753eb2b1104e01a8c6",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed detailed cohort admission/fence/ledger/partial-provider protocols, mobile and desktop compensation boundaries, macOS notarization overlap, Windows installer/payload proof limits and portable host-target staging. Actual AppImage entrypoint callers checked against Cargo.lock-verified tauri-utils resource resolution; source/config mismatch documented without claiming an executed Linux failure. Frozen Windows/shared-runtime-pruning changes traced through callers.",
@@ -16708,7 +16729,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/tauri.linux-appimage.conf.json",
@@ -16776,13 +16797,14 @@
         "Merge of origin/main into the #2977 branch: re-read the admission paragraph (rewrapped only) against scripts/release-admit-producer-assets.mjs and the merged release.yml, which is main's file plus only the #2977 admission change; #2599's action-pin moves are already reviewed above and touch no admission claim.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/guides/native-shell-verification.md",
       "documentDigest": "d7e005e24651c4609ce268807590dfaa26c7f22f7c70f1b7cd84c3e3b8df4b25",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
@@ -16866,7 +16888,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/native_relay_redemption.rs",
@@ -16963,13 +16985,14 @@
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Startup epoch, supervisor and ApiBaseProvider wiring are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Carried forward after merging origin/main into #2954, whose ledger conflicted: this page's review against #2954's delta (packaged upgrade and launcher staging stop forwarding bootstrap-derived port/instance variables to install.sh, so recorded ports are kept; STATION_INSTALL_*_PORT still passes) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/guides/nightly.md",
       "documentDigest": "7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
@@ -17201,7 +17224,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/tauri.linux-appimage.conf.json",
@@ -17266,7 +17289,8 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -17883,7 +17907,7 @@
     {
       "path": "docs/guides/release-channel-ports.md",
       "documentDigest": "3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
@@ -18059,7 +18083,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/service_state.rs",
@@ -18191,13 +18215,14 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/guides/release-rings.md",
       "documentDigest": "75d72fe29216dca1d8443e8c502cda5d7fc03aa2d88d74fee939a688c9ee62eb",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Portable release trust, exact-commit promotion and recovery requirements. Full143-line baseline read. Traced install.sh default attestation and optional pinned-key public manifest branches, token lifetime, explicit channel mapping, downgrade/freshness limits, restore failure handling and publish authority. Corrected exact preview-commit promotion and routine destructive cleanup recipe.",
@@ -18345,7 +18370,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-server/services/notifications/agent-activity-publisher.ts",
@@ -18381,13 +18406,14 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/guides/repository-knowledge-graph.md",
       "documentDigest": "f253c46ef60980c7d700d65a64b87911e763a6af925881c8a9683fdb0a3a7dff",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete graph guide against exporter/importer and public SDK/store callers: attributed purpose, documented-reference edges, input-qualified snapshots, additive history, explicit import/recall boundaries, current source versus recorded evidence and local-candidate release limits. Added actual isolated Station and manifest-entry Kit consumer dogfood findings.",
@@ -18441,7 +18467,8 @@
         "Re-read 'Learn Station through its repository graph' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline). The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (package.json). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -19130,7 +19157,7 @@
     {
       "path": "docs/guides/self-hosted-broker.md",
       "documentDigest": "4e8da08fcfcf0f9dc703fc93569237ceccb062e1cf5a51456a61a59ca2e77157",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; ordinary Desktop route activation remains unwired; the explicit native library/server application lane is now documented.",
@@ -19186,7 +19213,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/native_relay_key_approval.rs",
@@ -19374,7 +19401,8 @@
         "Integration source review through e0314c727: lib.rs removed the dormant notification_watch module and its commands and added a rustls TLS test for the native HTTP agent. SelfHostedBrokerNativeClient gained a comment saying only tests and the native relay echo lab use it, linking this guide's 'Native routing grant foundation (v2)' heading, which exists. ApiBaseContext lost only a notification comment. The guide's native grant, command-table, supervisor and lab claims remain accurate. Source review is separate from executed test evidence.",
         "Merge of main (#2886 rewrite) into the native application UI bridge branch: resolved the native-adapter conflict to main's wording after re-reading the merged owners. The production Pion runtime passes nativeOfferPolling = (native adapter configured) (self-hosted-broker-pion-runtime.ts) and the lifecycle calls pollNative only under that flag (self-hosted-broker-runtime.ts), so 'additionally calls pollNative() for that opt-in surface' is accurate where the branch's 'own explicit opt-in' overstated a separate switch. Corrected 'application names have no renderer caller': this branch adds createNativeApplicationSignalingBridge, which wraps the three application commands for one saved-profile revision; grep finds no non-test caller composing it. Checked: focused bridge tests 12/12 and typecheck:ui on the merged tree. Limits: no executed Tauri IPC, packaged app or live broker.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -19643,7 +19671,7 @@
     {
       "path": "docs/guides/store-entry.md",
       "documentDigest": "147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
@@ -19819,7 +19847,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-server/services/notifications/agent-activity-publisher.ts",
@@ -19870,13 +19898,14 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/guides/store-listing.md",
       "documentDigest": "e232df90ff2b65b81e24c84bd160b17719d25a054828ab64da8fa98870ce4057",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Completed all draft copy and capture claims. Channel identity and mobile client ownership checked; seller, ads, age, privacy and tracking assertions made proposed owner-reviewed declarations. Screenshot content plan separated from current primary-provider specifications. Unpublished draft remains a design artifact.",
@@ -20004,7 +20033,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-server/services/notifications/agent-activity-publisher.ts",
@@ -20045,7 +20074,8 @@
         "Merge of origin/main into the #2977 branch: the merged release.yml is main's file (including #2599's action-pin moves, already reviewed above) plus only the #2977 assemble-draft admission change and its RELEASE_CHANNEL/IOS_BUNDLE_VERSION env vars; no claim in this document describes either, so its statements still hold.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -20303,7 +20333,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20482,7 +20512,8 @@
         "Re-read 'Station theming' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's new white-label branding section and channel interaction-role text; they describe the UI's theme validation and cascade, not the SDK's deadline handling or pairing scopes.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -21676,7 +21707,7 @@
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21843,7 +21874,8 @@
         "Re-read 'Frontend patterns' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); pairing-route-scopes.ts drops the /station-control/caller/delegation entry. The document makes no claim about those behaviours, so its statements still hold. After merging main 91472e665, re-read main's edit (a hook may opt back into refetchOnWindowFocus); no claim about SDK body-read deadlines or pairing scopes.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -21880,7 +21912,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
       "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
       "sources": [
@@ -21914,7 +21946,8 @@
         "#2862 changed only the Theming & Colors section of docs/guides/agents.md (status tokens and DESIGN.md pointer). The plan records that guide as a source but makes no claim about theming; the change adds no Agent identity text or synthetic identity literals, so its inventory claims still hold.",
         "Only change among its sources is the token sentence in agents.md (ui 1.16.0 token list); this plan does not rely on that sentence.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -25930,7 +25963,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "779b71ebb7067137aefa613e0df89a8d3665369aca2520e6076dd28c9083b594",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "summary": "Reviewed route parsing, registry delivery, platform/mount limits, focus restoration and bounded streamed-answer buffering.",
       "limits": "Browser/source and focused test evidence; no physical native-device result.",
       "sources": [
@@ -25966,7 +25999,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -26652,7 +26686,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "5545f52b980d2071732503351ddbd811e19d4c6e333c7e02b294db00a197a147",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -26684,7 +26718,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/ssh_launcher.rs",
@@ -26891,7 +26925,8 @@
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed the native Device proof contract/SDK export, private Pion offer nonce and unmounted credential-free Request principal against this document and actual callers. Routing, account, Device and Project authority remain independent. Existing live HTTP, browser and physical-journey claims are unchanged; no runtime admission or product signing caller is enabled.",
         "Reviewed independent Sol security findings and repaired source deltas: final proof expiry/clock recheck, copied authority snapshots, exact approved peer nonce, SDK-consistent path bound, uncached binding reload and durable replay clock floor. Removed the unused principal transfer shortcut because exact body equivalence must be enforced by the future middleware owner. Existing documented live auth and unmounted-foundation limits remain accurate; no runtime admission or packaged access is enabled.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -27485,7 +27520,7 @@
     {
       "path": "docs/user/concepts.md",
       "documentDigest": "9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete concept guide against work/session, engine, pairing, terminal-readiness, evidence and telemetry owners. Corrected continued-turn identity, reserved Station Agent engine choice and startup/background network limits.",
@@ -27552,7 +27587,8 @@
         "Re-read 'Station Concepts' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. User-level Session and approval concepts are unaffected. Prose accurate.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -27568,7 +27604,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -27780,13 +27816,14 @@
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). This branch's side is the Claude session-grant and approval-authority work. Its upgrade and port guidance holds with the recorded-port fix; Approve once and Deny behave as before. Prose accurate.",
         "index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "docs/learn/media.json changed only because this branch re-recorded its 8 index.css capture reviews on main manifest (review revision, digests and note); no capture file, caption or entry this page cites changed, so the page stays accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "docs/user/native-recovery.md",
       "documentDigest": "0a1501079da1ca412c3eddec11a2c2f57cad82b201b5f90b7e6b68a98027c906",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all public recovery claims against native readiness and renderer-mount callers, 30-second epoch/activation handling, retry-before-restart, home-reset refusal, four-respawn limit, service-versus-sidecar controls and pinned log retention. Actual CLI dispatch distinguishes local checkout prerequisites from packaged target discovery/credential/service observations.",
@@ -27826,7 +27863,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/startup_readiness.rs",
@@ -27878,7 +27915,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds an `update` field and line to `station service status` for launcher-run archives; rendererLiveness.test.tsx (#2919) adds per-desktop-platform mount-commit cases; the doc's status/identity and renderer-mount claims and its NOT_VERIFIED rows are unchanged in meaning; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Native recovery boot paths are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -29265,7 +29303,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "summary": "Reviewed deterministic graph export, exact edge meanings, attributed purpose, unknown historical rationale, isolated public-API ingestion and bounded interruption recovery.",
       "limits": "Derived navigation is not a call graph, test verdict, authenticated authorship or semantic search. Live historical snapshot receipts identify their own input revision, not this later export.",
       "sources": [
@@ -29306,7 +29344,8 @@
         "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -29897,7 +29936,7 @@
     {
       "path": "experiments/browser-transport-peer/README.md",
       "documentDigest": "dd897f888714d2b588e7eb20073b0837f2f1ea7a46075616749254e459a0e483",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Forwarding page to production-owned Pion source. Full three-line page read and current target verified; removed unbounded qualified adjective.",
@@ -29911,7 +29950,8 @@
       "checks": [
         "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Reviewed integration deltas: src-server/services/connections/pion-peer/README.md: Reviewed native-contract corrections to Go toolchain admission, local lab TURN scope, application message bounds, provenance and per-channel failure; no production transport qualification inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -30769,7 +30809,7 @@
     {
       "path": "patches/android-native-keyring-store/README.md",
       "documentDigest": "6a72dea4bb422e468c0fc2873b2647b64439c879b42d3afe7ddc56143da0df51",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed Station patch claims through commit(false), AndroidKeyringError conversion, both credential-store callers and actual native write-before-KeyringWritten path; verified Cargo selection. Upstream generic setup, licenses and dated availability are retained as explicitly classified upstream context, not Station instructions or renewed device evidence.",
@@ -30809,7 +30849,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         }
       ],
       "checks": [
@@ -30824,7 +30864,8 @@
         "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
         "Integration source review through e0314c727: the Cargo.toml ureq/rustls comment now names general native HTTPS and the new TLS test rather than the notification watch; the [patch.crates-io] path selection is unchanged; lib.rs removed only the notification watch and moved the TLS test. The patch, error-mapping and Cargo-selection claims hold, so the prose is accurate. Source review is separate from executed test evidence.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -31097,7 +31138,7 @@
     },
     {
       "path": "src-desktop/AGENTS.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
@@ -31120,12 +31161,13 @@
         "Normative route still requires native guide and focused gate selection. Native guide source corrections and new gate-for documentation-impact briefing preserve that policy; independent actual gate CLI proved explicit-path/no-Git and unknown-scope exit2 fallback. No policy activation or physical proof.",
         "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
         "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "src-desktop/CLAUDE.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
@@ -31140,7 +31182,8 @@
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -31239,7 +31282,7 @@
     },
     {
       "path": "src-server/AGENTS.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
@@ -31287,12 +31330,13 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); workflow-sidecar-service.ts (registers the referenced run-correlation schema with Ajv and drops the unused schemaAvailable getter); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "src-server/CLAUDE.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
@@ -31307,13 +31351,14 @@
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "src-server/services/connections/pion-peer/README.md",
       "documentDigest": "b1a56cbfb7ac3c067c4b105ba00f4f34b4e7a4a33b9526074a7e28352d6dc2ac",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented Pion linked version/profile/private IPC/channel/queue/cleanup and normal-connector versus lab boundaries. Corrected Go-version admission, message versus IPC size wording, local hash provenance, and channel-local send failures versus peer-fatal diagnostic/IPC failures.",
@@ -31329,7 +31374,7 @@
         },
         {
           "path": "src-desktop/src/lib.rs",
-          "digest": "b015153fedf708b8115c24f04070a6923a985e7d1832a4a6e905b7c3ef976acb"
+          "digest": "ac2e5dabfbdf7b13bf6160734f666633073607e311933b1ac55b72c1ef6fa272"
         },
         {
           "path": "src-desktop/src/native_relay_key_approval.rs",
@@ -31418,7 +31463,8 @@
         "Required merge-queue recovery through 421517851: reviewed explicit nativeClient opt-in and server-owned native provenance; existing browser/diagnostic paths and physical/deployment evidence limits remain. Changed inputs reviewed: src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: lib.rs removed the dormant notification watch. self-hosted-broker-client.ts only documents SelfHostedBrokerNativeClient as test/lab scaffolding. The README's Pion, IPC, lab and self-hosted-connector claims do not depend on that native client and remain accurate. Source review is separate from executed test evidence.",
         "Reviewed the native Device proof delta against this document and its source owners. lib.rs only adds desktop-private vault modules; account custody retains the service, owner digest and record format. No IPC, registry, notification, recovery, mobile or release behavior is activated by these additions; existing claims remain accurate.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
@@ -31481,7 +31527,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -31536,12 +31582,13 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); claims unaffected.",
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: testing.md only renames the example tag v1.62.1-noble to v1.63.0-noble in the gallery-container paragraph. Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold.",
         "Reviewed the module-map delta and each referring explanation/anchor. The added desktop Device vault and unmounted binding/verifier/replay/principal paragraph does not change the existing context, Agent identity, ledger, setting, Knowledge example, navigation or scope instructions. Existing links and evidence limits remain accurate; no native Project admission is inferred.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {
       "path": "src-ui/CLAUDE.md",
-      "sourceRevision": "9d9b25ea2fb95144dfd6be7b917f137969569590",
+      "sourceRevision": "1fe96e5b03c763ae58f15662acf69b99197ca58c",
       "kind": "policy",
       "state": "classified",
       "summary": "The complete file imports its paired AGENTS.md via @AGENTS.md.",
@@ -31557,7 +31604,8 @@
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
         "Reviewed landing deltas through 111744681: Routes UI/brand/copy work to the published @kontourai/ui DESIGN.md, available in package versions from 1.13.0. The pinned package lacks that file, so its canonical GitHub document was read; no OPEN design decision was resolved.",
-        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct."
+        "Independent committed-source delta review of app/channel-bound paired-Device companion, profile-lock/revision/epoch validation and durable cleanup-only retirement. This record describes separate native/release/adapter behavior or navigation; no affected semantic claim changed. Mobile deletion is preserved; no signing IPC, approval route, provider flow or packaged native Project access is enabled. Pending pairing handles remain memory-only; completed-profile cold observation and retirement recovery are distinct.",
+        "Reviewed behavior-neutral refusal wording delta after pre-push vocabulary finding: five desktop-only errors now use saved Station storage. Native identity, locking, retirement, mobile behavior and previously reviewed document claims are unchanged; no new native signing/approval/Project capability is enabled."
       ]
     },
     {

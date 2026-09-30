@@ -1428,7 +1428,7 @@ fn credential_vault_delete_with_host(
     let path = host.path()?;
     let _lock = host.lock(&path)?;
     let store = parse_station_profile_store(
-        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
     )?;
     let mut state = authority
         .0
@@ -1464,7 +1464,7 @@ fn retry_device_custody_retirements_for_app(app: &AppHandle) -> Result<(), Strin
     let path = host.path()?;
     let _lock = host.lock(&path)?;
     let store = parse_station_profile_store(
-        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
     )?;
     let state = authority
         .0
@@ -1520,7 +1520,7 @@ fn station_profile_authorize_with_host(
     let path = host.path()?;
     let _lock = host.lock(&path)?;
     let store = parse_station_profile_store(
-        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
     )?;
     let profile = selected_profile_from_store(&store, profile_name)?;
     if profile.credential_ref.as_ref().is_some_and(|reference| {
@@ -4664,7 +4664,7 @@ fn credential_vault_commit_pairing_with_host(
     let path = host.path()?;
     let _lock = host.lock(&path)?;
     let store = parse_station_profile_store(
-        &read_station_profile_store(&path).map_err(|_| "Station profile store is unavailable")?,
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
     )?;
     credential_vault_commit_pairing_with_custody(authority, pending, handle, &store, host.custody())
 }
@@ -5711,7 +5711,7 @@ fn station_profile_store_read_with_host(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Ok(EMPTY_STATION_PROFILE_STORE.into())
         }
-        Err(_) => Err("Station profile store is unavailable".into()),
+        Err(_) => Err("saved Station storage is unavailable".into()),
     }
 }
 
