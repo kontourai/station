@@ -31,7 +31,9 @@ const interruptTurn = vi.fn();
 const focusSpy = vi.spyOn(openChatsStore, 'focus').mockImplementation(() => {});
 const delegateTask = vi.fn();
 const refetchSessions = vi.fn().mockResolvedValue(undefined);
-const useLiveActivityQuery = vi.fn(() => ({ data: undefined }));
+const useLiveActivityQuery = vi.hoisted(() =>
+  vi.fn(() => ({ data: undefined })),
+);
 let sessions: Array<Record<string, unknown>> = [];
 
 vi.mock('../../../contexts/useShowSurface', () => ({
