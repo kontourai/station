@@ -1,5 +1,6 @@
 import {
   NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
+  NATIVE_DEVICE_PROOF_MAX_LENGTH,
   NATIVE_DEVICE_PROOF_REQUEST_PURPOSE,
   NATIVE_DEVICE_PROOF_TYPE,
   NATIVE_DEVICE_PROOF_VERSION,
@@ -165,6 +166,9 @@ export async function createNativeDeviceRequestProof(
     exp: iat + NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
   });
   const input = `${protectedHeader}.${payload}`;
+  // A 64-byte P1363 signature occupies 86 base64url characters plus the dot.
+  if (input.length + 87 > NATIVE_DEVICE_PROOF_MAX_LENGTH)
+    throw new Error('Native device proof exceeds the compact JWS size limit.');
   const signature = await signer.sign(new TextEncoder().encode(input));
   if (signature.byteLength !== 64)
     throw new Error(

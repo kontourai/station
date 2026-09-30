@@ -14,6 +14,8 @@ export const NATIVE_DEVICE_PROOF_HEADER =
 export const NATIVE_DEVICE_PROOF_REQUEST_PURPOSE = 'request' as const;
 /** One-use proofs: expiry must be no more than 30 seconds after issue. */
 export const NATIVE_DEVICE_PROOF_LIFETIME_SECONDS = 30;
+/** Maximum compact JWS character count, including its fixed-width signature. */
+export const NATIVE_DEVICE_PROOF_MAX_LENGTH = 4096;
 
 /** P-256 public key as a bare JWK; private key material never appears here. */
 export interface NativeDeviceProofPublicKey {

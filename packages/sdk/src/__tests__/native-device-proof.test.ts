@@ -15,6 +15,23 @@ import {
 const audience = 'https://station.example.test';
 const path = '/api/v1/sessions?turn=7';
 
+test('refuses a combined proof-size overflow before invoking the host signer', async () => {
+  const key = await makeSigner();
+  const snapshot = await binding(key);
+  const sign = vi.spyOn(key.signer, 'sign');
+  await expect(
+    createNativeDeviceRequestProof(
+      key.signer,
+      {
+        ...snapshot,
+        surface: { ...snapshot.surface, appIdentifier: 'a'.repeat(255) },
+      },
+      { method: 'GET', path: `/${'a'.repeat(2047)}`, body: new Uint8Array() },
+    ),
+  ).rejects.toThrow('proof exceeds');
+  expect(sign).not.toHaveBeenCalled();
+});
+
 function decode(value: string): Record<string, unknown> {
   return JSON.parse(atob(value.replace(/-/g, '+').replace(/_/g, '/')));
 }

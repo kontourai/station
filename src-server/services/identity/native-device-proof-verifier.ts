@@ -1,5 +1,6 @@
 import {
   NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
+  NATIVE_DEVICE_PROOF_MAX_LENGTH,
   NATIVE_DEVICE_PROOF_REQUEST_PURPOSE,
   NATIVE_DEVICE_PROOF_TYPE,
   NATIVE_DEVICE_PROOF_VERSION,
@@ -7,12 +8,6 @@ import {
 } from '@kontourai/station-contracts/native-device-proof';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 
-/**
- * Compact ES256 JWS size bound for the 16 KiB application-channel pilot. A
- * conforming proof is far below this; anything at or above the bound is
- * rejected before parsing.
- */
-const NATIVE_DEVICE_PROOF_MAX_LENGTH = 4096;
 /** Application-channel pilot body bound, matching the SDK signer. */
 const NATIVE_DEVICE_PROOF_BODY_MAX_BYTES = 16 * 1024;
 /** Allowed future-clock skew when rejecting not-yet-valid proofs. */
