@@ -2631,7 +2631,7 @@
     },
     {
       "path": "docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md",
-      "sourceRevision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169",
+      "sourceRevision": "814e572c50a295cf27ea045ebd4820bb3baaf2cd",
       "kind": "design",
       "state": "classified",
       "summary": "A status note bounds the historical branch/review counts and routes readers to current open-requests and required wire fields. Current code preserves process/observation qualifiers and separates answerability from dispatch authority.",
@@ -2644,7 +2644,7 @@
         },
         {
           "path": "packages/contracts/src/orchestration.ts",
-          "digest": "2de9a95f9e39e19873f5db1a2f7880a01b795e59fb8d330a0c3e81e39f57515e"
+          "digest": "4eefdd714fbd27179707604e169143829ca83dfdb260126ef92b2e3a77a095f7"
         },
         {
           "path": "src-server/services/orchestration/__tests__/session-answerability-decoration.test.ts",
@@ -2665,7 +2665,8 @@
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 added the ApprovalFullAccessRefusalDetails and requester types, a sanitizer and a details parser to contracts/orchestration.ts, and the full-access reset logic to orchestration-service. Nothing changes read-time answerability decoration, open-request projection or the dispatch-authority separation that the status note routes readers to. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by session-answerability-decoration.test.ts (per-read stamp checked with a faked clock); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by session-answerability-decoration.test.ts (per-read stamp checked with a faked clock); orchestration-service.ts (comment rewording and the dropped never-read provider argument); claims unaffected.",
+        "orchestration.ts change is doc comments only (sequence number spaces for event windows vs the per-thread event page); this document makes no claim about event sequence numbering; no prose change."
       ]
     },
     {
@@ -7040,7 +7041,7 @@
     {
       "path": "docs/design/chat-composer.md",
       "documentDigest": "aeb418f15c683c45acf0d100105617212985aaa7f34c61410d860ca6f4e5af7b",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "814e572c50a295cf27ea045ebd4820bb3baaf2cd",
       "kind": "policy",
       "state": "classified",
       "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
@@ -7048,7 +7049,7 @@
       "sources": [
         {
           "path": "packages/contracts/src/orchestration.ts",
-          "digest": "2de9a95f9e39e19873f5db1a2f7880a01b795e59fb8d330a0c3e81e39f57515e"
+          "digest": "4eefdd714fbd27179707604e169143829ca83dfdb260126ef92b2e3a77a095f7"
         },
         {
           "path": "src-server/routes/chat/chat.ts",
@@ -7074,7 +7075,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "orchestration.ts change is doc comments only (sequence number spaces for event windows vs the per-thread event page); this document makes no claim about event sequence numbering; no prose change."
       ]
     },
     {
@@ -23280,7 +23282,7 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+      "sourceRevision": "814e572c50a295cf27ea045ebd4820bb3baaf2cd",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
@@ -23341,7 +23343,7 @@
         },
         {
           "path": "packages/contracts/src/orchestration.ts",
-          "digest": "2de9a95f9e39e19873f5db1a2f7880a01b795e59fb8d330a0c3e81e39f57515e"
+          "digest": "4eefdd714fbd27179707604e169143829ca83dfdb260126ef92b2e3a77a095f7"
         },
         {
           "path": "packages/contracts/src/plugin.ts",
@@ -23520,7 +23522,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected.",
-        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."
+        "Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.",
+        "orchestration.ts change is doc comments only (sequence number spaces for event windows vs the per-thread event page); this document makes no claim about event sequence numbering; no prose change."
       ]
     },
     {
