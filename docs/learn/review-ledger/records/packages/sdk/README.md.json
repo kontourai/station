@@ -1,0 +1,97 @@
+{
+  "path": "packages/sdk/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
+
+  "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.",
+
+  "document": {"digest":"9963d8554140748d885ad8b8a46c3937271c95f2730b5ca961f2d2c76dba504b","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+
+  "sources": [
+    {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/package.json","digest":"12e6f1e6e03061c656da6cfaa2dc70be1f60a70ee742bc458988452b77dd3040","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/components/Button.tsx","digest":"04dddb6942c46db2822d0fb7e2e42088190140fe33fe2c824fe441f51c8a9758","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/components/Pill.tsx","digest":"3f62701819da0c75dc75d1a3ededcc043363253de5f7c0a83bde76a3fb693a33","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/hooks/context.ts","digest":"7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+
+    {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/task-tool-results.ts","digest":"62bc778329183b7aa6cac3c74a55a75e126f96bfa9a5d879a8cebdbe294c310d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/voice/session-manager.ts","digest":"057b5c1b6c209986cd1ce528b79c1eea914a6b244adb8c6c344179b1c0a76bee","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/voice/session-registry.ts","digest":"c98c5a59aa639bd2043f21bbedbe727892ce37231ad9682c14553bd21e9f247c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/workspace-pane.ts","digest":"1706dcbb2ed329bd68039900289a4fe33308add126c86b140639a27842037013","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/tsconfig.json","digest":"6178c809c220a4aeb4c07c45fa2c988172c8de8f308383719214db1baf741467","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+
+    {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+
+    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"}
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries.",
+
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims. Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Reviewed landing deltas through 111744681: Protected Task-result reads retain opaque generic errors with supplied status/code/retry metadata; canonical content and read authority are unchanged. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Read the changed document in context; its purpose and prior evidence limits remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the install transaction added .git exclusion only for sources that an open install proposal names (#2719). The README's CLI install from the author's own directory has no proposal, so it keeps its .git, and the preview/consent and target-selection wording is still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts and the SDK's `DelegationApiError` keep the envelope's `details`. tasks.ts answers the dispatch full-access refusal with the structured `fullAccessRefusal` body, and useActiveChatSessionMessaging renders a refusal card. The README does not document DelegationApiError fields or the refusal shape. Its `TaskToolResultRequestError` claims and 'a send may be queued or refused' are still true. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864's install.ts now also carries the preview's optional gitMetadata into the install consent. Corrected the list of fields the install command carries so it includes any gitMetadata: \"excluded\". Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery root exports. The README defers the detailed API to docs/reference/sdk.md and makes no exhaustive export claim; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

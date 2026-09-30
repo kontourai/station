@@ -1,0 +1,53 @@
+{
+  "path": "docs/design/inference-fleet.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Full chronological fleet record classified; current serving/admission/Dispatch/receipt owners linked, buffered behavior and nonlocal consumer refusal inspected, obsolete loopback bypass and blanket privacy claim corrected, dependency inventory explicitly historical.",
+
+  "limits": "Not every2000-line policy/probe/receipt/remote/provider/privacy/performance/SDK comparison claim requalified; no actual fleet turn or third-party deployment proof.",
+
+  "document": {"digest":"01a56a31c8549da9335caf67355dec6c35d928cd5c73e6bfd564f802d5a84d9e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+  "sources": [
+    {"path":"package.json","digest":"a9e77f167d692560b97b103a4d97362e11f873dfb40de02ec876b94de3dbc246","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"packages/contracts/src/datum-secret-reference.ts","digest":"df9649cef3586ffc1a91a59d9b9d7ecb0e2a56111854fc54b5f89f0be781d647","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"pnpm-lock.yaml","digest":"e4701d4b51b08d71c7f9b20f6ce95e3f6830a213754a39d1fb56b9b698f694f5","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/conversation/dispatch-model-policy.ts","digest":"3fe2e900fd33da1f883a02ee81c9ca8017cfe650390f772e4f7c65cea1e78387","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/conversation/fleet-routing-receipt-log.ts","digest":"313487ae1ef4e85874d83368c317c21fbc32266ebd9c7751d02023cf4102bfb9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cbf613e34f6760cae2bc60eba80aab9365a8c6d3f2eeffa65dcf368a57100b42","revision":"a40474f4ebf9de986dbb6314e8cee37c5ebd2bb3"},
+
+    {"path":"src-server/services/inference/fleet-candidate-service.ts","digest":"90411e0c309d2c2e171d6fbb5c329f81b9cd81b8b8af949e5608d61922d88313","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/inference/fleet-inference-service.ts","digest":"c8e7e04752800198ffc520d4f351d54491c6b10c6a35ac7a029741fd2962c4cb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
+  ],
+
+  "checks": [
+    "Entire original body read in bounded chunks; inspected named source/caller changes. Historical disposition does not certify all claims.",
+
+    "No new behavior tests for purpose banners and prose corrections; aggregate links/index/MCP/readiness own documentation verification.",
+
+    "Relevant frozen upstream source deltas independently reviewed; classification scope and historical/runtime evidence limits retained.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Integration source review through d1e0facc2: Dispatch helpers and observer deadline are private; selection and timing behavior are unchanged. Completion validation is private and still runs before provider admission. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: the unwired OpenRouter pricing consumer and the direct Bearing/Forage dependencies were removed, and the document already records that. Corrected the §2.6/§3 claims that Datum has zero imports and is not a Station dependency: packages/contracts declares Datum and re-exports its secret-reference seam, which secret bindings use, though fleet routing does not. Also replaced the 'Conduit remains on its older host-hook contract' clause, which contradicted the adjacent paragraph. The historical dependency table is unchanged. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) pairing-route-scopes.ts adds one inherited /api/system leaf, GET /api/system/core-update/service-update, near line 3084. The doc's /api/connections leaf-override claims and cited line anchors (:94, :143, :518) come before the insertion and are unchanged; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

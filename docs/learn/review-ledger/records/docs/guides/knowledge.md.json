@@ -1,0 +1,123 @@
+{
+  "path": "docs/guides/knowledge.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
+
+  "limits": "Local source and fixture/SQLite evidence. No live embedding provider, Neo4j server, external Kit interoperability, physical-device capture, or historical dogfood revalidation. Known model/content identity and provenance gaps remain linked to GitHub.",
+
+  "document": {"digest":"c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+  "sources": [
+    {"path":"docs/learn/media.json","digest":"3739f46c85f8c1cf64e0ff9fbadbb7f79b041969167391d2d6f0892ce965e462","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","digest":"d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media/repository-knowledge.png","digest":"8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/layout.json","digest":"9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/plugin.json","digest":"56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/RootPicker.tsx","digest":"f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/index.tsx","digest":"0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/meeting-notes/src/CaptureModal.tsx","digest":"99620a534b8c7248d5d1024c67656d58904b29d8d9b4396d6d04e13f91308181","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/hooks/knowledge.ts","digest":"b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-index/migrate-pre-index-knowledge.ts","digest":"f00bf506fff7fb1ef1ec2c846e50e3e81b451e24b415184b274b18f93a08ca51","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-index/sqlite-vec-index-provider.ts","digest":"96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-store/adapters/default-store.ts","digest":"003db4b89b4f5fb5238cfececcffdb33c36953e8922fc12ba941c1619d619cc6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-store/adapters/obsidian-store.ts","digest":"2ee5ba813b7ee62d61788b9bb28fc1a5d75999b401172db8563df3e30e60b5a8","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-store/neo4j-connection.ts","digest":"711a8d553aa67488e4b32706fd75733ad88f5bb8ba3f8065e1177f4b96c560be","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/services/knowledge/knowledge-service.ts","digest":"ed5b4adef24f9f7be62eed1af9ed6d586f96228a6e599427cf335c622328bbed","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/project-settings/KnowledgeSection.tsx","digest":"456b7dbbaf3232c9127c547ad6e8087b2f5947d75143ba66bec4a18a72b52744","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e62792941e8de79239fa616cc6d265af4304e29b9978535533a26b9688b86265","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+  ],
+
+  "checks": [
+    "Independent source review and correction delta accepted.",
+
+    "Knowledge focused selection: 156 tests across 13 files passed during this audit; subsequent comment edits emit identical JavaScript.",
+
+    "Knowledge UI/MCP/reader selection: 60 tests across 5 files passed during this audit.",
+
+    "Reviewed the corrected Neo4j README anchor and process-registration prerequisite after the example rewrite.",
+
+    "Reviewed source deltas: Error display uses structured userFacingErrorMessage; personal-root selection and first-root creation behavior remain unchanged.",
+
+    "Reviewed duplicate-ID create refusal under the existing transaction owner. Active and retired records are preserved; actual-route controls passed.",
+
+    "Reviewed physical identity scan and destination occupancy refusal under the existing transaction owner, corruption distinctions and resource bounds. Independent root review caught empty-frontmatter over-refusal; final 24 actual-route cases passed after the bounded correction.",
+
+    "Reviewed create identity documentation; no contract type or runtime behavior changed in this file.",
+
+    "Added bounded physical identity admission for Obsidian creates, explicit unrecoverable path-index limit, preserved ordinary empty-frontmatter notes, and linked graph walkthrough. Current store/index ownership remains unchanged.",
+
+    "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
+
+    "Reviewed integration deltas: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+
+    "Formatter-only change; parsed media metadata is identical.",
+
+    "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+
+    "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged.",
+
+    "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+
+    "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

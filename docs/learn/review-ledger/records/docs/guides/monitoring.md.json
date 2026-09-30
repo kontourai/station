@@ -1,0 +1,65 @@
+{
+  "path": "docs/guides/monitoring.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
+
+  "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only.",
+
+  "document": {"digest":"5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"pnpm-lock.yaml","digest":"e4701d4b51b08d71c7f9b20f6ce95e3f6830a213754a39d1fb56b9b698f694f5","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/monitoring/schema.ts","digest":"81b50a785e36009c3929cb6b9718944f293225ac1d6d015eb916c34a7a01f406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/chat/chat-lifecycle.ts","digest":"afca720b097f5326b1b8a393136fe0924876f4847ab577d08eaf26fd966dd86a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/operations/insights.ts","digest":"7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/operations/monitoring.ts","digest":"18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/runtime/streaming/handlers/MetadataHandler.ts","digest":"16281db938574925b4c08f9eebdb7bbdfbbba8d84f0ccc5efab23d4c31ff572c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/services/orchestration/orchestration-monitoring-bridge.ts","digest":"865a4b3de74196bf72b911b7c1a7a43e3054a7f3231c2e538f677e6f08f7d773","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/services/projects/project-resource-shadow-record.ts","digest":"380c19f88c6098c68c5ecaac41c3bd9d36cbec901a6d2e9fcca222fac690eff6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/utils/pricing.ts","digest":"436b28f35539587ffb1f7a798ad1da092ef145e7fe457d9d9488d9d4eb738406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+  ],
+
+  "checks": [
+    "Independent source/content review; 108 existing tests across six files passed.",
+
+    "Primary-chat failure span and pre-provider counter probes caught bounded defects (#2752, #2755).",
+
+    "All 28 prior rendered anchors preserved.",
+
+    "Three telemetry/monitoring/Insights comment cleanups transpile to identical JavaScript.",
+
+    "Verified eight historical issue identities against current/archive GitHub records; retained prior heading anchor and corrected retired ACP terminology.",
+
+    "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
+
+    "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed the createInstallationIdHash seam. The resource attributes are unchanged (service.installation.id from the persisted otel-installation-id hash, os.type), and the header now says import order is insufficient. pnpm-lock only dropped bearing/forage. Resource-attribute and async-startup prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

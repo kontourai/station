@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/dogfood/dogfood-001-readiness-gate-wiring/report.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+
+  "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+
+  "document": {"digest":"4a6ba5461da1cd425c0a07888b0928bbe767286586324cb024f8c151bbd3f452","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

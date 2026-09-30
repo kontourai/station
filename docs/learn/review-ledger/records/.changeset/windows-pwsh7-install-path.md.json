@@ -1,0 +1,19 @@
+{
+  "path": ".changeset/windows-pwsh7-install-path.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Read the upstream changeset as package release intent; it records the named SDK or Windows behavior change.",
+
+  "limits": "A changeset does not prove publication, installation, a Windows host result or a current release version. Canonical guides carry the current source review.",
+
+  "document": {"digest":"ace0b530d943cc6bd0c3e3f5dd5a7647f1e5b31ed562d0bb49f10d878c1ed84a","revision":"6fa523e4d5b5a265a9e545edcbba6f5602193bef"},
+
+  "sources": [],
+
+  "checks": [
+    "Read the full retained changeset during the frozen f3954615e upstream review."
+  ]
+}

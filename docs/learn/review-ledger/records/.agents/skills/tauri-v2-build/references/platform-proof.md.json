@@ -1,0 +1,17 @@
+{
+  "path": ".agents/skills/tauri-v2-build/references/platform-proof.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+
+  "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+
+  "document": {"digest":"167b9d385dc0b30d1e712da462367ed096a0715fb1649393d3f4788962270cc4","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

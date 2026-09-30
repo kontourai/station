@@ -1,0 +1,237 @@
+{
+  "path": "docs/reference/cli.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
+
+  "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
+
+  "document": {"digest":"f930a3f556eeaa9a221b147f2efa07485c6f30ebbe9ddc55506cd75268133951","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+  "sources": [
+    {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"2a94434e1fd015132afd2997471810fb188fbc20"},
+
+    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/bundle-externals.mjs","digest":"5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"packages/cli/src/__tests__/cloud-project-import-durability.test.ts","digest":"a0f8da626a15433a4ebcd6744a1e344e3907f53ef72a47be039057292c15bf97","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/cloud-project-import.test.ts","digest":"ff8a60860f9bd93f0ac1ec3a818565eb0f6d7d874ae7b02e56c260e53461f1c7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/cloud-target.test.ts","digest":"ef5b77114b6e7e31912ec2dac8b936872ed7e6f4cb961f7785447b4a7ed00307","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/cloud.test.ts","digest":"fd8a8d62ab57907fa78fdedb02e0d0e69851578ca54df02b707f947f2da55e19","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/operate-shell.test.ts","digest":"2bc3683f26076fcb84fcc902b956da6ab662d0d847511ba1e8a52c13af4fc0d6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/portability.test.ts","digest":"6d4f0b4cd4744807fcc72f2e76f34b8510ef89defdff11ce7afdec93df35fb1f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/project-identity.test.ts","digest":"bd7f12d6cd4bc5bc6b667e6f218589eb2096b68f7b8f42247209aea5bf7836d8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/surface-http.test.ts","digest":"25c5cba9118508f5de5c3e124094381579219914c8f966410c91442f9951b5f7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"e0934da8f4630b295f64b6275c25a48a41819ee58305b7b774a426aa0652bcaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/checkpoints.ts","digest":"49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/cloud-target.ts","digest":"b0e28c9a4cdf50e53f48e0fc45ccbd1fa3f61611076ac7c57968e59a95757d94","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/core.ts","digest":"0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/cli/src/commands/export.ts","digest":"e6ab16b5a85f113c559318a2616e04f7ee1cf9936aa82607909c2ad1be9d5736","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/helpers.ts","digest":"f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/import.ts","digest":"92d0d913ed08347bdc184dd73cea881214a1d8af02a3f8d5f6b232af0d8c3c40","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/init.ts","digest":"fcb691b8cdbf28db96da3330c656f221d076ae85ddcafbb9948b7048190e4e53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/operate/derive.ts","digest":"baa850f8697788c0838fdd4f91444105b23cd641ac3b41bf35833dbddb51be68","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/operate/index.ts","digest":"bbb3600be4fd61c890fbbd4ad44bfbbb2ae3c40284811fbe1c41ab61dab5c761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/operate/render.ts","digest":"432ff905abc0f165fc6ed2603de62abf6ada7cdce842d3259cb28cb8c4fdabaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/operate/shell.ts","digest":"84077a6fc13d36cc6ceee65af89bb6961f2ddc75118b8cff474640586f0d422e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/operate/state.ts","digest":"f7835d5a9bb6e48f6b135c2102f1d59288e7ae29cd135629642c7a6a15a88bdb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/portability-io.ts","digest":"bfdfb01ce86fef0f5906b05485fc1857adc514bc186510475480ac981db31b97","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/project-identity.ts","digest":"233fce00c3c785c456346db765fa7679c03fe0795a05fe3d8a55ff10b7ef030e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/surfaces.ts","digest":"5813b5447084c7e0be3069d8b012d70cea0577b26a5b07e660df7c97dc740204","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/version.ts","digest":"2b95694dbea1ea07b95792aec2e0f2438b72dd296848a960bc67ecf35c588be0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/http.ts","digest":"3997773f71f58676ec9bfe8ccde2e408554fca263a75d5a2912ac526ef7b553a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/security.ts","digest":"8731290a66b62df1bd415d9c233516d40d8f977a2dfc4009b1c0c321a952b32a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/server.ts","digest":"c5b9e90a6057a165ae81bfcd251eb06dc1d23a2c7fa7399cb34918f72482979c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/watchers.ts","digest":"84d7e142a2ee88d419333d9464bccd8072f126d3746d0c3ae748fb7ae293b70c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"f7404988ec3cb8cd76a14b1126cbc27d87952901fa1218cd6670fa5745d054b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/reviews.ts","digest":"8100a4534fcd3c3ca1a848a799e3928ff2fba3f39609cfe3660eea7014fc141d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/client/runs.ts","digest":"ef0428d474c4785754f509f1ce70544391eb42f3bdc79fbf2d39f0571ed22a5a","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/shared/src/__tests__/cloud-move.test.ts","digest":"8e6a7ce1c84b2fd2638a615d4c9297125103b1a9d680f82839af706fe093b588","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/__tests__/portability.test.ts","digest":"6cb8e9f9c886ef564c3126a4675212746f1e59246a6c802c392d5de202010b34","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/__tests__/station-home-archive.test.ts","digest":"ce829589c9970323b8ee82261114fe465f70a89a281f898af73b83ad3be7a335","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/__tests__/workspace-package.test.ts","digest":"497404cbd345974a98cb4397a6d06dfe8669c72e922af320e59c08f759626d61","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/cloud-aws-ec2.ts","digest":"172a15fb14cb6478b96d9e4c67ae24a7f5bb4e4b62065fa521a0d9b32c6acf8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/cloud-move.ts","digest":"9c8c56f5c228b667fc13f583ae5b59117bd4026633984ac9fe7a27c0e1b5245a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/portability.ts","digest":"925f3f2ecd89d50ec46df23e51cac1794a247eec9ca900bcad1dfef31c605847","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/station-home-archive.ts","digest":"2d857da29eb1de501523692cb04839be37b3375b354456fe5b676ae53ef38294","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/__tests__/release-sbom-generation.test.ts","digest":"32ec8766c0ab9e4238e56a71f99a29a59a9485da7c80d7eff005a6dcaafaa4c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/__tests__/release-sboms.test.ts","digest":"e7669f04bdeecaf1548fc9b5d380e5ee5435e9978424167a9ec91f7ab637d5f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/generate-release-sboms.mjs","digest":"e451ccfafb6f723e58c225a0654c1da0ba4ed22fbf86d88023e65cfa541ab546","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/lib/release-artifacts.mjs","digest":"ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/lib/release-sbom-generation.mjs","digest":"7c994c5cbc4832402ab7479b4c005395ba63fc7953231370e57db3ccf9c59f3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/lib/release-sboms.mjs","digest":"22a283e108c25da5ae116b2e6782520dec564a7263e7991673bdb3ed4f9ce5b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/release-container-sbom-source.mjs","digest":"32f36646b51a79f6bd499545a2095d83fa7c5dc7ae5de067cc075ee6ba6e79e7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/station-cli-implementation.ts","digest":"e747e51f4b5b6dd72ed1505ea99027dc18ea67a4aa272139b9ad013cbca46a22","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/evidence/flow-runs.ts","digest":"2bf992db2df5a2b0b84c8964baf0784419c72ee9abe1ab0aadec55ce51985527","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/operations/monitoring.ts","digest":"18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/evidence/review-evidence-module.ts","digest":"0dc790fd626a256b19036d2d78228933ae35f43f67c06674db727602bf8a6ac2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/orchestration/run-service.ts","digest":"d7549045a5ee8c7f4fea3ab4249562bf98bc9a409031c2207788f0381b55c21d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"station","digest":"bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"0d2fe916d5a7818714950c763ab11ee67d325b0779b55c8221c377a0a1239801","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"2be66a9c634498f7b4e20e4a05b47f7b3893e56608b03d41c40838527e5985a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Independent CLI caller review and final wording deltas accepted.",
+
+    "CLI implementation lane: 174 tests across 8 files passed; 51 help topics matched.",
+
+    "Independent admission probe: 11 cases passed; option/version and synthetic actual chat/SDK/SSE flow probes passed without network/provider calls.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed new archive lifecycle/upgrade/state and registry-listing sections against their complete changed owners. Other pending CLI families remain explicitly partial.",
+
+    "Continuation:180 tests/12 files PASS,252.73s (triage,homearchive,cloud/workspace/import,portableconfig,surfaceHTTP,operate,Projectidentity); expected unavailable Flow fixture logs retained.",
+
+    "Continuation:77 tests/4 files PASS,5.98s (SBOMgeneration/artifactvalidation/sharedportability).",
+
+    "Independent actual caller probe: configureApiCredential and SDKgetOrchestrationSession control authenticated against synthetic loopbackserver; actual runOperateShell omitted bearer on/events and rejected401. Receipt operate-auth-probe.json with reproducible mjs; ephemeralport and PassThrough only.",
+
+    "Prior13source hashes unchanged.3 JSON/TS CLI fences parse;91heading checklist records scope but is not semantic proof. Final407Markdown local-path/anchor checks PASS;3CLIJSON/TS fences PASS;git diff --check PASS;Veritas1790528796424:0failures0warnings.",
+
+    "Parent-confirmed frozen changed-owner review retained for lifecycle.ts,service.ts,profile-store.ts,entire install-registry.ts and396-line installer delta. Root receipts: .kontourai/upstream-docs-review-20260927/{current-owner-deltas.diff,installer-main-delta.diff,document-deltas.diff,root-accepted-source-deltas.json}. Source dependencies captured without claiming all-branch execution or rerunning prior174tests/51helptopics.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. packages/cli/src/commands/profile-store.ts: Delegates Windows trust execution to the shared bounded runner (120-second default timeout/1MiB output), preserving command/arguments and owner-only trust policy. No new Windows execution proof. packages/cli/src/commands/triage.ts: Replaces its unbounded Windows trust spawn wrapper with the shared bounded runner. Triage stdout passthrough, stored redaction, owner-only directory policy and draft-only behavior unchanged. packages/shared/src/__tests__/workspace-package.test.ts: Strengthens existing corrupted pack fixture from any throw to exact Invalid staged object refusal while preserving original corrupted bytes assertion. Recorded portable-workspace docs claims unchanged; no rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Integration source review through e0314c727: the page's merged prose for the platform-v2 archive install, archive service units (kind/installRoot, `current`, refusal from inactive versions, port refusal, stopped units left stopped, STATION_SERVICE_MANAGED, 75 s TimeoutStopSec) and installer-owned archive upgrade was checked against install.sh, service.ts, service-command.ts and lifecycle.ts. The removed `plugin` runs source was never documented here. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds the `environment access devices|scope|scopes` verbs (environment.ts, device-access.ts), makes describeCliError render a structured full-access refusal, and makes requestJson errors keep status, code and details. Main's merged synopsis and bullet match the parser and behaviour: id, prefix or name resolution with refusal on ambiguity; expectedScope conflict refusal; access:manage never granted; --dry-run; reset reporting; resetFullAccess retry; loopback-only. The config set and chat/delegate prose is unchanged in meaning. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes `station plugin install` send the preview's gitMetadata back in its consent, so a folder Station stages stripped installs instead of being refused. The reference says only that the CLI previews, requests consent for the captured package, and that the server rechecks the preview. It never claimed such folders were refused, so nothing is now wrong. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage (distribution.ts) and the dev open-file MIME/path helpers (dev/http.ts) private but leaves their callers and behavior the same. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Server-side plugin-source.ts still splits `#<branch>` and passes `--branch` to clone, so the documented `#<branch>` install syntax still works. The cloud, cloud-project-import, portability, surface-http and triage test changes only tighten assertions (EEXIST on new output paths, HTTP status text, export headings and loss entries, ledger degradedFields, remote-diagnostics rejection), and all of them match the documented behavior. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c auto-merged a new 'Recorded versus acknowledged decisions' subsection after the delegate examples. It fits the branch's delegate text (respond/status/events). It also matches source: the six delivery values in station-control-delegation.ts; CODEX_APPROVAL_ACK_WINDOW_MS = 30_000; the codes engine-decision-unacknowledged and engine-decision-not-sent; the CLI line formats in packages/cli delegate.ts; and acknowledgement 'none' in the acp and claude adapters. 7cd4892e5 refuses a decision on a closed Codex request ('not open'), which matches the closed-by-engine row. The approvals section's request.opened/request.resolved description still holds. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) main's own edit to the service section (fixed launcher at <install root>/runtime/station-launcher.mjs, 165s TimeoutStopSec, launcher-run self-update with trial/rollback/needs-operator, install.sh handoff, Check for server updates) auto-merged cleanly into the branch's text. It is not duplicated and does not contradict the branch's tier table (packaged service status|start|stop). Main left the `upgrade` section saying the installer always stops the service, switches current and restarts it; that is wrong for a running launcher-run service now that install.sh hands off. Corrected the upgrade section: the installer only stages and asks the service to switch, the launcher trials and keeps the previous version on failure, and the old stop/switch/restart applies otherwise. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "path": "docs/plans/agent-identity-supported-surface-inventory.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
+
+  "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
+
+  "document": {"digest":"ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"docs/architecture/module-map.md","digest":"341b56c5c212e14bc26ad727ce7a6f266ca34aa94f64d19dad3705078a1fb9be","revision":"754e48394b02f670894b419807274752fd9676d4"},
+
+    {"path":"docs/guides/agents.md","digest":"0289876b2d4676c45d030933cfabe4c05830c52952a87585a542473ba223b1b4","revision":"754e48394b02f670894b419807274752fd9676d4"},
+
+    {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/agent-identity-supported-surface-inventory.mjs","digest":"7733c9d3ed67777db8bcd6415bc058f25f03d4319cfb66f8f32739ecdec731e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Actual inventory initially found three unclassified fixtures; after replacing opaque joined catalog keys, zero findings/unclassified paths/stale entries. Focused catalog and inventory tests passed.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map.md changes are limited to replacing CollaborativeEditorPane with ProjectTaskRoom and removing PluginForegroundRuns. No Agent identity or adapter-selector section changed, and the inventory has no link into the removed sections. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/scoped-project-queries.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"f21fa1fedb94c8fe4f54138ee7d072703ea5fc7631da7f67216797e769d57b7c","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

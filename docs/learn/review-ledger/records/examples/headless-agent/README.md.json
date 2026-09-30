@@ -1,0 +1,29 @@
+{
+  "path": "examples/headless-agent/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed argument/credential prerequisites, accepted-handle observation, failure propagation and existing portable Agent package composition.",
+
+  "limits": "Typecheck and Node build passed; no live authorized provider execution or installed plugin journey.",
+
+  "document": {"digest":"b506af3755d8225e783d25338bb01231e68115c44ab50bad42db5cd158a2ceab","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+
+  "sources": [
+    {"path":"examples/headless-agent/src/main.ts","digest":"edeab2ac383f1e67dd569a15ac04a98eafdb39ee49441392fde4eb010dbb9036","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+
+    {"path":"examples/headless-agent/package.json","digest":"7f034abcb425f061e132b747088bf99ecc5cbc8f7a250bd92056b424a445b6e8","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"examples/headless-agent/tsconfig.json","digest":"365bef8a83a86aa9ad9674d3d8f609e42db4e477e9a29f14ee2074593d16f8b6","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+
+    {"path":"examples/portable-author-kit/plugin.json","digest":"332b41c7aff2bf308211fa388999aa5580185763512b10ade5336f221825d714","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"}
+  ],
+
+  "checks": [
+    "Public Node/browser bundle and host/build focused tests: 28 tests passed. Headless source typecheck and Node build passed. React leakage mutation failed both Agent boundary assertions; restored six bundle tests passed. No live provider run."
+  ]
+}

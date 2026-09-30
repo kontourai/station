@@ -1,0 +1,51 @@
+{
+  "path": "docs/design/conduit-runtime-integration.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
+
+  "limits": "Executed focused hook/projection tests and generated-evidence parity. No real model provider, complete framework invocation/cancellation, external-engine policy delivery or live cross-framework behavioral equivalence qualification.",
+
+  "document": {"digest":"92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+  "sources": [
+    {"path":"docs/conformance/station-runtime-conformance.json","digest":"0e490185dc517a73778f26db61735d8d0fe74f597ebca0ed1afc46c62c620bf3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":"pnpm-lock.yaml","digest":"e4701d4b51b08d71c7f9b20f6ce95e3f6830a213754a39d1fb56b9b698f694f5","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/__tests__/voltagent-agent-hooks.test.ts","digest":"582f8f69f228067c0bd37626d22db64ebd71712e023098ec2e0d6a3cdf89c073","revision":"6834c8272c12f1d98125b4f21c8d2617d9113b08"},
+
+    {"path":"src-server/runtime/frameworks/__tests__/conduit-framework-adapter.test.ts","digest":"0f9bfbf0a991e7ea7966f2e44e1bb6bffd5cb975a4c414a7bc8a7f483888773c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/conduit-framework-adapter.ts","digest":"0610d24cef08bfa87d0ddec5c833d359940bed07045ccbceea5f30725f4cf330","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/strands-agent-hooks.ts","digest":"491f93e51fb022603ae2b45af1a350c9f758c3dc5c45823c8ff53e10269009df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4","revision":"6834c8272c12f1d98125b4f21c8d2617d9113b08"},
+
+    {"path":"package.json#/scripts/conduit:conformance:generate","digest":"cba739550476cc421d79a51df9b131ae3d710713e565e31b43be1fdbe6c7988e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify:static","digest":"11d986f344d89ce8a809af289108cb97f7f204e0661fed6f0f1bac572371982d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+  ],
+
+  "checks": [
+    "Source/caller review of all documented claims in this document on 2026-09-27, including explicit history/proposal boundaries; source baseline b79def9ceb04aa645bf565ee7d1b3e8cfba86b9a, prose revision e176f3a62b139043306d9e434f031d0a87ee1640.",
+
+    "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
+
+    "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
+
+    "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}
