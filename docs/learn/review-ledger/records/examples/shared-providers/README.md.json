@@ -1,0 +1,55 @@
+{
+  "path": "examples/shared-providers/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README claim review through all executable provider modules, manifest and settings factory loader, provider grant/publication and dependency installation/rollback callers, plus actual Profile-page link consumer. Existing placeholder/local unauthenticated/legacy mutation limitations preserved. Corrected achievements link placement rather than implying a general navigation item. No enterprise integration or live registry behavior certified.",
+
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
+
+  "document": {"digest":"4f31679ccd691df8a48158128f81aa0dddaebd8de69162e6f119b7809ec503e0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"examples/shared-providers/package.json","digest":"b8b50efa8eea64634fc2956f8abf1c5807646b5cee89e160d71e7bb801f8d6c5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/shared-providers/plugin.json","digest":"035868ae1a26d8a3d3411aecfacd7af1081ca6e3a3f93aa8c2a3cda0cadd3bc3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/shared-providers/providers/agent-registry.js","digest":"07bb2fdeb4d37bf2997487fe30ff946e75378ff1e9c620a1543b93b361db3504","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/shared-providers/providers/ldap-directory.js","digest":"e50284c2a105b39003ce57ceb822a7f0762d76f0dffae31ae1190c4e483a4826","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/shared-providers/providers/ldap-user.js","digest":"43a268b10494d63a1fa50128402fbecaf53b28177326d2d10ff1ac4ae3d16523","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/shared-providers/providers/npm-registry.js","digest":"172564651d85d03b71f3d6400a9d48b5c582b4b11610f4f0327fcbf37ed51f76","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/shared-providers/providers/oauth-auth.js","digest":"c6a48c139fa13620ceee34f23b159908257b89087bc859ee08f1517984f2345a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"8a78b416e8568a22cbc0d0c043eb833d67b718025bd3c02f885379c323f4da3f","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+  ],
+
+  "checks": [
+    "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
+
+    "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
+
+    "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
+
+    "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
+
+    "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+
+    "Integration source review through e0314c727: the only input change is plugin install's excludeGitMetadata option for proposed installs (#2719). The README's provider, grant, dependency-install/rollback and Profile-link claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

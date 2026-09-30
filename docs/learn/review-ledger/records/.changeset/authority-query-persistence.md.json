@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/authority-query-persistence.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"9ca5bce06ae118830ce763df74dd9a2e7f4a6d41eb62d50ba61b8bd4c5c9c383","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

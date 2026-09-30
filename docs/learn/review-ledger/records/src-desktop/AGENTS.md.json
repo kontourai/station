@@ -1,0 +1,33 @@
+{
+  "path": "src-desktop/AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
+
+  "document": {"digest":"639c22132706ff3f95576f36d67379fe01240546042bb299f4075c3571dd1de4","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+  "sources": [
+    {"path":"docs/guides/native-shell-verification.md","digest":"432b7cd00cff49ed7b1722124d7258563d21442b97030022d9efec695d7d60de","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
+
+    {"path":"scripts/gate-for.mjs","digest":"6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Normative route still requires native guide and focused gate selection. Native guide source corrections and new gate-for documentation-impact briefing preserve that policy; independent actual gate CLI proved explicit-path/no-Git and unknown-scope exit2 fallback. No policy activation or physical proof.",
+
+    "2026-09-27 correction: 83 focused tests across release-manifest vectors, native startup structural and renderer-mount UI fixtures passed; no native build or platform journey. See native-packaging-ledger-correction-20260927 handoff for applicability.",
+
+    "Reviewed integration deltas: docs/guides/native-shell-verification.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits."
+  ]
+}

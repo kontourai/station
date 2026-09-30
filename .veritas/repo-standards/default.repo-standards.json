@@ -471,7 +471,7 @@
           ".agents/skills/documentation-audit/SKILL.md",
           "docs/guides/documentation.md",
           "docs/plans/documentation-code-audit.md",
-          "docs/learn/review-ledger.json"
+          "docs/learn/review-ledger/ledger.json"
         ]
       },
       "match": {

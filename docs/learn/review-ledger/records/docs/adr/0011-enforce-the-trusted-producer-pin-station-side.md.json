@@ -1,0 +1,45 @@
+{
+  "path": "docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "A top banner surfaces the existing 2026-08-26 supersession. Current FlowRunService.evaluate delegates to Flow evaluateRun; the retired Station probe, veto and switch remain historical rationale, while producerPin is a deprecated historical wire field.",
+
+  "limits": "No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance.",
+
+  "document": {"digest":"31dcc16a60ac8b64122625111ae8c14f82d31dbbe3c9733b2a87f913cd9d1525","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+  "sources": [
+    {"path":".flow/config.json","digest":"5cb4aedb42cb258e03eb68c3174c5a5da3d45f53864fccd25b865b7585942c03","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json","digest":"93fd2602f701684ddbe9743dffddc8d4855b3fc80de7db7a8b2716b11a05be31","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"packages/contracts/src/runtime-events.ts","digest":"d1fbeb20a129b2fb75e7b08ccd792e228f7b47f52eee85327d0b00ab44b09a0c","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/services/flow/__tests__/flow-run-service.test.ts","digest":"fa250aec61923e14b6c9fb84f5b24ba54f92d2085412a2dd967fb1b0e5c52bf3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Integration source review through d1e0facc2: Half-written-run test reaches session-start attachment and retains a complete-run resume control. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies, and the Flow pin the historical rationale cites is unchanged. The supersession banner and the evaluateRun delegation still hold. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added only an optional `revocation` {reason, deviceId, cause} to SessionApprovalModeSetEvent in runtime-events. It does not touch producerPin, Flow evaluation or the superseded Station-side probe, so the historical classification and supersession banner stand. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds ApprovalAcknowledgement, RequestResolvedEvent.acknowledgement and RequestDeliveryEvent to runtime-events. FlowGateVerdictEvent and its producerPin field are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}
