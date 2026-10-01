@@ -1,4 +1,5 @@
 import type { StationConnectionKeyCandidateV1 } from '@kontourai/station-contracts/connection-proof';
+import { RELAY_ICE_CONFIGURATION_VERSION } from '@kontourai/station-contracts/relay-ice';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeConnectionOpenV2,
@@ -19,14 +20,59 @@ import {
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import type { BrokerIceService } from '../../services/connections/broker-ice-service.js';
 import type {
   BrokerScope,
   SelfHostedBrokerService,
 } from '../../services/connections/self-hosted-broker-service.js';
 import { NativeGrantRenewalConflict } from '../../services/connections/self-hosted-broker-service.js';
 
-export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
+export interface SelfHostedBrokerRoutesOptions {
+  ice?: BrokerIceService;
+  /** Operator-pinned TLS-offload origin; client forwarding headers grant nothing. */
+  brokerOrigin?: string;
+}
+export function createSelfHostedBrokerRoutes(
+  service: SelfHostedBrokerService,
+  options: SelfHostedBrokerRoutesOptions = {},
+) {
+  const ice = options.ice;
+  let configuredOrigin: URL | undefined;
+  if (options.brokerOrigin !== undefined) {
+    try {
+      configuredOrigin = new URL(options.brokerOrigin);
+    } catch {
+      throw new Error('invalid_broker_origin');
+    }
+    const loopback = ['127.0.0.1', '[::1]', 'localhost'].includes(
+      configuredOrigin.hostname,
+    );
+    if (
+      configuredOrigin.origin !== options.brokerOrigin ||
+      configuredOrigin.pathname !== '/' ||
+      configuredOrigin.search ||
+      configuredOrigin.hash ||
+      configuredOrigin.username ||
+      configuredOrigin.password ||
+      !(
+        configuredOrigin.protocol === 'https:' ||
+        (configuredOrigin.protocol === 'http:' && loopback)
+      )
+    )
+      throw new Error('invalid_broker_origin');
+  }
+  const brokerOrigin = (c: Context) => {
+    const requestUrl = new URL(c.req.url);
+    if (configuredOrigin && requestUrl.host !== configuredOrigin.host)
+      throw new Error('broker_credential_refused');
+    return configuredOrigin?.origin ?? requestUrl.origin;
+  };
   const app = new Hono();
+  app.use('*', async (c, next) => {
+    if (configuredOrigin && new URL(c.req.url).host !== configuredOrigin.host)
+      return c.json({ error: 'broker_credential_refused' }, 401);
+    await next();
+  });
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
     // The final client grant may be retired by this request. Preserve the
@@ -36,7 +82,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     if (c.req.method === 'OPTIONS') {
       const pathname = new URL(c.req.url).pathname;
       if (
-        /\/native\/(?:key-candidates(?:\/.*)?|connections(?:\/.*)?|grants\/(?:retire|renew))$/.test(
+        /\/native\/(?:key-candidates(?:\/.*)?|connections(?:\/.*)?|ice\/configuration|grants\/(?:retire|renew))$/.test(
           pathname,
         )
       )
@@ -161,6 +207,10 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         const candidate = error instanceof Error ? error.message : '';
         const known = new Set([
           'invalid_request',
+          'ice_unavailable',
+          'ice_authority_expiring',
+          'ice_issuance_limit',
+          'relay_ice_configuration_invalid',
           'invalid_scope',
           'invalid_station_id',
           'invalid_enrollment_id',
@@ -202,8 +252,10 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         const message = known.has(candidate) ? candidate : 'broker_unavailable';
         return c.json(
           { error: message },
-          message === 'broker_unavailable'
-            ? 500
+          message === 'broker_unavailable' || message === 'ice_unavailable'
+            ? message === 'ice_unavailable'
+              ? 503
+              : 500
             : message.endsWith('_limit')
               ? 429
               : message.includes('invalid') || message.includes('too_large')
@@ -214,6 +266,64 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         );
       }
     };
+  app.post(
+    '/native/ice/configuration',
+    invoke(async (c) => {
+      const { body, credential, proof, rawBody } = await parseNativeClient(c);
+      exact(body, ['version', 'scope', 'surface']);
+      if (body.version !== RELAY_ICE_CONFIGURATION_VERSION)
+        throw new Error('invalid_request');
+      const scope = body.scope as SelfHostedBrokerNativeScopeV2;
+      const surface = body.surface as SelfHostedBrokerNativeClientSurfaceV2;
+      const authority = await service.withNativeRequestProof({
+        scope,
+        credential,
+        surface,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: brokerOrigin(c),
+        path: '/broker/v1/native/ice/configuration',
+        purpose: 'station-native-ice-configuration-v1',
+        operation: () =>
+          service.captureNativeIceAuthority(scope, credential, surface),
+      });
+      if (!ice) throw new Error('ice_unavailable');
+      c.header('Cache-Control', 'no-store');
+      return ice.issue(authority, c.req.raw.signal);
+    }),
+  );
+  app.post(
+    '/ice/configuration',
+    invoke(async (c) => {
+      if (
+        c.req.header('origin') ||
+        c.req.header('cookie') ||
+        c.req.header('content-type')?.toLowerCase() !== 'application/json'
+      )
+        throw new Error('broker_credential_refused');
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        throw new Error('invalid_request');
+      }
+      exact(body, ['version', 'scope']);
+      if (body.version !== RELAY_ICE_CONFIGURATION_VERSION)
+        throw new Error('invalid_request');
+      const secret = c.req
+        .header('authorization')
+        ?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
+      const id = c.req.header('x-broker-credential-id');
+      if (!secret || !id) throw new Error('broker_credential_refused');
+      const authority = service.captureConnectorIceAuthority(
+        body.scope as BrokerScope,
+        { id, secret },
+      );
+      if (!ice) throw new Error('ice_unavailable');
+      c.header('Cache-Control', 'no-store');
+      return ice.issue(authority, c.req.raw.signal);
+    }),
+  );
   for (const action of ['request', 'read'] as const) {
     app.post(
       `/native/key-candidates/${action}`,
@@ -237,7 +347,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
           throw new Error('invalid_request');
         const invitation =
           body.invitation as SelfHostedBrokerNativeRouteInvitationV2;
-        if (invitation?.brokerOrigin !== new URL(c.req.url).origin)
+        if (invitation?.brokerOrigin !== brokerOrigin(c))
           throw new Error('native_invitation_refused');
         const proof = body.proof as SelfHostedBrokerNativeKeyCandidateProofV1;
         c.header('Cache-Control', 'no-store');
@@ -312,7 +422,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         surface,
         compactProof: proof,
         exactBody: rawBody,
-        brokerOrigin: new URL(c.req.url).origin,
+        brokerOrigin: brokerOrigin(c),
         path: '/broker/v1/native/connections/open',
         purpose: 'station-native-connection-open-v2',
         operation: () =>
@@ -341,7 +451,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         surface,
         compactProof: proof,
         exactBody: rawBody,
-        brokerOrigin: new URL(c.req.url).origin,
+        brokerOrigin: brokerOrigin(c),
         path: '/broker/v1/native/connections/read',
         purpose: 'station-native-connection-read-v2',
         operation: () =>
@@ -369,7 +479,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         surface,
         compactProof: proof,
         exactBody: rawBody,
-        brokerOrigin: new URL(c.req.url).origin,
+        brokerOrigin: brokerOrigin(c),
         path: '/broker/v1/native/grants/retire',
         purpose: 'station-native-grant-retire-v2',
         allowRetired: true,
@@ -405,7 +515,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         surface,
         compactProof: proof,
         exactBody: rawBody,
-        brokerOrigin: new URL(c.req.url).origin,
+        brokerOrigin: brokerOrigin(c),
         path: '/broker/v1/native/grants/renew',
         purpose: 'station-native-grant-renew-v2',
         allowExpired: true,
@@ -482,6 +592,8 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         'stationSigningKeyId',
         'stationSigningGeneration',
       ]);
+      if (configuredOrigin && body.brokerOrigin !== brokerOrigin(c))
+        throw new Error('native_invitation_refused');
       return service.issueNativeInvitation({
         scope: body.scope as BrokerScope,
         routingCredential: credential,
@@ -537,6 +649,12 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       }
       exact(body, ['invitation', 'proof']);
       const record = body as Record<string, unknown>;
+      if (
+        configuredOrigin &&
+        (record.invitation as SelfHostedBrokerNativeRouteInvitationV2)
+          ?.brokerOrigin !== brokerOrigin(c)
+      )
+        throw new Error('native_invitation_refused');
       return service.redeemNativeInvitation(
         record.invitation as SelfHostedBrokerNativeRouteInvitationV2,
         record.proof as SelfHostedBrokerNativeRedemptionProofV2,

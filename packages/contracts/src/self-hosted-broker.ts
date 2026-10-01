@@ -139,6 +139,7 @@ export interface SelfHostedBrokerNativeGrantRetireV2 {
 }
 
 export type SelfHostedBrokerNativeRequestPurposeV1 =
+  | 'station-native-ice-configuration-v1'
   | 'station-native-connection-open-v2'
   | 'station-native-connection-read-v2'
   | 'station-native-grant-retire-v2'
@@ -153,6 +154,7 @@ export interface SelfHostedBrokerNativeRequestProofClaimsV1 {
   readonly brokerOrigin: string;
   readonly method: 'POST';
   readonly path:
+    | '/broker/v1/native/ice/configuration'
     | '/broker/v1/native/connections/open'
     | '/broker/v1/native/connections/read'
     | '/broker/v1/native/grants/retire'
