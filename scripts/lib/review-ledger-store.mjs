@@ -356,7 +356,10 @@ function notesByPath(notes) {
   return byPath;
 }
 
-/** The compiled record every consumer evaluates. */
+/**
+ * The shared compiled record: old byte bindings or derived history metadata.
+ * @returns {{ path: string, kind: string, state: string, summary: string, limits: string, documentDigest?: string, documentRevision?: string, historyChanges?: string[], reviewBaseline?: string, historyUnavailable?: string, sources: { path: string, digest?: string, revision?: string }[], checks: string[], notes: { file: string, revision: string, note: string, inputs?: string[] }[] }}
+ */
 function compileRecord(data, notes = []) {
   return {
     path: data.path,
@@ -431,6 +434,7 @@ function joinLearningMedia(manifest, reviews) {
  * Compile parsed ledger files (and optionally the capture manifest).
  * @param {ReturnType<typeof parseReviewLedgerFiles>} parsed
  * @param {any} [manifest] parsed media.json, when tracked
+ * @returns {{ ledger: { version: number, coverageBaseline?: string, layoutVersion?: number, historyUnavailable?: string, records: ReturnType<typeof compileRecord>[] }, media: ReturnType<typeof joinLearningMedia> | undefined }}
  */
 export function compileReviewState(parsed, manifest) {
   const byPath = notesByPath(parsed.notes);

@@ -136,7 +136,7 @@ the original observation and a link to the fix.
 Use `npm run docs:impact -- <changed-paths...>` before an edit and
 `npm run docs:impact -- --catch-up --json` to find accumulated review work.
 The report links changed sources to their documented owners, distinguishes a
-page's last edit from the revision at which each changed input was reviewed,
+page's last edit from the coverage baseline and covering review notes,
 and exposes unmapped changes.
 See [incremental maintenance](../guides/documentation.md#find-affected-documentation-and-catch-up)
 for the comparison baseline and limits.
@@ -148,7 +148,7 @@ when needed. Snapshot digests bind rendered content, review metadata, and source
 dependencies to the manifest that selected them; a mismatched lazy payload asks
 the reader to reload. Changing supporting code without changing Markdown still
 invalidates that identity. The builder hashes and writes the same captured
-source bytes, including the bytes used to evaluate review freshness. A cached
+source bytes; review freshness separately derives from Git history and notes. A cached
 page retains its original content and evidence across rebuilds. Mobile navigation
 uses a native modal dialog so the reading content comes first and the background
 is inert while the menu is open.

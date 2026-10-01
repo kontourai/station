@@ -837,12 +837,10 @@ describe('docs:review:record (#2924, #2936)', () => {
     ]);
     expect(added.status).toBe(0);
     expect(
-      compiled(f.root, 'docs/b.md').sources.map(
-        ({ path, digest }: { path: string; digest: string }) => ({
-          path,
-          digest,
-        }),
-      ),
+      compiled(f.root, 'docs/b.md').sources.map(({ path, digest }) => ({
+        path,
+        digest,
+      })),
     ).toEqual([
       { path: 'src/b.ts', digest: hash('export const b = 2;\n') },
       { path: 'src/ui.ts', digest: hash('export const ui = 1;\n') },
@@ -1036,12 +1034,10 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
       'a reviewed docs/map.md.',
       'b reviewed docs/map.md.',
     ]);
-    expect(map.sources.map(({ digest }: { digest: string }) => digest)).toEqual(
-      [
-        hash(SHARED_C.replace('c1 = 1', 'c1 = 2')),
-        hash('export const d = 2;\n'),
-      ],
-    );
+    expect(map.sources.map(({ digest }) => digest)).toEqual([
+      hash(SHARED_C.replace('c1 = 1', 'c1 = 2')),
+      hash('export const d = 2;\n'),
+    ]);
     expect(record_(f.root, ['--verify-bindings']).status).toBe(0);
   });
 

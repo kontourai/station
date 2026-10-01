@@ -18,7 +18,10 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { createRepositorySnapshot } from './lib/documentation-freshness.mjs';
+import {
+  createRepositorySnapshot,
+  resolveDocumentationFreshness,
+} from './lib/documentation-freshness.mjs';
 import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
 import { compileLearningMedia } from './lib/learning-media.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -616,6 +619,12 @@ async function recordReviewNotes(
 ) {
   const state = readReviewState(root);
   const committed = reviewedAtHead(root);
+  const policy = resolveDocumentationFreshness({
+    root,
+    env: { ...process.env, STATION_DOCS_FRESHNESS: 'scoped' },
+    ledger: state.ledger,
+    media: state.media,
+  });
   const notes = [];
   const recorded = [];
   for (const entry of entries) {
@@ -648,8 +657,15 @@ async function recordReviewNotes(
     const inputs = [
       ...new Set([
         entry.path,
-        ...owner.sources.map((source) => source.path),
-        ...sources.map((source) => source.path),
+        ...(owner.historyChanges ?? []),
+        ...(policy.sourceDrops ?? [])
+          .filter((problem) => problem.path === entry.path)
+          .flatMap((problem) => problem.changed),
+        ...entry.addedSources,
+        ...entry.removedSources,
+        ...(owner.historyUnavailable
+          ? sources.map((source) => source.path)
+          : []),
       ]),
     ];
     for (const input of [entry.path, ...sources.map((source) => source.path)]) {

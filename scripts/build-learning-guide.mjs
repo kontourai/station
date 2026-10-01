@@ -116,6 +116,8 @@ export async function buildLearningGuide({
     assertDocumentationFresh({ policy, blocking: policy.sourceDrops });
   // One read of the ledger directory and capture manifest (#2936).
   const reviewState = readReviewState(inputRoot);
+  if (reviewState.ledger.historyUnavailable)
+    console.warn(reviewState.ledger.historyUnavailable);
   const media = reviewState.media
     ? await compileLearningMedia(
         reviewState.media,
