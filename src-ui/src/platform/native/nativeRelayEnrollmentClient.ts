@@ -7,6 +7,7 @@ import {
 import { z } from 'zod/v3';
 import { createNativeEnrollmentSignalingBridge } from './nativeEnrollmentSignalingBridge';
 import type { TauriInvoker } from './nativeRelaySignalingBridge';
+import { invokeTauri } from './tauriInvoke';
 
 const handle = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -90,7 +91,7 @@ export interface NativeRelayEnrollmentClientInput {
   readonly expectedProfileRevision: number;
   readonly stationAudience: string;
   readonly signal: AbortSignal;
-  readonly invoke: TauriInvoker;
+  readonly invoke?: TauriInvoker;
 }
 
 /** Fixed host operations own signing, sealed custody, activation and recovery. */
@@ -100,7 +101,11 @@ export function createNativeRelayEnrollmentClient(
   const profileName = input.profileName;
   const stationAudience = input.stationAudience;
   const signal = input.signal;
-  const invoke = input.invoke;
+  const invoke =
+    input.invoke ??
+    ({
+      invoke: (command, args) => invokeTauri<unknown>(command, args),
+    } satisfies TauriInvoker);
   let profileRevision = input.expectedProfileRevision;
   let enrollmentHandle: string | undefined;
   let busy = false;

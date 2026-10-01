@@ -16,6 +16,7 @@ import {
   nativeProfileRepository,
   usePlatformProfile,
 } from '../../platform/PlatformProfileContext';
+import { NativeRelayEnrollmentWizard } from './NativeRelayEnrollmentWizard';
 import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import './ComputersSection.css';
@@ -102,6 +103,21 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
       trust.data.brokerOrigin === selection.expectedRoute.brokerOrigin &&
       trust.data.stationId === selection.expectedRoute.stationId &&
       trust.data.enrollmentId === selection.expectedRoute.enrollmentId,
+  );
+  const activeGrant = status.data?.grants[0];
+  const cleanupPending = Boolean(
+    status.data?.cleanups.some(
+      (cleanup) =>
+        !cleanup.brokerRetired ||
+        (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
+    ),
+  );
+  const canEnroll = Boolean(
+    trustMatchesRoute &&
+      activeGrant &&
+      !activeGrant.expired &&
+      activeGrant.metadata.expiresAt > Date.now() &&
+      !cleanupPending,
   );
   const redeem = useMutation({
     mutationFn: async (invitationJson: string) => {
@@ -207,14 +223,21 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
         </p>
       ) : null}
       {status.data ? <NativeRelayGrantSummary state={status.data} /> : null}
-      {status.data?.cleanups.some(
-        (cleanup) =>
-          !cleanup.brokerRetired ||
-          (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
-      ) ? (
+      {cleanupPending ? (
         <p role="status">
           A previous grant cleanup is still pending on this device.
         </p>
+      ) : null}
+      {canEnroll ? (
+        <NativeRelayEnrollmentWizard
+          profile={profile}
+          refreshGrantStatus={async () => {
+            const refreshed = await status.refetch();
+            if (refreshed.isError || !refreshed.data)
+              throw new Error('Native relay grant status is unavailable.');
+            return refreshed.data;
+          }}
+        />
       ) : null}
       <label>
         One-time routing invitation
