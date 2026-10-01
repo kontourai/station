@@ -124,17 +124,18 @@ function aggregateFixture({
   ],
   receipt = (_index: number, value: Record<string, unknown>) => value,
   omit = [] as number[],
+  shardCount = 4,
 } = {}) {
   const { directory, head } = repository();
-  const plan = planFor(head, files);
+  const plan = { ...planFor(head, files), shardCount };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
-  for (let index = 1; index <= FAST_CHECKS_SHARD_COUNT; index += 1) {
+  for (let index = 1; index <= shardCount; index += 1) {
     if (omit.includes(index)) continue;
     const slice = sliceFastChecksPlan(plan, {
       index,
-      count: FAST_CHECKS_SHARD_COUNT,
+      count: shardCount,
     });
     const artifact = join(
       directory,
@@ -147,7 +148,7 @@ function aggregateFixture({
         receipt(index, {
           schemaVersion: 1,
           kind: FAST_CHECKS_RECEIPT_KIND,
-          shard: `${index}/${FAST_CHECKS_SHARD_COUNT}`,
+          shard: `${index}/${shardCount}`,
           runId: '4242',
           runAttempt: 1,
           headSha: head,
@@ -176,10 +177,19 @@ function aggregate(directory: string, needs: unknown = successNeeds) {
 }
 
 describe('fast-checks aggregator exit status (child process)', () => {
-  test('passes when every part succeeded and every shard receipt verifies', () => {
-    const result = aggregate(aggregateFixture());
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('[fast-checks] PASS');
+  test.each([1, 2, 4])(
+    'passes with %i planned shards and no artifacts for omitted legs',
+    (shardCount) => {
+      const result = aggregate(aggregateFixture({ shardCount }));
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('[fast-checks] PASS');
+    },
+  );
+
+  test('rejects a plan exceeding the four-runner cap', () => {
+    const result = aggregate(aggregateFixture({ shardCount: 5 }));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('plan exceeds the maximum 4 shards');
   });
 
   test('fails when a shard failed', () => {
@@ -218,7 +228,6 @@ describe('fast-checks aggregator exit status (child process)', () => {
         'user.name=fast-checks',
         'commit',
         '--allow-empty',
-        '--no-verify',
         '-q',
         '-m',
         'moved on',
@@ -253,6 +262,87 @@ describe('fast-checks aggregator exit status (child process)', () => {
     );
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("fast-checks-plan finished 'missing'");
+  });
+});
+
+describe('adaptive planner outputs (child process)', () => {
+  // Literal boundaries protect the initial 40-file threshold independently
+  // of the implementation constant. The fixture supplies selection only;
+  // shard count and GitHub outputs come from the production CLI.
+  test.each([
+    [0, 1],
+    [39, 1],
+    [40, 1],
+    [41, 2],
+    [80, 2],
+    [81, 3],
+    [120, 3],
+    [121, 4],
+    [200, 4],
+  ])('%i selected files produce %i shards', (fileCount, expected) => {
+    const { directory, head } = repository();
+    const selected = planFor(
+      head,
+      Array.from({ length: fileCount }, (_, i) => `a/file-${i}.test.ts`),
+      fileCount === 0,
+    );
+    writeFileSync(
+      join(directory, 'scripts/run-ci-fast.mjs'),
+      'export const fastBase = () => "base-sha";',
+    );
+    writeFileSync(
+      join(directory, 'scripts/run-changed-verification.mjs'),
+      `export const planChangedVerificationShards = async () => (${JSON.stringify(selected)});`,
+    );
+    const output = join(directory, 'github-output');
+    const result = cli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: {
+        GITHUB_OUTPUT: output,
+        STATION_FAST_CHECKS_ADAPTIVE_SHARDS: 'true',
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(
+      JSON.parse(readFileSync(join(directory, 'plan.json'), 'utf8')).shardCount,
+    ).toBe(expected);
+    expect(readFileSync(output, 'utf8')).toBe(
+      `shards=${JSON.stringify(Array.from({ length: expected }, (_, i) => i + 1))}\nshard-count=${expected}\n`,
+    );
+  });
+
+  test('the old base workflow receives a four-way plan without the adaptive opt-in', () => {
+    const { directory, head } = repository();
+    const selected = planFor(head, ['a/a.test.ts']);
+    writeFileSync(
+      join(directory, 'scripts/run-ci-fast.mjs'),
+      'export const fastBase = () => "base-sha";',
+    );
+    writeFileSync(
+      join(directory, 'scripts/run-changed-verification.mjs'),
+      `export const planChangedVerificationShards = async () => (${JSON.stringify(selected)});`,
+    );
+    const result = cli(['plan', '--out=plan.json'], { cwd: directory });
+    expect(result.status, result.stderr).toBe(0);
+    expect(
+      JSON.parse(readFileSync(join(directory, 'plan.json'), 'utf8')).shardCount,
+    ).toBe(4);
+  });
+
+  test('a failed selection exits 2 and emits no successful plan', () => {
+    const { directory } = repository();
+    writeFileSync(
+      join(directory, 'scripts/run-ci-fast.mjs'),
+      'export const fastBase = () => "base-sha";',
+    );
+    writeFileSync(
+      join(directory, 'scripts/run-changed-verification.mjs'),
+      'export const planChangedVerificationShards = async () => { throw new Error("selection failed"); };',
+    );
+    const result = cli(['plan', '--out=plan.json'], { cwd: directory });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('selection failed');
+    expect(readdirSync(directory)).not.toContain('plan.json');
   });
 });
 
@@ -809,12 +899,9 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
         '-c',
         'user.name=fast-checks',
         'commit',
-        // A disposable fixture commit: the repository's own hooks are for
-        // authored changes, not this throwaway worktree.
-        '--no-verify',
         '-q',
         '-m',
-        'orphan fixture',
+        'test: orphan fixture',
       );
       const headSha = git(worktree, 'rev-parse', 'HEAD');
       // Workspace packages link to the primary checkout on purpose; the

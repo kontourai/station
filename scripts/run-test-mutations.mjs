@@ -56,6 +56,39 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'fast-checks-shard-threshold',
+    test: 'scripts/__tests__/fast-checks-shard-cli.test.ts',
+    failure: '41 selected files produce 2 shards',
+    files: [
+      {
+        path: 'scripts/lib/fast-checks-shards.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            'FAST_CHECKS_FILES_PER_SHARD = 40',
+            'FAST_CHECKS_FILES_PER_SHARD = 41',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'fast-checks-skipped-shards',
+    test: 'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
+    failure: 'the base verdict accepts 1 planned legs on PRs and merge groups',
+    files: [
+      {
+        path: '.github/workflows/ci.yml',
+        change: (source) =>
+          exactReplace(
+            source,
+            'length == 3 and all(.value.result == "success")',
+            'length == 3 and all(.value.result == "success" or .value.result == "skipped")',
+          ),
+      },
+    ],
+  },
+
+  {
     id: 'device-trust-before-peer-acceptance',
     test: 'scripts/__tests__/device-connection-trust.test.ts',
     failure:
