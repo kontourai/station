@@ -96,7 +96,7 @@
 
     {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
+    {"path":"scripts/run-changed-verification.mjs","digest":"3fdc5fd6380bc61eb7b5bf84be49b9a27b143221146640b81319e2dae066c5db","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
@@ -106,7 +106,7 @@
 
     {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"d25c88cd9667f30bc257707381330fda1c23c41490287bf8e5edbc5eca27186d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/test-impact-manifest.mjs","digest":"0c791fec362bdc43dbbc24e650c79b39e121462e818d30beeb8e2edae3383333","revision":"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d"},
 

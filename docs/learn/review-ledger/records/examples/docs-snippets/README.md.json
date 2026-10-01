@@ -16,7 +16,7 @@
 
     {"path":"scripts/__tests__/docs-snippets.test.ts","digest":"c6f31e3851bdba669d93680c01abe4ba95e8b1cab0e336f4ddcd4cd99b91f195","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/examples-conformance.mjs","digest":"951a60876f5fd3ea6d0b6daaaf194e737280ed8000a4d3808a0cfbd3bd2085e4","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"package.json#/scripts/typecheck:examples","digest":"f5d00fc07890fa4d8f20d16a4cbdc0bb8b5721d1158645375769f973f10e0d57","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"}
   ],

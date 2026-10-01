@@ -88,7 +88,7 @@
 
     {"path":"scripts/apply-android-release-signing.mjs","digest":"84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/build-portable-server-archive.mjs","digest":"b468ede952e040177e219a1170290de250231958ac32f8b596f45e716712039e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/build-portable-server-archive.mjs","digest":"3660d877f9a4698c2a107fd3b3539c6c2efea1f4626068b3ed68e9822fafbaa6","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/build-windows-nightly.ps1","digest":"050c7665938f852e610fdcaf230206344f81a82b7ab20a61ef63150fd67cbcaf","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -102,7 +102,7 @@
 
     {"path":"scripts/ios-exported-entitlements.mjs","digest":"af64ec411d76e4d926967e10db8fbc9e7f7f3555f11f19aa1260918851239257","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/ios-local-release-preflight.mjs","digest":"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/ios-local-release-preflight.mjs","digest":"d475395b8e5e5892aa5eca5d2b597a3983923eeb9c6b074778e111509061727d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/ios-store-signing-config.mjs","digest":"6925f7a23762e4176dc170703fd59ed579840803e03a89f4d6ab0ad88fa17297","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -140,7 +140,7 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"df2b1353270dd0a379ed083172d8f0cdbb355cc630d030a7f5767011060246c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"ec2095453c199b760ed669f2e95d978265ded998e1ab7b60da05ebd2970b118f","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/stage-desktop-server-runtime.mjs","digest":"8c0784f430f6e0ff39eafeb132bb509bffe6f2c57b3d9c43da7a70ecee6c9d17","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

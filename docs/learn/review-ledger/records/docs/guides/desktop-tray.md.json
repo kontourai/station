@@ -72,13 +72,13 @@
 
     {"path":"scripts/lib/desktop-build-command.mjs","digest":"967caa5ab2d1a982ccca59937fbaa3e39aa0dfc9ca50936cadb733b05e76fe1e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/desktop-build-manifest.mjs","digest":"015ac1d81021c6e051933eb7f3ae062eb3c0f41b12ee0ba66c2b86f28cbe0abb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/lib/desktop-build-manifest.mjs","digest":"56a7cf248962244c33f406e65ea7b15098097a6c4c7e7ec33beff2edb0359a49","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
-    {"path":"scripts/tauri-context.mjs","digest":"f3f307cb4d906f60285e20f496474f24c87987074530971abfbd26a042f70ed4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/tauri-context.mjs","digest":"1be971a6d5166ef04e4acc8089678f79928490c739136ee198627c48a1fae085","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/templates/android/StationAndroidInsetsBridge.kt","digest":"df1c07102503cbdb457b1a0f9b6016a31f44152602caa2043175b01ba6ffd292","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/verify-desktop-clean-checkout.mjs","digest":"5931addf88d2c9fc83a5a10c545dce9f72d34d246d4d3894705896da3aa0d6bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/verify-desktop-clean-checkout.mjs","digest":"b78866f9afe2af0661c28b35877d0fd23064bf85836d92806cbb3b9ac195a055","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/write-android-build-manifest.mjs","digest":"502da61cf201f7541656d080efb5b0e9aeeb7d999100ea9485f50f1116d786c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

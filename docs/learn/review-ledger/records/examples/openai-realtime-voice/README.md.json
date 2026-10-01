@@ -18,7 +18,7 @@
 
     {"path":"examples/openai-realtime-voice/src/index.ts","digest":"70eddd71836d87a9277c3ec37df3317179564dbeddfc8878f28d17c7c7a47728","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
 
-    {"path":"scripts/voice-realtime-live-smoke.mjs","digest":"522da05c91bbf433c890a7924670a9ed537b258835cc2fcaecdfad35b2428e47","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    {"path":"scripts/voice-realtime-live-smoke.mjs","digest":"9b193b15fc0093c07d0f4702ffaa96adb656b4bfa6df0dfc91d933df5dce3262","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/voice-realtime-openai-smoke.ts","digest":"3541929f5b8d01cf82de411a5dc95492ad4f717947b52eade34137cbdf56a36a","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
   ],

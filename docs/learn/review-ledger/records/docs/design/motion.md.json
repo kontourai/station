@@ -9,12 +9,12 @@
 
   "limits": "No fresh latency/screenshot/computed-motion/device proof; structural ratchet is not visual or accessibility certification.",
 
-  "document": {"digest":"0604fe00d441d53cadddf32425c68cc32745dbf4ff04e98d0ae81a05ffe4dd8c","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+  "document": {"digest":"0604fe00d441d53cadddf32425c68cc32745dbf4ff04e98d0ae81a05ffe4dd8c","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
 
   "sources": [
     {"path":"scripts/motion-contract-baseline.json","digest":"fe02168284beb8997472640e2bd29ad8ee6638ee911ba59d425008b8bbdcb657","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
 
-    {"path":"scripts/motion-contract-ratchet.mjs","digest":"381da46821c137626ac1f426a27d5c95e09075296890dc881b2e88b56cd546a8","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
+    {"path":"scripts/motion-contract-ratchet.mjs","digest":"0b8398f16043d8bc3fc5c3fe6e5497cdf39c234fc3ef21f84fd038bbd4900288","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"src-ui/src/components/notifications/NotificationHistory.css","digest":"e8d285de81a6deeeb60e7416a2278dbcd25a3200d07076ce3974c0ebe9ac1cd6","revision":"237890e97ce7112aa47cdc0fcc9521650cfdc43e"},
 

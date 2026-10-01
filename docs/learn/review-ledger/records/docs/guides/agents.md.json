@@ -30,7 +30,7 @@
 
     {"path":"schemas/agent.schema.json","digest":"d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"scripts/examples-conformance.mjs","digest":"951a60876f5fd3ea6d0b6daaaf194e737280ed8000a4d3808a0cfbd3bd2085e4","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"src-server/domain/config-loader-agents.ts","digest":"e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

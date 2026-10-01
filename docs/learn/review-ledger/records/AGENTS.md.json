@@ -24,7 +24,7 @@
 
     {"path":"scripts/lib/typecheck-host-slots.mjs","digest":"26e76900f135282106e245c4946798b5a084cb98de3074750629e9a96d0bef1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"c10941f00e2d434ca22c4cc4e4bdfb1c892cde9e18e7fb8cf558d4acf3c5eaed","revision":"10355abb29c67ba8bac4c9ad44c8718d0f42a85c"},
+    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"4b0c3896d4f9baefec007cb59671efcd23390b74dafa905ab7e7601f79312c75","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

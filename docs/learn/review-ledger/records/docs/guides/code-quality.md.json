@@ -82,9 +82,9 @@
 
     {"path":"scripts/run-local-verification.mjs","digest":"0794ea25e144bf95547470d7f3a863e2e1d90379f43c200882ddd25de0141749","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"c9a3922fd1b22ffc149c736973b1a86c0cccf64e68813110725cbc707b10405e","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
-    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"d25c88cd9667f30bc257707381330fda1c23c41490287bf8e5edbc5eca27186d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

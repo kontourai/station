@@ -80,7 +80,7 @@
 
     {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/ios-local-release-preflight.mjs","digest":"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/ios-local-release-preflight.mjs","digest":"d475395b8e5e5892aa5eca5d2b597a3983923eeb9c6b074778e111509061727d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -112,7 +112,7 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"df2b1353270dd0a379ed083172d8f0cdbb355cc630d030a7f5767011060246c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"ec2095453c199b760ed669f2e95d978265ded998e1ab7b60da05ebd2970b118f","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/stage-desktop-server-runtime.mjs","digest":"8c0784f430f6e0ff39eafeb132bb509bffe6f2c57b3d9c43da7a70ecee6c9d17","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

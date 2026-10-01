@@ -56,7 +56,7 @@
 
     {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
-    {"path":"scripts/build-portable-server-archive.mjs","digest":"b468ede952e040177e219a1170290de250231958ac32f8b596f45e716712039e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/build-portable-server-archive.mjs","digest":"3660d877f9a4698c2a107fd3b3539c6c2efea1f4626068b3ed68e9822fafbaa6","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -88,7 +88,7 @@
 
     {"path":"scripts/run-local-verification.mjs","digest":"0794ea25e144bf95547470d7f3a863e2e1d90379f43c200882ddd25de0141749","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"d25c88cd9667f30bc257707381330fda1c23c41490287bf8e5edbc5eca27186d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
