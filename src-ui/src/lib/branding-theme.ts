@@ -23,7 +23,8 @@
  *       "dark":  { "--k-action": "#…", … },      // per mode: wins over flat
  *       "light": { "--k-action": "#…", … } }
  *
- * - Two stricter contrast rules (see `STATION_SURFACE_TEXT_RULES`).
+ * - One stricter contrast rule, for the action fill as text (see
+ *   `STATION_SURFACE_TEXT_RULES`).
  * - The apply path: mode tracking, the write-time re-check, and the cache.
  */
 
@@ -63,11 +64,15 @@ export const BRANDING_BASE_THEME = 'default';
 
 /**
  * Station paints `--accent-primary` (which reads the action role) as link and
- * accent text on the page and the panel, and the channel badge in the sidebar
- * uses the brand as text. The shared contract rates the action fill on the
- * panel at the non-text threshold (3:1) and the brand on the page at 3:1, so
- * Station additionally requires AA text contrast (4.5:1) for both on both
- * surfaces. Only overridden properties are rated, like the shared validator.
+ * accent text on the page and the panel. The shared contract rates the action
+ * fill on the panel at the non-text threshold (3:1) and not on the page at
+ * all, so Station additionally requires AA text contrast (4.5:1) for it on
+ * both surfaces. Only overridden properties are rated, like the shared
+ * validator.
+ *
+ * The brand needs no rule here: from @kontourai/ui 1.18 the shared validator
+ * itself rates it as text at 4.5:1 on the page, the panel and the raised
+ * panel, which covers the sidebar channel badge.
  */
 const STATION_SURFACE_TEXT_RULES: readonly {
   property: BrandingThemeProperty;
@@ -75,7 +80,6 @@ const STATION_SURFACE_TEXT_RULES: readonly {
   minimum: number;
 }[] = [
   { property: '--k-action', surfaces: ['--k-bg', '--k-panel'], minimum: 4.5 },
-  { property: '--k-brand', surfaces: ['--k-bg', '--k-panel'], minimum: 4.5 },
 ];
 
 /** A rule Station applies on top of the shared validator. */

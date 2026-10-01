@@ -1,0 +1,7 @@
+{
+  "revision": "8ab38fac0c72242e6cb8f4d7a6d58e693e13a066",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Review after merging main (through #2994) into the @kontourai/ui 1.18.0 bump. Edited two passages that described the white-label check as current state: the 'Branding, sign-in and defaults' bullet and limit 3 now say the check is the package's validateBrandOverride plus Station's stricter text rule for the action fill (two rules on 1.16.0, one since 1.18.0, whose validator rates the brand as text at 4.5:1 on page, panel and raised panel), and that the pin is ^1.18.0 now. Checked against package.json, branding-theme.ts (STATION_SURFACE_TEXT_RULES holds only --k-action; whole-theme refusal unchanged) and docs/guides/theming.md, whose white-label section says the same and adds the upgrade consequence. Left as written because they are dated history: OPEN-10's account of #2952, and 'DESIGN.md (shipped in 1.16.0)'. Limit 3's thresholds (AA for text roles, 3:1 for focus, status colours outside the allowlist) still hold in 1.18.0's BRAND_SLOT_PAIRS and BRAND_SLOT_PROPERTIES. Nothing else in the record was re-reviewed."}
+  ]
+}
