@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"4e5af0f2f8655d87a02c20e11269d96fdd2ba267994a9068c7da4d86c3cba76c","revision":"b9ed99fffb44db5295c2652b34dfc2adc10e1c83"},
+  "document": {"digest":"3fb6f0aeb3bd834409dfc7e564360eca08164fbe3fd3fb95c3886bdd50c4db01","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -30,7 +30,7 @@
 
     {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"4385997b5f108761575c33e0aa5d53cfadab0b279221ef2405a982d6701a5e3d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/provider.ts","digest":"76a5c2b4d3ed4261c0deb9ea2147eb0a770c8499305bac6a743542a3b34fce55","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
     {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -504,9 +504,21 @@
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/engine-accounts.ts","digest":"754a60b8601a8f1042a280aed3ff7be1e9d747e21d72ff88c5c7711abc628270","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"a6d987bfa7df459d4c20727740a7ca94d169ae2ab53e50e3752df311e9ff24f1","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
-    {"path":"packages/contracts/src/engine-accounts.ts","digest":"bb0399ddd177443ecf4e72a5057ac2f7ab77cc4bde91e360a0a08d6443614519","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"}
+    {"path":"packages/contracts/src/engine-accounts.ts","digest":"ed79fcde0a0b55cedf906325a3f7d68c783b220d239764de998dedb786521a9e","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"src-server/services/connections/engine-account-history.ts","digest":"2c910d0d4d50966962226d3deb8419a138b5c61ce413a3e4dd6276aa100d5f61","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/services/connections/__tests__/engine-account-history.test.ts","digest":"b70f9db3cab60e51ab110bbe1e89dd1365381c03f693474dd1eee0647bfd3719","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"09636a6325db4448d4b0f55de097ec05c4ee41fe50b6efb6c67e08a6ba5cc7b4","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"57984b3bd575e53c85655d49bb7fdaaa9a4267e10225e22fbe819beedb15a081","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"}
   ],
 
   "checks": [
