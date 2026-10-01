@@ -40,7 +40,11 @@ are explicit local overrides. They are useful for a disposable test instance,
 but callers must set both values and keep a matching `STATION_HOME` and
 `STATION_INSTALL_ROOT`; an override does not change the channel's provenance.
 The install state records the ports Station was installed with, and a later
-installer run or upgrade that names no port reuses them.
+installer run or upgrade that names no port reuses them. `station upgrade`
+passes the installer these two variables but not the runtime
+`STATION_SERVER_PORT`/`STATION_UI_PORT`, which every Station CLI process
+carries with its channel's defaults; change an installed port with the
+installer's variables.
 The owned launcher exports the exact channel, home, and install root on every
 later command and upgrade. Do not use the retired `STATION_CHANNEL=preview`:
 run `STATION_CHANNEL=beta` instead.

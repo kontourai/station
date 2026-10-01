@@ -23,6 +23,7 @@
     "./local-self-provision": "./src/core/localSelfProvision.ts",
     "./known-environment": "./src/core/knownEnvironmentRegistry.ts",
     "./application-channel": "./src/core/applicationChannel.ts",
+    "./application-channel-frames": "./src/core/applicationChannelFrames.ts",
     "./self-hosted-browser": "./src/core/selfHostedBrowser.ts",
     "./native-diagnostic-echo": "./src/core/nativeDiagnosticEcho.ts",
     "./native-application": "./src/core/nativeApplicationTransport.ts"
@@ -54,8 +55,8 @@
     "url": "https://github.com/kontourai/station/issues"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.7.0",
-    "@kontourai/station-shared": "^0.7.0",
+    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-shared": "^0.8.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4"
   },
@@ -65,10 +66,10 @@
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
     "@types/qrcode": "^1.5.6",
-    "@types/react": "^19.2.18",
-    "jsdom": "^30.0.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "@types/react": "^19.3.0",
+    "jsdom": "^30.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^5.9.3",
     "vitest": "4.1.11"
   }

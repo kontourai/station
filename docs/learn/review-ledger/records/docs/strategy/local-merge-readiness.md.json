@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/local-merge-readiness.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "document": {"digest":"fec5d8a288060f00e214a7295b5ba84d35f829c8eb9783fc5b202f12e3fdc08b","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

@@ -1,0 +1,85 @@
+{
+  "path": "examples/knowledge-library/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
+
+  "limits": "EXECUTED PASS: public plugin build and focused component tests. Reviewed actual installed-plugin receipt at 1440x1000 and 390x844, application f56c28a44 and plugin 09a56847d: deep record selection, canonical detail, keyboard return/next record, no overflow/page errors; sample display name only. No native/device, live model/embedding or multi-person authorization qualification.",
+
+  "document": {"digest":"9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+  "sources": [
+    {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","digest":"d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media/repository-knowledge.png","digest":"8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/layout.json","digest":"9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/package.json","digest":"af08496158c8bb69108ac27ee7c1612834f1404eebfa25f7d22dccbce79a4990","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/plugin.json","digest":"56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/RootPicker.tsx","digest":"f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/index.tsx","digest":"0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/hooks/knowledge.ts","digest":"b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"packages/shared/src/knowledge-root-identity.ts","digest":"8c1dbadc429909b9b50dd25c273fb0dcdbddac3886adb49402b53e0ba96f3d9c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"7b5fc0fb012792ac218e8166c49f70a8311a0ba3a52a69faadda011dbc19d629","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+
+    "Formatter-only change; parsed media metadata is identical.",
+
+    "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+
+    "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

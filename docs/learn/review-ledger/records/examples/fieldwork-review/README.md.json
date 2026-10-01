@@ -1,0 +1,71 @@
+{
+  "path": "examples/fieldwork-review/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README claim review through launch/open/list/close/output routes, path and owned-storage checks, corruption preservation, lazy and short-lived published Fieldwork facades, browser frame and query/cleanup callers, and actual host acquire/quiesce/dispose/update/reload/shutdown wiring. Corrected browser-versus-owner data boundary, reviewed-output read/discard behavior, boolean error fallback, close-before-persist order, capacity checks and timers. No stronger global concurrency reservation or process sandbox claimed.",
+
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
+
+  "document": {"digest":"10a3d19e9905edc792e68a545a59b73f3452db279d478d08489e89bf881387aa","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"examples/fieldwork-review/layout.json","digest":"9385a6d479fcd1ec14f4ed4ab75952a82a893268716a3ed15eb2478e1017dd6c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/package.json","digest":"907339d649e9a79646f58f1aefffcad0d2dc876ebe20b2a1ca87cd03c4975a69","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"examples/fieldwork-review/plugin.json","digest":"7c47f239ea51df6d01ff0f5361fd28f23f0573f9124cce07553cd876623266bb","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/server/__tests__/plugin-server.test.ts","digest":"e343c931ef0b7c062e9a71917ec13dcd657190e4e612980f7bab68fa514928a9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/server/plugin.mjs","digest":"b7edf075d5c2d58f65e21c6b8aafb6628c3f6104028ca058bbffdc712369dcfe","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/src/api.ts","digest":"c40467a5ac546f806bac7428ddf10ef90910fd5fc530feed6b55c6f17b637a8c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/src/components.tsx","digest":"0ef9a0eab196f318433873a179cd15933e6a0167e03d8cbd1fbd434d10b00f66","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/src/hooks.ts","digest":"0a6d43888cf7f7ba8cdef03a47777be6f693ec851c1bc0e3b954721673a24216","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/fieldwork-review/src/index.tsx","digest":"7abbde486126b089a3110f2babb5136034b30777ea054b208dfa6db701e2c3a7","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
+  ],
+
+  "checks": [
+    "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
+
+    "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
+
+    "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
+
+    "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
+
+    "Pinned published @kontourai/fieldwork0.10.0 host-application.js and .d.ts reviewed: reviewedOutput returns ReviewedExportV1 after owner read, and emits review-exported; Station discards contents in the boolean route. This is dependency source evidence, not live run creation.",
+
+    "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the lockfile only removed the root bearing/forage importer entries, and the install transaction added proposal-scoped .git exclusion. The example's Plugins-page install, host permission review and route claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

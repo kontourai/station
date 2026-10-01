@@ -3,6 +3,7 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import {
   openWorkItem,
@@ -101,6 +102,8 @@ function ChatDockInboxPanelImpl({
 }: ChatDockInboxPanelProps) {
   const now = suppliedNow ?? Date.now();
   const panelRef = useRef<HTMLElement>(null);
+  // A row that changes lane remounts in another section; keep focus on it.
+  useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
   // Set on the element rather than passed as a JSX prop so the behaviour does
   // not depend on the renderer's attribute support, matching
   // WorkspacePaneFrame's own `element.inert` seam.

@@ -37,7 +37,7 @@ claim beside it. Mark missing evidence explicitly.
 Inspect pinned dependency defaults when they affect a claim. A mocked factory
 call does not prove what that dependency ultimately emits or persists.
 
-The learning reader's [review ledger](../learn/review-ledger.json) records
+The learning reader's [review ledger](../learn/review-ledger/) records
 document purpose separately from source review. A source-reviewed record needs
 the checked claims, code owners, executed checks, and limits. Its document and
 source hashes make later changes visible; they are not evidence of accuracy by
@@ -69,11 +69,11 @@ does not silently erase the old review lead. An unreadable base or malformed
 input fails the report rather than returning an empty impact list.
 
 Catch-up compares the recorded document and source hashes with current bytes.
-For each stale review it lists the changed inputs, the source revision reviewed,
-and the last commit that edited the page. A page's edit commit is not proof
+For each stale review it lists the changed inputs, the revision at which each
+was reviewed, and the last commit that edited the page. A page's edit commit is not proof
 that someone reviewed its supporting code. Use the recorded revision and changed
-paths to inspect the relevant Git diff; the hashes identify the exact bytes
-previously reviewed, including changes that were uncommitted at that time.
+paths to inspect the relevant Git diff (`docs:review:record -- --show-delta`
+prints it); the hashes identify the exact bytes previously reviewed.
 Unchanged records do not need another whole-application review.
 
 The ledger's `coverageBaseline` is the starting revision for searching new or
@@ -111,7 +111,7 @@ the merge queue.
   `pull_request` or `pull_request_target` workflows): a stale review or capture
   blocks when this change's own diff against its merge base touches its
   document, capture or a recorded source, including deleting it, or edits its
-  ledger or `media.json` entry. Other stale entries are printed as advisory.
+  record, capture metadata or capture review. Other stale entries are printed as advisory.
   The base is `STATION_DOCS_FRESHNESS_BASE`, then `STATION_CI_FAST_BASE` (the
   PR check sets it to the pull request base), then `origin/main`. If the scope
   cannot be computed, every stale entry blocks. The non-required fork-smoke job
@@ -133,20 +133,123 @@ old `origin/main` makes the scope larger, not smaller.
 After reviewing the changed claims, record the review instead of editing hashes:
 
 ```sh
+npm run docs:review:record -- --show-delta docs/guides/example.md   # git diff <reviewed revision> HEAD -- <changed inputs>
 npm run docs:review:record -- docs/guides/example.md --note "Checked the new retry limit against its caller."
 npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source src-server/removed.ts --add-source src-server/new-owner.ts
-npm run docs:review:record -- --batch reviews.json   # [{ "path", "note", "removedSources"?, "addedSources"? }]
+npm run docs:review:record -- docs/guides/example.md --note "..." --rereview   # a new review of unchanged bytes
+npm run docs:review:record -- --batch reviews.json   # [{ "path", "note", "removedSources"?, "addedSources"?, "rereview"? }]
+npm run docs:review:record -- --verify-bindings      # revisions that do not contain their recorded bytes
+npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source package.json --add-source 'package.json#/scripts/docs:truth:gate'
 ```
 
-The command binds `sourceRevision` to the full `HEAD` commit, recomputes the
-document and source hashes from current bytes, and appends the note to the
-record's checks. A capture path under `docs/learn/media/` updates its review
-revision, source hashes and `reviewNotes`, but never its capture identity. It
-refuses an empty note, an unknown path, an unresolvable `HEAD`, an untracked
-or duplicate source and a capture whose image changed, and writes nothing unless every entry
-in the batch is valid. New records still need their kind, summary and limits
-written by hand. It then lists records that remain stale on inputs the batch
-touched, such as a page that cites a document you just changed.
+Commit the reviewed document and source changes first. The command binds each
+changed document or source to the last commit that set it to its current bytes,
+so `--show-delta` can later show exactly what changed since the review. It
+refuses bytes that are not committed yet. It recomputes only the changed
+hashes, leaves every other line alone, and adds the notes as one new notes
+file. A capture path under `docs/learn/media/` refreshes the capture's source
+bindings and notes, but never its capture identity in `media.json`. The command
+refuses:
+
+- an empty note, an unknown path or an unresolvable `HEAD`;
+- an untracked or duplicate source, and a capture whose image changed;
+- a record whose recorded bytes are all unchanged, unless you pass
+  `--rereview`, so nothing is recorded without a change or a deliberate
+  re-review.
+
+It writes nothing unless every entry in the batch is valid. New records still
+need their kind, summary and limits written by hand. It then lists records that
+remain stale on inputs the batch touched, such as a page that cites a document
+you just changed. With `--json`, the command and `docs:freshness:check` print a
+machine-readable result, and a refusal carries a stable `code`.
+
+A source can name one value in a JSON file by
+[JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901), such as
+`package.json#/scripts/docs:truth:gate` or `package.json#/engines`. Only that
+value is hashed, and the binding names the commit that set it. Cite values
+instead of a whole broad manifest when the page depends only on named scripts
+or fields: adding an unrelated script then stales nothing, while changing a
+cited value still does. Whole-file bindings remain right when a page describes
+the manifest as a whole, such as its dependency set. Value bindings apply to
+JSON files only; `pnpm-lock.yaml` and other YAML stay whole-file.
+
+`--verify-bindings` lists each binding whose revision does not contain its
+recorded bytes, such as bytes recorded before they were committed or a record
+assembled by hand from two branches. Such a delta is only approximate.
+Re-review the record with `--rereview` to rebind it.
+
+A pull request that drops a cited source it also changes must add a review
+note to that record, which `--drop-source` does. Deleting the citation by hand
+leaves no note, and the scoped check refuses it. Removing a whole record while
+its document remains and a cited source changed is also refused.
+
+### Ledger layout and merges
+
+GitHub computes whether a pull request can merge on the server, with Git's
+default text merge. It never runs a local merge driver. The ledger is therefore
+[a directory](../learn/review-ledger/) laid out so that independent reviews
+merge as plain text:
+
+| Path | Contents |
+| --- | --- |
+| `ledger.json` | Layout version and the catch-up `coverageBaseline` |
+| `records/<document>.json` | One reviewed document: kind, state, summary, limits, document and source bindings, and notes recorded before this layout |
+| `captures/<capture>.json` | One capture's source bindings; its metadata stays in `media.json` |
+| `notes/<time>-<hash>.json` | The notes of one recording run, named by time and content hash |
+
+Each document or source binding is one line holding its hash and revision. An
+unchanged blank line separates it from the next binding, because Git reports a
+conflict when two branches change adjacent lines. As a result:
+
+- Two branches that refresh different sources of one record, such as the module
+  map, or different records, merge without conflict. Each adds its own notes file.
+- Two branches that review the same new bytes of a source bind the same commit.
+  Their lines are identical, so they merge.
+- Two branches that review different bytes of one source, including the
+  document itself, change the same line and conflict, even when the source
+  itself merges. Resolve by merging `main` and recording a new review of the
+  merged bytes. Keeping one side's line leaves a stale record that the scoped
+  check refuses.
+- Two branches that add sources at the same place in one record conflict.
+
+The loader accepts only the exact bytes the record command writes, so a
+reformatted file cannot silently lose its separators. It rejects a notes file
+whose content no longer matches its name, because notes are append-only, and
+any unexpected file. Every consumer reads the compiled ledger through
+[`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs): freshness,
+impact and catch-up, the learning reader, the knowledge-graph example and the
+record command. Catch-up also reads the earlier single-file layout
+(`docs/learn/review-ledger.json`) from history. The layout change alone never
+puts a record into a change's scope.
+
+A branch that recorded reviews in the old single file conflicts when it merges
+`main`: the file is modified on the branch and deleted on `main`. Git leaves
+the branch's version in the working tree. Fold it into the new layout while
+the merge is still in progress:
+
+```sh
+node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)"
+git add -A docs/learn && git commit --no-edit
+```
+
+If the branch also re-reviewed a capture, `docs/learn/media.json` conflicts
+too, and a branch that re-reviewed only captures conflicts there alone. The
+command resolves that file itself. It merges each capture field by field
+against the merge base: the side that still has the old layout keeps its
+review fields, and any other field takes whichever side changed it. Where both
+sides changed one field differently, it names the field and stops without
+writing anything, so you resolve that field and rerun. It judges bindings to
+`media.json` against the bytes it writes, not the conflicted working copy.
+
+The command applies each record the branch changed since that base. It merges
+bindings per source, adds the branch's appended checks as one new notes file
+and deletes the old file. Where both sides reviewed different bytes of one
+source, it keeps the binding that matches the current bytes. If neither
+matches, the record stays stale, and the command names it so you can review it.
+It also carries the branch's in-place edits to earlier checks, such as a
+redaction. Where both sides edited the same check, or the branch removed one,
+it keeps ours and names the record so you can apply the branch's change by
+hand.
 
 Staleness that no single pull request owns, such as two merges that combine,
 is collected by the Nightly

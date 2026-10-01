@@ -685,6 +685,14 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
       ready: () => {},
     },
     selfHostedBrokerConnector: {
+      ...(snapshot.nativeClient
+        ? {
+            nativeApplication: Object.freeze({
+              stationId: snapshot.scope.stationId,
+              surface: snapshot.nativeClient.surface,
+            }),
+          }
+        : {}),
       create: (application: VirtualApplication) =>
         factoryCreateRuntime(snapshot, application, options?.observeStatus),
     },

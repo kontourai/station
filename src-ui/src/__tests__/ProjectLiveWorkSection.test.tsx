@@ -164,7 +164,7 @@ describe('ProjectLiveWorkSection', () => {
     render(<ProjectLiveWorkSection slug="station" />);
 
     expect(screen.getByText('Needs you · 1')).toBeTruthy();
-    expect(screen.getByText('Active now · 1')).toBeTruthy();
+    expect(screen.getByText('Running · 1')).toBeTruthy();
     // Identity a reader can act on: the session's own title (never a thread
     // id), whose it is, and what state it is in.
     expect(
@@ -186,9 +186,9 @@ describe('ProjectLiveWorkSection', () => {
    * not only by reading a heading. The lane modifier is what carries the rail
    * colour and the filled-vs-outline state chip in CSS, and the call to action
    * names the difference in one word: a Needs-you row is yours to discharge,
-   * an Active-now row is something to look at.
+   * a Running or Idle row is something to look at.
    */
-  test('marks the two lanes apart beyond their heading text', () => {
+  test('marks the lanes apart beyond their heading text', () => {
     mocks.sessions.push(
       session({
         threadId: 'waiting',
@@ -208,7 +208,7 @@ describe('ProjectLiveWorkSection', () => {
       container.querySelector('.project-page__live-work-lane--needsYou'),
     ).toBeTruthy();
     expect(
-      container.querySelector('.project-page__live-work-lane--activeNow'),
+      container.querySelector('.project-page__live-work-lane--running'),
     ).toBeTruthy();
     expect(screen.getByText('Reply')).toBeTruthy();
     expect(screen.getByText('Open')).toBeTruthy();
@@ -262,7 +262,8 @@ describe('ProjectLiveWorkSection', () => {
         'Review pending',
         'Blocked',
       ],
-      activeNow: ['Running', 'Ready', 'Queued', "Can't answer here"],
+      running: ['Running'],
+      idle: ['Ready', 'Queued', "Can't answer here"],
     };
 
     mocks.sessions.push(
@@ -331,11 +332,11 @@ describe('ProjectLiveWorkSection', () => {
       }));
     });
 
-    // Both lanes populated and every session accounted for — a walk over an
+    // Every lane populated and every session accounted for — a walk over an
     // empty render would pass while checking nothing.
     expect(rendered).toHaveLength(6);
     expect(new Set(rendered.map((row) => row.laneId))).toEqual(
-      new Set(['needsYou', 'activeNow']),
+      new Set(['needsYou', 'running', 'idle']),
     );
 
     for (const row of rendered) {

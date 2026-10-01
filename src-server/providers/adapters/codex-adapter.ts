@@ -28,6 +28,10 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import {
+  harnessAnswerTexts,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
   appHomeSessions,
@@ -119,6 +123,7 @@ import {
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { codexQuestionnaire } from './harness-questions.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
 type CodexExecutionKnobs = NonNullable<
@@ -2751,6 +2756,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         requestId,
         rpcRequestId: pending.rpcRequestId,
         method: pending.method,
+        ...(pending.blocking === false ? { blocking: false } : {}),
         result: outcome.result,
         status: mapApprovalResolutionStatus(outcome.decision),
       });
@@ -2762,6 +2768,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.transport.requireSession(threadId);
     const pending = record.pendingApprovals.get(requestId);
@@ -2771,6 +2778,43 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw new Error('This Codex approval request is not open.');
     }
 
+    if (pending.method === 'item/tool/requestUserInput') {
+      const questionnaire = codexQuestionnaire(pending.payload);
+      if (
+        !questionnaire ||
+        !context?.expectedRequestEventId ||
+        context.expectedRequestEventId !== pending.openedEventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      const answers =
+        decision === 'accept'
+          ? validateHarnessQuestionAnswers(questionnaire, context?.answers)
+          : undefined;
+      if (decision !== 'accept' && context?.answers !== undefined)
+        throw new Error('A cancelled question cannot carry answers.');
+      record.pendingApprovals.delete(requestId);
+      this.transport.replyToApproval(record, {
+        requestId,
+        rpcRequestId: pending.rpcRequestId,
+        method: pending.method,
+        ...(pending.blocking === false ? { blocking: false } : {}),
+        result: {
+          answers: answers
+            ? Object.fromEntries(
+                questionnaire.questions.map((question) => [
+                  question.id,
+                  { answers: harnessAnswerTexts(question, answers) },
+                ]),
+              )
+            : {},
+        },
+        status: mapApprovalResolutionStatus(decision),
+      });
+      return;
+    }
+    if (context?.answers !== undefined)
+      throw new Error('This request does not accept question answers.');
     record.pendingApprovals.delete(requestId);
     const outcome = resolveApprovalOutcome(
       pending.method,

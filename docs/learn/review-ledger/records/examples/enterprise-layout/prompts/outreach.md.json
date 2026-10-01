@@ -1,0 +1,17 @@
+{
+  "path": "examples/enterprise-layout/prompts/outreach.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Full authored prompt/Skill read; records intended assistance and confirmation expectations.",
+
+  "limits": "Prompt wording does not enforce tool authority, prove available data/tools or establish a successful Agent response.",
+
+  "document": {"digest":"c38bee33575c45292b051debaa32daaf3fdb30dadb816be8f6f4af6da2983575","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+  "sources": [],
+
+  "checks": []
+}

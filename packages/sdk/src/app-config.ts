@@ -2,6 +2,7 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { apiErrorMessage } from './api-core';
 import { authenticatedFetch } from './client/http';
+import { rethrowDeadline } from './client/request-deadline';
 export interface UpdateAppLogLevelResult {
   value: AppConfig['logLevel'];
   revision: string;
@@ -15,7 +16,9 @@ async function readEnvelope<T extends { success?: boolean; error?: string }>(
     let payload: T | undefined;
     try {
       payload = (await response.json()) as T;
-    } catch {}
+    } catch (error) {
+      rethrowDeadline(error);
+    }
     if (payload?.error) throw new Error(payload.error);
     throw new Error(`Request failed with HTTP ${response.status}`);
   }

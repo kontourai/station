@@ -1,3 +1,4 @@
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 /**
  * Canonical orchestration fetchers (#165/#173 Wave 1, inside the #167 DRY
  * client layer). One HTTP-call implementation per operation, shared by the
@@ -43,6 +44,7 @@ import {
   mutateJson,
   type StationHttpError,
 } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 interface OrchestrationEnvelope<T> {
   success: boolean;
@@ -56,7 +58,8 @@ async function unwrapOrchestrationResponse<T>(response: Response): Promise<T> {
   let result: OrchestrationEnvelope<T> | null = null;
   try {
     result = (await response.json()) as OrchestrationEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // A body that is not JSON says nothing about the STATUS, and the status is
     // what a caller's retry classification reads. Throwing a bare Error here
     // made an intermediary's non-JSON 401/403 — a reverse proxy, a tunnel, an
@@ -88,6 +91,7 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  answers?: HarnessQuestionAnswers;
 }
 
 export interface RespondToRequestResult {
@@ -116,7 +120,8 @@ export async function respondToRequest(
   let payload: OrchestrationEnvelope<unknown> | null = null;
   try {
     payload = (await response.json()) as OrchestrationEnvelope<unknown>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // Same shape as `unwrapOrchestrationResponse` above (station#3437,
     // mirrors #3378): a body that is not JSON says nothing about the
     // STATUS, and the status is what a caller's terminal/transient

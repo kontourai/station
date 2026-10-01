@@ -39,6 +39,21 @@ COPY station esbuild.config.mjs vite.config.ts tsconfig.json tsconfig.tests.json
 # vite.config.ts imports src-desktop/tauri.conf.json at config-load time.
 COPY src-desktop/tauri.conf.json src-desktop/
 COPY scripts ./scripts
+# Station's shipped docs (STATION_DOCS_INPUT_PATHS in
+# scripts/generate-station-docs.mjs) are read by the server build: esbuild.config.mjs
+# calls generateStationDocs() before bundling. Shipped wholesale, like scripts/,
+# so a new docs input is a docs edit and not a fifth container build failure.
+COPY docs ./docs
+# generateStationDocs({ check: true }) formats its output through Biome and
+# compares it byte-for-byte with src-server/tools/station-docs-content.ts, so the
+# build needs the repository's formatter config; biome.json's vcs.useIgnoreFile
+# makes Biome refuse to run without .gitignore beside it.
+COPY biome.json .gitignore ./
+# The dependencies stage copies only the two config files its install reads;
+# the server bundle imports more (config/release-manifest-keys.json in
+# archive-update.ts), so the build stage takes config/ wholesale, as the
+# .dockerignore already allows.
+COPY config ./config
 COPY packages ./packages
 COPY src-server ./src-server
 COPY src-shared ./src-shared

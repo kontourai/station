@@ -257,7 +257,11 @@ export function renderLearningDocument(
       createElement(
         'span',
         { className: 'capture-revision' },
-        `Captured at ${capture.capturedRevision.slice(0, 12)}; reviewed at ${capture.reviewedRevision.slice(0, 12)}.`,
+        `Captured at ${capture.capturedRevision.slice(0, 12)}; sources reviewed at ${[
+          ...new Set(
+            capture.sources.map((source) => source.revision.slice(0, 12)),
+          ),
+        ].join(', ')}.`,
       ),
       capture.changed.length
         ? createElement(

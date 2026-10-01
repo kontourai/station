@@ -1,0 +1,17 @@
+{
+  "path": "packages/contracts/CHANGELOG.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Versioned package changelog retained as release history.",
+
+  "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
+
+  "document": {"digest":"8f68cf003e2e4faec51d178d9f871a8f6e4f7869eff3f9eecd5baeb034b9a20a","revision":"693d3c2389b988f5d65373a769a45c5d63094aaa"},
+
+  "sources": [],
+
+  "checks": []
+}

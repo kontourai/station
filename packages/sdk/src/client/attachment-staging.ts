@@ -16,6 +16,7 @@ import {
   getJson,
   mutateJson,
 } from './http';
+import { unlessDeadline } from './request-deadline';
 
 const ROOT = '/api/orchestration/attachment-staging';
 
@@ -125,7 +126,9 @@ function descriptor(
 }
 
 async function read<T>(response: Response, fallback: string): Promise<T> {
-  const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+  const body = (await response.json().catch(unlessDeadline(() => ({})))) as {
+    error?: unknown;
+  };
   if (!response.ok) {
     throw new ChatHttpError(
       response.status,

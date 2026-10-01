@@ -2313,7 +2313,10 @@ installed (the version `<install root>/current` names), `upgrade` validates the
 install state, provenance, ownership marker and active link, then re-runs that
 version's installer with the recorded release manifest. Public-manifest
 installs record the URL in schema-4 state; an explicit
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A Station user service
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
+the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`
+(its channel's defaults unless set) are not passed on, and a deliberate change
+goes through `STATION_INSTALL_SERVER_PORT`/`STATION_INSTALL_UI_PORT`. A Station user service
 installed from that archive does not block it. When that service runs through
 the fixed service launcher and is running, the installer only stages the new
 version and asks the service to switch; the launcher trials it and keeps the
@@ -2363,9 +2366,10 @@ station fresh --force --allow-default-home-clean
 
 ### `home verify`
 
-Run an integrity check over the SQLite stores this home owns
-(`data/orchestration.sqlite` and `scheduler/scheduler.sqlite`) and report each
-one. The stores are opened read-only, so this is safe to run while Station is
+Run an integrity check over `data/orchestration.sqlite` and
+`scheduler/scheduler.sqlite` and report each one. This command does not inspect
+the home's other authentication, membership, native replay or Knowledge stores.
+The stores are opened read-only, so this is safe to run while Station is
 up -- it is the only `home` action that does not require the home to be idle.
 
 ```
@@ -2398,7 +2402,11 @@ is covered by this command, not by that schedule.
 
 Create an offline, content-hashed backup of one Station home. Every Station
 using that home must be stopped. SQLite stores are checkpointed and integrity
-checked before copy for selected `*.sqlite` files; symlinks in included content,
+checked before copy for every included `*.sqlite` file, a database named by the
+[home store registry](../../packages/shared/src/station-home-store-registry.ts),
+or a file with an existing SQLite WAL. This includes
+`security/native-device-proof-replay.sqlite` and `knowledge-index/index.db`;
+WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level

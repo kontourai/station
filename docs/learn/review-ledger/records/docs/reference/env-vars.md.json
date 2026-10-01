@@ -1,0 +1,97 @@
+{
+  "path": "docs/reference/env-vars.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed every current table and setup claim against configuration resolvers and their runtime/CLI/frontend callers. Corrected root/home derivation, development instance paths, control-client base/port precedence, exact browser origin admission, hosted registry file requirements, AWS region precedence, inert DEBUG_STREAMING behavior, production Vite override, OTLP versus disclosed product usage telemetry, and incomplete IAM example. Added operator scope and feature-specific navigation instead of claiming an exhaustive environment inventory. Corrected matching .env.example comments without changing values.",
+
+  "limits": "Source review and 111 passing existing tests across six focused files; no running listener, native client, actual service environment reload, AWS IAM/account inference, OTLP collector, direct telemetry network delivery, hosted deployment, Tailscale Serve, home-authority transfer or physical-device outcome was exercised. AWS references were checked against official documentation; the example explicitly is not a least-privilege or universally sufficient policy. Hashes detect drift, not future semantic correctness.",
+
+  "document": {"digest":"6728b08968e42b9c35dc5e2b2fc1e6d0b0be359fec032000cd48f7dd4b69ab81","revision":"7fc7da6652550d4fd602c451e02857293a6d8998"},
+
+  "sources": [
+    {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"packages/contracts/src/tenancy.ts","digest":"0206fdcf4071f2fd5140a8f096cad83deaf801dd05b381840548c320bc25c8ef","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/ports.ts","digest":"7de170ee47c9c4b0d085d69d61004bc2e660d98b32b2cfb2e4c7380023c78b77","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/providers/llm/bedrock-embedding-provider.ts","digest":"4ac1190c4d1f8f3b479f52336ad8120ea1474ee0540833b73c4b2421c099d6af","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/providers/llm/bedrock-models.ts","digest":"90433f6e5cc523401dc400d48ee5bb12809085b25931608d965df139c043bb73","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/providers/llm/bedrock-region.ts","digest":"a60f287958c5db26c48d3e89d433c8e1586e8b52cd442027785708724bf65bdb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/bootstrap/hosted-persistence-boundary.ts","digest":"458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-port.ts","digest":"0f59ce8eec718aba098ef4756b75543097ffeb522962632d6a39e7b89c0a5acf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fc7da6652550d4fd602c451e02857293a6d8998"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/tools/station-control-shared.ts","digest":"1cda615bd82a88dfe4dcde495613c6d1cd87f19d7971853ba2c084baf525a372","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"df3f652f18e5e069d221d4db40f47981357918a3af52d867952f8a4f2542b0a6","revision":"7fc7da6652550d4fd602c451e02857293a6d8998"}
+  ],
+
+  "checks": [
+    "Existing focused checks: 111 tests across 6 files pass, exit 0, 5.01s; environment/root/port/origin/region/telemetry fixtures only.",
+
+    "Policy JSON fence parses; 407 Markdown local paths and rendered anchors pass.",
+
+    "Veritas readiness veritas-1790520981606: 0 failures, 0 warnings. Two owned files only; .env.example values unchanged.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes with the same installation-hash/os.type attributes and the same endpoint gate. lifecycle.ts changed only packaged-upgrade service checks, and ApiBaseContext.tsx dropped a comment. The OTLP, STATION_API_BASE and telemetry-key rows remain accurate. Source review is separate from executed test evidence; the recorded 111 passing tests were not rerun.",
+
+    "Integration source review through d72f79b08: #2904's runtime-initialize, runtime-routes and orchestration-service changes add full-access grantor wiring, refusal identity binding and device revocation reset. They add or change no environment variable or resolver precedence. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds an auth-refusal branch in runtime-http.ts configureRuntimeSecurity and recognizeCredential in runtime-routes.ts; prose accurate: ALLOWED_ORIGINS and the other runtime-http.ts citations concern origin admission, which did not change. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) lifecycle.ts forwards the internal STATION_SERVICE_LAUNCHER only to the supervised server and strips it from the UI child; the doc says it does not list internal launcher variables and lists no STATION_SERVICE_* entries; the listed lifecycle.ts-sourced rows are unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

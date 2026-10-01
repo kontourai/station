@@ -36,3 +36,26 @@ describe.each([
     for (const text of mustContain) expect(bundle).toContain(text);
   });
 });
+
+// The public package specifier exercises the export map as well as the resolved
+// dependency graph. Keep every export alive so tree shaking cannot hide a leak.
+describe.each(['browser', 'node'] as const)('Agent SDK on %s', (platform) => {
+  test('resolves the public entry without UI or Station application dependencies', async () => {
+    const result = await esbuild.build({
+      entryPoints: ['@kontourai/station-sdk/agent'],
+      bundle: true,
+      format: 'esm',
+      platform,
+      metafile: true,
+      logLevel: 'silent',
+      write: false,
+    });
+    expect(result.outputFiles).toHaveLength(1);
+    const forbidden = Object.keys(result.metafile.inputs).filter((path) =>
+      /(?:^|\/)(?:react|react-dom|@tanstack\/react-query|src-ui|src-server|src-desktop)\/|\.(?:tsx|css)$/.test(
+        path,
+      ),
+    );
+    expect(forbidden).toEqual([]);
+  });
+});

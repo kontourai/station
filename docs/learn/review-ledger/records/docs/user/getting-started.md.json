@@ -1,0 +1,137 @@
+{
+  "path": "docs/user/getting-started.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
+
+  "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
+
+  "document": {"digest":"267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+  "sources": [
+    {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/guides/starter-work.md","digest":"2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
+
+    {"path":"docs/learn/media/inspect-request.png","digest":"389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/learn/media/inspect-request.webm","digest":"68ed6d502d61927620ae4a11318850468067d16adc236e8e7a4e7105c9b97147","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/learn/media/project-with-task.png","digest":"c169e2cb89311c0edbd78e567b3c8b7c41e070e3d08222eda904f99ae93ed7ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/user/work-board.md","digest":"bc2aca88d170022d9dbce1f604dcd9d6d7e52e3fa635b4e701bf49bc59efffb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"src-server/knowledge-store/knowledge-source-observation-policy.ts","digest":"d4cb2a7bae52db410ea472b7a936c944503253b59037f7f1bf55caa28e16cbff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/chat/conversations.ts","digest":"919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/knowledge/knowledge-source-routes.ts","digest":"0534e5e64bc316e9637e2892d321daa77323d7c1d0bc389a8cc82f829c10fc67","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+
+    {"path":"src-ui/src/components/attention/RequestInspectionDialog.css","digest":"a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"57aa853ab758d299d83b7e783816f9930d9a191faef8122dbc19ee0a8934c817","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"585db4db640e419062c8f94aae75c677dd26574b5168f560d22e4ec3a2885253","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/FileMentionAutocomplete.tsx","digest":"3f210b8a3c44c3e73efdba233f0763cebf8bfc1256bf97d0b76ac98a2e49be1d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/SessionReferencePicker.tsx","digest":"376872725aa638429c5e29af0fcc610b38f4504b06cf51406ecf6eaf8556f7f1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/composer-mention-wire.ts","digest":"76238cf68ced890c9aff0210ee1a486b02fe2cea942d3001c203d6cd5ac19c43","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/composer-mentions.ts","digest":"41ceba331199d126dd9a301f4c8095c52223c1c1265e607f673eeb1660514b07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/first-run/AboutYouStep.tsx","digest":"bb0e7ae255064a8a5b666558c2521ec3247dd3c2c22ec8633c529fabdcaa867d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"cc0fe918eafae5643d0a191a130fe17a222a8d6303fd26d977bed447196cd141","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"cc2d69428c1b40135252806c9ac78f35ef536536f4f666cff63efbde60adbadc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+
+    {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
+
+    {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/learning-review/LearningSourceAction.tsx","digest":"1edf298cb5a986218a8dbd8b14bcfaf1627fb15d5e811b457bf3c7ed28009f99","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"tests/helpers/exact-request-backend.ts","digest":"ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/guides/release-channel-ports.md","digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"}
+  ],
+
+  "checks": [
+    "123 focused tests across seven named UI/server fixture files PASS (98.81s).",
+
+    "Existing isolated capture separately exercised real Project/Task save and controlled exact request inspection; no provider call.",
+
+    "Local Markdown links/anchors 409 PASS; git diff --check PASS.",
+
+    "Veritas 1790525108169: 0 failures/0 warnings, exact one-doc working scope.",
+
+    "Prior starter-work/native/install/module audit receipts reused only for unchanged source-owned claims; no repeated physical journey implied.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-ui/src/components/first-run/FirstRunHomeChapter.tsx: planFirstRunChapterSteps becomes private to the production owner; implementation and actual component/caller unchanged. No current Markdown advertises the removed export. Test changes move assertions to owner output; no new execution receipt inferred. docs/guides/starter-work.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. Proposed copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Formatter-only change; parsed media metadata is identical.",
+
+    "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Engine-enable refusal text improves without changing successful creation or the captured UI layout. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: install.sh now records and reuses resolved ports, validates them, and stops/switches/restarts archive services that run the install's `current` (#2867). Uninstall now refuses while such a service exists, and packaged upgrade tolerates that service. The guide's default install, rerun-to-upgrade and uninstall steps stay accurate for the stable/beta path, and it links archive service limits to the archive guide. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 changes useChatInput's refused queued full-access pick to add a structured refusal notice ('pick-not-applied') in place of the fixed note, and adds grantor and revocation logic to orchestration-service. The guide makes no full-access refusal claim; its first-run, file-mention, conversation-picker and approval-inspection claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion module-private in packages/cli/src/commands/lifecycle-doctor.ts without changing its behavior; prose accurate: the `./station doctor` guidance is unchanged. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

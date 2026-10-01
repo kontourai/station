@@ -1,8 +1,10 @@
+import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { toolPurposeView } from '../../components/chat/tool-display-view';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -17,6 +19,8 @@ export function handleRequestOpenedEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
+  if (event.blocking === false) return;
+
   const pendingApprovals = [...(chat.pendingApprovals || [])];
   if (!pendingApprovals.includes(event.requestId)) {
     pendingApprovals.push(event.requestId);
@@ -25,6 +29,8 @@ export function handleRequestOpenedEvent(
     pendingApprovals,
     orchestrationStatus: 'awaiting-approval',
   });
+
+  if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
@@ -51,7 +57,12 @@ export function handleRequestOpenedEvent(
   // the literal shell command — and "Allow <a whole command line> for this
   // session" would both mislead about the grant's scope and swamp the button.
   // The inline card uses the same helper (#2316).
-  const grantLabel = toolRequestGrantLabel(payloadToolName);
+  // #2915/#2916: says what a session answer grants for THIS request, and is
+  // undefined where none is offered (a plan exit, an ask rule).
+  const grantLabel = toolRequestGrantLabel(
+    payloadToolName,
+    toolRequestSessionGrantFromPayload(event.payload),
+  );
   if (
     isReplayThread(event.threadId) ||
     chat.approvalToasts?.has(event.requestId)
@@ -72,7 +83,7 @@ type ApprovalToastView = {
   toolPreview: string;
   agentName: string;
   conversationTitle?: string;
-  grantLabel: string;
+  grantLabel?: string;
 };
 
 function showApprovalToast(
@@ -95,14 +106,18 @@ function showApprovalToast(
         variant: 'primary',
         onClick: () => answer('accept'),
       },
-      {
-        // Says what the grant covers: "Allow for Session" reads as a grant for
-        // this one call, and it is a standing grant for every later call to the
-        // same tool in this session.
-        label: view.grantLabel,
-        variant: 'secondary',
-        onClick: () => answer('acceptForSession'),
-      },
+      ...(view.grantLabel
+        ? [
+            {
+              // Says what the grant covers: "Allow for Session" reads as a
+              // grant for this one call, and it is a standing grant for every
+              // later call to the same tool in this session.
+              label: view.grantLabel,
+              variant: 'secondary' as const,
+              onClick: () => answer('acceptForSession'),
+            },
+          ]
+        : []),
       { label: 'Deny', variant: 'danger', onClick: () => answer('decline') },
     ],
   });
@@ -225,7 +240,11 @@ export function handleRequestResolvedEvent(
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
     approvalToasts,
-    orchestrationStatus:
-      pendingApprovals.length > 0 ? 'awaiting-approval' : 'running',
+    ...(event.blocking === false
+      ? {}
+      : {
+          orchestrationStatus:
+            pendingApprovals.length > 0 ? 'awaiting-approval' : 'running',
+        }),
   });
 }

@@ -55,12 +55,13 @@ function liveWorkMeta(
 
 /**
  * What the row invites you to do. A "Needs you" row's whole point is that YOU
- * can discharge it, so it says so; an "Active now" row is something to look
- * at, not something owed. Two words, both already this product's vocabulary.
+ * can discharge it, so it says so; a Running or Idle row is something to
+ * look at, not something owed. Two words, both already this product's vocabulary.
  */
 const LANE_CALL_TO_ACTION: Record<string, string> = {
   needsYou: 'Reply',
-  activeNow: 'Open',
+  running: 'Open',
+  idle: 'Open',
 };
 
 /**
@@ -79,13 +80,13 @@ const LANE_CALL_TO_ACTION: Record<string, string> = {
  * five under a badge reading six is structurally impossible here, not merely
  * unlikely.
  *
- * LIVE WORK ONLY — Needs you and Active now. Recently finished and Earlier are
- * the Activity list's job; "All activity" links out for them. Both lanes empty
+ * LIVE WORK ONLY — Needs you, Running and Idle. Recently finished and Earlier are
+ * the Activity list's job; "All activity" links out for them. Every lane empty
  * renders NOTHING: no heading, no zero counts, no empty state. A permanent
  * block costs every reader space to tell most of them there is nothing to
  * read.
  *
- * READING IT WITHOUT READING IT: the two lanes are told apart by three things
+ * READING IT WITHOUT READING IT: the lanes are told apart by three things
  * before any word is parsed — the left rail's weight and colour, the state
  * chip (filled accent for a request that is yours, quiet outline for work in
  * flight), and the row's own call to action. The agent's icon anchors each row
