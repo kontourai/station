@@ -28,7 +28,7 @@
 
     {"path":"packages/cli/src/dev/watchers.ts","digest":"84d7e142a2ee88d419333d9464bccd8072f126d3746d0c3ae748fb7ae293b70c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/package.json","digest":"6401ee3a26149ffe0329d1141ba3668feafb6c4a9e4c5486ae762103967b8c4b","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
     {"path":"packages/shared/package.json","digest":"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
