@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"690b8587ab798617108cf1b62e2f9b0a102b3bd52df148da5be3f12027a2892c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+  "document": {"digest":"53b9df586381f8f106f5a387a87aaf861ae1dd731c38ec8e60724c916a373495","revision":"6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
