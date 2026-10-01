@@ -1,4 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
@@ -14,8 +17,14 @@ import {
 } from '@kontourai/station-shared/connection-proof';
 import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
+import {
+  NativeSurfaceOperatorAuthority,
+  NativeSurfaceRegistry,
+} from '../native-surface-registry.js';
 import {
   createNativeV2PionApplicationAdapter,
+  createResolvedNativeV2PionApplicationAdapter,
   readVerifiedNativePionApplicationRequest,
 } from '../native-v2-pion-application-adapter.js';
 import type { PionApplicationAdapterInput } from '../pion-application-adapter.js';
@@ -171,13 +180,16 @@ async function fixture(
       },
     },
   } as const;
-  const adapter = createNativeV2PionApplicationAdapter(input, {
+  const dependencies = {
     startAdapter:
       startAdapter as unknown as typeof import('../pion-application-adapter.js').startPionApplicationAdapter,
     serve: (await import('@kontourai/station-connect/application-channel'))
       .serveApplicationChannel,
-  });
+  };
+  const adapter = createNativeV2PionApplicationAdapter(input, dependencies);
   return {
+    input,
+    dependencies,
     adapter,
     offer,
     surface,
@@ -220,6 +232,69 @@ class FakeChannel {
 }
 
 describe('native v2 Pion application adapter', () => {
+  test('resolved approved surface reaches application bytes and revocation fences the captured peer', async () => {
+    const h = await fixture();
+    const home = mkdtempSync(join(tmpdir(), 'native-resolved-peer-'));
+    const registry = new NativeSurfaceRegistry(home, h.trust.stationId);
+    const authority = new NativeSurfaceOperatorAuthority();
+    const tuple = { scope: h.offer.scope, surface: h.surface };
+    registry.approve(
+      authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'approve', tuple),
+    );
+    const resolved = createResolvedNativeV2PionApplicationAdapter(
+      { ...h.input, registry },
+      h.dependencies,
+    );
+    try {
+      const admission = resolved.adapter.approvedSurfaces()[0]!;
+      await expect(
+        resolved.adapter.answer(
+          {
+            ...h.offer,
+            surface: { ...h.surface, keyThumbprint: 'X'.repeat(43) },
+          },
+          h.trust,
+          new AbortController().signal,
+          admission,
+        ),
+      ).rejects.toThrow('surface_unapproved');
+      expect(h.startAdapter).not.toHaveBeenCalled();
+      await resolved.adapter.answer(
+        h.offer,
+        h.trust,
+        new AbortController().signal,
+        admission,
+      );
+      const channel = new FakeChannel();
+      h.accept()!(channel);
+      channel.receive(APPLICATION_REQUEST);
+      await vi.waitFor(() => expect(h.handler).toHaveBeenCalledTimes(1));
+      expect(applicationFrame(channel.sent[0]!)).toMatchObject({ status: 200 });
+      const observed = h.lastRequest()!;
+      registry.revoke(
+        authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'revoke', tuple),
+      );
+      expect(
+        readVerifiedNativeVirtualApplicationRequest(observed),
+      ).toBeUndefined();
+      channel.receive(APPLICATION_REQUEST);
+      await vi.waitFor(() => expect(channel.closeCalls).toBeGreaterThan(0));
+      expect(h.handler).toHaveBeenCalledTimes(1);
+      await expect(
+        resolved.adapter.answer(
+          h.offer,
+          h.trust,
+          new AbortController().signal,
+          admission,
+        ),
+      ).rejects.toThrow('surface_unapproved');
+    } finally {
+      await resolved.close();
+      await h.adapter.close();
+      registry.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
   test('admits only verified native application channels and preserves exact Request provenance', async () => {
     const h = await fixture();
     const answer = await h.adapter.adapter.answer(

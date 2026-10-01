@@ -12,6 +12,11 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import { SelfHostedBrokerRuntime } from '../../../runtime/bootstrap/self-hosted-broker-runtime.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
+import {
+  NativeSurfaceOperatorAuthority,
+  NativeSurfaceRegistry,
+} from '../native-surface-registry.js';
 import {
   BrokerTransientRequestError,
   SelfHostedBrokerClient,
@@ -105,6 +110,78 @@ function fixture(now: () => number = () => 1_000, selectedScope = scope) {
 describe.runIf(process.platform !== 'win32')(
   'self-hosted broker connector',
   () => {
+    test('resolved native offer refuses revocation during answer preparation before publication', async () => {
+      const f = fixture(() => 1_000, nativeTrustScope);
+      const home = mkdtempSync(
+        join(tmpdir(), 'station-native-offer-registry-'),
+      );
+      roots.add(home);
+      const registry = new NativeSurfaceRegistry(
+        home,
+        nativeTrustScope.stationId,
+      );
+      const authority = new NativeSurfaceOperatorAuthority();
+      const tuple = {
+        scope: {
+          stationId: nativeTrustScope.stationId,
+          enrollmentId: nativeTrustScope.enrollmentId,
+          routingGeneration: nativeTrustScope.routingGeneration,
+        },
+        surface: nativeSurface,
+      };
+      registry.approve(
+        authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'approve', tuple),
+      );
+      try {
+        const native = await nativeTrustFixture();
+        const client = new SelfHostedBrokerClient(
+          'https://broker.example',
+          nativeTrustScope,
+          f.credentials.connector,
+          f.request,
+          () => 1_000,
+        );
+        const offers = vi
+          .spyOn(client, 'nativeOffers')
+          .mockResolvedValueOnce([
+            nativeOffer(native.trust, native.stationSigningKeyId),
+          ]);
+        const publication = vi.spyOn(client, 'answerNative');
+        const dispose = vi.fn(async () => {});
+        const connector = new SelfHostedBrokerConnector(
+          nativeTrustScope,
+          client,
+          { current: () => native.trust, isCurrent: () => true },
+          async () => {
+            throw new Error('native offer reached browser callback');
+          },
+          {
+            approvedSurfaces: () => registry.approvedSurfaces(),
+            async answer(_offer, _trust, _signal, admission) {
+              expect(admission.isCurrent()).toBe(true);
+              registry.revoke(
+                authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'revoke', tuple),
+              );
+              return { answerSdp: 'answer', stationProof: 'proof', dispose };
+            },
+          },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.pollNative(signal)).rejects.toThrow(
+          'native_surface_retired',
+        );
+        expect(offers).toHaveBeenCalledWith(
+          nativeSurface,
+          expect.any(AbortSignal),
+        );
+        expect(publication).not.toHaveBeenCalled();
+        expect(dispose).toHaveBeenCalledTimes(1);
+      } finally {
+        registry.close();
+        f.service.close();
+      }
+    });
     test('reconciles a committed renewal whose response was lost before the next CAS', async () => {
       const f = fixture(Date.now);
       const lifetime = new AbortController();

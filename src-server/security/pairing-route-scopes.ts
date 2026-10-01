@@ -850,6 +850,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  ...(['GET', 'POST'] as const).map((method) => ({
+    id: `/api/pairing/native-relay-surfaces:${method}:manage`,
+    method,
+    prefix: '/api/pairing/native-relay-surfaces',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   ...(['GET', 'HEAD'] as const).map((method) => ({
     id: `/api/auth/native-device-bindings/:bindingId/receipt:${method}:read`,
     method,
