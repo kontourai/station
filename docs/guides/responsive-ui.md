@@ -44,7 +44,9 @@ by themselves produce a complete visual dialog.
 - Escape and backdrop-pointer dismissal when `dismissible` permits it;
 - dialog-history registration when a history host is present and
   `historyMode="entry"` applies;
-- the `responsive-surface-overlay` and `responsive-surface-panel` markers.
+- the `responsive-surface-overlay` and `responsive-surface-panel` markers;
+- an overlay context, linked to the surface it was opened from, so a menu
+  inside it can take a layer above it (see [Action rows](#action-rows)).
 
 Give the surface an accessible name. Do not add a second document Escape
 listener, backdrop handler, focus trap or mount-time input focus. On a phone,
