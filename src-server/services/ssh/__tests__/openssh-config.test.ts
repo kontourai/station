@@ -24,10 +24,10 @@ const EFFECTIVE_CONFIG = `
 hostname brian-media.internal
 user brian
 port 2222
-identityagent /Users/brian/Library/Group Containers/agent.sock
+identityagent /Users/me/Library/Group Containers/agent.sock
 proxyjump tailnet-gateway
 stricthostkeychecking ask
-userknownhostsfile /Users/brian/.ssh/work_known_hosts /Users/brian/.ssh/known_hosts
+userknownhostsfile /Users/me/.ssh/work_known_hosts /Users/me/.ssh/known_hosts
 `;
 
 describe('OpenSSH effective config', () => {
@@ -44,8 +44,8 @@ describe('OpenSSH effective config', () => {
       // itself would use for this host, in `ssh`'s own order, not against an
       // assumed `~/.ssh/known_hosts`.
       userKnownHostsFiles: [
-        '/Users/brian/.ssh/work_known_hosts',
-        '/Users/brian/.ssh/known_hosts',
+        '/Users/me/.ssh/work_known_hosts',
+        '/Users/me/.ssh/known_hosts',
       ],
     });
   });
@@ -58,10 +58,10 @@ describe('OpenSSH effective config', () => {
           'hostname brian-media.internal',
           'user brian',
           'port 22',
-          'userknownhostsfile "/Users/brian/Application Support/known_hosts"',
+          'userknownhostsfile "/Users/me/Application Support/known_hosts"',
         ].join('\n'),
       ).userKnownHostsFiles,
-    ).toEqual(['/Users/brian/Application Support/known_hosts']);
+    ).toEqual(['/Users/me/Application Support/known_hosts']);
   });
 
   test('a host whose configuration names no trust store reports none, rather than guessing one', () => {

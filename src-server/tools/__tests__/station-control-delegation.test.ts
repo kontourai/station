@@ -530,7 +530,7 @@ function installRemoteStationFetch(
       remoteHome:
         discovery && 'remoteHome' in discovery
           ? discovery.remoteHome
-          : '/home/brian',
+          : '/home/user',
       verifiedProjectPath: discovery?.verifiedProjectPath ?? '/srv/station',
     },
     state: { phase: 'connected', localUrl: REMOTE_API },
@@ -617,7 +617,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       {},
       {
         workingDirectory: '~/station',
-        verifiedProjectPath: '/home/brian/station',
+        verifiedProjectPath: '/home/user/station',
       },
     );
     const { discoverDelegationOptions } = await import(
@@ -698,7 +698,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       {},
       {
         workingDirectory: '~/station',
-        verifiedProjectPath: '/home/brian/station',
+        verifiedProjectPath: '/home/user/station',
         remoteHome: null,
       },
     );

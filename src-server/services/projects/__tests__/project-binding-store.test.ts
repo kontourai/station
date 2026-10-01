@@ -434,7 +434,7 @@ describe('applyHostAlias (§3.3(a))', () => {
 
   test.each([
     ['git@github.com:kontourai/station.git'],
-    ['/Users/brian/dev/station'],
+    ['/Users/me/dev/station'],
     ['../sibling-checkout'],
   ])('leaves %s untouched when no alias matches', (input) => {
     expect(applyHostAlias(input, aliases)).toBe(input);

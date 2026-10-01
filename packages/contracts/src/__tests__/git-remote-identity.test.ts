@@ -98,11 +98,7 @@ describe('normalizeGitOrigin — file:// and trailing-slash / trailing-.git comb
   // path can never reach a git resource"). A local clone source is a
   // `local-only` resource, not a portable `git` one.
   test.each([
-    [
-      'file:// URL',
-      'file:///Users/brian/dev/station',
-      '/users/brian/dev/station',
-    ],
+    ['file:// URL', 'file:///Users/me/dev/station', '/users/me/dev/station'],
     [
       'trailing slash only',
       'https://github.com/kontourai/station/',

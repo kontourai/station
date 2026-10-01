@@ -6507,7 +6507,7 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         getConnectionEnv: async () => ({
-          CLAUDE_CONFIG_DIR: '/Users/brian/.claude_vibe',
+          CLAUDE_CONFIG_DIR: '/Users/me/.claude_vibe',
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         }),
       });
@@ -6520,7 +6520,7 @@ describe('ClaudeAdapter', () => {
 
       const call = mockQuery.mock.calls.at(-1)?.[0];
       expect(call.options.env).toMatchObject({
-        CLAUDE_CONFIG_DIR: '/Users/brian/.claude_vibe',
+        CLAUDE_CONFIG_DIR: '/Users/me/.claude_vibe',
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
       });
       await iterator.next();
