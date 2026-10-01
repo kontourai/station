@@ -16,7 +16,7 @@
 
     {"path":"docs/guides/development.md","digest":"dd6933dc12b9e5d7ecb93b433fcf1cb00a7a564293976839b332448236208799","revision":"c8f80c629fca13479b0010de84094ad0a13332c1"},
 
-    {"path":"docs/guides/testing.md","digest":"b22b19a97202e625825a98b24d0d652ed0e84f1af3e8b2662dbf324a48778ade","revision":"126d8e7c2b173763ec865a7f152fa73c13b9601a"},
+    {"path":"docs/guides/testing.md","digest":"6e98b290aaf69cbb56dceaafa450bc732baae57dda067d4c29566f9ca9b1586c","revision":"55ce7670fe9b1e5483412a976aa19af8be401562"},
 
     {"path":"src-server/services/evidence/workflow-sidecar-service.ts","digest":"bb07d659390bf7acd2e30eae827fdbfb33b4e1b908e7ff0d92394f1b2bda6896","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
