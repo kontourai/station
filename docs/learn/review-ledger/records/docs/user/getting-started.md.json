@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"91c5c5749543ab72af57313c6c3f7256469d6d88eed881aad5886ded2f8c9026","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
 
     {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -98,7 +98,9 @@
 
     {"path":"src-ui/src/views/agent-editor/AgentEditorStateViews.tsx","digest":"805b03c798f8573206c8ad80a79f439953bbedd94604afe0877dfcab3360d4db","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
-    {"path":"src-ui/src/views/home/useHomeViewModel.ts","digest":"5f160c90ad37a0dd915d4adb6a7597bb84ad6aa9b001c590202ad4829baab151","revision":"42811285ef04d069daf576d46253ac833573f848"}
+    {"path":"src-ui/src/views/home/useHomeViewModel.ts","digest":"5f160c90ad37a0dd915d4adb6a7597bb84ad6aa9b001c590202ad4829baab151","revision":"42811285ef04d069daf576d46253ac833573f848"},
+
+    {"path":"src-ui/src/views/home/HomeSurface.tsx","digest":"d780fb4f1857720b32489cfc48f2849c934573d1c7c028d379a1940cf82842ea","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"}
   ],
 
   "checks": [

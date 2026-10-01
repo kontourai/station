@@ -48,7 +48,7 @@
 
     {"path":"tests/pr-smoke-live-chat-send.spec.ts","digest":"34e256af4b0ff8c90928093987dcc152ee370f4719677716c2082d639833db45","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/ui-crud-smoke.spec.ts","digest":"233184627b80a8c4ecd3e6ab23ae71c16d9cd485129f1d597074844d7ce49592","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"tests/ui-crud-smoke.spec.ts","digest":"7d7ff82fd5933733973d5fec0cf27e833842307ebdbe96a73be0e76aee7eddaa","revision":"42811285ef04d069daf576d46253ac833573f848"}
   ],
 
   "checks": [
