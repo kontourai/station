@@ -3,11 +3,12 @@
 import {
   createWorkspaceCodingDiffPaneInstance,
   createWorkspaceCodingFileBrowserPaneInstance,
+  createWorkspaceCodingTerminalPaneInstance,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { useEffect } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
@@ -31,6 +32,8 @@ const harness = vi.hoisted(() => ({
   >(),
   showSurface: vi.fn(),
   chatProps: null as null | Record<string, unknown>,
+  /** How many times Chat has mounted: the one instance must survive a panel. */
+  chatMounts: 0,
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
@@ -41,6 +44,9 @@ vi.mock('../../chat-dock/ChatDock', () => ({
   }) => {
     const { onPresentationTitleChange } = props;
     harness.chatProps = props;
+    useEffect(() => {
+      harness.chatMounts += 1;
+    }, []);
     useEffect(() => {
       onPresentationTitleChange?.(harness.chatTitle);
     }, [onPresentationTitleChange]);
@@ -93,20 +99,36 @@ const document = createWorkspacePaneHostBaselineDocument(
   scope,
   instances,
 )!;
+const terminal = createWorkspaceCodingTerminalPaneInstance('project-uuid')!;
 const label = (instance: WorkspacePaneInstance) =>
-  instance.instanceId === files.instanceId ? 'Files' : 'Diff';
+  instance.instanceId === files.instanceId
+    ? 'Files'
+    : instance.instanceId === terminal.instanceId
+      ? 'Terminal'
+      : 'Diff';
+
+interface StackProps {
+  centerChat?: boolean;
+  hostOpen?: WorkspacePaneHostOpenAction | null;
+  /** Past the wide fold: panels beside and below Chat (#3040). */
+  wide?: boolean;
+  /** The Terminal pane for the lower panel, drawn by `renderTerminal`. */
+  terminal?: WorkspacePaneInstance;
+  renderTerminal?: () => ReactNode;
+}
 
 function Stack({
   centerChat = true,
   hostOpen = null,
-}: {
-  centerChat?: boolean;
-  hostOpen?: WorkspacePaneHostOpenAction | null;
-}) {
+  wide = false,
+  terminal,
+  renderTerminal,
+}: StackProps) {
   const selection = useCodingStackSelection();
+  const held = terminal ? [...instances, terminal] : instances;
   const location = resolveCodingStackLocation(
     scope,
-    instances,
+    held,
     selection.pane,
     selection.paneScope,
   );
@@ -115,10 +137,16 @@ function Stack({
       projectId="project-uuid"
       projectSlug="demo"
       centerChat={centerChat}
+      wide={wide}
       location={location}
       scope={scope}
-      instances={instances}
+      instances={held}
       hostDocument={() => document}
+      terminal={
+        terminal
+          ? { instance: terminal, render: renderTerminal ?? (() => null) }
+          : undefined
+      }
       paneLabel={label}
       hostOpen={hostOpen}
       onOpenCatalog={vi.fn()}
@@ -128,10 +156,7 @@ function Stack({
   );
 }
 
-function renderStack(props?: {
-  centerChat?: boolean;
-  hostOpen?: WorkspacePaneHostOpenAction | null;
-}) {
+function renderStack(props?: StackProps) {
   return render(
     <NavigationProvider>
       <Stack {...props} />
@@ -165,8 +190,10 @@ async function historyBackSettled() {
 
 beforeEach(() => {
   harness.isMobile = false;
+  harness.chatMounts = 0;
   harness.shortcuts.clear();
   harness.showSurface.mockReset();
+  deviceSettingsStore.reset('codingPanels');
   navigationStore.navigate(ROUTE, {
     pane: null,
     paneScope: null,
@@ -655,5 +682,308 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     ).getByText('Diff');
     expect(window.document.activeElement).toBe(current);
     expect(current.getAttribute('aria-current')).toBe('page');
+  });
+});
+
+const sidePanel = () =>
+  window.document.querySelector<HTMLElement>(
+    '.coding-workbench__page--drill-in',
+  )!;
+const lowerPanel = () =>
+  window.document.querySelector<HTMLElement>('.coding-workbench__lower');
+const urlPane = () => new URLSearchParams(window.location.search).get('pane');
+const railItem = (name: string) => within(rail()).getByRole('button', { name });
+const remembered = (sessionKey: string) =>
+  deviceSettingsStore.get('codingPanels').sessions[sessionKey];
+
+describe('CodingWorkbench — panels beside and below Chat past the wide fold (#3040, #3051)', () => {
+  test('a rail pick opens the tool beside Chat: Chat stays the page, visible and the same instance; the entry is replaced, not pushed', async () => {
+    renderStack({ wide: true });
+    const mounts = harness.chatMounts;
+    expect(mounts).toBe(1);
+    const index = navigationStore.getHistoryIndex();
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+    expect(railItem('Diff').getAttribute('aria-pressed')).toBe('false');
+
+    await drillInto('Diff');
+
+    expect(urlPane()).toBe(diff.instanceId);
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(chatPage().getAttribute('data-active')).toBe('true');
+    expect(chatPage().hasAttribute('inert')).toBe(false);
+    expect(harness.chatProps).toMatchObject({ onScreen: true });
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+    expect(sidePanel().hasAttribute('inert')).toBe(false);
+    expect(screen.getByTestId('pane-host')).toBeTruthy();
+    expect(harness.chatMounts).toBe(mounts);
+    // The rail item is a toggle naming the panel it controls; the crumbs
+    // stay the conversation's (Chat is the page).
+    expect(railItem('Diff').getAttribute('aria-pressed')).toBe('true');
+    expect(railItem('Diff').getAttribute('aria-controls')).toBe(sidePanel().id);
+    expect(railItem('Diff').hasAttribute('aria-current')).toBe(false);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(
+      within(sidePanel()).getByRole('heading', { name: 'Diff' }),
+    ).toBeTruthy();
+
+    // Another item switches the panel; the same item closes it. Neither is
+    // a history entry, and Chat is still the one instance.
+    await drillInto('Files');
+    expect(urlPane()).toBe(files.instanceId);
+    expect(railItem('Diff').getAttribute('aria-pressed')).toBe('false');
+    expect(railItem('Files').getAttribute('aria-pressed')).toBe('true');
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+
+    await drillInto('Files');
+    expect(urlPane()).toBeNull();
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+    expect(sidePanel().hasAttribute('inert')).toBe(true);
+    expect(railItem('Files').getAttribute('aria-pressed')).toBe('false');
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(harness.chatMounts).toBe(mounts);
+    // Closed, the pane stays mounted for its state.
+    expect(screen.getByTestId('pane-host')).toBeTruthy();
+  });
+
+  test('below the fold the same pick is the drill-in it always was', async () => {
+    renderStack({ wide: false });
+    const index = navigationStore.getHistoryIndex();
+    await drillInto('Diff');
+    expect(navigationStore.getHistoryIndex()).toBe(index + 1);
+    expect(chatPage().getAttribute('data-active')).toBe('false');
+    expect(railItem('Diff').getAttribute('aria-current')).toBe('page');
+    expect(railItem('Diff').hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  test('the Terminal opens in the lower panel, alongside a tool beside Chat, and is drawn only once opened', async () => {
+    const renderTerminal = vi.fn(() => (
+      <div data-testid="lower-terminal">terminal</div>
+    ));
+    renderStack({ wide: true, terminal, renderTerminal });
+    const index = navigationStore.getHistoryIndex();
+    expect(lowerPanel()).toBeNull();
+    expect(renderTerminal).not.toHaveBeenCalled();
+
+    await drillInto('Diff');
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
+    expect(screen.getByTestId('lower-terminal')).toBeTruthy();
+    expect(railItem('Terminal').getAttribute('aria-pressed')).toBe('true');
+    expect(railItem('Terminal').getAttribute('aria-controls')).toBe(
+      lowerPanel()?.id,
+    );
+    // Both at once: the side tool is untouched, and the Terminal is no
+    // entry and no URL.
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+    expect(urlPane()).toBe(diff.instanceId);
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(chatPage().getAttribute('data-active')).toBe('true');
+    expect(
+      screen
+        .getByRole('separator', { name: 'Resize Terminal panel' })
+        .getAttribute('aria-orientation'),
+    ).toBe('horizontal');
+
+    // Closed: hidden and inert, still mounted.
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('false');
+    expect(lowerPanel()?.hasAttribute('inert')).toBe(true);
+    expect(screen.getByTestId('lower-terminal')).toBeTruthy();
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+  });
+
+  test('a URL naming the Terminal on a wide screen opens it below and clears the side', async () => {
+    navigationStore.navigate(ROUTE, {
+      chat: 'conv-t',
+      pane: terminal.instanceId,
+      paneScope: scopeKey,
+    });
+    renderStack({ wide: true, terminal });
+    await act(async () => undefined);
+    expect(urlPane()).toBeNull();
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+    expect(remembered('conv-t')?.terminalOpen).toBe(true);
+  });
+
+  test('the separators resize by keyboard within bounds that keep Chat its floor, and reset', async () => {
+    renderStack({ wide: true, terminal });
+    await drillInto('Diff');
+    const pages = window.document.querySelector<HTMLElement>(
+      '.coding-workbench__pages',
+    )!;
+    const side = screen.getByRole('separator', { name: 'Resize Diff panel' });
+    expect(side.getAttribute('aria-orientation')).toBe('vertical');
+    expect(side.getAttribute('aria-valuemin')).toBe('320');
+    // jsdom's 1024px viewport with the 44px rail: 1068 - 44 - 8 - 480.
+    expect(side.getAttribute('aria-valuemax')).toBe('536');
+    expect(side.getAttribute('aria-valuenow')).toBe('440');
+    expect(pages.style.getPropertyValue('--coding-side-width')).toBe('440px');
+
+    fireEvent.keyDown(side, { key: 'ArrowLeft' });
+    expect(side.getAttribute('aria-valuenow')).toBe('456');
+    expect(pages.style.getPropertyValue('--coding-side-width')).toBe('456px');
+    fireEvent.keyDown(side, { key: 'ArrowLeft', shiftKey: true });
+    expect(side.getAttribute('aria-valuenow')).toBe('520');
+    fireEvent.keyDown(side, { key: 'End' });
+    expect(side.getAttribute('aria-valuenow')).toBe('536');
+    fireEvent.keyDown(side, { key: 'ArrowLeft' });
+    expect(side.getAttribute('aria-valuenow')).toBe('536');
+    fireEvent.keyDown(side, { key: 'Home' });
+    expect(side.getAttribute('aria-valuenow')).toBe('320');
+    fireEvent.keyDown(side, { key: 'ArrowRight' });
+    expect(side.getAttribute('aria-valuenow')).toBe('320');
+    fireEvent.keyDown(side, { key: 'Enter' });
+    expect(side.getAttribute('aria-valuenow')).toBe('440');
+    fireEvent.keyDown(side, { key: 'ArrowRight' });
+    fireEvent.doubleClick(side);
+    expect(side.getAttribute('aria-valuenow')).toBe('440');
+    // Each step is the session's memory.
+    fireEvent.keyDown(side, { key: 'ArrowLeft' });
+    expect(remembered('~')?.sideWidth).toBe(456);
+
+    // A drag drafts and commits once on release, clamped.
+    fireEvent.pointerDown(side, {
+      button: 0,
+      pointerId: 1,
+      clientX: 600,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(side, { pointerId: 1, clientX: 100, clientY: 10 });
+    expect(side.getAttribute('aria-valuenow')).toBe('536');
+    fireEvent.pointerUp(side, { pointerId: 1, clientX: 100, clientY: 10 });
+    expect(remembered('~')?.sideWidth).toBe(536);
+
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+    const lower = screen.getByRole('separator', {
+      name: 'Resize Terminal panel',
+    });
+    expect(lower.getAttribute('aria-valuemin')).toBe('160');
+    // jsdom's 768px viewport: 768 - 8 - 240.
+    expect(lower.getAttribute('aria-valuemax')).toBe('520');
+    expect(lower.getAttribute('aria-valuenow')).toBe('280');
+    fireEvent.keyDown(lower, { key: 'ArrowUp' });
+    expect(lower.getAttribute('aria-valuenow')).toBe('296');
+    expect(pages.style.getPropertyValue('--coding-lower-height')).toBe('296px');
+    fireEvent.keyDown(lower, { key: 'ArrowLeft' });
+    expect(lower.getAttribute('aria-valuenow')).toBe('296');
+    expect(remembered('~')?.terminalHeight).toBe(296);
+  });
+
+  test('each session keeps its own panels: switching restores them, a new session starts closed, and the memory is the device setting on disk', async () => {
+    navigationStore.navigate(ROUTE, { chat: 'conv-a' });
+    const view = renderStack({ wide: true, terminal });
+    const index = navigationStore.getHistoryIndex();
+    await drillInto('Diff');
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+    expect(remembered('conv-a')).toMatchObject({
+      side: diff.instanceId,
+      terminalOpen: true,
+    });
+
+    // A new session (the inbox's replace): closed.
+    act(() => navigationStore.setActiveChat('conv-b'));
+    await act(async () => undefined);
+    expect(urlPane()).toBeNull();
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('false');
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    await drillInto('Files');
+
+    // Back to the first: its own panels, still not a history entry.
+    act(() => navigationStore.setActiveChat('conv-a'));
+    await act(async () => undefined);
+    expect(urlPane()).toBe(diff.instanceId);
+    expect(railItem('Diff').getAttribute('aria-pressed')).toBe('true');
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(remembered('conv-b')?.side).toBe(files.instanceId);
+
+    // The memory is in the device-settings envelope, which a reload reads.
+    const envelope = JSON.parse(
+      window.localStorage.getItem('station-device-settings-v1') ?? '{}',
+    );
+    expect(envelope.values.codingPanels.sessions['conv-a']).toMatchObject({
+      side: diff.instanceId,
+      terminalOpen: true,
+    });
+
+    // A fresh arrival on the session with nothing in the URL restores it.
+    view.unmount();
+    navigationStore.navigate(ROUTE, {
+      chat: 'conv-a',
+      pane: null,
+      paneScope: null,
+    });
+    renderStack({ wide: true, terminal });
+    await act(async () => undefined);
+    expect(urlPane()).toBe(diff.instanceId);
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
+  });
+
+  test('opened from the keyboard, focus lands in the panel; closed, it returns to the rail item; a pointer leaves focus alone', async () => {
+    renderStack({ wide: true, terminal });
+    // A keyboard activation is a click with detail 0.
+    fireEvent.click(railItem('Diff'), { detail: 0 });
+    await act(async () => undefined);
+    expect(window.document.activeElement).toBe(
+      within(sidePanel()).getByRole('heading', { name: 'Diff' }),
+    );
+    fireEvent.click(
+      within(sidePanel()).getByRole('button', { name: 'Close Diff' }),
+      { detail: 0 },
+    );
+    await act(async () => undefined);
+    expect(window.document.activeElement).toBe(railItem('Diff'));
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+
+    (window.document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.click(railItem('Files'), { detail: 1 });
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+    expect(window.document.activeElement).toBe(window.document.body);
+
+    // The lower panel, the same way.
+    fireEvent.click(railItem('Terminal'), { detail: 0 });
+    await act(async () => undefined);
+    expect(window.document.activeElement).toBe(
+      within(lowerPanel()!).getByRole('heading', { name: 'Terminal' }),
+    );
+    fireEvent.click(railItem('Terminal'), { detail: 0 });
+    await act(async () => undefined);
+    expect(window.document.activeElement).toBe(railItem('Terminal'));
+  });
+
+  test('crossing the fold keeps Chat the one mounted instance', async () => {
+    const view = renderStack({ wide: false });
+    await drillInto('Diff');
+    expect(chatPage().getAttribute('data-active')).toBe('false');
+    const mounts = harness.chatMounts;
+
+    view.rerender(
+      <NavigationProvider>
+        <Stack wide />
+      </NavigationProvider>,
+    );
+    await act(async () => undefined);
+    expect(chatPage().getAttribute('data-active')).toBe('true');
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+    expect(harness.chatMounts).toBe(mounts);
+
+    view.rerender(
+      <NavigationProvider>
+        <Stack wide={false} />
+      </NavigationProvider>,
+    );
+    await act(async () => undefined);
+    expect(chatPage().getAttribute('data-active')).toBe('false');
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(harness.chatMounts).toBe(mounts);
   });
 });

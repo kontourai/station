@@ -115,8 +115,10 @@ async function drillIntoDiff(page: Page) {
   ]);
 }
 
-test.describe('Coding stack — desktop (1280px)', () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
+// Below the wide fold (1280px, `codingPanels.ts`) a pane is a full-page
+// drill-in; past it the same pane opens beside Chat (the last describe).
+test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
+  test.use({ viewport: { width: 1180, height: 800 } });
 
   test.beforeEach(async ({ page }) => {
     await seed(page);
@@ -322,7 +324,7 @@ test.describe('Coding stack — desktop (1280px)', () => {
 });
 
 test.describe('Coding stack — the dock is left as the reader had it', () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
+  test.use({ viewport: { width: 1180, height: 800 } });
 
   test.beforeEach(async ({ page }) => {
     await seed(page);
@@ -456,5 +458,184 @@ test.describe('Coding stack — phone (390px)', () => {
     await expect(page.locator('#chat-dock')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('#chat-dock')).toHaveClass(/is-maximized/);
     await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+  });
+});
+
+/**
+ * #3040 / #3051: past the wide fold a rail pick opens the tool BESIDE Chat
+ * (the same `?pane=`, written in place), the Terminal below both, and each
+ * conversation remembers its own panels.
+ */
+test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const lowerPanel = (page: Page) => page.locator('.coding-workbench__lower');
+  const historyLength = (page: Page) =>
+    page.evaluate(() => window.history.length);
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('a rail pick opens the tool beside Chat, Chat stays visible, and no toggle is a history entry', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const length = await historyLength(page);
+    await expect(sidePanel(page)).toBeHidden();
+
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(sidePanel(page).getByText('Git Diff')).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(page).toHaveURL(/[?&]pane=/);
+    expect(await historyLength(page)).toBe(length);
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // Chat is still the page: the crumbs are the conversation's.
+    await expect(crumbs(page).getByRole('listitem')).toHaveText([
+      'Inbox',
+      'Dev Agent Chat',
+    ]);
+    // Side by side, not over: the panel starts where Chat ends.
+    const chat = (await chatPage(page).boundingBox())!;
+    const side = (await sidePanel(page).boundingBox())!;
+    expect(side.x).toBeGreaterThanOrEqual(chat.x + chat.width - 1);
+    expect(chat.width).toBeGreaterThanOrEqual(480);
+    expect(side.width).toBeGreaterThanOrEqual(320);
+
+    // Another item switches; the same item closes. Still no entry.
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
+    await expect(centreChat(page)).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test('the Terminal opens in the lower panel, under Chat and the side tool together', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(lowerPanel(page)).toHaveCount(0);
+    await openCodingView(page, 'Files');
+    await openCodingView(page, 'Terminal');
+    await expect(lowerPanel(page)).toBeVisible();
+    await expect(lowerPanel(page)).toHaveAttribute('data-active', 'true');
+    await expect(codingViewItem(page, 'Terminal')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(page).toHaveURL(/[?&]pane=/);
+    const chat = (await chatPage(page).boundingBox())!;
+    const side = (await sidePanel(page).boundingBox())!;
+    const lower = (await lowerPanel(page).boundingBox())!;
+    expect(lower.y).toBeGreaterThanOrEqual(chat.y + chat.height - 1);
+    expect(lower.y).toBeGreaterThanOrEqual(side.y + side.height - 1);
+    expect(lower.width).toBeGreaterThanOrEqual(chat.width + side.width - 1);
+    await expect(centreChat(page)).toBeVisible();
+
+    await openCodingView(page, 'Terminal');
+    await expect(lowerPanel(page)).toBeHidden();
+    await expect(sidePanel(page)).toBeVisible();
+  });
+
+  test('the side panel resizes from the keyboard and its width survives a reload', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await openCodingView(page, 'Diff');
+    const separator = page.getByRole('separator', {
+      name: 'Resize Diff panel',
+    });
+    await expect(separator).toHaveAttribute('aria-orientation', 'vertical');
+    const before = Number(await separator.getAttribute('aria-valuenow'));
+    await separator.focus();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await expect(separator).toHaveAttribute(
+      'aria-valuenow',
+      String(before + 32),
+    );
+    const side = (await sidePanel(page).boundingBox())!;
+    expect(Math.round(side.width)).toBe(before + 32);
+
+    await page.reload();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      page.getByRole('separator', { name: 'Resize Diff panel' }),
+    ).toHaveAttribute('aria-valuenow', String(before + 32));
+  });
+
+  test('each conversation keeps its own panels; a new one starts closed', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const length = await historyLength(page);
+    await openCodingView(page, 'Diff');
+    await openCodingView(page, 'Terminal');
+    await expect(lowerPanel(page)).toBeVisible();
+
+    await inbox(page)
+      .getByRole('button', { name: /Tidy the README/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/chat=conv-2|chat=session-2/);
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(lowerPanel(page)).toBeHidden();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+
+    await inbox(page)
+      .getByRole('button', { name: /Dev Agent Chat/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/chat=conv-1|chat=session-1/);
+    await expect(sidePanel(page).getByText('Git Diff')).toBeVisible();
+    await expect(lowerPanel(page)).toBeVisible();
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test('crossing the fold keeps the conversation as it was: a drill-in becomes the side panel and the draft survives', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await landOnChat(page);
+    const composer = centreChat(page).locator('.chat-input textarea');
+    await composer.fill('a draft the reader has not sent');
+    await openCodingView(page, 'Diff');
+    await expect(centreChat(page)).toBeHidden();
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(centreChat(page)).toBeVisible();
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(composer).toHaveValue('a draft the reader has not sent');
+
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await expect(centreChat(page)).toBeHidden();
+    await expect(crumbs(page)).toContainText('Diff');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(composer).toHaveValue('a draft the reader has not sent');
   });
 });

@@ -1566,6 +1566,88 @@ dock, so state the Chat pane keeps locally (an unsent draft not yet saved to
 the session, scroll position, an open panel) is not carried across; the
 session and its saved draft are.
 
+## Past the wide fold, tools open beside Chat (2026-10-01)
+
+**#3040 and #3051, the next slice of the coding-layout revamp (#3039).
+Amends the stack above for a viewport at or past 1280px: the drill-in page
+becomes a side panel, the Terminal a lower panel, and both are remembered
+per conversation.** Below the fold nothing above changes.
+
+- **The fold is a viewport query, 1280px**
+  (`CODING_WIDE_MEDIA_QUERY`, [codingPanels.ts](../../src-ui/src/components/coding-layout/codingPanels.ts)).
+  Chat beside a tool needs both at their floors plus what the shell takes
+  around them: Chat 480px (the inbox's 240px floor and a transcript column no
+  narrower than the dock's own Chat), a tool 320px (a unified diff with its
+  gutter, a file tree with real names), the 8px separator, the 44px rail and
+  the 240px Project sidebar — 1092px; 1280px is the next conventional step
+  and leaves Chat 650px with the sidebar open rather than exactly its floor.
+  A query rather than a measurement of the workbench because the layout host
+  and the workbench must agree on it (the host decides where the Terminal
+  renders by it) and a measured fold would move as the panels it governs
+  open. It applies only where the centre has Chat: a bottom-only device at
+  any width keeps the drill-in, as does every viewport below the fold.
+- **The side panel is the same `?pane=`, written in place.** A rail pick
+  past the fold calls `updateParams` (a `replaceState`), never
+  `setActiveWorkspacePane` (a push): opening, switching and closing a tool
+  beside Chat are not history entries, so Back still leaves the layout or
+  the session. The pane host follows the URL exactly as for a drill-in
+  (`navigationSelection="explicit"`), so a reload or a shared link restores
+  the open tool at no extra cost, and crossing the fold in either direction
+  keeps the pane: a drill-in pushed below the fold is the side panel above
+  it (that one entry, pushed as a page, still pops as one), and a side panel
+  is the drill-in below. Chat is always the page past the fold — the crumbs
+  stay Inbox / conversation, the composer stays on screen and in the
+  foreground — and the drill-in `section` is the same DOM node either way,
+  so Chat is one mounted instance across a panel's open, switch and close
+  and across the fold (`CodingWorkbench.test.tsx` counts its mounts).
+- **The Terminal is the lower panel, and no URL at all.** Its open state is
+  a per-session fact of the device setting below; the host hands the pane
+  host nothing for the Terminal instance while wide and the workbench draws
+  it in the lower panel through the same `renderCodingPane`, so one terminal
+  is never mounted twice. A URL that names the Terminal past the fold (a
+  drill-in from below it, a reload on one) opens it below and clears the
+  side. It is mounted on first open and hidden (collapsed to no height,
+  inert) after, and unmounted below the fold where the pane host owns it.
+- **Per-session memory is one device setting** (`codingPanels`,
+  [device-settings.ts](../../packages/contracts/src/device-settings.ts);
+  record logic in [coding-panels-record.ts](../../src-ui/src/lib/coding-panels-record.ts)):
+  `{ version: 1, sessions: { [conversation]: { side, sideWidth, terminalOpen,
+  terminalHeight, at } } }`, keyed by `activeChat` (`~` with none), bounded
+  to 32 sessions by evicting the entry touched longest ago, validated on
+  import by its own parser as `regionArrangement` is, and classified as
+  direct manipulation (not restored by "Restore device defaults"). Arrival
+  past the fold takes the URL as the fact when it names a tool and remembers
+  it, else restores the session's memory; a change of session (the inbox's
+  replace) restores that session's own panels and a session with no entry
+  starts closed. There is no per-session Diff scope to remember: the Diff
+  pane has no scope concept today, so #3051's mention of one is left until
+  #3049 gives it one.
+- **Sizes.** The side panel is 440px by default, never under 320px and never
+  wider than leaves Chat 480px of the row (the rail and separator excluded);
+  the lower panel 280px, never under 160px and never taller than leaves Chat
+  240px. Each edge is a real `role="separator"` (`aria-orientation`,
+  `aria-valuenow/min/max`, focusable): a drag drafts every frame and commits
+  once on release, the arrows along its axis nudge 16px (Shift 64px), Home
+  and End go to the bounds, Enter or a double-click returns the default. The
+  CSS carries the same floors as `min-width`/`max-width`, so a room too
+  small for both never folds Chat.
+- **Quiet chrome.** The rail is unchanged in shape: past the fold its items
+  are toggles (`aria-pressed`, `aria-controls` naming the panel) with the
+  open ones solid, the Terminal's among them; below it they keep
+  `aria-current`. Each panel has one 36px head — its name as a focusable
+  heading, the drill-in ⋯ where it has one, an icon-only close — and no
+  labelled button, so the button cap is untouched. Opening from the keyboard
+  moves focus to the panel's heading and closing returns it to the rail
+  item; a pointer leaves focus alone; nothing traps it. The side panel
+  enters with the stack's push slide, which reduced motion collapses as it
+  does the page slide. All of it lives in the workbench's own stylesheet in
+  the lazily loaded layout chunk, not the entry CSS.
+
+Limits: a pane opened BY a pane (a File Preview from Files) is the host's
+own named open, which still pushes an entry past the fold; the lower panel
+is the Terminal's alone (no other pane docks below); and the fold ignores
+whether the Project sidebar is collapsed.
+
 ## Failure shapes this design is meant to prevent
 
 - **A label nothing derives.** `docked` had zero readers for months while three

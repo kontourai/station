@@ -18,7 +18,10 @@ import type {
 } from '@kontourai/station-contracts/workspace-pane-host';
 import { Tooltip } from '@kontourai/ui/react';
 import {
+  type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useId,
@@ -39,6 +42,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import { NO_SESSION_PANELS_KEY } from '../../lib/coding-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
@@ -53,6 +57,7 @@ import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import {
   CheckGlyph,
+  CloseGlyph,
   CodeGlyph,
   DiffGlyph,
   DocumentGlyph,
@@ -65,6 +70,18 @@ import {
   TerminalGlyph,
 } from '../icons/Glyph';
 import { Empty } from '../state';
+import {
+  CODING_LOWER_DEFAULT_HEIGHT,
+  CODING_LOWER_MIN_HEIGHT,
+  CODING_SIDE_DEFAULT_WIDTH,
+  CODING_SIDE_MIN_WIDTH,
+  clampCodingLowerHeight,
+  clampCodingSideWidth,
+  codingLowerMaxHeight,
+  codingSideMaxWidth,
+  resizeCodingPanelFromKeyboard,
+  useCodingSessionPanels,
+} from './codingPanels';
 import type { CodingStackLocation } from './codingStackPage';
 import './CodingWorkbench.css';
 
@@ -97,6 +114,7 @@ const USER_MOVE_WINDOW_MS = 1000;
 type StackTransition = 'push' | 'pop' | null;
 
 const readHistoryIndex = () => navigationStore.getHistoryIndex();
+const readActiveChat = () => navigationStore.getSnapshot().activeChat;
 const NO_BADGES: Readonly<Record<string, number>> = {};
 const PERSISTENCE_NOTICE_DELAY_MS = 1500;
 const RAIL_ORDER = [
@@ -112,6 +130,14 @@ function railRank(descriptorId: string): number {
   return rank === -1 ? RAIL_ORDER.length : rank;
 }
 
+/**
+ * A click's `detail` is 0 when a key activated the button: that reader is on
+ * the keyboard, and focus should follow what they opened.
+ */
+function activatedByKeyboard(event: { detail: number }): boolean {
+  return event.detail === 0;
+}
+
 export interface CodingWorkbenchProps {
   projectId: string;
   projectSlug: string;
@@ -121,12 +147,24 @@ export interface CodingWorkbenchProps {
    * Chat page then opens the dock instead of rendering Chat a second time.
    */
   centerChat: boolean;
+  /**
+   * Past the wide fold (`useCodingWide`, with Chat in the centre): a pane
+   * opens BESIDE Chat and the Terminal below, instead of over it. The host
+   * passes the same answer it renders the Terminal by.
+   */
+  wide?: boolean;
   location: CodingStackLocation;
   scope: WorkspacePaneHostScope;
   /** The panes a drill-in can show, in the host's document order. */
   instances: readonly WorkspacePaneInstance[];
   /** The host's live document, for the catalog's target group. */
   hostDocument: () => WorkspacePaneHostDocumentV1 | null;
+  /**
+   * The Terminal pane and how to draw it, for the lower panel on a wide
+   * screen. The host renders it there and nowhere else while wide, so one
+   * terminal is never mounted twice.
+   */
+  terminal?: { instance: WorkspacePaneInstance; render(): ReactNode };
   /**
    * A state the layout reports above both pages — its catalog loading or
    * failing, a pane host it could not mount. The Chat page stays usable.
@@ -177,6 +215,13 @@ export interface CodingWorkbenchProps {
  * move on the same page and replaces the entry (`setActiveChat`), so Back
  * never walks the reader through every conversation they glanced at.
  *
+ * Past the wide fold (#3040) the same `?pane=` is a tool open BESIDE Chat:
+ * the drill-in page becomes a side panel, Chat stays the page, and a rail
+ * pick toggles or switches the panel by REPLACING the entry — Back still
+ * leaves the layout or the session, never merely closes a panel. The
+ * Terminal opens in a lower panel under both, a per-session fact of its
+ * own (#3051) with no URL at all. Both are remembered per conversation.
+ *
  * Both pages stay mounted and the inactive one is hidden and inert, so a
  * composer draft, a transcript's scroll and a terminal survive the round trip.
  * The inbox is Chat's own (`ChatWorkspacePane`'s inbox panel, collapsed and
@@ -187,10 +232,12 @@ export function CodingWorkbench({
   projectId,
   projectSlug,
   centerChat,
+  wide = false,
   location,
   scope,
   instances,
   hostDocument,
+  terminal,
   notice,
   paneLabel,
   hostOpen,
@@ -204,7 +251,6 @@ export function CodingWorkbench({
   children,
 }: CodingWorkbenchProps) {
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const { page, paneId } = location;
   const scopeKey = workspacePaneHostScopeKey(scope);
   const { isMac } = useKeyboardShortcuts();
   const historyIndex = useSyncExternalStore(
@@ -212,6 +258,26 @@ export function CodingWorkbench({
     readHistoryIndex,
     readHistoryIndex,
   );
+  const activeChat = useSyncExternalStore(
+    navigationStore.subscribe,
+    readActiveChat,
+    readActiveChat,
+  );
+
+  // ── Wide: the URL's pane is the side panel, the Terminal is the lower one.
+  const terminalId = terminal?.instance.instanceId ?? null;
+  const sessionKey = activeChat ?? NO_SESSION_PANELS_KEY;
+  const { panels, update: updatePanels } = useCodingSessionPanels(sessionKey);
+  const sidePaneId =
+    wide && location.page === 'drill-in' && location.paneId !== terminalId
+      ? location.paneId
+      : null;
+  const sideOpen = sidePaneId !== null;
+  const lowerOpen = wide && terminal !== undefined && panels.terminalOpen;
+  /** The stack's page: on a wide screen Chat is always it. */
+  const page: 'chat' | 'drill-in' = wide ? 'chat' : location.page;
+  const paneId = wide ? sidePaneId : location.paneId;
+
   // A phone's on-screen keyboard shrinks the visual viewport, not the
   // layout one: the workbench fits the visible part (as the compact pane host
   // it replaces did), so a focused terminal or preview is not left under the
@@ -245,7 +311,10 @@ export function CodingWorkbench({
    */
   const userMoveRef = useRef(0);
   const drillInPageRef = useRef<HTMLElement>(null);
+  const lowerPanelRef = useRef<HTMLElement>(null);
   const currentCrumbRef = useRef<HTMLSpanElement>(null);
+  const sideHeadingRef = useRef<HTMLHeadingElement>(null);
+  const lowerHeadingRef = useRef<HTMLHeadingElement>(null);
   const [announcement, setAnnouncement] = useState('');
 
   useCodingChatPositionEffects({
@@ -415,28 +484,102 @@ export function CodingWorkbench({
   // chat") while a pane is on screen: the reader asked for the
   // conversation, so show it. Only a change of `?chat=` on the SAME drill-in
   // counts — landing on a drill-in whose entry carries a different
-  // conversation (Forward) is navigation, not a request.
-  const activeChat = useSyncExternalStore(
-    navigationStore.subscribe,
-    () => navigationStore.getSnapshot().activeChat,
-    () => navigationStore.getSnapshot().activeChat,
-  );
+  // conversation (Forward) is navigation, not a request. Beside Chat (wide)
+  // the conversation is already on screen; the session's own panels apply.
   const lastChatFocus = useRef({ activeChat, paneId });
   useEffect(() => {
     const last = lastChatFocus.current;
     lastChatFocus.current = { activeChat, paneId };
     if (
       centerChat &&
+      !wide &&
       page === 'drill-in' &&
       paneId === last.paneId &&
       activeChat !== last.activeChat &&
       activeChat !== null
     )
       returnToChatPage();
-  }, [activeChat, centerChat, page, paneId, returnToChatPage]);
+  }, [activeChat, centerChat, page, paneId, returnToChatPage, wide]);
+
+  // ── The side panel's selection is the URL's `?pane=`, written in place.
+  // Neither opening, switching nor closing a tool beside Chat is a history
+  // entry: Back is for leaving the layout or the session.
+  const replaceSide = useCallback(
+    (instanceId: string | null) => {
+      navigationStore.updateParams({
+        pane: instanceId,
+        paneScope: instanceId === null ? null : scopeKey,
+        // Closing Files must drop the preview intent it keeps in the URL for
+        // its own return trip, as leaving its page does.
+        ...(instanceId === null ? clearOpenFilePreviewIntent() : {}),
+      });
+    },
+    [scopeKey],
+  );
+  const holds = useCallback(
+    (instanceId: string | null) =>
+      instanceId !== null &&
+      instances.some((instance) => instance.instanceId === instanceId),
+    [instances],
+  );
+  /**
+   * Which session the panels on screen were applied for. Null until the
+   * layout is wide and settled: arrival (a mount, the fold crossed) takes
+   * the URL as the fact when it names a tool and remembers it, else restores
+   * the session's memory; after that, a change of session restores that
+   * session's own memory and a new session starts closed.
+   */
+  const appliedSession = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!wide || provisional) {
+      appliedSession.current = null;
+      return;
+    }
+    const remembered = holds(panels.side) ? panels.side : null;
+    if (appliedSession.current === null) {
+      appliedSession.current = sessionKey;
+      if (sidePaneId) {
+        if (sidePaneId !== panels.side) updatePanels({ side: sidePaneId });
+      } else if (remembered && location.page === 'chat') {
+        replaceSide(remembered);
+      }
+      return;
+    }
+    if (appliedSession.current === sessionKey) return;
+    appliedSession.current = sessionKey;
+    if (remembered !== sidePaneId) replaceSide(remembered);
+  }, [
+    holds,
+    location.page,
+    panels.side,
+    provisional,
+    replaceSide,
+    sessionKey,
+    sidePaneId,
+    updatePanels,
+    wide,
+  ]);
+  // A URL naming the Terminal on a wide screen (a drill-in from before the
+  // fold was crossed, a reload on one): the Terminal lives below, so open it
+  // there and clear the side.
+  useLayoutEffect(() => {
+    if (!wide || provisional || terminalId === null) return;
+    if (location.page === 'drill-in' && location.paneId === terminalId) {
+      replaceSide(null);
+      updatePanels({ terminalOpen: true });
+    }
+  }, [
+    location.page,
+    location.paneId,
+    provisional,
+    replaceSide,
+    terminalId,
+    updatePanels,
+    wide,
+  ]);
 
   const drilledIn =
-    page === 'drill-in'
+    page === 'drill-in' || sideOpen
       ? instances.find((instance) => instance.instanceId === paneId)
       : undefined;
   const drillInLabel = drilledIn ? paneLabel(drilledIn) : 'Pane';
@@ -461,7 +604,83 @@ export function CodingWorkbench({
     );
   }, [chatTitle, drillInLabel, page, pageKey, provisional]);
 
-  const openView = (instance: WorkspacePaneInstance) => {
+  // ── The panels beside and below Chat: open, switch, close, and where
+  // focus goes. A keyboard reader lands in the panel they opened and back
+  // on the rail item of the one they closed; a pointer reader's focus is
+  // left alone.
+  const [sideFocusRequest, setSideFocusRequest] = useState(0);
+  const [lowerFocusRequest, setLowerFocusRequest] = useState(0);
+  const focusRailItem = (instanceId: string) => {
+    Array.from(
+      rootRef.current?.querySelectorAll<HTMLButtonElement>(
+        '.coding-workbench__rail-item[data-rail-item]',
+      ) ?? [],
+    )
+      .find((item) => item.dataset.railItem === instanceId)
+      ?.focus();
+  };
+  const openSide = (instance: WorkspacePaneInstance, viaKeyboard: boolean) => {
+    replaceSide(instance.instanceId);
+    updatePanels({ side: instance.instanceId });
+    setTransition({ page: 'drill-in', kind: 'push' });
+    setAnnouncement(`${paneLabel(instance)} beside the conversation`);
+    if (viaKeyboard) setSideFocusRequest((request) => request + 1);
+  };
+  const closeSide = (returnFocus: boolean) => {
+    if (!sideOpen) return;
+    const closing = sidePaneId;
+    const focusWasInside = Boolean(
+      drillInPageRef.current &&
+        document.activeElement &&
+        drillInPageRef.current.contains(document.activeElement),
+    );
+    replaceSide(null);
+    updatePanels({ side: null });
+    // So the next open slides in again rather than keeping the last entry.
+    setTransition({ page: 'drill-in', kind: null });
+    setAnnouncement(`${drillInLabel} closed`);
+    if ((returnFocus || focusWasInside) && closing) focusRailItem(closing);
+  };
+  const [lowerVisited, setLowerVisited] = useState(false);
+  if (lowerOpen && !lowerVisited) setLowerVisited(true);
+  const toggleLower = (viaKeyboard: boolean) => {
+    if (!terminal) return;
+    const label = paneLabel(terminal.instance);
+    if (lowerOpen) {
+      const focusWasInside = Boolean(
+        lowerPanelRef.current &&
+          document.activeElement &&
+          lowerPanelRef.current.contains(document.activeElement),
+      );
+      updatePanels({ terminalOpen: false });
+      setAnnouncement(`${label} closed`);
+      if (viaKeyboard || focusWasInside)
+        focusRailItem(terminal.instance.instanceId);
+      return;
+    }
+    updatePanels({ terminalOpen: true });
+    setAnnouncement(`${label} below the conversation`);
+    if (viaKeyboard) setLowerFocusRequest((request) => request + 1);
+  };
+  useEffect(() => {
+    if (sideFocusRequest === 0) return;
+    sideHeadingRef.current?.focus();
+  }, [sideFocusRequest]);
+  useEffect(() => {
+    if (lowerFocusRequest === 0) return;
+    lowerHeadingRef.current?.focus();
+  }, [lowerFocusRequest]);
+
+  const openView = (instance: WorkspacePaneInstance, viaKeyboard: boolean) => {
+    if (wide) {
+      if (instance.instanceId === terminalId) {
+        toggleLower(viaKeyboard);
+        return;
+      }
+      if (instance.instanceId === sidePaneId) closeSide(viaKeyboard);
+      else openSide(instance, viaKeyboard);
+      return;
+    }
     // The drill-in already on screen is not a new page.
     if (page === 'drill-in' && instance.instanceId === paneId) return;
     userMoveRef.current = performance.now();
@@ -484,13 +703,62 @@ export function CodingWorkbench({
     if (group) onOpenCatalog({ type: 'add', targetGroupId: group.id });
   };
 
-  const pageState = (candidate: 'chat' | 'drill-in') => ({
-    'data-active': page === candidate ? 'true' : 'false',
-    ...(transition.page === candidate && transition.kind && page === candidate
+  // ── Sizes: the room the panels share, the side's width and the lower's
+  // height, each clamped so Chat keeps its floor. A drag holds a draft and
+  // commits once on release; the keyboard commits each step.
+  const pagesRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (!wide) return;
+    const element = pagesRef.current;
+    if (!element) return;
+    const read = () => {
+      const rect = element.getBoundingClientRect();
+      setRoom((current) =>
+        current.width === rect.width && current.height === rect.height
+          ? current
+          : { width: rect.width, height: rect.height },
+      );
+    };
+    read();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', read);
+      return () => window.removeEventListener('resize', read);
+    }
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [wide]);
+  // The rail sits beside the pages, in the same room the fold was sized for.
+  const roomWidth = (room.width || window.innerWidth) + 44;
+  const roomHeight = room.height || window.innerHeight;
+  const [sideDraft, setSideDraft] = useState<number | null>(null);
+  const [lowerDraft, setLowerDraft] = useState<number | null>(null);
+  const sideWidth = clampCodingSideWidth(
+    sideDraft ?? panels.sideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
+    roomWidth,
+  );
+  const lowerHeight = clampCodingLowerHeight(
+    lowerDraft ?? panels.terminalHeight ?? CODING_LOWER_DEFAULT_HEIGHT,
+    roomHeight,
+  );
+  const sideMax = codingSideMaxWidth(roomWidth);
+  const lowerMax = codingLowerMaxHeight(roomHeight);
+  /** The room's far edge a panel hangs from (the viewport's when unmeasured). */
+  const roomEdge = (edge: 'right' | 'bottom') => {
+    const rect = pagesRef.current?.getBoundingClientRect();
+    if (!rect || (rect.width === 0 && rect.height === 0))
+      return edge === 'right' ? window.innerWidth : window.innerHeight;
+    return rect[edge];
+  };
+
+  const pageState = (candidate: 'chat' | 'drill-in', active: boolean) => ({
+    'data-active': active ? 'true' : 'false',
+    ...(transition.page === candidate && transition.kind && active
       ? { 'data-enter': transition.kind }
       : {}),
-    inert: page !== candidate || undefined,
-    'aria-hidden': page !== candidate || undefined,
+    inert: !active || undefined,
+    'aria-hidden': !active || undefined,
   });
 
   // Diff first, then Files and Terminal, the evidence panes, then whatever
@@ -524,10 +792,29 @@ export function CodingWorkbench({
     returnToChatPage();
   };
 
+  const sidePanelId = useId();
+  const lowerPanelId = useId();
+  const paneMenu =
+    drilledIn && (page === 'drill-in' || sideOpen) ? (
+      <PaneMoreMenu
+        key={drilledIn.instanceId}
+        instance={drilledIn}
+        label={drillInLabel}
+        popOut={popOut}
+        onClose={
+          hostOpen?.close && closable?.(drilledIn)
+            ? () => void hostOpen.close?.(drilledIn.instanceId)
+            : undefined
+        }
+      />
+    ) : null;
+  const terminalLabel = terminal ? paneLabel(terminal.instance) : 'Terminal';
+
   return (
     <div
       ref={rootRef}
       className="coding-workbench"
+      data-mode={wide ? 'panels' : 'stack'}
       style={
         fittedHeight === null
           ? undefined
@@ -581,19 +868,7 @@ export function CodingWorkbench({
               </li>
             ) : null}
           </ol>
-          {page === 'drill-in' && drilledIn ? (
-            <PaneMoreMenu
-              key={drilledIn.instanceId}
-              instance={drilledIn}
-              label={drillInLabel}
-              popOut={popOut}
-              onClose={
-                hostOpen?.close && closable?.(drilledIn)
-                  ? () => void hostOpen.close?.(drilledIn.instanceId)
-                  : undefined
-              }
-            />
-          ) : null}
+          {page === 'drill-in' ? paneMenu : null}
         </nav>
         <p className="coding-workbench__announcement" aria-live="polite">
           {announcement}
@@ -608,40 +883,169 @@ export function CodingWorkbench({
               : 'Changes to these views cannot be saved right now.'}
           </p>
         ) : null}
-        <div className="coding-workbench__pages">
-          <section
-            ref={chatPageRef}
-            className="coding-workbench__page coding-workbench__page--chat"
-            aria-label="Chat"
-            {...pageState('chat')}
+        <div
+          ref={pagesRef}
+          className="coding-workbench__pages"
+          style={
+            {
+              '--coding-side-width': `${sideWidth}px`,
+              '--coding-lower-height': `${lowerHeight}px`,
+            } as CSSProperties
+          }
+        >
+          <div
+            className="coding-workbench__row"
+            data-side={sideOpen ? 'open' : 'closed'}
           >
-            {centerChat ? (
-              <ChatWorkspacePane
-                placement="fullscreen"
-                // The dock's Chat, moved to the centre: the dock's scope
-                // (every conversation), not the Chat layout's Project-bound one.
-                conversationScope="ambient"
-                onScreen={page === 'chat'}
-                ownsDockShortcuts={false}
-                onPresentationTitleChange={setChatTitle}
+            <section
+              ref={chatPageRef}
+              className="coding-workbench__page coding-workbench__page--chat"
+              aria-label="Chat"
+              {...pageState('chat', page === 'chat')}
+            >
+              {centerChat ? (
+                <ChatWorkspacePane
+                  placement="fullscreen"
+                  // The dock's Chat, moved to the centre: the dock's scope
+                  // (every conversation), not the Chat layout's Project-bound one.
+                  conversationScope="ambient"
+                  onScreen={page === 'chat'}
+                  ownsDockShortcuts={false}
+                  onPresentationTitleChange={setChatTitle}
+                />
+              ) : (
+                <DockChatNotice />
+              )}
+            </section>
+            {wide && sideOpen ? (
+              <PanelSeparator
+                orientation="vertical"
+                label={`Resize ${drillInLabel} panel`}
+                value={sideWidth}
+                min={CODING_SIDE_MIN_WIDTH}
+                max={sideMax}
+                reset={CODING_SIDE_DEFAULT_WIDTH}
+                measure={(clientX) => roomEdge('right') - clientX}
+                onDraft={(width) =>
+                  setSideDraft(clampCodingSideWidth(width, roomWidth))
+                }
+                onCommit={(width) => {
+                  setSideDraft(null);
+                  updatePanels({
+                    sideWidth: clampCodingSideWidth(width, roomWidth),
+                  });
+                }}
               />
-            ) : (
-              <DockChatNotice />
-            )}
-          </section>
-          <section
-            ref={drillInPageRef}
-            className="coding-workbench__page coding-workbench__page--drill-in"
-            aria-label={drillInLabel}
-            {...pageState('drill-in')}
-          >
-            {children}
-          </section>
+            ) : null}
+            <section
+              ref={drillInPageRef}
+              id={sidePanelId}
+              className="coding-workbench__page coding-workbench__page--drill-in"
+              aria-label={drillInLabel}
+              {...pageState('drill-in', page === 'drill-in' || sideOpen)}
+            >
+              {wide ? (
+                <header className="coding-workbench__panel-head">
+                  <h2
+                    ref={sideHeadingRef}
+                    className="coding-workbench__panel-title"
+                    tabIndex={-1}
+                  >
+                    {drillInLabel}
+                  </h2>
+                  {paneMenu}
+                  <Tooltip label={`Close ${drillInLabel}`} placement="bottom">
+                    <button
+                      type="button"
+                      className="coding-workbench__rail-item coding-workbench__panel-close"
+                      aria-label={`Close ${drillInLabel}`}
+                      onClick={(event) => closeSide(activatedByKeyboard(event))}
+                    >
+                      <CloseGlyph />
+                    </button>
+                  </Tooltip>
+                </header>
+              ) : null}
+              <div className="coding-workbench__panel-body">{children}</div>
+            </section>
+          </div>
+          {wide && terminal && lowerVisited ? (
+            <>
+              {lowerOpen ? (
+                <PanelSeparator
+                  orientation="horizontal"
+                  label={`Resize ${terminalLabel} panel`}
+                  value={lowerHeight}
+                  min={CODING_LOWER_MIN_HEIGHT}
+                  max={lowerMax}
+                  reset={CODING_LOWER_DEFAULT_HEIGHT}
+                  measure={(_clientX, clientY) => roomEdge('bottom') - clientY}
+                  onDraft={(height) =>
+                    setLowerDraft(clampCodingLowerHeight(height, roomHeight))
+                  }
+                  onCommit={(height) => {
+                    setLowerDraft(null);
+                    updatePanels({
+                      terminalHeight: clampCodingLowerHeight(
+                        height,
+                        roomHeight,
+                      ),
+                    });
+                  }}
+                />
+              ) : null}
+              <section
+                ref={lowerPanelRef}
+                id={lowerPanelId}
+                className="coding-workbench__lower"
+                aria-label={terminalLabel}
+                data-active={lowerOpen ? 'true' : 'false'}
+                inert={!lowerOpen || undefined}
+                aria-hidden={!lowerOpen || undefined}
+              >
+                <header className="coding-workbench__panel-head">
+                  <h2
+                    ref={lowerHeadingRef}
+                    className="coding-workbench__panel-title"
+                    tabIndex={-1}
+                  >
+                    {terminalLabel}
+                  </h2>
+                  <Tooltip label={`Close ${terminalLabel}`} placement="bottom">
+                    <button
+                      type="button"
+                      className="coding-workbench__rail-item coding-workbench__panel-close"
+                      aria-label={`Close ${terminalLabel}`}
+                      onClick={(event) =>
+                        toggleLower(activatedByKeyboard(event))
+                      }
+                    >
+                      <CloseGlyph />
+                    </button>
+                  </Tooltip>
+                </header>
+                <div className="coding-workbench__panel-body">
+                  {terminal.render()}
+                </div>
+              </section>
+            </>
+          ) : null}
         </div>
       </div>
       <CodingViewRail
         instances={railInstances}
+        mode={wide ? 'panels' : 'stack'}
         currentPaneId={page === 'drill-in' ? paneId : null}
+        pressed={
+          wide
+            ? {
+                ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
+                ...(lowerOpen && terminalId
+                  ? { [terminalId]: lowerPanelId }
+                  : {}),
+              }
+            : undefined
+        }
         paneLabel={paneLabel}
         badges={badges}
         onOpenView={openView}
@@ -681,6 +1085,95 @@ function DockChatNotice() {
   );
 }
 
+/**
+ * A panel's edge: a real separator (`role="separator"`, focusable) that
+ * drags with the pointer and nudges with the keyboard
+ * (`resizeCodingPanelFromKeyboard`), reporting its value and bounds. A drag
+ * drafts on every frame and commits once on release; a double-click, like
+ * Enter, returns the panel to its default. `measure` turns a pointer
+ * position into the panel's size, since which edge the panel hangs from is
+ * the owner's fact.
+ */
+function PanelSeparator({
+  orientation,
+  label,
+  value,
+  min,
+  max,
+  reset,
+  measure,
+  onDraft,
+  onCommit,
+}: {
+  orientation: 'vertical' | 'horizontal';
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  reset: number;
+  measure(clientX: number, clientY: number): number;
+  onDraft(size: number): void;
+  onCommit(size: number): void;
+}) {
+  const drag = useRef<{ pointerId: number; last: number } | null>(null);
+  const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    drag.current = {
+      pointerId: event.pointerId,
+      last: measure(event.clientX, event.clientY),
+    };
+    onDraft(drag.current.last);
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current.last = measure(event.clientX, event.clientY);
+    onDraft(drag.current.last);
+  };
+  const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    const { last } = drag.current;
+    drag.current = null;
+    onCommit(last);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const next = resizeCodingPanelFromKeyboard(orientation, value, event.key, {
+      shiftKey: event.shiftKey,
+      min,
+      max,
+      reset,
+    });
+    if (next === null) return;
+    event.preventDefault();
+    onCommit(next);
+  };
+  return (
+    // The suggested <hr> is a decorative rule: not focusable, not operable,
+    // and unable to carry aria-valuenow. This is a window splitter — a real
+    // button that resizes with the arrow keys and reports its position.
+    // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be a focusable, operable splitter.
+    <button
+      type="button"
+      role="separator"
+      className={`coding-workbench__separator coding-workbench__separator--${orientation}`}
+      aria-label={label}
+      aria-orientation={orientation}
+      aria-valuenow={value}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      title="Drag or use the arrow keys to resize; double-click to reset"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onLostPointerCapture={endDrag}
+      onDoubleClick={() => onCommit(reset)}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
 /** A glyph per built-in drill-in; anything else draws the generic pane mark. */
 function railGlyph(descriptorId: string): ReactNode {
   switch (descriptorId) {
@@ -709,12 +1202,16 @@ function railGlyph(descriptorId: string): ReactNode {
  * The drill-ins, as a slim icon rail on the workbench's trailing edge: one
  * round icon per pane the host holds, then the Browser launcher and the "+"
  * catalog. Icon-only, so every item carries its name as `aria-label` and a
- * tooltip; the drill-in on screen is the solid one (`aria-current`). A click
- * pushes that drill-in onto the stack.
+ * tooltip; the one on screen is the solid one. In `stack` mode it is the
+ * drill-in page (`aria-current`, a click pushes it); in `panels` mode each
+ * item is a toggle (`aria-pressed`, naming the panel it controls) and a
+ * click opens, switches or closes the panel beside or below Chat.
  */
 function CodingViewRail({
   instances,
+  mode,
   currentPaneId,
+  pressed,
   paneLabel,
   badges,
   onOpenView,
@@ -722,10 +1219,13 @@ function CodingViewRail({
   browserLauncher,
 }: {
   instances: readonly WorkspacePaneInstance[];
+  mode: 'stack' | 'panels';
   currentPaneId: string | null;
+  /** In `panels` mode: the open panes' instance ids, each to its panel's id. */
+  pressed?: Readonly<Record<string, string>>;
   paneLabel(instance: WorkspacePaneInstance): string;
   badges: Readonly<Record<string, number>>;
-  onOpenView(instance: WorkspacePaneInstance): void;
+  onOpenView(instance: WorkspacePaneInstance, viaKeyboard: boolean): void;
   onAddPane?: () => void;
   browserLauncher: ReactNode;
 }) {
@@ -738,16 +1238,24 @@ function CodingViewRail({
           count === undefined
             ? label
             : `${label}, ${count} changed ${count === 1 ? 'file' : 'files'}`;
+        const panelId = pressed?.[instance.instanceId];
         return (
           <Tooltip key={instance.instanceId} label={name} placement="left">
             <button
               type="button"
               className="coding-workbench__rail-item"
+              data-rail-item={instance.instanceId}
               aria-label={name}
               aria-current={
-                instance.instanceId === currentPaneId ? 'page' : undefined
+                mode === 'stack' && instance.instanceId === currentPaneId
+                  ? 'page'
+                  : undefined
               }
-              onClick={() => onOpenView(instance)}
+              aria-pressed={mode === 'panels' ? Boolean(panelId) : undefined}
+              aria-controls={panelId}
+              onClick={(event) =>
+                onOpenView(instance, activatedByKeyboard(event))
+              }
             >
               {railGlyph(instance.descriptorId)}
               {count === undefined ? null : (
@@ -823,10 +1331,10 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
 }
 
 /**
- * The drill-in's own actions, behind one ⋯ on the breadcrumb row: what the
- * pane host's command menu offered that still matters on a page that is just
- * the pane — pop it out (the desktop app) and close one the reader opened.
- * Absent when there is nothing to offer.
+ * The drill-in's own actions, behind one ⋯ on the breadcrumb row (or the
+ * side panel's head): what the pane host's command menu offered that still
+ * matters on a page that is just the pane — pop it out (the desktop app)
+ * and close one the reader opened. Absent when there is nothing to offer.
  */
 function PaneMoreMenu({
   instance,
