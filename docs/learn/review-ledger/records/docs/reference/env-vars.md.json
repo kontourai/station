@@ -14,7 +14,7 @@
   "sources": [
     {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
     {"path":"packages/contracts/src/tenancy.ts","digest":"0206fdcf4071f2fd5140a8f096cad83deaf801dd05b381840548c320bc25c8ef","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

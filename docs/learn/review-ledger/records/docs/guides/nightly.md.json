@@ -7,7 +7,7 @@
 
   "summary": "Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
 
-  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Main merge3c11294f4 structural reconciliation only; combined source review remains pending after immutable merge commit. Both prior distinct reviewed anchors are historical, not new approval: [{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}},{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}},{\"path\":\"packages/cli/src/commands/lifecycle.ts\",\"ours\":{\"digest\":\"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"digest\":\"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc\",\"revision\":\"b49b1db1601f36c9457e0d9d7c766d15be6302f7\"}},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"digest\":\"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"digest\":\"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2\",\"revision\":\"a71a583813b3f137da6a9716acc7e9b198df5847\"},\"main\":{\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"}}].",
 
   "document": {"digest":"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108","revision":"401e7c7ca5cf5b194b76a21a317fd8ec34591301"},
 
@@ -21,6 +21,8 @@
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
     {"path":".github/workflows/nightly.yml","digest":"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca","revision":"401e7c7ca5cf5b194b76a21a317fd8ec34591301"},
+
+    {"path":".github/workflows/portable-nightly-publish.yml","digest":"bdf3341cca00666ca0adaa2a849d90dbba893e0c55ca9f387da5bf4d8b488702","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -48,9 +50,15 @@
 
     {"path":"ops/release/macos-notarized-artifacts.test.mjs","digest":"5e6c917312920f7f08dc1ee2e8cc709fe6360c5e9cdac137027b46f16340a75f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"package.json#/scripts/build:desktop","digest":"9772f288b54c1d026ed8895d38309354aa31ff05cdec24a5ddfa37b4fbbe0c3c","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
     {"path":"packages/shared/src/process-identity.mjs","digest":"c51afd74ac7c56c24ad8f5cdc13c88e63f1966478b8829d30ea781d8c559127b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -59,6 +67,8 @@
     {"path":"packages/shared/src/windows-system-utility.mjs","digest":"308c7079b142c94dbfc4a36ae000e38bfafdec41cda0ba67a5f55fa04b687ab5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"schemas/release-artifact-manifest.schema.json","digest":"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/portable-nightly-publish-workflow.test.ts","digest":"ee6af29d01182ebbb33709c3132a9f1efa31b4f70289dbe8049f25028b948db7","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
     {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -104,6 +114,8 @@
 
     {"path":"scripts/lib/windows-nightly.mjs","digest":"6ad16d115434c40d429c7ed7323c6b8659b6edd284530bac01cebd4fafa5dedd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"scripts/portable-nightly-publication.mjs","digest":"f4c49094d99c29712fd552079888be228c174a0f1a64d26a76363c518dc9c584","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+
     {"path":"scripts/release-artifacts.mjs","digest":"24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/release-cohort-workflow.mjs","digest":"61506e3adef5ecee85b2613b11b9121898f4b13af45cba9825519e63d9ae504c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -130,19 +142,7 @@
 
     {"path":"src-server/security/local-grant-file.ts","digest":"651df6a68213436e33656482acad95b099fcd3bf0d686d62c6cd39e0b10c5a20","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":".github/workflows/portable-nightly-publish.yml","digest":"bdf3341cca00666ca0adaa2a849d90dbba893e0c55ca9f387da5bf4d8b488702","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/portable-nightly-publication.mjs","digest":"f4c49094d99c29712fd552079888be228c174a0f1a64d26a76363c518dc9c584","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
-
-    {"path":"scripts/__tests__/portable-nightly-publish-workflow.test.ts","digest":"ee6af29d01182ebbb33709c3132a9f1efa31b4f70289dbe8049f25028b948db7","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
-
-    {"path":"package.json#/scripts/build:desktop","digest":"9772f288b54c1d026ed8895d38309354aa31ff05cdec24a5ddfa37b4fbbe0c3c","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
+    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [
