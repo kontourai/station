@@ -74,6 +74,8 @@
 
     {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
+    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+
     {"path":"packages/sdk/src/spatial-board.ts","digest":"0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/sdk/src/unified-search.ts","digest":"51492c10d4b9ca9e533e80bc19424ef41f64ba5a05b07d816345b319e2e96408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -320,7 +322,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"df3f652f18e5e069d221d4db40f47981357918a3af52d867952f8a4f2542b0a6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -694,6 +696,8 @@
 
     {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"c64b2ef93cd9086df7905af51a944bda0baee67c389b13911dbaf67bc368dcb5","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
     {"path":"src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","digest":"ae5ef724741ab5d319f3a2c0065060294f16da12a4cf1da0228c0f9a95a97c3e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
     {"path":"src-server/services/scheduling/__tests__/external-monitor.test.ts","digest":"97fcdc467a3712bfd7d3cf6b94d574cac652aa24ce29720c932b4ec7861b701c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
@@ -842,15 +846,11 @@
 
     {"path":"src-ui/src/settings/shortcutPreferences.ts","digest":"4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
     {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/LayoutView.tsx","digest":"751fb02ed2ff7a16a06234d39ca40299525d5a4b7e7511eb6d3b937fc92eedfc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"4324cbcd6cca335a2beaed8df7d1abe24f497ab8325a51ae0542197a3f5ca988","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
-
-    {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceAction.tsx","digest":"1edf298cb5a986218a8dbd8b14bcfaf1627fb15d5e811b457bf3c7ed28009f99","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -860,7 +860,21 @@
 
     {"path":"src-ui/src/views/settings/utils.ts","digest":"662d78e4e5400976b8e0cd6a7751fd17d1c2b418e6bee1c3539a66327c5017a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"4324cbcd6cca335a2beaed8df7d1abe24f497ab8325a51ae0542197a3f5ca988","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+
     {"path":"src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx","digest":"0e615373917ac6bcb0fd1c1038ab43e7e72e1bd12bea2890fcb4586008b1a80b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx","digest":"5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx","digest":"34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -876,29 +890,15 @@
 
     {"path":"src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx","digest":"7865c6849c64ca4882b6ccea899b225c3751f8a233400d4ab0f2035a072627eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"a673b093da5ecc27a1610361349a22f1eea2ab272c2ca81ad40153fcc1ad2c30","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
     {"path":"src-ui/src/workspace-panes/TaskRoomEditorPane.tsx","digest":"aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx","digest":"5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"tests/helpers/fixture-audit.ts","digest":"ef308de2593937ae6aadbb3aecd875fb5d9313c3b691cc6e61646eb9fe6ed98d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"c64b2ef93cd9086df7905af51a944bda0baee67c389b13911dbaf67bc368dcb5","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
-
-    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
-
-    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"a673b093da5ecc27a1610361349a22f1eea2ab272c2ca81ad40153fcc1ad2c30","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"}
+    {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [

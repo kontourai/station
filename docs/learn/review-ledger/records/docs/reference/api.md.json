@@ -78,6 +78,16 @@
 
     {"path":"scripts/plugin-identity-enumeration-scan.mjs","digest":"c8b4144dcf7f69e3c6038410bf9f8ec2920eee95642a2c443573fb7ac32f4d21","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
     {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"12b5d86068c4ddaa5738cde5337f33c36ae5871a49db3d097264aaf7e3f6b522","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/analytics/usage-aggregator.ts","digest":"f4cc98d78e4a995bfeed8b66e84e6efc3a7a4ff91dbf81c4ebbd524190ed3950","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -218,6 +228,10 @@
 
     {"path":"src-server/routes/system/install-provenance.ts","digest":"0c09b22299f50a7af1b3cb590e10ea5868d5d1e664102866f6cfe14cfec5abc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/routes/system/native-device-proof-binding-routes.ts","digest":"712956c1af49a88f81ee58d9121fd2ffee13bf4d87d097d553bf70adf05126fd","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-server/routes/system/native-device-proof-self-receipt-routes.ts","digest":"08bbc6369df340c14a9e231bfe6839743912aa79af552676ffff1789a51d83a1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
     {"path":"src-server/routes/system/self-update-restart-state.ts","digest":"98698c7ecde24d522ee7a231d3fce644ac68a2fc34114e1678ca2757fe64d569","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/routes/system/self-update-watchdog.ts","digest":"6afd4127805b3c600769a8c997d67d4209bd7cafcc50a7aab3dd3366accdfcac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -232,7 +246,7 @@
 
     {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
@@ -340,25 +354,11 @@
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"0f7440eb3188e285a3237c28483b8dbb8a8cc06a9b517c66968788927ac45f65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/routes/system/native-device-proof-binding-routes.ts","digest":"712956c1af49a88f81ee58d9121fd2ffee13bf4d87d097d553bf70adf05126fd","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"0f7440eb3188e285a3237c28483b8dbb8a8cc06a9b517c66968788927ac45f65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/system/native-device-proof-self-receipt-routes.ts","digest":"08bbc6369df340c14a9e231bfe6839743912aa79af552676ffff1789a51d83a1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [
