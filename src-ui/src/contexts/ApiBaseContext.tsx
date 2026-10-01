@@ -47,7 +47,7 @@ import {
 import {
   captureNativeRelayConnectionOwner,
   retireNativeRelayConnectionOwners,
-} from '../platform/native/nativeRelayConnectionOwner';
+} from '../platform/native/nativeRelayConnectionOwnerRegistry';
 import {
   nativeProfileRepository,
   useNativeProfileSelection,

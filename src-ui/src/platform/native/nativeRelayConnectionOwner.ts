@@ -8,6 +8,7 @@ import {
   publishNativeRelayAccountScope,
 } from './nativeRelayAccountScope';
 import { createNativeRelayApplicationRuntime } from './nativeRelayApplicationRuntime';
+import { prepareRegisteredNativeRelayConnectionOwner } from './nativeRelayConnectionOwnerRegistry';
 
 type OwnerInput = {
   connectionId: string;
@@ -17,21 +18,10 @@ type OwnerInput = {
   selectionIsCurrent(): boolean;
 };
 type Account = Awaited<ReturnType<typeof createNativeAccountSessionBridge>>;
-const owners = new Map<string, Promise<NativeRelayConnectionOwner>>();
-const readyOwners = new Map<string, NativeRelayConnectionOwner>();
-const lifetimes = new Map<string, AbortController>();
-export function retireNativeRelayConnectionOwners() {
-  for (const lifetime of lifetimes.values()) lifetime.abort();
-  for (const owner of [...readyOwners.values()]) owner.dispose();
-}
-
-export function captureNativeRelayConnectionOwner(key: string | null) {
-  const owner = key ? readyOwners.get(key) : undefined;
-  return owner?.application.isCurrent() ? owner : null;
-}
 
 export interface NativeRelayConnectionOwner {
   readonly key: string;
+  isCurrent(): boolean;
   readonly application: Awaited<
     ReturnType<typeof createNativeRelayApplicationRuntime>
   >;
@@ -51,32 +41,22 @@ export async function prepareNativeRelayConnectionOwner(
   input: OwnerInput,
 ): Promise<NativeRelayConnectionOwner> {
   const key = nativeRelayAccountScopeKey(input);
-  const existing = owners.get(key);
-  if (existing) {
-    const owner = await existing;
-    if (owner.application.isCurrent()) return owner;
-    owner.dispose();
-  }
-  for (const [otherKey, lifetime] of lifetimes) {
-    if (otherKey !== key) {
-      lifetime.abort();
-      readyOwners.get(otherKey)?.dispose();
-    }
-  }
-  const controller = new AbortController();
-  lifetimes.set(key, controller);
-  const pending = (async () => {
+  return prepareRegisteredNativeRelayConnectionOwner(key, async (lease) => {
     const application = await createNativeRelayApplicationRuntime({
       ...input,
-      signal: controller.signal,
+      signal: lease.signal,
     });
+    let disposed = false;
+    const isCurrent = () =>
+      !disposed && lease.isCurrent() && application.isCurrent();
     let accountBridge: Account | undefined;
     let accountPending: Promise<Account> | undefined;
     let accountEpoch = 0;
     let expiryTimer: ReturnType<typeof setTimeout> | undefined;
     const publish = () => {
+      if (!lease.isCurrent()) return;
       if (expiryTimer) clearTimeout(expiryTimer);
-      const current = accountBridge?.current();
+      const current = isCurrent() ? (accountBridge?.current() ?? null) : null;
       if (current) {
         const retainedBridge = accountBridge;
         expiryTimer = setTimeout(
@@ -100,11 +80,15 @@ export async function prepareNativeRelayConnectionOwner(
       const attempt = createNativeAccountSessionBridge({
         profileName: input.route.profileName,
         expectedProfileRevision: input.route.profileRevision,
-        signal: controller.signal,
+        signal: lease.signal,
         application,
       })
         .then((bridge) => {
-          if (epoch !== accountEpoch || !application.isCurrent()) {
+          if (
+            epoch !== accountEpoch ||
+            !isCurrent() ||
+            !application.isCurrent()
+          ) {
             bridge.retire();
             throw new Error('native_account_scope_retired');
           }
@@ -130,20 +114,25 @@ export async function prepareNativeRelayConnectionOwner(
     const owner: NativeRelayConnectionOwner = {
       key,
       application,
+      isCurrent,
       account: () => accountBridge?.current() ?? null,
       async login(credentials) {
+        if (!isCurrent())
+          throw new Error('native_relay_connection_owner_retired');
         await application.assertCurrent();
+        if (!isCurrent())
+          throw new Error('native_relay_connection_owner_retired');
         return (await ensureAccount()).login(credentials);
       },
       async acceptInvitation(token) {
         const bridge = accountBridge;
-        if (!bridge?.current())
+        if (!isCurrent() || !bridge?.current())
           throw new Error('native_account_login_required');
         return bridge.acceptInvitation(token);
       },
       async logout() {
         const bridge = accountBridge;
-        if (!bridge?.current())
+        if (!isCurrent() || !bridge?.current())
           throw new Error('native_account_login_required');
         try {
           await application.assertCurrent();
@@ -154,20 +143,17 @@ export async function prepareNativeRelayConnectionOwner(
       },
       retireAccount,
       dispose() {
+        if (disposed) return;
+        disposed = true;
         if (expiryTimer) clearTimeout(expiryTimer);
-        controller.abort();
         retireAccount();
-        if (owners.get(key) === pending) {
-          owners.delete(key);
-          readyOwners.delete(key);
-          lifetimes.delete(key);
-        }
+        lease.release();
       },
       credential() {
         const captured = accountBridge?.current() ?? null;
         const bridge = accountBridge;
         const accountCurrent = () =>
-          application.isCurrent() &&
+          isCurrent() &&
           !!captured &&
           accountBridge === bridge &&
           bridge?.current() === captured;
@@ -241,20 +227,7 @@ export async function prepareNativeRelayConnectionOwner(
         };
       },
     };
-    publishNativeRelayAccountScope(key, null);
-    readyOwners.set(key, owner);
+    publish();
     return owner;
-  })();
-  owners.set(key, pending);
-  try {
-    return await pending;
-  } catch (error) {
-    if (owners.get(key) === pending) {
-      owners.delete(key);
-      readyOwners.delete(key);
-      lifetimes.delete(key);
-    }
-    controller.abort();
-    throw error;
-  }
+  });
 }

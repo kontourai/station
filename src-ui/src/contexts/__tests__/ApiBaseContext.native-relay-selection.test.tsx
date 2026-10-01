@@ -140,7 +140,7 @@ import {
   setStationHealthRouteResolver,
 } from '../../lib/serverHealth';
 import { nativeRelayAccountScopeKey } from '../../platform/native/nativeRelayAccountScope';
-import { captureNativeRelayConnectionOwner } from '../../platform/native/nativeRelayConnectionOwner';
+import { captureNativeRelayConnectionOwner } from '../../platform/native/nativeRelayConnectionOwnerRegistry';
 import {
   ApiBaseProvider,
   useHostRequestAuthorityScope,
