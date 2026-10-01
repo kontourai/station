@@ -31,6 +31,7 @@ import {
   createLearningSourceReader,
   isLearningSourcePath,
 } from './learning-source-reader.mjs';
+import { isBindingPath } from './review-binding.mjs';
 
 export const REVIEW_LEDGER_DIR = 'docs/learn/review-ledger';
 export const REVIEW_LEDGER_INDEX = `${REVIEW_LEDGER_DIR}/ledger.json`;
@@ -161,7 +162,7 @@ function exactKeys(value, keys, file) {
     );
 }
 
-function parseCanonical(file, text, keys, serialize) {
+function parseCanonical(file, text, keys, serialize, requireLayout = true) {
   let value;
   try {
     value = JSON.parse(text);
@@ -185,7 +186,7 @@ function parseCanonical(file, text, keys, serialize) {
       );
   // A reformatted file loses the blank-line separators that keep independent
   // edits from conflicting, so only the serializer's exact bytes are accepted.
-  if (serialize(value) !== text)
+  if (requireLayout && serialize(value) !== text)
     throw reviewError(
       'not-canonical',
       `Review ledger file is not in its canonical layout: ${file}; write it with npm run docs:review:record (docs/guides/documentation.md)`,
@@ -195,8 +196,18 @@ function parseCanonical(file, text, keys, serialize) {
 }
 
 /** Parse one record file and confirm it sits at its document's path. */
-export function parseRecordFile(file, text) {
-  const record = parseCanonical(file, text, RECORD_KEYS, serializeRecordFile);
+export function parseRecordFile(file, text, recordLayout = 'canonical') {
+  if (!['canonical', 'advisory-dependency-history'].includes(recordLayout))
+    throw reviewError('invalid-shape', 'Unknown review record layout mode', {
+      file,
+    });
+  const record = parseCanonical(
+    file,
+    text,
+    RECORD_KEYS,
+    serializeRecordFile,
+    recordLayout === 'canonical',
+  );
   if (!isLearningSourcePath(record.path) || recordFile(record.path) !== file)
     throw reviewError(
       'misplaced',
@@ -204,6 +215,30 @@ export function parseRecordFile(file, text) {
       { file },
     );
   exactKeys(record.document, ['digest', 'revision'], file);
+  const validIdentity = (value) =>
+    /^[a-f0-9]{64}$/.test(value.digest) &&
+    /^[a-f0-9]{40}$/.test(value.revision);
+  if (!validIdentity(record.document))
+    throw reviewError(
+      'invalid-shape',
+      `Invalid review document binding: ${file}`,
+      { file },
+    );
+  const seen = new Set();
+  for (const source of record.sources) {
+    exactKeys(source, ['path', 'digest', 'revision'], file);
+    if (
+      !isBindingPath(source.path) ||
+      seen.has(source.path) ||
+      !validIdentity(source)
+    )
+      throw reviewError(
+        'invalid-shape',
+        `Invalid review source binding: ${file}`,
+        { file },
+      );
+    seen.add(source.path);
+  }
   return record;
 }
 
@@ -265,7 +300,10 @@ function parseNotesFile(file, text) {
  * Parse every file of the ledger directory.
  * @param {Map<string, string>} files ledger-directory path -> text
  */
-export function parseReviewLedgerFiles(files) {
+export function parseReviewLedgerFiles(
+  files,
+  { recordLayout = 'canonical' } = {},
+) {
   const indexText = files.get(REVIEW_LEDGER_INDEX);
   if (indexText === undefined)
     throw reviewError(
@@ -293,7 +331,7 @@ export function parseReviewLedgerFiles(files) {
   )) {
     if (file === REVIEW_LEDGER_INDEX) continue;
     if (file.startsWith(RECORDS)) {
-      const data = parseRecordFile(file, text);
+      const data = parseRecordFile(file, text, recordLayout);
       records.set(data.path, { file, data });
     } else if (file.startsWith(CAPTURES)) {
       const data = parseCaptureFile(file, text);
@@ -579,7 +617,7 @@ function readBlobsAt(root, ref, paths) {
  * @param {string} root
  * @param {string} ref
  */
-export function readReviewStateAt(root, ref) {
+export function readReviewStateAt(root, ref, { purpose } = {}) {
   const files = git(root, [
     'ls-tree',
     '-r',
@@ -604,6 +642,12 @@ export function readReviewStateAt(root, ref) {
     const compiled = compileReviewState(
       parseReviewLedgerFiles(
         new Map(files.map((file) => [file, blobs.get(file).toString('utf8')])),
+        {
+          recordLayout:
+            purpose === 'advisory-dependency-history'
+              ? 'advisory-dependency-history'
+              : 'canonical',
+        },
       ),
       manifest,
     );
