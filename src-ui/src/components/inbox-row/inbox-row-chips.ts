@@ -6,15 +6,16 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
  * renders no chip line at all.
  *
  * NOT HERE, because no row-level fact backs them:
+ * - the branch: `ProviderSession` declares `workspaceIsolation`, but the
+ *   summary the server builds (`buildOrchestrationSessionSummary`) never
+ *   carries it, so a branch is only ever a git read;
  * - a diff stat: no read Station exposes carries insertions/deletions (git
  *   status reports file counts only);
  * - a pull request and its checks: links are a per-conversation read the
  *   hover card makes on demand, and the link observation carries no checks
- *   state;
- * - the branch of a shared-workspace session: that is a git read too. Only a
- *   session with its own worktree carries its branch on the summary.
+ *   state.
  */
-export type InboxRowChipKind = 'branch' | 'remote' | 'draft' | 'woke';
+export type InboxRowChipKind = 'remote' | 'draft' | 'woke';
 
 export interface InboxRowChip {
   kind: InboxRowChipKind;
@@ -23,17 +24,9 @@ export interface InboxRowChip {
 
 export function inboxRowChips(
   item: Pick<HomeWorkItem, 'environmentLabel'>,
-  local: {
-    /** `WorkFacts.worktreeBranch`, derived beside the item. */
-    worktreeBranch?: string;
-    hasUnsentDraft?: boolean;
-    isWoken?: boolean;
-  } = {},
+  local: { hasUnsentDraft?: boolean; isWoken?: boolean } = {},
 ): InboxRowChip[] {
   const chips: InboxRowChip[] = [];
-  if (local.worktreeBranch) {
-    chips.push({ kind: 'branch', label: local.worktreeBranch });
-  }
   if (item.environmentLabel) {
     chips.push({ kind: 'remote', label: item.environmentLabel });
   }

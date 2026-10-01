@@ -1,11 +1,10 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer } from 'react';
 import {
   formatElapsed,
   type WorkStatus,
   type WorkStatusRung,
 } from '../../views/home/work-status';
 import {
-  BranchGlyph,
   CheckGlyph,
   CloseGlyph,
   EditGlyph,
@@ -58,22 +57,21 @@ export function InboxRowStatusGlyph({ rung }: { rung: WorkStatusRung }) {
 }
 
 /**
- * A duration that ticks once a second. Anchored ONCE, to the `now` it was
- * mounted with: the first paint equals the ladder's own `line`, and every
- * tick after adds the wall-clock time since. A host handing down a fresh
- * `now` on each of its own renders therefore never restarts the interval.
- * The row keys this by `since`, so a new turn gets a new anchor. Text only:
- * nothing here animates.
+ * A duration that ticks once a second, read straight off the wall clock:
+ * `Date.now() - since`, on its own interval, depending on `since` alone.
+ *
+ * It deliberately does NOT use the list's `now`. That clock is coarse (it
+ * advances every 30 seconds, for minute-granularity words), so anchoring to
+ * it showed "0s" for a turn already 20-30 seconds old and stayed behind for
+ * the turn's whole life. Text only: nothing here animates.
  */
-function TickingElapsed({ since, now }: { since: number; now: number }) {
-  const anchor = useRef({ now, at: Date.now() });
+function TickingElapsed({ since }: { since: number }) {
   const [, tick] = useReducer((count: number) => count + 1, 0);
   useEffect(() => {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, []);
-  const { now: anchoredNow, at } = anchor.current;
-  return <>{formatElapsed(anchoredNow + (Date.now() - at) - since)}</>;
+  return <>{formatElapsed(Date.now() - since)}</>;
 }
 
 /** What a screen reader hears instead of a number that changes every
@@ -156,11 +154,7 @@ export function InboxRowStatusLine({
           <span aria-hidden="true">
             <span className="inbox-row__sep">{' · '}</span>
             <span className="inbox-row__elapsed">
-              <TickingElapsed
-                key={status.since}
-                since={status.since}
-                now={now}
-              />
+              <TickingElapsed since={status.since} />
             </span>
           </span>
           <span className="sr-only">
@@ -176,7 +170,6 @@ const CHIP_GLYPHS: Record<
   InboxRowChipKind,
   (props: { className?: string }) => React.ReactElement
 > = {
-  branch: BranchGlyph,
   remote: MonitorGlyph,
   draft: EditGlyph,
   woke: TimeGlyph,

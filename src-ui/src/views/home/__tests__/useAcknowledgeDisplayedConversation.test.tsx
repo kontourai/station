@@ -9,11 +9,22 @@
  * read the result the way a row does: through `workStatus`.
  */
 
-import { renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HomeWorkItem } from '../home-view-model';
-import { useAcknowledgeDisplayedConversation } from '../useWorkFacts';
+import {
+  useAcknowledgeDisplayedConversation,
+  useInventoryAcknowledgeWriter,
+} from '../useWorkFacts';
 import { workStatus } from '../work-status';
+
+const acknowledgeRequest = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  acknowledgeConversation: acknowledgeRequest,
+}));
 
 const T0 = Date.parse('2026-09-30T10:00:00.000Z');
 const at = (seconds: number) => new Date(T0 + seconds * 1000).toISOString();
@@ -22,6 +33,8 @@ const at = (seconds: number) => new Date(T0 + seconds * 1000).toISOString();
 function inventory() {
   const updatedAt = new Map<string, string>();
   const acknowledgedAt = new Map<string, number>();
+  /** Conversations with a turn in flight. */
+  const running = new Set<string>();
   const acknowledge = vi.fn((item: HomeWorkItem) => {
     acknowledgedAt.set(item.id, Date.parse(item.conversationUpdatedAt!));
   });
@@ -37,13 +50,13 @@ function inventory() {
       agentLabel: 'Claude Code',
       modelLabel: 'Opus',
       updatedAt: Date.parse(version),
-      lifecycleLabel: 'Recent',
+      lifecycleLabel: running.has(id) ? 'Running' : 'Recent',
       conversationUpdatedAt: version,
       ...(acknowledgedAt.has(id)
         ? { acknowledgedAt: acknowledgedAt.get(id) }
         : {}),
     }));
-  return { updatedAt, acknowledge, items };
+  return { updatedAt, running, acknowledge, items };
 }
 
 function mount(store: ReturnType<typeof inventory>, displayed: string | null) {
@@ -128,5 +141,142 @@ describe('acknowledging the conversation on screen', () => {
     hook.rerender({ displayedChatSessionId: 'tab-a' });
     hook.rerender({ displayedChatSessionId: 'tab-a' });
     expect(store.acknowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed write is not retried for that version, and the next version is a fresh attempt', async () => {
+    const store = inventory();
+    store.updatedAt.set('a', at(0));
+    store.acknowledge.mockImplementation(async () => {
+      throw new Error('offline');
+    });
+    const hook = mount(store, 'tab-a');
+    await act(async () => {});
+    hook.rerender({ displayedChatSessionId: 'tab-a' });
+    await act(async () => {});
+    expect(store.acknowledge).toHaveBeenCalledTimes(1);
+    store.updatedAt.set('a', at(30));
+    hook.rerender({ displayedChatSessionId: 'tab-a' });
+    await act(async () => {});
+    expect(
+      store.acknowledge.mock.calls.map(([item]) => item.conversationUpdatedAt),
+    ).toEqual([at(0), at(30)]);
+  });
+});
+
+describe('a turn in flight is a new version on every event', () => {
+  it('N version bumps during an open turn produce one acknowledgement, after it settles', () => {
+    const store = inventory();
+    store.updatedAt.set('a', at(0));
+    const hook = mount(store, 'tab-a');
+    expect(store.acknowledge).toHaveBeenCalledTimes(1);
+    store.acknowledge.mockClear();
+
+    // The user sends; the turn streams. The server stamps the session's
+    // updatedAt on every event, so each read is a newer version.
+    store.running.add('a');
+    for (let second = 1; second <= 40; second += 1) {
+      store.updatedAt.set('a', at(second));
+      hook.rerender({ displayedChatSessionId: 'tab-a' });
+    }
+    expect(store.acknowledge).not.toHaveBeenCalled();
+
+    // The turn ends: the settled version is acknowledged, once.
+    store.running.delete('a');
+    store.updatedAt.set('a', at(41));
+    hook.rerender({ displayedChatSessionId: 'tab-a' });
+    hook.rerender({ displayedChatSessionId: 'tab-a' });
+    expect(
+      store.acknowledge.mock.calls.map(([item]) => item.conversationUpdatedAt),
+    ).toEqual([at(41)]);
+  });
+});
+
+describe('a conversation nobody is looking at is not acknowledged', () => {
+  const setVisibility = (state: 'visible' | 'hidden') => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => state,
+    });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  };
+  afterEach(() => setVisibility('visible'));
+
+  it('a completion landing in a background tab stays unread until the page is shown', () => {
+    const store = inventory();
+    store.updatedAt.set('a', at(0));
+    const hook = mount(store, 'tab-a');
+    store.acknowledge.mockClear();
+
+    setVisibility('hidden');
+    store.updatedAt.set('a', at(60));
+    hook.rerender({ displayedChatSessionId: 'tab-a' });
+    expect(store.acknowledge).not.toHaveBeenCalled();
+    expect(unread(store, 'a')).toBe(true);
+
+    setVisibility('visible');
+    expect(
+      store.acknowledge.mock.calls.map(([item]) => item.conversationUpdatedAt),
+    ).toEqual([at(60)]);
+  });
+
+  it('nothing is acknowledged while the host says the chat is covered', () => {
+    // The host passes no displayed conversation while the task switcher
+    // sheet is over the chat.
+    const store = inventory();
+    store.updatedAt.set('a', at(0));
+    const hook = mount(store, null);
+    store.updatedAt.set('a', at(60));
+    hook.rerender({ displayedChatSessionId: null });
+    expect(store.acknowledge).not.toHaveBeenCalled();
+    hook.rerender({ displayedChatSessionId: 'tab-a' });
+    expect(store.acknowledge).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the dock’s acknowledgement write', () => {
+  it('sends the displayed version and patches the cached inventory without invalidating it', async () => {
+    acknowledgeRequest.mockClear();
+    const client = new QueryClient();
+    const key = ['conversation-inventory'];
+    client.setQueryData(key, {
+      pages: [
+        {
+          items: [
+            { id: 'a', updatedAt: at(60) },
+            { id: 'b', updatedAt: at(0) },
+          ],
+          hasMore: false,
+        },
+      ],
+      pageParams: [undefined],
+    });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const { result } = renderHook(() => useInventoryAcknowledgeWriter(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    await act(() =>
+      result.current({
+        id: 'a',
+        conversationUpdatedAt: at(60),
+      } as HomeWorkItem),
+    );
+    expect(acknowledgeRequest).toHaveBeenCalledWith('a', at(60));
+    expect(client.getQueryData(key)).toEqual({
+      pages: [
+        {
+          items: [
+            { id: 'a', updatedAt: at(60), acknowledgedAt: at(60) },
+            { id: 'b', updatedAt: at(0) },
+          ],
+          hasMore: false,
+        },
+      ],
+      pageParams: [undefined],
+    });
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

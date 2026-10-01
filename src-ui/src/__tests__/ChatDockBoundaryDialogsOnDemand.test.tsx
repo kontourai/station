@@ -63,6 +63,18 @@ const sourceOverride = vi.hoisted(() => ({
   value: null as BoundarySourceOverride | null,
 }));
 
+/**
+ * What the dock is showing, for the display-acknowledgement wiring test at
+ * the bottom of this file. Empty by default, which is every other test's
+ * dock: no open chats, no inventory, no active session.
+ */
+const dockFixture = vi.hoisted(() => ({
+  chatItems: [] as unknown[],
+  inventory: [] as unknown[],
+  activeSessionId: null as string | null,
+  acknowledge: vi.fn(async (_id: string, _updatedAt: string) => {}),
+}));
+
 vi.mock(
   '../components/chat-dock/useConversationBoundaryDialogs',
   async (importOriginal) => {
@@ -157,7 +169,7 @@ vi.mock('../contexts/open-chats-store', () => ({
     subscribe: () => () => {},
     registerNavigation: () => () => {},
   },
-  useOpenChats: () => [],
+  useOpenChats: () => dockFixture.chatItems,
   countOpenChatAttention: () => 0,
 }));
 
@@ -242,9 +254,23 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
   }),
 }));
 
-vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
-}));
+vi.mock('../components/chat-dock/useChatDockActiveChatSync', async () => {
+  const { useEffect } = await import('react');
+  return {
+    // The real hook resolves the URL's chat into the active session; this
+    // stand-in commits the fixture's through the dock's own setter.
+    useChatDockActiveChatSync: ({
+      setActiveSessionId,
+    }: {
+      setActiveSessionId: (id: string | null) => void;
+    }) => {
+      useEffect(() => {
+        if (dockFixture.activeSessionId)
+          setActiveSessionId(dockFixture.activeSessionId);
+      }, [setActiveSessionId]);
+    },
+  };
+});
 
 vi.mock('../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,
@@ -270,7 +296,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
     useEngineConnectionsQuery: () => ({ data: [] }),
-    useConversationInventoryQuery: () => ({ data: [] }),
+    acknowledgeConversation: dockFixture.acknowledge,
+    useConversationInventoryQuery: () => ({ data: dockFixture.inventory }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
     useOrchestrationSessionsQuery: () => ({
@@ -299,6 +326,10 @@ beforeEach(() => {
 
 afterEach(() => {
   sourceOverride.value = null;
+  dockFixture.chatItems = [];
+  dockFixture.inventory = [];
+  dockFixture.activeSessionId = null;
+  dockFixture.acknowledge.mockClear();
   cleanup();
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
@@ -389,5 +420,61 @@ describe('conversation-boundary dialogs are on demand', () => {
     };
     renderDockedChat();
     await expectWrapperPresent();
+  });
+});
+
+/**
+ * #3043 review: the open dock acknowledges the conversation it is DISPLAYING,
+ * so a chat read there is not unread in the inbox once the user switches
+ * away. This mounts the real `ChatWorkspacePane` wiring: the dock's own task
+ * items, its open/closed state and its active session reach
+ * `useAcknowledgeDisplayedConversation`, and the write that leaves is the
+ * SDK's acknowledgement request. Handing the hook no displayed conversation
+ * in `ChatDock.tsx` fails the first test.
+ */
+describe('the docked chat acknowledges the conversation it displays', () => {
+  const UPDATED_AT = '2026-09-30T10:00:00.000Z';
+  const showConversation = () => {
+    dockFixture.chatItems = [
+      {
+        id: 'conv-1',
+        conversationId: 'conv-1',
+        chatSessionId: 'tab-1',
+        kind: 'chat',
+        kindLabel: 'Direct chat',
+        title: 'Displayed chat',
+        projectLabel: 'No project',
+        agentLabel: 'Claude Code',
+        modelLabel: 'Opus',
+        updatedAt: Date.parse(UPDATED_AT),
+        lifecycleLabel: 'Recent',
+      },
+    ];
+    dockFixture.inventory = [{ id: 'conv-1', updatedAt: UPDATED_AT }];
+    dockFixture.activeSessionId = 'tab-1';
+  };
+
+  test('an open dock showing a changed conversation acknowledges that version', async () => {
+    showConversation();
+    renderDockedChat();
+    await vi.waitFor(() =>
+      expect(dockFixture.acknowledge).toHaveBeenCalledWith(
+        'conv-1',
+        UPDATED_AT,
+      ),
+    );
+    expect(dockFixture.acknowledge).toHaveBeenCalledTimes(1);
+  });
+
+  test('a conversation already acknowledged at that version is not written again', async () => {
+    showConversation();
+    dockFixture.inventory = [
+      { id: 'conv-1', updatedAt: UPDATED_AT, acknowledgedAt: UPDATED_AT },
+    ];
+    renderDockedChat();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(dockFixture.acknowledge).not.toHaveBeenCalled();
   });
 });

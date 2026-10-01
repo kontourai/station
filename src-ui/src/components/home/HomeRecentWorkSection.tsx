@@ -89,6 +89,8 @@ interface HomeWorkController {
   toggleShelf: () => void;
   expandShelf: () => void;
   showMoreSettled: () => void;
+  detailsFor: string | null;
+  setDetailsFor: (id: string | null) => void;
 }
 
 function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
@@ -97,7 +99,10 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
   const [shelfExpanded, setShelfExpanded] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
   return {
+    detailsFor,
+    setDetailsFor,
     lanes,
     snoozeMenuFor,
     snoozeTriggerRef,
@@ -224,7 +229,12 @@ function HomeWorkContent({
         agents={agents}
         // The lanes' own clock (it already ticks), never a `Date.now()` per
         // row render.
-        context={{ now: controller.lanes.now, workFacts }}
+        context={{
+          now: controller.lanes.now,
+          workFacts,
+          detailsFor: controller.detailsFor,
+          setDetailsFor: controller.setDetailsFor,
+        }}
         onOpen={onOpen}
       />
     </>

@@ -219,39 +219,26 @@ export function orchestrationLifecycleLabel(
  *   `transitionReason: 'runtime_exit'`: the turn was cut short.
  * - any other `needs_input` says only that the session waits on the user.
  *
- * ONE STALE SHAPE IS READ AS INTERRUPTED, NOT AS AN APPROVAL. Recovery
- * aborts a dead turn and stamps `needs_input`, but it does not resolve a
- * request that turn had opened, so the lifecycle fold re-stamps the session
- * `review_pending` / `review_requested` over the recovery stamp. Nothing can
- * approve that request: the turn that asked is gone. The summary still says
- * what happened in three fields together: no turn is open, the state this
- * one replaced is recovery's `needs_input`, and the last event is that
- * recovery `session.state-changed` (any later request or turn would be the
- * last event instead). A client-side reading of a server gap; the proper
- * fix is for the server to settle open requests when it aborts their turn.
+ * NOT DISTINGUISHED HERE (#3071): a turn interrupted by a restart while an
+ * approval was open keeps reading `review_pending`, because recovery does not
+ * settle the request the dead turn opened. Nothing on the summary reliably
+ * tells that apart from a live approval, so it is not guessed at; the fix is
+ * server-side.
  */
 export function sessionAttentionKind(
   session: Pick<
     OrchestrationSessionSummary,
     | 'lifecycleState'
-    | 'previousLifecycleState'
     | 'status'
     | 'pendingReview'
     | 'terminalAttribution'
     | 'transitionReason'
-    | 'hasActiveTurn'
-    | 'lastEventMethod'
   >,
 ): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
-  if (disposition.via === 'review_pending') {
-    const approvalOutlivedItsInterruptedTurn =
-      !session.hasActiveTurn &&
-      session.previousLifecycleState === 'needs_input' &&
-      session.lastEventMethod === 'session.state-changed';
-    return approvalOutlivedItsInterruptedTurn ? 'interrupted' : 'approval';
-  }
+  // A stale approval left by an interrupted turn also lands here (#3071).
+  if (disposition.via === 'review_pending') return 'approval';
   if (disposition.via === 'blocked') return 'blocked';
   if (session.transitionReason === 'input_requested') return 'answer';
   if (session.transitionReason === 'runtime_exit') return 'interrupted';

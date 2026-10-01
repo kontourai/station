@@ -173,29 +173,27 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
-  it('sheet host rows gained the desktop row actions: snooze menu and close', () => {
+  it('sheet host rows reach snooze and close through one menu beside Details', () => {
     const onCloseChat = vi.fn();
     renderSheetHost(workItem(), onCloseChat);
 
-    // Touch rows fold the one-tap snooze and its duration caret into ONE
-    // 44px control that opens the menu — two targets for one action cost
-    // the title a third of a phone row.
+    // A touch row shows at most two 44px targets: Details, and one menu
+    // holding the rest. Three columns cost a phone row its title.
     expect(
-      screen.queryByRole('button', {
-        name: 'Choose snooze duration for Shared row title',
-      }),
+      screen.queryByRole('button', { name: 'Snooze Shared row title' }),
     ).toBeNull();
-    const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
+    expect(
+      screen.getByRole('button', { name: 'Details for Shared row title' }),
+    ).not.toBeNull();
+    const more = screen.getByRole('button', {
+      name: 'More actions for Shared row title',
     });
-    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
-    fireEvent.click(snooze);
-    expect(screen.getByRole('menuitem', { name: '3 hours' })).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Close snooze menu' }));
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close Shared row title' }),
-    );
+    expect(more.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(more);
+    expect(
+      screen.getByRole('menuitem', { name: 'Snooze: 3 hours' }),
+    ).not.toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close chat' }));
     expect(onCloseChat).toHaveBeenCalledWith('shared');
   });
 
@@ -247,9 +245,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     const item = workItem();
     const sheet = renderSheetHost(item);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze Shared row title' }),
+      screen.getByRole('button', { name: 'More actions for Shared row title' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: '30 min' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Snooze: 30 min' }));
     sheet.unmount();
 
     renderPanelHost(item);

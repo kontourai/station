@@ -253,10 +253,6 @@
   text-overflow: ellipsis;
 }
 
-.inbox-row__chip--branch {
-  font-family: var(--font-mono);
-}
-
 /* A local reminder, outlined rather than filled so it does not read as a
  * state of the work. */
 .inbox-row__chip--draft,

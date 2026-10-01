@@ -27,6 +27,7 @@ import { useProjects } from '../../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
@@ -152,6 +153,8 @@ function ProjectSidebarImpl() {
   const openChats = useOpenChats(agents, sessions);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
   const openChatFacts = useWorkFacts(recentTasks, sessions);
+  // One coarse tick for the rows' relative times, not a new clock per render.
+  const openChatsNow = useCoarseNow();
   const openChatsOverflow = openChats.length - recentTasks.length;
   // archive#3314: per-section collapse + removal, persisted device-side alongside
   // `projectSidebarCollapsed` (restore for a removed section lives in
@@ -452,7 +455,7 @@ function ProjectSidebarImpl() {
                   componentProps={{
                     items: recentTasks,
                     workFacts: openChatFacts,
-                    now: Date.now(),
+                    now: openChatsNow,
                     onActivate: (task) => {
                       openChatsStore.focus({
                         sessionId: chatTaskSessionId(task),

@@ -69,7 +69,11 @@ function item(over: Partial<HomeWorkItem> & { id: string }): HomeWorkItem {
 /** One row per shape whose height could differ: with and without a chip
  *  line, a long detail, a ticking duration, and both slim groups. */
 const ITEMS: HomeWorkItem[] = [
-  item({ id: 'approval', lifecycleLabel: 'Needs attention' }),
+  item({
+    id: 'approval',
+    lifecycleLabel: 'Needs attention',
+    environmentLabel: 'a-remote-machine-name-long-enough-to-truncate-in-a-rail',
+  }),
   item({ id: 'running', lifecycleLabel: 'Running' }),
   item({ id: 'idle', environmentLabel: 'brian-media' }),
   item({
@@ -87,13 +91,7 @@ const ITEMS: HomeWorkItem[] = [
 ];
 
 const FACTS: WorkFactsById = new Map([
-  [
-    'approval',
-    {
-      attention: 'approval',
-      worktreeBranch: 'station/a-branch-name-long-enough-to-truncate-in-a-rail',
-    },
-  ],
+  ['approval', { attention: 'approval' }],
   [
     'running',
     {
@@ -404,49 +402,116 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     });
   });
 
-  test('touch chrome shows every action at the 44px floor with nothing to hover', async () => {
-    const markup = sheetMarkup();
+  /** Every touch-chrome action is 44x44, beside its row, never wrapped under
+   *  it, and the row's title keeps a readable width. */
+  async function auditTouchRows(
+    pg: import('@playwright/test').Page,
+    minimumTitleWidth: number,
+  ) {
+    const actions = pg.locator('.inbox-row--touch .inbox-row__action');
+    const count = await actions.count();
+    expect(count).toBeGreaterThanOrEqual(ITEMS.length);
+    for (let index = 0; index < count; index += 1) {
+      const box = await actions.nth(index).boundingBox();
+      const label = await actions.nth(index).getAttribute('aria-label');
+      expect(box, `${label} is visible`).not.toBeNull();
+      expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX,
+      );
+      expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX,
+      );
+    }
+    const rows = await pg.evaluate(() =>
+      [...document.querySelectorAll('.inbox-row--touch')].map((row) => {
+        const open = row
+          .querySelector('.inbox-row__open')!
+          .getBoundingClientRect();
+        const actionsBox = row
+          .querySelector('.inbox-row__actions')
+          ?.getBoundingClientRect();
+        return {
+          key: row.getAttribute('data-row-key'),
+          targets: row.querySelectorAll('.inbox-row__action').length,
+          title: row.querySelector('.inbox-row__title')!.getBoundingClientRect()
+            .width,
+          right: row.getBoundingClientRect().right,
+          wrapped: actionsBox
+            ? actionsBox.left < open.right - 0.5 ||
+              actionsBox.top >= open.bottom
+            : false,
+        };
+      }),
+    );
+    expect(rows.length).toBe(ITEMS.length);
+    for (const row of rows) {
+      expect(row.wrapped, `${row.key} actions wrapped under the row`).toBe(
+        false,
+      );
+      // Details plus at most one more target, on every row.
+      expect(row.targets, `${row.key} targets`).toBeLessThanOrEqual(2);
+      expect(row.title, `${row.key} title width`).toBeGreaterThanOrEqual(
+        minimumTitleWidth,
+      );
+    }
+    return rows;
+  }
+
+  test.each([
+    [390, 200],
+    [320, 160],
+  ])(
+    'touch chrome at %ipx: 44px actions beside the row and a title of at least %ipx',
+    async (width, minimumTitleWidth) => {
+      const markup = sheetMarkup();
+      const pg = await browser.newPage({
+        viewport: { width, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      try {
+        await pg.setContent(page(markup));
+        await settle(pg);
+        const rows = await auditTouchRows(pg, minimumTitleWidth);
+        for (const row of rows) {
+          expect(row.right, `${row.key} right edge`).toBeLessThanOrEqual(width);
+        }
+      } finally {
+        await pg.close();
+      }
+    },
+  );
+
+  test('a coarse pointer gets the touch chrome in the dock panel, slim rows included', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    let markup: string;
+    try {
+      markup = panelMarkup();
+    } finally {
+      window.matchMedia = original;
+    }
+    expect(markup).not.toContain('inbox-row--hover');
     const pg = await browser.newPage({
-      viewport: { width: 390, height: 844 },
+      viewport: { width: 1280, height: 900 },
       hasTouch: true,
-      isMobile: true,
     });
     try {
       await pg.setContent(page(markup));
       await settle(pg);
-      const actions = pg.locator('.inbox-row--touch .inbox-row__action');
-      const count = await actions.count();
-      expect(count).toBeGreaterThanOrEqual(ITEMS.length);
-      for (let index = 0; index < count; index += 1) {
-        const box = await actions.nth(index).boundingBox();
-        const label = await actions.nth(index).getAttribute('aria-label');
-        expect(box, `${label} is visible`).not.toBeNull();
-        expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(
-          MIN_TOUCH_TARGET_PX,
-        );
-        expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(
-          MIN_TOUCH_TARGET_PX,
-        );
-      }
-      // The actions sit BESIDE the row's open control, never wrapped onto
-      // a line of their own under a long title.
-      const wrapped = await pg.evaluate(() =>
-        [...document.querySelectorAll('.inbox-row--touch')]
-          .filter((row) => row.querySelector('.inbox-row__actions'))
-          .filter((row) => {
-            const open = row
-              .querySelector('.inbox-row__open')!
-              .getBoundingClientRect();
-            const actions = row
-              .querySelector('.inbox-row__actions')!
-              .getBoundingClientRect();
-            return (
-              actions.left < open.right - 0.5 || actions.top >= open.bottom
-            );
-          })
-          .map((row) => row.getAttribute('data-row-key')),
-      );
-      expect(wrapped).toEqual([]);
+      const rows = await auditTouchRows(pg, 100);
+      // The slim rows are in the audit: they are the ones a hover chrome
+      // could only give a 30px target.
+      const slim = await pg
+        .locator('.inbox-row--slim.inbox-row--touch')
+        .count();
+      expect(slim).toBeGreaterThanOrEqual(2);
+      expect(rows.length).toBe(ITEMS.length);
     } finally {
       await pg.close();
     }

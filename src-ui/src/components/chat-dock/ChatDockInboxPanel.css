@@ -73,6 +73,13 @@
   padding: var(--space-2);
 }
 
+/* A group is a grid item in the mobile sheet's list. Without this its
+ * automatic minimum is its widest row's unbroken title, and the whole group
+ * grows past the phone's edge instead of the title truncating. */
+.chat-dock-inbox__group {
+  min-width: 0;
+}
+
 .chat-dock-inbox__group + .chat-dock-inbox__group {
   margin-top: var(--space-3);
 }
@@ -190,4 +197,14 @@
 
 .chat-dock-inbox--compact .chat-dock-inbox__item {
   min-height: 44px;
+}
+
+/* The overflow menu's discard entry: the shared discard button, beside its
+ * words (the button's own accessible name already says them). */
+.chat-dock-inbox__menu-discard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
 }

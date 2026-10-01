@@ -36,7 +36,7 @@ import type { HomeWorkItem } from './home-view-model';
  * - `answer`: an open `input` request (`needs_input` reached through
  *   `input_requested`).
  * - `interrupted`: the turn was cut short by a restart and recovery parked
- *   the session on `needs_input`.
+ *   the session on `needs_input` (`transitionReason: 'runtime_exit'`).
  * - `blocked`: the session's `blocked` state, or a durable Task's.
  * - `queued`: a send queued on this device while offline.
  * - `waiting`: owed something, kind not recorded.
@@ -63,12 +63,6 @@ export interface WorkActivity {
 export interface WorkFacts {
   attention?: WorkAttentionKind;
   activity?: WorkActivity;
-  /**
-   * The branch of the worktree Station provisioned for this session
-   * (`workspaceIsolation.branch`). Absent for a shared-workspace session:
-   * its checkout's branch is a git read, not a fact the summary carries.
-   */
-  worktreeBranch?: string;
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -220,9 +214,6 @@ export function buildWorkFacts({
             )
           : undefined);
       if (activity) entry.activity = activity;
-    }
-    if (session?.workspaceIsolation?.mode === 'worktree') {
-      entry.worktreeBranch = session.workspaceIsolation.branch;
     }
     if (Object.keys(entry).length > 0) facts.set(item.id, entry);
   }

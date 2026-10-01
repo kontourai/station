@@ -19,7 +19,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatDraftsStore } from '../../../contexts/chat-drafts-store';
 import {
   buildOrchestrationItems,
@@ -27,7 +27,7 @@ import {
 } from '../../../views/home/home-view-model';
 import { buildWorkFacts, type WorkFacts } from '../../../views/home/work-facts';
 import { workStatus } from '../../../views/home/work-status';
-import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
+import { InboxGroupList, InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { inboxRowChips } from '../inbox-row-chips';
 
 // The details sheet's on-demand reads (git, pull requests, basis) need a
@@ -158,6 +158,14 @@ const FAILED = {
   },
 } satisfies Partial<OrchestrationSessionSummary>;
 
+// The ticking duration reads the wall clock, so the wall clock is the
+// fixtures' NOW. Only `Date` is faked here: timers stay real for the lazy
+// details sheet; the ticking tests fake them explicitly.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+});
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -279,8 +287,9 @@ describe('what a screen reader and a ticking clock each get', () => {
     expect(describedText()).toBe('Running · Bash, for about 1 minute');
   });
 
-  it('ticks once a second from the injected clock', () => {
+  it('ticks once a second', () => {
     vi.useFakeTimers();
+    vi.setSystemTime(NOW);
     renderRow(rowFor());
     expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
@@ -289,8 +298,22 @@ describe('what a screen reader and a ticking clock each get', () => {
     expect(statusText()).toBe('Running · Bash · 1m 15s');
   });
 
-  it('a host re-rendering with a fresh now neither restarts the ticker nor double-counts', () => {
+  it('shows the real elapsed time even when the list clock is 30s stale', () => {
+    // The list's `now` advances on a coarse tick; a turn that started 25s
+    // ago must not read "0s" because the list last ticked before it began.
     vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    renderRow(rowFor(), { now: NOW - 30_000 });
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(statusText()).toBe('Running · Bash · 1m 14s');
+  });
+
+  it('a host re-rendering with a fresh now does not restart the ticker', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const row = rowFor();
     const view = renderRow(row);
@@ -298,8 +321,6 @@ describe('what a screen reader and a ticking clock each get', () => {
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    // The host re-renders, handing down a clock 2s later (as `Date.now()`
-    // in render did on every render).
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
         <InboxRow
@@ -316,14 +337,12 @@ describe('what a screen reader and a ticking clock each get', () => {
     );
     expect(setIntervalSpy.mock.calls.length).toBe(started);
     expect(statusText()).toBe('Running · Bash · 1m 14s');
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(statusText()).toBe('Running · Bash · 1m 15s');
+    setIntervalSpy.mockRestore();
   });
 
   it('a row with no open turn runs no timer', () => {
     vi.useFakeTimers();
+    vi.setSystemTime(NOW);
     renderRow(
       rowFor({ hasActiveTurn: false, conversationActivity: undefined }),
     );
@@ -417,35 +436,10 @@ describe('a reason is readable in full on every surface', () => {
 });
 
 describe('the chip line exists only when a chip does', () => {
-  const WORKTREE = {
-    mode: 'worktree',
-    repoPath: '/repo',
-    path: '/repo-worktrees/a',
-    branch: 'station/inbox-row',
-    baseRef: 'main',
-    cleanupPolicy: 'cleanup',
-    preserveOnFailure: true,
-    createdAt: '2026-09-30T10:00:00.000Z',
-  } as const;
-
   it('renders no chip line for a row with no chip facts', () => {
     renderRow(rowFor());
     expect(screen.queryByTestId('inbox-row-chips')).toBeNull();
     expect(document.querySelector('.inbox-row__chip')).toBeNull();
-  });
-
-  it('a shared-workspace session has no branch chip', () => {
-    renderRow(rowFor({ workspaceIsolation: { mode: 'shared' } }));
-    expect(screen.queryByTestId('inbox-row-chips')).toBeNull();
-  });
-
-  it('a worktree session shows its branch, and only that', () => {
-    renderRow(rowFor({ workspaceIsolation: WORKTREE }));
-    const chips = [...document.querySelectorAll('.inbox-row__chip')];
-    expect(chips.map((chip) => chip.getAttribute('data-chip'))).toEqual([
-      'branch',
-    ]);
-    expect(chips[0].textContent).toBe('station/inbox-row');
   });
 
   it('shows the remote machine, the unsent draft and the woke marker each from its own fact', () => {
@@ -483,9 +477,6 @@ describe('the chip line exists only when a chip does', () => {
     expect(
       inboxRowChips({}, { hasUnsentDraft: false, isWoken: false }),
     ).toEqual([]);
-    expect(inboxRowChips({}, { worktreeBranch: 'a' })).toEqual([
-      { kind: 'branch', label: 'a' },
-    ]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
       { kind: 'remote', label: 'box' },
     ]);
@@ -497,7 +488,7 @@ describe('the chip line exists only when a chip does', () => {
 
 describe('two sizes and two chromes', () => {
   it('the slim size is one line: no meta line, no chips, the status word and the time', () => {
-    renderRow(rowFor({ ...FAILED, workspaceIsolation: { mode: 'shared' } }), {
+    renderRow(rowFor(FAILED), {
       size: 'slim',
     });
     const row = screen.getByTestId('inbox-row');
@@ -529,9 +520,111 @@ describe('two sizes and two chromes', () => {
     expect(screen.queryByRole('button', { name: /^Open / })).toBeNull();
   });
 
+  it('touch chrome keeps two targets: with snooze and close it shows Details and one menu', () => {
+    const onSnoozeWake = vi.fn();
+    const onCloseChat = vi.fn();
+    const base = rowFor();
+    renderRow(
+      { ...base, item: { ...base.item, chatSessionId: 'tab-1' } },
+      {
+        chrome: 'touch',
+        hoverCard: true,
+        isOpenChat: true,
+        onSnoozeWake,
+        onCloseChat,
+      },
+    );
+    const actions = [
+      ...document.querySelectorAll('.inbox-row__actions > button'),
+    ].map((button) => button.getAttribute('aria-label'));
+    expect(actions).toEqual([
+      'Details for Migrate sessions table',
+      'More actions for Migrate sessions table',
+    ]);
+    const more = screen.getByRole('button', {
+      name: 'More actions for Migrate sessions table',
+    });
+    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Snooze: 3 hours' }));
+    // The host is handed the trigger, which is inside the row.
+    expect(onSnoozeWake).toHaveBeenCalledWith(
+      expect.objectContaining({ id: base.item.id }),
+      NOW + 3 * 3_600_000,
+      more,
+    );
+    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close chat' }));
+    expect(onCloseChat).toHaveBeenCalledWith('tab-1', more);
+  });
+
+  it('touch chrome with one other action keeps it as its own target', () => {
+    renderRow(rowFor(), {
+      chrome: 'touch',
+      hoverCard: true,
+      onSnoozeWake: vi.fn(),
+      snoozeMenuOnly: true,
+    });
+    expect(
+      [...document.querySelectorAll('.inbox-row__actions > button')].map(
+        (button) => button.getAttribute('aria-label'),
+      ),
+    ).toEqual([
+      'Details for Migrate sessions table',
+      'Snooze Migrate sessions table',
+    ]);
+  });
+
   it('a host that offers no actions gets no slot and no extra tab stop', () => {
     renderRow(rowFor());
     expect(document.querySelector('.inbox-row__actions')).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+});
+
+describe('the Details sheet belongs to the item, not to the row instance', () => {
+  const group = (id: 'idle' | 'running', item: HomeWorkItem) => ({
+    id,
+    label: id,
+    items: [item],
+  });
+
+  it('stays open when its row changes lane, and returns focus to the row’s new position', async () => {
+    const idle = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    }).item;
+    const running = rowFor().item;
+    expect(idle.id).toBe(running.id);
+    const list = (groups: ReturnType<typeof group>[]) => (
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={groups}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          snoozeMenuOnly
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(list([group('idle', idle)]));
+    fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+
+    // The agent starts a turn: the row leaves Idle and mounts under Running.
+    view.rerender(list([group('running', running)]));
+    expect(screen.getByTestId('inbox-row').dataset.lane).toBe('running');
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: /^Details for/ }),
+      ),
+    );
   });
 });

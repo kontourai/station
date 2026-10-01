@@ -73,6 +73,7 @@ export function ChatInboxHoverCard({
   item,
   now,
   facts,
+  current,
   gitLocation,
   anchor,
   onClose,
@@ -82,6 +83,8 @@ export function ChatInboxHoverCard({
   now: number;
   /** The row's status facts, so the card's status word is the row's. */
   facts?: WorkFacts;
+  /** This conversation is on screen; see `WorkStatusContext.current`. */
+  current?: boolean;
   /**
    * The row's local session working directory and its Project (#2412: git
    * reads name the Project), resolved by the host from its own session
@@ -158,6 +161,7 @@ export function ChatInboxHoverCard({
         item={item}
         now={now}
         facts={facts}
+        current={current}
         gitLocation={gitLocation}
       />
     </div>,
@@ -174,6 +178,7 @@ export function ChatInboxDetailsSheet({
   item,
   now,
   facts,
+  current,
   gitLocation,
   triggerRef,
   onClose,
@@ -181,6 +186,8 @@ export function ChatInboxDetailsSheet({
   item: HomeWorkItem;
   now: number;
   facts?: WorkFacts;
+  /** This conversation is on screen; see `WorkStatusContext.current`. */
+  current?: boolean;
   gitLocation?: GitReadLocation;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
@@ -208,6 +215,7 @@ export function ChatInboxDetailsSheet({
           item={item}
           now={now}
           facts={facts}
+          current={current}
           gitLocation={gitLocation}
           showTitle={false}
         />
@@ -228,17 +236,20 @@ function ChatInboxCardBody({
   item,
   now,
   facts,
+  current,
   gitLocation,
   showTitle = true,
 }: {
   item: HomeWorkItem;
   now: number;
   facts?: WorkFacts;
+  /** This conversation is on screen; see `WorkStatusContext.current`. */
+  current?: boolean;
   gitLocation?: GitReadLocation;
   showTitle?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
-  const status = workStatus(item, now, { facts });
+  const status = workStatus(item, now, { facts, current });
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).
@@ -453,14 +464,6 @@ function ChatInboxCardBody({
             <dt>Folder</dt>
             <dd>
               <bdi>{item.cwdLabel}</bdi>
-            </dd>
-          </div>
-        )}
-        {facts?.worktreeBranch && (
-          <div>
-            <dt>Branch</dt>
-            <dd>
-              <bdi>{facts.worktreeBranch}</bdi>
             </dd>
           </div>
         )}

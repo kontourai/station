@@ -51,6 +51,8 @@ function renderSession(
         context: {
           now: Date.now(),
           workFacts: buildWorkFacts({ items, sessions }),
+          detailsFor: null,
+          setDetailsFor: () => {},
         },
       })}
     </ul>,

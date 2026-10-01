@@ -27,6 +27,10 @@ interface HomeWorkRowProps {
 export interface HomeRowContext {
   now: number;
   workFacts?: WorkFactsById;
+  /** The item whose Details sheet is open; owned by the section so a row
+   *  that changes lane keeps its sheet. */
+  detailsFor: string | null;
+  setDetailsFor: (id: string | null) => void;
 }
 
 /** The discard itself is the button's own server command; Home has no tab
@@ -59,6 +63,10 @@ export function renderHomeWorkRow({
         isOpenChat={false}
         now={context.now}
         facts={context.workFacts?.get(task.id)}
+        detailsOpen={context.detailsFor === task.id}
+        onDetailsOpenChange={(open) =>
+          context.setDetailsFor(open ? task.id : null)
+        }
         size={size}
         chrome="touch"
         agents={agents}
