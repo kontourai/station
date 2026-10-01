@@ -368,7 +368,7 @@
 
     {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"74bb68bb7b32fd0414bbef71ac778852c4b8e77c79008ae437bd64f77d3a0b40","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/__tests__/store-async-lock-cutover.test.ts","digest":"6eaad9437994389a3a66666bf874f6b48700e25c6217c544e1ef06caea23bf23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/__tests__/store-async-lock-cutover.test.ts","digest":"a53bf71ab73dd6016d06fa53f87a26682c5fca1c0ef903fa3a641a22f25a59e4","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
     {"path":"src-server/services/agents/agent-service.ts","digest":"b738f120723a21b3f6ed30eff20b48bdf7f66eaab41d8e6ee166fa1d03fdc8c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -542,13 +542,13 @@
 
     {"path":"src-server/services/operations/fleet-dispatch-action-operation-observer.ts","digest":"60eb1f5da9f396db8d0a30187f1620acb207804e4fa563ca5625d18f47eb2cde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/native-invocation-runs.test.ts","digest":"80a9868be3a0e07b14b6d72364ab3f6859ba29816a0f71e36f0f434923c1db06","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/__tests__/native-invocation-runs.test.ts","digest":"35a9ced9160364fe2406d70cd1491796cea055aac241f8f774c8b627006cc5be","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
     {"path":"src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts","digest":"8e2885010de691c184e135b1e9669b0f550691f3fe52804c9a700dbb48e36e25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts","digest":"017beaa8034f81f9bf5545777fd6835b9f5aa59da4eadf5e57a11162a52606e4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/voice-turn-runs.test.ts","digest":"99ffa8eb800bcf16dffcb80ea32b56af87f6ac445a0c03b074d8fe63fac6caaa","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/__tests__/voice-turn-runs.test.ts","digest":"8b500be9f305e4858c44843267720a2526d3c85f60b8c34ada40f0476b1b4242","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
     {"path":"src-server/services/orchestration/adoption-ledger.ts","digest":"fdf620001ececec0d9dd14dce71f3507a1adcf608c80122c216912b667d4fcd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -758,7 +758,7 @@
 
     {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/voice/__tests__/voice-run-attribution.integration.test.ts","digest":"3e7e68f110f537432f6760e5ec948abc244bd046f75f2263fe791982ac01dbb6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/voice/__tests__/voice-run-attribution.integration.test.ts","digest":"16299f88f8be9778415274d6da4337fd781152ba275b04a269ef0c2cc1fc6e62","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
     {"path":"src-server/voice/__tests__/voice-session.test.ts","digest":"90b5fcb873b8ac5e58d4048e55889d7b590e9ed14335bce485ea7e7b0a1faa66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
