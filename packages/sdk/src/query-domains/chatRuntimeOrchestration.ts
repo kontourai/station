@@ -12,7 +12,7 @@ import {
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
@@ -53,6 +53,7 @@ import {
   type QueryConfig,
   resolveApiBase,
   useApiQuery,
+  useCancelWhenInactive,
 } from '../query-core';
 import { orchestrationQueries } from '../queryFactories';
 import type {
@@ -206,24 +207,73 @@ export function useConversationContextBoundaryStatusQuery(
   );
 }
 
+/** Same retention `useApiQuery` gives an unconfigured read. */
+const SESSION_RUN_PROBE_GC_TIME_MS = 10 * 60 * 1000;
+
+/**
+ * How often a "no run bound" answer is asked again while a caller still
+ * polls. A run can be joined after the first look (a Builder sidecar written
+ * mid-task), so a null does not stop the probe outright; it only slows it
+ * from the 2s/10s bound-run cadence to this.
+ */
+const SESSION_RUN_ABSENT_REPROBE_MS = 30_000;
+
+/**
+ * The session's Flow/Builder run probes answer `null` only for a 404: the
+ * server looked and found no run bound or joined to this session. The detail
+ * used to re-ask that every 2s and 10s for as long as it stayed open (two
+ * expected 404s per interval for a direct chat or an unjoined task), so a
+ * null answer drops to {@link SESSION_RUN_ABSENT_REPROBE_MS}. A caller that
+ * passes `refetchInterval: 0` (a finished session) polls neither. A failed
+ * read is not an answer: it keeps whatever data it had, so a transient error
+ * never slows the poll of a run that was bound.
+ *
+ * The function forms need `useQuery` directly; `QueryConfig.refetchInterval`
+ * is a plain number on the public surface and stays that way.
+ */
+function pollWhileRunBound(intervalMs: number) {
+  return (query: { state: { data: unknown } }) => {
+    if (!intervalMs) return false;
+    return query.state.data === null
+      ? Math.max(intervalMs, SESSION_RUN_ABSENT_REPROBE_MS)
+      : intervalMs;
+  };
+}
+
+/**
+ * Reopening a detail whose cached answer was "no run" re-asks once (when
+ * stale), so a run joined after the first look is found on the next visit
+ * instead of waiting out the cache. A bound run keeps Station's cache-first
+ * mount default; its interval already refreshes it.
+ */
+function reprobeAbsentRunOnMount(query: { state: { data: unknown } }) {
+  return query.state.data === null;
+}
+
 export function useSessionFlowRunQuery(
   threadId: string,
   apiBase?: string,
   config?: QueryConfig<SessionFlowRunView | null>,
 ) {
-  return useApiQuery(
-    ['orchestration-session-flow-run', apiBase ?? 'default', threadId],
-    async () => {
+  const queryKey = [
+    'orchestration-session-flow-run',
+    apiBase ?? 'default',
+    threadId,
+  ];
+  const enabled = Boolean(threadId) && (config?.enabled ?? true);
+  useCancelWhenInactive(queryKey, enabled, config?.cancelWhenInactive);
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
       const resolvedApiBase = await resolveApiBase(apiBase);
       return getSessionFlowRun<SessionFlowRunView>(resolvedApiBase, threadId);
     },
-    {
-      enabled: Boolean(threadId) && (config?.enabled ?? true),
-      staleTime: config?.staleTime ?? 2_000,
-      gcTime: config?.gcTime,
-      refetchInterval: config?.refetchInterval ?? 2_000,
-    },
-  );
+    enabled,
+    staleTime: config?.staleTime ?? 2_000,
+    gcTime: config?.gcTime ?? SESSION_RUN_PROBE_GC_TIME_MS,
+    refetchInterval: pollWhileRunBound(config?.refetchInterval ?? 2_000),
+    refetchOnMount: reprobeAbsentRunOnMount,
+  });
 }
 
 /**
@@ -245,22 +295,28 @@ export function useSessionBuilderRunQuery(
   apiBase?: string,
   config?: QueryConfig<SessionBuilderRunView | null>,
 ) {
-  return useApiQuery(
-    ['orchestration-session-builder-run', apiBase ?? 'default', threadId],
-    async () => {
+  const queryKey = [
+    'orchestration-session-builder-run',
+    apiBase ?? 'default',
+    threadId,
+  ];
+  const enabled = Boolean(threadId) && (config?.enabled ?? true);
+  useCancelWhenInactive(queryKey, enabled, config?.cancelWhenInactive);
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
       const resolvedApiBase = await resolveApiBase(apiBase);
       return getSessionBuilderRun<SessionBuilderRunView>(
         resolvedApiBase,
         threadId,
       );
     },
-    {
-      enabled: Boolean(threadId) && (config?.enabled ?? true),
-      staleTime: config?.staleTime ?? 10_000,
-      gcTime: config?.gcTime,
-      refetchInterval: config?.refetchInterval ?? 10_000,
-    },
-  );
+    enabled,
+    staleTime: config?.staleTime ?? 10_000,
+    gcTime: config?.gcTime ?? SESSION_RUN_PROBE_GC_TIME_MS,
+    refetchInterval: pollWhileRunBound(config?.refetchInterval ?? 10_000),
+    refetchOnMount: reprobeAbsentRunOnMount,
+  });
 }
 
 /**

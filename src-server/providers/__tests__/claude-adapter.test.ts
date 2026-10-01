@@ -75,6 +75,7 @@ vi.mock('../auth/cli-auth.js', () => ({
 }));
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
@@ -82,6 +83,7 @@ import {
   revokeStationControlMcpToken,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
@@ -2069,6 +2071,8 @@ describe('ClaudeAdapter', () => {
       options: {
         modelOptions?: Record<string, unknown>;
         query?: ReturnType<typeof createControlledMockQuery>;
+        agent?: { slug: string; autoApprove?: string[] };
+        metadata?: Record<string, unknown>;
       } = {},
     ) {
       const query = options.query ?? createMockQuery([]);
@@ -2079,6 +2083,8 @@ describe('ClaudeAdapter', () => {
         provider: 'claude',
         threadId,
         ...(options.modelOptions ? { modelOptions: options.modelOptions } : {}),
+        ...(options.agent ? { agent: options.agent } : {}),
+        ...(options.metadata ? { metadata: options.metadata } : {}),
       });
       await iterator.next();
       await iterator.next();
@@ -2770,6 +2776,212 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession('thread-other-escalations');
     });
 
+    describe("#2933: an agent's autoApprove pattern never answers an escalation or a plan exit", () => {
+      const everything = { slug: 'engine-lab', autoApprove: ['*'] };
+
+      test('a plain matching call is still auto-approved (positive control)', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-plain', {
+          agent: everything,
+        });
+        await expect(
+          ask('Bash', { command: 'git status' }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        // A plain edit in default mode suggests only acceptEdits; the
+        // pattern answers it for this call and forwards nothing.
+        await expect(
+          ask(
+            'Edit',
+            { file_path: '/work/a/x.ts', old_string: 'a', new_string: 'b' },
+            {
+              suggestions: [
+                {
+                  type: 'setMode',
+                  mode: 'acceptEdits',
+                  destination: 'session',
+                },
+              ],
+            },
+          ),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: {
+            behavior: 'allow',
+            updatedInput: {
+              file_path: '/work/a/x.ts',
+              old_string: 'a',
+              new_string: 'b',
+            },
+          },
+        });
+        await adapter.stopSession('thread-auto-plain');
+      });
+
+      test('ExitPlanMode prompts', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-plan', {
+          agent: everything,
+        });
+        const exit = await ask(
+          'ExitPlanMode',
+          { plan: 'Step 1' },
+          {
+            suggestions: [
+              { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+            ],
+          },
+        );
+        expect(exit.kind).toBe('prompted');
+        if (exit.kind === 'prompted') await exit.answer('decline');
+        await adapter.stopSession('thread-auto-plan');
+      });
+
+      test('a Read outside the working directories prompts', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-outside', {
+          agent: everything,
+        });
+        // The engine's real shape: a session Read(//dir/**) rule, no
+        // blockedPath.
+        const outside = await ask(
+          'Read',
+          { file_path: '/work/b/notes.md' },
+          outsideDirRead('/work/b'),
+        );
+        expect(outside.kind).toBe('prompted');
+        if (outside.kind === 'prompted') await outside.answer('decline');
+        await adapter.stopSession('thread-auto-outside');
+      });
+
+      test('a rule-forced ask (matchedAskRule) prompts', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-ask-rule', {
+          agent: everything,
+        });
+        const ruleForced = await ask(
+          'Bash',
+          { command: 'git push' },
+          {
+            matchedAskRule: {
+              source: 'userSettings',
+              toolName: 'Bash',
+              ruleContent: 'git push:*',
+            },
+          },
+        );
+        expect(ruleForced.kind).toBe('prompted');
+        if (ruleForced.kind === 'prompted') await ruleForced.answer('decline');
+        await adapter.stopSession('thread-auto-ask-rule');
+      });
+
+      test('a delegated child that may not grant approvals is denied an escalation fail-fast, never prompted', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-child', {
+          agent: everything,
+          metadata: {
+            delegation: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: 'parent',
+              rootAgentSlug: 'parent',
+              denyApprovals: true,
+            },
+          },
+        });
+        // Positive control: a plain call is still allowed.
+        await expect(
+          ask('Bash', { command: 'git status' }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        for (const [toolName, toolInput, extra] of [
+          [
+            'Read',
+            { file_path: '/work/b/notes.md' },
+            outsideDirRead('/work/b'),
+          ],
+          ['ExitPlanMode', { plan: 'Step 1' }, {}],
+          // A valid harness question (#3021): nobody can answer the child's
+          // question card either.
+          [
+            'AskUserQuestion',
+            {
+              questions: [
+                {
+                  question: 'Where should we deploy?',
+                  header: 'Target',
+                  multiSelect: false,
+                  options: [
+                    { label: 'Staging', description: 'Try first' },
+                    { label: 'Production', description: 'Release' },
+                  ],
+                },
+              ],
+            },
+            {},
+          ],
+        ] as const) {
+          // `allowed` here means the call settled without a request.opened.
+          const outcome = await ask(toolName, toolInput, extra);
+          expect(outcome.kind).toBe('allowed');
+          if (outcome.kind !== 'allowed') throw new Error('unreachable');
+          expect(outcome.result).toEqual({
+            behavior: 'deny',
+            message: expect.stringContaining(
+              'delegated child sessions cannot grant approvals',
+            ),
+          });
+        }
+        // A question Station cannot render is refused for its format first.
+        const malformed = await ask('AskUserQuestion', { questions: 'nope' });
+        expect(malformed.kind).toBe('allowed');
+        if (malformed.kind !== 'allowed') throw new Error('unreachable');
+        expect(malformed.result).toEqual({
+          behavior: 'deny',
+          message: 'This question format is not supported.',
+        });
+        await adapter.stopSession('thread-auto-child');
+      });
+
+      test('a directory widening, a blocked path and a read with no signal prompt', async () => {
+        const { adapter, ask } = await grantHarness('thread-auto-other', {
+          agent: everything,
+        });
+        const widening = await ask(
+          'Edit',
+          { file_path: '/work/b/x.ts', old_string: 'a', new_string: 'b' },
+          {
+            suggestions: [
+              {
+                type: 'addDirectories',
+                directories: ['/work/b'],
+                destination: 'session',
+              },
+              { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+            ],
+          },
+        );
+        expect(widening.kind).toBe('prompted');
+        if (widening.kind === 'prompted') await widening.answer('decline');
+
+        const blocked = await ask(
+          'Bash',
+          { command: 'cat /etc/hosts' },
+          { blockedPath: '/etc/hosts' },
+        );
+        expect(blocked.kind).toBe('prompted');
+        if (blocked.kind === 'prompted') await blocked.answer('decline');
+
+        // The engine allows reads inside the working directories itself, so
+        // a Read it asks about is an ask rule or a safety check (the SDK
+        // drops the reason's type).
+        const safety = await ask('Read', { file_path: '/work/a/.env' });
+        expect(safety.kind).toBe('prompted');
+        if (safety.kind === 'prompted') await safety.answer('decline');
+        await adapter.stopSession('thread-auto-other');
+      });
+    });
+
     test('a session answer on ExitPlanMode mints nothing, and the next plan exit prompts', async () => {
       const { adapter, ask } = await grantHarness('thread-plan-exit');
       const planExitSuggestions = [
@@ -3100,6 +3312,78 @@ describe('ClaudeAdapter', () => {
         expect.objectContaining({ delegation: { denyApprovals: true } }),
         expect.anything(),
       );
+    });
+
+    test('#2933: an autoApprove match is no hook allow, so the engine still checks the call and asks canUseTool', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const autoApprove = ['*'];
+      // The staged evaluator exactly as station-runtime.ts composes it for
+      // Claude: `isGranted` is the agent's autoApprove, authentic names.
+      const evaluator = createStagedPreToolPolicyEvaluator({
+        spec: { name: 'engine-lab' },
+        toolNameMapping: new Map(),
+        isGranted: (tool: { toolName: string }) =>
+          isAutoApprovedExternalTool(
+            tool.toolName,
+            autoApprove,
+            undefined,
+            'authentic',
+          ),
+        logger: { info: vi.fn(), warn: vi.fn() },
+      } as any);
+      const adapter = new ClaudeAdapter({
+        resolvePreToolPolicy: async () => evaluator,
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-pre-tool-auto-approve',
+        agent: { slug: 'engine-lab', autoApprove },
+      });
+      const queryArgs = mockQuery.mock.calls[0][0];
+
+      // A hook allow would skip the engine's working-directory check, so a
+      // Read outside it would never reach canUseTool at all.
+      for (const [toolName, toolInput] of [
+        ['Read', { file_path: '/elsewhere/notes.md' }],
+        ['ExitPlanMode', { plan: 'Step 1' }],
+      ] as const) {
+        await expect(
+          preToolUse(queryArgs)(
+            { tool_name: toolName, tool_input: toolInput, tool_use_id: 'x' },
+            'x',
+            { signal: new AbortController().signal },
+          ),
+        ).resolves.toEqual({ continue: true });
+      }
+      await adapter.stopSession('thread-pre-tool-auto-approve');
+    });
+
+    test('an allow the evaluator reached past the tool grant is still a hook allow', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      // e.g. an approval-guardian allow: not a tool-level grant.
+      const adapter = new ClaudeAdapter({
+        resolvePreToolPolicy: async () => async () => ({
+          behavior: 'allow' as const,
+        }),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-pre-tool-guardian-allow',
+        agent: { slug: 'engine-lab' },
+      });
+      const queryArgs = mockQuery.mock.calls[0][0];
+      await expect(
+        preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toEqual({
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'allow',
+        },
+      });
+      await adapter.stopSession('thread-pre-tool-guardian-allow');
     });
 
     test('sets the SDK matcher strictly beyond the in-process denial bound', async () => {
