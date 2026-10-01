@@ -240,6 +240,12 @@ export function createNativeVerifiedPeerTransport(
   input: NativeVerifiedPeerTransportInput,
 ) {
   const signaling = input.signaling;
+  const peerVersion = input.peerVersion;
+  if (
+    peerVersion !== 'station-native-application-peer/v1' &&
+    peerVersion !== 'station-native-enrollment-peer/v1'
+  )
+    throw new Error('native_application_peer_invalid');
   const trustOwner = input.trust;
   const createPeer =
     input.createPeer ??
@@ -340,7 +346,7 @@ export function createNativeVerifiedPeerTransport(
       try {
         const rawPeer = await raceOwnedLifetime(preparePromise, owned);
         hostPeerHandle = peerHandleFrom(rawPeer);
-        hostPeer = validatePeer(rawPeer, clientId, now(), input.peerVersion);
+        hostPeer = validatePeer(rawPeer, clientId, now(), peerVersion);
       } catch (error) {
         if (owned.aborted) {
           void preparePromise
