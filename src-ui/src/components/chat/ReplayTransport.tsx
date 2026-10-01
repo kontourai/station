@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { getActiveReplay } from '../../hooks/orchestration/replay/controller';
 import { downloadSessionTape } from '../../hooks/orchestration/replay/tape-file';
-import { ArrowLeftGlyph, PauseGlyph, PlayGlyph } from '../icons/Glyph';
+import { PauseGlyph, PlayGlyph, ReturnGlyph } from '../icons/Glyph';
 import './ReplayTransport.css';
 
 function transcriptElement(): HTMLElement | null {
@@ -85,7 +85,8 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
               })
             }
           >
-            <ArrowLeftGlyph />
+            {/* Not the timeline's Previous-turn arrow: this undoes one frame. */}
+            <ReturnGlyph />
           </button>
           <button
             type="button"

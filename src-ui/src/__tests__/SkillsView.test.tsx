@@ -26,6 +26,7 @@ const importSkillsMock = vi
   .fn()
   .mockResolvedValue({ imported: 0, results: [] });
 const runSkillMock = vi.fn().mockResolvedValue(undefined);
+const uninstallSkillMock = vi.fn();
 const sendMessageMock = vi.fn().mockResolvedValue(undefined);
 const createChatSessionMock = vi.fn().mockReturnValue('session-1');
 const setDockStateMock = vi.fn();
@@ -52,7 +53,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: localSkillsPendingMock,
     refetch: refetchSkillsMock,
   }),
-  useUninstallSkillMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useUninstallSkillMutation: () => ({
+    isPending: false,
+    mutate: uninstallSkillMock,
+  }),
   useUpdateLocalSkillMutation: () => ({
     isPending: false,
     mutateAsync: updateLocalSkillMock,
@@ -106,6 +110,11 @@ vi.mock('../hooks/useCloseShortcut', () => ({
 }));
 
 import { SkillsView } from '../views/SkillsView';
+import {
+  chooseOverflow,
+  openOverflow,
+  overflowItems,
+} from './helpers/overflow-menu';
 
 /**
  * A skill as the list and detail reads hand it over. The view sets
@@ -435,6 +444,51 @@ describe('SkillsView', () => {
         screen.getByRole('button', { name: 'More skill actions' }),
       );
       expect(screen.getByRole('menuitem', { name: 'Export .md' })).toBeTruthy();
+    });
+
+    // Review M3: every action folded out of the header is still there, and
+    // still does its job.
+    test('the header menu holds Duplicate, Export and a destructive Remove, and each works', async () => {
+      selectSkill(
+        { name: 'release-check', description: 'Ship it', source: 'local' },
+        {
+          name: 'release-check',
+          description: 'Ship it',
+          source: 'local',
+          body: 'Check {{ticket}}',
+        },
+      );
+      // jsdom has no object URLs; these are the two calls a download makes.
+      const createObjectURL = vi.fn(() => 'blob:skill');
+      const { createObjectURL: realCreate, revokeObjectURL: realRevoke } = URL;
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = vi.fn();
+      uninstallSkillMock.mockClear();
+      createLocalSkillMock.mockClear();
+      render(<SkillsView />);
+
+      expect(overflowItems(openOverflow('More skill actions'))).toEqual([
+        { name: 'Duplicate', danger: false },
+        { name: 'Export .md', danger: false },
+        { name: 'Remove', danger: true },
+      ]);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+      expect(uninstallSkillMock).toHaveBeenCalledWith(
+        'release-check',
+        expect.anything(),
+      );
+
+      chooseOverflow('More skill actions', 'Export .md');
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+
+      chooseOverflow('More skill actions', 'Duplicate');
+      await waitFor(() =>
+        expect(createLocalSkillMock).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'release-check-copy' }),
+        ),
+      );
+      URL.createObjectURL = realCreate;
+      URL.revokeObjectURL = realRevoke;
     });
 
     test('turns a skill into a command and writes both switches', async () => {

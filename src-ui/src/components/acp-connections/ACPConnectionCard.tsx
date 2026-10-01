@@ -125,7 +125,7 @@ export function ACPConnectionCard({
       {!isPlugin && (
         <ActionRow
           className="acp-connection-card__actions"
-          overflowLabel={`More actions for ${conn.name}`}
+          overflowLabel={`Manage ${conn.name}`}
           primary={
             recommendedAction === 'Enable' ? (
               <button
@@ -157,6 +157,7 @@ export function ACPConnectionCard({
                   {
                     key: 'disable',
                     label: 'Disable',
+                    tone: 'danger' as const,
                     onSelect: () => setShowDisableConfirm(true),
                   },
                 ]

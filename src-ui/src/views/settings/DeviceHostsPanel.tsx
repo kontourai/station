@@ -413,6 +413,7 @@ function DeviceHostRow({
                   {
                     key: 'share',
                     label: sharing ? 'Hide sharing' : 'Share devices…',
+                    expanded: sharing,
                     onSelect: () => setSharing((open) => !open),
                   },
                   {

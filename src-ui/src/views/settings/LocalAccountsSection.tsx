@@ -58,6 +58,7 @@ function AccountControls({
     account: LocalAccountView;
     action: LocalAccountAction;
   }>();
+  const pendingName = pending?.account.name ?? 'this account';
   const [recovery, setRecovery] = useState<string>();
   const [error, setError] = useState<string>();
   const busy = mutation.isPending || query.isFetching;
@@ -132,6 +133,7 @@ function AccountControls({
                 {
                   key: 'revoke-sessions',
                   label: 'Sign out all sessions',
+                  tone: 'danger',
                   disabled: busy,
                   onSelect: () =>
                     setPending({ account, action: 'revoke-sessions' }),
@@ -173,15 +175,22 @@ function AccountControls({
         isOpen={!!pending}
         pending={mutation.isPending}
         error={error}
+        // The confirm NAMES the action. These commands sit behind a menu
+        // now (#3045), so "Change account sign-in?" would be the only thing
+        // on screen saying which one was pressed — and it did not say.
         title={
           pending?.action === 'create-recovery'
             ? 'Create a password recovery link?'
-            : 'Change account sign-in?'
+            : pending?.action === 'revoke-sessions'
+              ? `Sign out all sessions for ${pendingName}?`
+              : pending?.action === 'disable'
+                ? `Disable sign-in for ${pendingName}?`
+                : `Enable sign-in for ${pendingName}?`
         }
         message={
           pending?.action === 'create-recovery'
             ? `Anyone with this link can reset ${pending.account.name}’s password. Confirm the recipient before sharing it.`
-            : `Apply this account action to ${pending?.account.name ?? 'this account'}? Project membership and device grants will remain recorded separately.`
+            : 'Project membership and device grants will remain recorded separately.'
         }
         onConfirm={() => void apply()}
         onCancel={() => setPending(undefined)}
