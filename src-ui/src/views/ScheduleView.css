@@ -1017,6 +1017,13 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Small editable text makes iOS zoom the dialog beyond its viewport. */
+  .schedule__field input,
+  .schedule__field textarea,
+  .schedule__field select {
+    font-size: max(1rem, var(--k-text-md));
+  }
+
   .schedule__stats {
     flex-direction: column;
   }

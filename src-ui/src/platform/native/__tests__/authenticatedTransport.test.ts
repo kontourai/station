@@ -60,6 +60,25 @@ describe('native authenticated transport', () => {
 
   afterEach(() => setNativePairingExchangeTransport());
 
+  test.each([204, 205, 304])(
+    'completes an empty HTTP %s response without constructing a forbidden body',
+    async (status) => {
+      bridge.invoke.mockResolvedValue(undefined);
+      const pending = nativeAuthenticatedTransport(
+        'https://station.example.test/api/empty',
+      );
+      await vi.waitFor(() => expect(bridge.invoke).toHaveBeenCalled());
+      expect(() =>
+        emit({ type: 'response', status, headers: {}, bodyLength: 0 }),
+      ).not.toThrow();
+      emit({ type: 'end' });
+      const response = await pending;
+      expect(response.status).toBe(status);
+      expect(response.body).toBeNull();
+      await expect(response.text()).resolves.toBe('');
+    },
+  );
+
   test('streams status, safe headers, and chunks without a renderer bearer', async () => {
     const secretCanary = 'native-keyring-secret-canary';
     bridge.invoke.mockImplementation(async (command: string) => {

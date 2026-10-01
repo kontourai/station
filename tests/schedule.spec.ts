@@ -380,6 +380,14 @@ test.describe('Schedule Page', () => {
     await page.goto('/schedule');
     await page.getByRole('button', { name: 'Add job', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Add Job' });
+    for (const label of ['Name', 'Instructions']) {
+      const fontSize = await dialog
+        .getByLabel(label)
+        .evaluate((field) =>
+          Number.parseFloat(getComputedStyle(field).fontSize),
+        );
+      expect(fontSize).toBeGreaterThanOrEqual(16);
+    }
     await dialog.getByLabel('Name').fill('recovered-check');
     await dialog
       .getByLabel('Instructions')

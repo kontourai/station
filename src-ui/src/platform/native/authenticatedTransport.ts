@@ -168,10 +168,13 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
         if (!settled) {
           settled = true;
           resolveResponse?.(
-            new Response(stream, {
-              status: message.status,
-              headers: message.headers,
-            }),
+            new Response(
+              [204, 205, 304].includes(message.status) ? null : stream,
+              {
+                status: message.status,
+                headers: message.headers,
+              },
+            ),
           );
         }
       } else if (message.type === 'chunk') {
