@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/merge-queue-regression.yml","digest":"f803f8df52480932b1b69b1e623f31ac0f1128596f034ab0b0babca1fd46bbb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -64,7 +64,7 @@
 
     {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"e1f9ca1c3fbfb5c9368447ec82975b33d7745f330f1cf78f15d9b5de9f1c15a5","revision":"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d"},
 
-    {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
