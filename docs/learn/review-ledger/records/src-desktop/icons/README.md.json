@@ -34,7 +34,7 @@
 
     {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"}
+    {"path":"src-ui/src/index.css","digest":"2e2199715f6a2c6d3fa1ef7b3f712f6160d4a069d76acf6e61ab9a414c249731","revision":"d3df244e3ce786e10d3a170b84435ab018618a62"}
   ],
 
   "checks": [

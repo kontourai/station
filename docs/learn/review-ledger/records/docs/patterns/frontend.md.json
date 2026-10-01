@@ -12,7 +12,7 @@
   "document": {"digest":"42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"79138ba3d68fed1437d2c541c1517dd833788be5369fe9f2f86c1a2b52b5de5e","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"6d7061ad48a113e41fa1fa724d5bab6e2595cae92a19a8b11266203d31bdf43f","revision":"d3df244e3ce786e10d3a170b84435ab018618a62"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
@@ -64,7 +64,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
+    {"path":"src-ui/src/index.css","digest":"2e2199715f6a2c6d3fa1ef7b3f712f6160d4a069d76acf6e61ab9a414c249731","revision":"d3df244e3ce786e10d3a170b84435ab018618a62"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
