@@ -54,7 +54,7 @@
 
     {"path":"src-server/routes/agents/invoke-global.ts","digest":"798593a5e1cc7636321286b28214428cfe927eb467bd4744169a6f83ee9a044f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/chat/chat.ts","digest":"530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/chat/chat.ts","digest":"db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841","revision":"68a5eae4cbf2421447443d47b902fd7758e319fc"},
 
     {"path":"src-server/routes/orchestration/attachments.ts","digest":"628b930049e5ea6a021ba03e7bee9ec916a32656f6a5979d555864b86eee71f9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/runtime/frameworks/framework-model-factory.ts","digest":"f5c0dbafd0fe04bbc4da9fed642ab1d13787f49460001b49e56a9055a7d168bb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"ef04cefe6b81a84570095ae3639ed663e53222f345cbf343b54d2e642925148f","revision":"80dd5a1440a3e2855aac04c988481e258e0b04b4"},
 
     {"path":"src-server/runtime/frameworks/strands-tool-loader.ts","digest":"8c98e38000a34ed2ab459e478da8c085f15bcf9cfc885d136fd8a02a06f99815","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
