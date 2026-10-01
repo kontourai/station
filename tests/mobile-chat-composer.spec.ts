@@ -1124,7 +1124,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
   });
 
   const strip = page.getByRole('list', { name: 'Attached files' });
-  await expect(strip.getByText('Ready to send')).toBeVisible();
+  await expect(strip.getByText('Ready', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(() => expect(dispatched).toHaveLength(1)).toPass({
     timeout: 10_000,
@@ -2208,12 +2208,17 @@ for (const viewport of [
       );
       await expect(switcher).toContainText('New chat');
       await expect(selectedModel).toHaveText(selectedModelLabel ?? '');
-      await expect(scroller).toBeVisible();
+      // With the keyboard still up the dock can be exactly as tall as the
+      // status line plus the composer (149px at 320x568): the transcript has
+      // no room and steps aside, so only its presence is asserted here. Its
+      // visibility is asserted once the keyboard is gone.
+      await expect(scroller).toBeAttached();
       await page.evaluate(
         (height) => (window as any).__setChatViewport(height, 0),
         viewport.height,
       );
       await expandMobileDock(page);
+      await expect(scroller).toBeVisible();
     }
 
     for (const button of await page
@@ -3715,7 +3720,10 @@ test('after a reload with the failure banner, a 375x667 half dock keeps a two-li
   const textarea = page.locator('.chat-input textarea').last();
   await expect(textarea).toHaveValue(/Third line should stay visible/);
   await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
-  await expect(page.getByTestId('chat-dock-session-failure')).toBeVisible();
+  // In a dock this short the failed-session banner steps aside for the
+  // composer (it is still mounted); the composer's own block line is what
+  // keeps the reason on screen.
+  await expect(page.getByTestId('chat-dock-session-failure')).toHaveCount(1);
   await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
 
   const geometry = await textarea.evaluate((element) => {
