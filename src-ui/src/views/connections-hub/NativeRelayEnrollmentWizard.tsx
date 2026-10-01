@@ -3,6 +3,7 @@ import type { NativeRelayEnrollmentHostResumeAttempt } from '@kontourai/station-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { SkeletonBlock } from '../../components/state';
 import { createNativeRelayEnrollmentClient } from '../../platform/native/nativeRelayEnrollmentClient';
 import {
   type NativeRelayGrantState,
@@ -498,7 +499,7 @@ export function NativeRelayEnrollmentWizard({
       {phase === 'idle' ? (
         <>
           {recovery.isPending ? (
-            <p role="status">Checking for saved Device setup…</p>
+            <SkeletonBlock count={1} label="Checking for saved Device setup" />
           ) : null}
           {recovery.isError ? (
             <>
