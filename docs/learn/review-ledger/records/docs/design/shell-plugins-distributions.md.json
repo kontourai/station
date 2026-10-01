@@ -9,7 +9,7 @@
 
   "limits": "Design, not shipped behavior. Current-state claims are source inspection at 2e8ddc0f7; no test executed. The feat/coding-chat-main branch diff was not reviewed. Plugin-to-plugin isolation claims rest on the build shim source, not an executed probe.",
 
-  "document": {"digest":"e7bddadd866697ca34643af93cfed6fadf214deb9f0893c1d75795ff20537f81","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+  "document": {"digest":"e7bddadd866697ca34643af93cfed6fadf214deb9f0893c1d75795ff20537f81","revision":"70e58c2bb75767545200021868ab35969793307a"},
 
   "sources": [
     {"path":"packages/contracts/src/distribution.ts","digest":"0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
-    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
     {"path":"src-server/routes/plugins/plugin-home-role-routes.ts","digest":"ad2b553accde4e731ec6db42c7d4c69092ccda2a50ed8cfefc6cc6f4d1dcba00","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
