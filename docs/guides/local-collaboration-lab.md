@@ -643,9 +643,12 @@ are not forcibly closed by broker revocation.
 The Station operator must separately list each recipient Origin in
 `ALLOWED_ORIGINS` and `STATION_AUTHENTICATION_BROWSER_ORIGINS` (the latter has a
 bounded maximum of 16). Broker issuance cannot expand Station application
-authority. The current desktop saved-route UI remains a metadata/trust readout;
-native grant custody does not by itself make a route selectable or prove a real
-Tauri connection. The browser Broker routes form accepts an optional TURN URL,
+authority. The native saved-route UI now offers source-composed route selection,
+account sign-in and bounded member reads. Native grant custody alone grants no
+application authority and proves no successful Tauri connection or fresh native
+enrollment. The browser receipts above do not qualify that native path; follow
+[native shell verification](native-shell-verification.md) for its separate limits.
+The browser Broker routes form accepts an optional TURN URL,
 username, and credential when accepting an invitation, and **Configure TURN**
 updates a saved route. Those credentials use a separate browser-origin and
 route-bound IndexedDB store. Without TURN configuration the browser can use
