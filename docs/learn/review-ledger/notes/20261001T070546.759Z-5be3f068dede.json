@@ -1,0 +1,7 @@
+{
+  "revision": "4f47664e668c1f24b247e87c0d755ecbf61cba25",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Behavior-neutral code-health follow-up: TaskRoomWorkUnavailableError export removed because only the owning module uses it. The durable request owner and its public/private interfaces remain as documented; no new runtime or browser acceptance."}
+  ]
+}

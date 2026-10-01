@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"c22c10ac7fe222b7e54d0a4922410876d67a3c413c582019cddde6f10fac667e","revision":"b86d42394bb533067b2cc5026d21a531db62e2ba"},
+  "document": {"digest":"3ff171decbd94f6b4b0c209df2b941a56f7ee1a7a23404692d381e6f637ab96d","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -41,6 +41,8 @@
     {"path":"packages/sdk/src/__tests__/application-session-native.test.ts","digest":"ec9fa4c51df95e0d6c96132779f6be8ea426aa6d165d6093de5a6ab15d776c4f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
     {"path":"packages/sdk/src/__tests__/client-fetchers-envelope-a3a.test.ts","digest":"f197499cb887454a12935189e115dd024a8b3d45e58c1b9ef9b11726b3394a56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","digest":"61262d2078428f6e2da4deeb8018e814a0f23b1c0d9b4b1c72f3422fc8ba8a59","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
@@ -106,7 +108,7 @@
 
     {"path":"packages/sdk/src/client/project-shared-tasks.ts","digest":"e57fd853962ce6547f9d01979337bb107764720432047aff6fa045fd29489e1f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"390a35b12e3eaf2c4a08c519a0b3c6f98089b85021b4c69c9bf20db168a037dc","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -131,6 +133,8 @@
     {"path":"packages/sdk/src/client/task-basis.ts","digest":"d59ae33ebb339ac957884c7e42651d9e9539879d837e400f263cfc5c50978a81","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/client/task-outputs.ts","digest":"193416e83847a9ccb1d3bc276cca795d8244f8e448786a2fd733d527609db87c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"57fdf0a01a7e541af361869b5c73e15e8b54f978caa5596bc9881740f82b8696","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
     {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -172,7 +176,7 @@
 
     {"path":"packages/sdk/src/host-contexts.ts","digest":"a72220a429a289ab65568feda763883b22536558ac4e073120d26b06399783fd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"packages/sdk/src/index.ts","digest":"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625","revision":"7576509655a6bbef0ef61d5f4645722922b8ec43"},
 
     {"path":"packages/sdk/src/layout/context.tsx","digest":"0a3e962f8bc141d067f387441e93d8f36c442bde102ea1e63eeccafbfd996f27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -217,6 +221,8 @@
     {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"162ec5e3b295d947cfcc37b8a942a86c294f855bb9b43ab072db01129477e7a4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/query-domains/taskGraph.ts","digest":"f10a3274579e455eecc3828ec9f11b826703916ee06b1d2859db413b9321901f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
     {"path":"packages/sdk/src/query-domains/workspace.ts","digest":"ee6d243c02c72b0339d1606309f090edfaa6029b00fddfab1cb228da07ccecc3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -288,7 +294,7 @@
 
     {"path":"src-server/routes/operations/notifications.ts","digest":"4d0add85259d3edb2deee0c0929891851ebccc980416b6c693b0b002cc081651","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -334,7 +340,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -342,7 +348,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

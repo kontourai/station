@@ -1,0 +1,69 @@
+{
+  "path": "docs/design/task-room-agent-requests.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Developer implementation contract for personal Task agent requests: persistence, explicit selection, scoped transport, provider/room admission and uncertainty. Implementation is distinct from programme acceptance.",
+
+  "limits": "Review is limited to the described request and message delta. Controlled fixtures exercise real file/HTTP/SQLite/provider boundaries. NOT_VERIFIED: production runtime composition, browser/geometry, actual model, hosted/invited/public/remote/native/device journeys, publication, durable draft reload recovery, multi-recipient assignment, context/brief and curated result delivery. Full programme remains unfinished.",
+
+  "document": {"digest":"1e37d836e52f9f4dbe146244e2ea6110da434b4745a3c617d57c76b278269149","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+  "sources": [
+    {"path":"packages/contracts/src/task-room-work.ts","digest":"dfe913e035babc22b611db32854a0866787d39ed0e7c7c9cef917851c1c35040","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"packages/contracts/package.json","digest":"a9e4315d91320b5dce16af7b0129ea34c13c76da3f079e855abda209b3268f8d","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"57fdf0a01a7e541af361869b5c73e15e8b54f978caa5596bc9881740f82b8696","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"packages/sdk/src/query-domains/projectTaskRooms.ts","digest":"a9d57bd7d3ecf9652ddcd3e9754c30561b83917e0660e45a90c83a3b14cecc1b","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"bbbe8cafdbfa7f5b53d9b1fecd34d0dea6953a39bfdc48f7670d74ec0c040e39","revision":"4f47664e668c1f24b247e87c0d755ecbf61cba25"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
+
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"19d16440f2e8c69b7f26394a9f6d4c7033fb8ae6c86ad1e02102e007cad98f2d","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"37f1a1129a250d2f19779c75d07d7a4beeeb0e22fbe17a53c890156c8e4f4d7f","revision":"e949589811d0f726ec20b26d6549e4e0dcdb86ce"},
+
+    {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"b2342efc85c9cae8d42bd588669176b09e589b34fdeaf28bcfe04a6f2bbdf67a","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"ef631483bf5e2e1a9fa810388b8e21aab7bb00e6eb46953ff23dae396e7df176","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
+
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"ee747fb90b796681735629e4b5b29b2c6cf7eae7c5921194e0339a11497e424b","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
+
+    {"path":"packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","digest":"61262d2078428f6e2da4deeb8018e814a0f23b1c0d9b4b1c72f3422fc8ba8a59","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"fc44e43342c9cd479b0cb9ea22d235298ea64d78aac7b59cded04ef4df56dd13","revision":"c780533aa14fbce199898ac95f9c168e73d466a2"},
+
+    {"path":"src-server/services/projects/__tests__/task-room-work-module.test.ts","digest":"6d780b7883c2fd04de9643ff8219e40005f4e5a118b74414b76e2e1426513778","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
+
+    {"path":"packages/sdk/src/__tests__/task-room-work.test.ts","digest":"3bedf82402323c846c1d29f7048a501afa13a35de6558256761188b88a309683","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"src-ui/src/__tests__/TaskWorkspaceView.test.tsx","digest":"f43c5517baac12f972788ef2e703e69131f5c181f1406b3de6d36af960225a9b","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"89ae5a79b61e17ed7994f6fe8d8015bd740297b0fb16744cc5f35686e80f637d","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"}
+  ],
+
+  "checks": [
+    "Independent source review through 11ead89b2 resolved retry, transport, room-binding and commit-admission findings; source-only review is separate from execution.",
+
+    "Controlled hook/HTTP + runtime suite passed 62 cases at the scoped-message checkpoint. Final commit-race runtime suite passed 58; the actual transaction race committed the stale message before the final reread fix and refused it afterward.",
+
+    "Independent verifier executed hook/composer/route 10 cases at ee7cb7c44, with no model/browser/team acceptance inference.",
+
+    "New documentation inventory classification only; older receipts retain their original revision and environment."
+  ]
+}
