@@ -39,14 +39,10 @@ import {
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, parse, resolve, sep } from 'node:path';
-import CHANNEL_CONFIG from '../../../../config/channel-ports.json' with {
-  type: 'json',
-};
-import PINNED_MANIFEST_SIGNING_KEYS from '../../../../config/release-manifest-keys.json' with {
-  type: 'json',
-};
+import { STATION_RELEASE_RINGS_DATA } from '../channel-ports.generated.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
 import type { ReleaseManifestPayload } from '../release-manifest.mjs';
+import { STATION_RELEASE_MANIFEST_KEYS as PINNED_MANIFEST_SIGNING_KEYS } from '../release-manifest-keys.generated.js';
 import { DownloadTooLarge, downloadCapped } from './download.js';
 import {
   ManifestRefusal,
@@ -74,7 +70,7 @@ const VERSION_SENTINEL = '.station-install-complete';
 const SELF_CHECK_TIMEOUT_MS = 120_000;
 
 type Ring = { runtimeChannel: string; prerelease: boolean };
-const RINGS = CHANNEL_CONFIG.releaseRings as Record<string, Ring>;
+const RINGS: Record<string, Ring> = STATION_RELEASE_RINGS_DATA;
 const PRERELEASE_RINGS = new Set(
   Object.entries(RINGS)
     .filter(([, ring]) => ring.prerelease)
