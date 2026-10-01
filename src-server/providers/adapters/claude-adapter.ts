@@ -1927,6 +1927,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // confirms what happened; a second Stop must not clear the first one's
     // still-pending receipt either.
     await record.query.interrupt();
+    // #3071: the SDK can ask for one more permission while that interrupt is
+    // in flight. A request the turn itself raised in the gap can never run
+    // its call either, so it is settled before the abort like the ones
+    // above; left pending it would be an approval on offer for a turn that
+    // is gone. A SUBAGENT's request raised in the gap is left alone: a
+    // background subagent can survive this stop and is then genuinely
+    // waiting on it (it is withdrawn when that subagent ends, and it names
+    // no turn, so the abort below does not settle it for any reader).
+    for (const [requestId, pending] of [...record.pendingRequests]) {
+      if (pending.agentId !== undefined) continue;
+      this.cancelPendingRequest(record, threadId, requestId);
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -2825,6 +2837,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           provider: this.provider,
           threadId: input.threadId,
           createdAt: new Date().toISOString(),
+          // #3071: names the turn only for a request the turn ITSELF is
+          // waiting on (the main thread's). A turn's abort settles the
+          // requests that name it, for every reader of the log. A subagent's
+          // request names no turn: a background subagent can outlive the
+          // turn, a stop included, so the turn's abort must not close it.
+          ...(!options.agentID && record.activeTurnId
+            ? { turnId: record.activeTurnId }
+            : {}),
           requestId,
           method: 'request.opened',
           requestType: 'approval',
