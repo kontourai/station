@@ -75,9 +75,11 @@ export function useChatStatusPill({
     approvalCount,
     stream: streamStatus,
     turnLive,
+    // Not while a request is merely answered and unresolved: that waits on
+    // the engine, not on the user.
     waitingOnUser:
       activeSession.orchestrationStatus === 'awaiting-approval' &&
-      approvalCount === 0,
+      (activeSession.pendingApprovals?.length ?? 0) === 0,
     activity: activeSession.conversationActivity,
     activityHint: activeSession.activityHint,
     turnStartedAt: activeSession.openTurnStartedAt,

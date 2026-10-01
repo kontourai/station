@@ -287,6 +287,7 @@ describe('ChatDockBody floating status pill', () => {
         orchestrationTurnOpen: true,
         status: 'sending',
         // Still open on the server until `request.resolved`, but answered.
+        orchestrationStatus: 'awaiting-approval',
         pendingApprovals: ['req-1'],
         answeredApprovals: ['req-1'],
         messages: [{ role: 'user', content: 'Go', timestamp: 1 }],

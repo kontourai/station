@@ -571,6 +571,44 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(answered).toEqual([['req-1'], []]);
   });
 
+  test('a request that opens again under an answered id waits on the user again', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+      answeredApprovals: ['req-1'],
+    });
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+    expect(updateChat).toHaveBeenCalledWith(
+      'thread-1',
+      expect.objectContaining({
+        pendingApprovals: ['req-1'],
+        answeredApprovals: [],
+      }),
+    );
+  });
+
+  test('a re-delivered open for a request already pending keeps its answer', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: ['req-1'],
+      answeredApprovals: ['req-1'],
+    });
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+    for (const [, patch] of updateChat.mock.calls) {
+      expect(patch.answeredApprovals).toBeUndefined();
+    }
+  });
+
   test('the resolution takes the request off the answered list', () => {
     getChatForExecutionSession.mockReturnValue({
       title: 'Conversation',

@@ -22,11 +22,20 @@ export function handleRequestOpenedEvent(
   if (event.blocking === false) return;
 
   const pendingApprovals = [...(chat.pendingApprovals || [])];
-  if (!pendingApprovals.includes(event.requestId)) {
-    pendingApprovals.push(event.requestId);
-  }
+  const newlyOpened = !pendingApprovals.includes(event.requestId);
+  if (newlyOpened) pendingApprovals.push(event.requestId);
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
+    // A request that opens (again) waits on the user, whatever an earlier
+    // answer under the same id left behind. A re-delivered event for a
+    // request already pending changes nothing.
+    ...(newlyOpened && chat.answeredApprovals?.includes(event.requestId)
+      ? {
+          answeredApprovals: chat.answeredApprovals.filter(
+            (id) => id !== event.requestId,
+          ),
+        }
+      : {}),
     orchestrationStatus: 'awaiting-approval',
   });
 
@@ -129,14 +138,7 @@ function showApprovalToast(
   activeChatsStore.updateChat(event.threadId, { approvalToasts });
 }
 
-/**
- * #2344: the toast used to fire the answer and forget it, so a refused or
- * failed decision showed nothing while the inline card named it. The toast
- * card is gone once clicked (the container dismisses it), so this reports
- * the outcome in its own notice, and a decision that did not land offers the
- * request again: it is still open and still waiting on the user, exactly as
- * the inline card re-enables its buttons.
- */
+/** Marks or unmarks a request as answered here; see `answeredApprovals`. */
 function setAnswered(threadId: string, requestId: string, answered: boolean) {
   const chat = activeChatsStore.getChatForExecutionSession(threadId);
   if (!chat) return;
@@ -148,6 +150,14 @@ function setAnswered(threadId: string, requestId: string, answered: boolean) {
   });
 }
 
+/**
+ * #2344: the toast used to fire the answer and forget it, so a refused or
+ * failed decision showed nothing while the inline card named it. The toast
+ * card is gone once clicked (the container dismisses it), so this reports
+ * the outcome in its own notice, and a decision that did not land offers the
+ * request again: it is still open and still waiting on the user, exactly as
+ * the inline card re-enables its buttons.
+ */
 async function answerFromToast(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
