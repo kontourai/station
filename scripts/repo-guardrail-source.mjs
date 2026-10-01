@@ -38,8 +38,8 @@ const PANE_HOST_COMPOSITION_REQUIREMENTS = [
     sourceKey: 'projectLayoutRenderer',
     sourceLabel: 'ProjectLayoutRenderer',
     marker: `const Pane =
-            descriptor &&
-            getBuiltinWorkspacePaneRenderer(`,
+              descriptor &&
+              getBuiltinWorkspacePaneRenderer(`,
     expectation: 'delegate builtin renderer selection to the pane registry',
   },
   {

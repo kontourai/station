@@ -133,10 +133,14 @@ The declared contributor (`builtin`, `plugin`, or direct `mcp`) of a Pane descri
 _Avoid_: contributor identity branching in host code; provenance stays data
 
 **Coding pane**:
-The built-in `coding` renderer selects the existing dock chat behavior and can
-offer the Browser launcher. Files, diff, terminal, plan, readiness, trust and
-Flow run console are separate registered Pane renderers that a workspace can
-compose; they are not all children of one monolithic Coding pane.
+The built-in `coding` occurrence. It gates the built-in Coding layout's host,
+but that layout no longer places it: its Chat position is the Chat page of the
+layout's navigation stack (`CodingWorkbench`, see
+[placement](../../design/placement.md)). A host that does render the
+occurrence gets `CodingChatPane`: the Chat position's effects and the Browser
+launcher. Files, diff, terminal, plan, readiness, trust and Flow run console
+are separate registered Pane renderers that a workspace can compose; they are
+not all children of one monolithic Coding pane.
 _Avoid_: IDE
 
 **File Preview pane**:
@@ -205,9 +209,14 @@ _Avoid_: raw route push for project layout navigation
 - Availability combines rollout, installation/distribution, renderer presence, exact context, permission/configuration, deployment and host facts. The server catalog supplies only facts it owns; the [UI adapter](../../../src-ui/src/workspace-panes/workspacePaneAvailabilityAdapters.ts) adds renderer/native/client-observed facts and reruns the shared resolver. Missing required facts refuse availability. Catalog, add menu, launcher and route share this resolver rather than treating a saved descriptor as permission to render. Plugin visibility is supplied by the server's caller-bound grant policy and cannot be overridden by a plugin declaration.
 - Availability telemetry is a bounded projection: built-in descriptor ID (or the single `contributed` category), state, and reason code only. Instance IDs, contributed raw IDs, paths, URLs, credentials, content, and arbitrary reasons never become metric attributes.
 - A coding workspace composes separate file, diff, terminal, chat and evidence
-  panes through the host. [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx)
-  selects dock chat behavior and handles its open-preview intent; it does not
-  own all of those renderers or their state.
+  panes. The built-in Coding layout shows Chat on its stack's Chat page and
+  each pane as a drill-in of a chromeless host whose selection is
+  `navigationSelection="explicit"`; the Chat position's effects (the phone's
+  maximized dock, the File Preview deep link) are
+  `useCodingChatPositionEffects` in
+  [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx),
+  run by the stack while its Chat page is on screen. Neither owns the pane
+  renderers or their state.
 - File Tree opens File Preview through the provider-neutral Workspace Pane host
   open/focus seam. Preview state is separately bounded and keyed by opaque
   `stateKey`; corrupt and unreferenced interrupted state records are reclaimed

@@ -191,6 +191,8 @@ export const PinGlyph = /* @__PURE__ */ glyph(
 );
 /** A run triangle — the Flow run console pane tile. */
 export const PlayGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9l7-4.5-7-4.5Z');
+export const MoreGlyph = /* @__PURE__ */ glyph('M3.5 8h.01M8 8h.01M12.5 8h.01');
+export const PlusGlyph = /* @__PURE__ */ glyph('M8 3v10M3 8h10');
 export const PlugGlyph = /* @__PURE__ */ glyph(
   'M5 2v4m6-4v4M4 6h8v1.5a4 4 0 0 1-8 0V6Zm4 5.5V14',
 );
