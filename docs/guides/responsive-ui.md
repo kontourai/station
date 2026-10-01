@@ -128,12 +128,23 @@ Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
 is no slot for a third labelled button. `overflowLabel` names the `⋯` trigger
 and its menu. An overflow item marked `tone: 'danger'` is painted as
-destructive and moved last, behind a separator; a disabled item can carry a
-`disabledReason`, shown under its label. The row's buttons and the trigger
-have an always-on 44px hit area, so a row needs no page-local responsive rule
-for its touch targets. The menu is
+destructive and moved last, behind a separator. A disabled item can carry a
+`disabledReason`, shown under its label; such a row is `aria-disabled` rather
+than `disabled`, so the keyboard can reach it and hear the reason, and it
+refuses activation. A row with neither `primary` nor `secondary` shows a word
+(`aloneText`, "Manage" by default) beside the `⋯`, and `overflowLabel` should
+contain that word. The row's buttons and the trigger have an always-on 44px
+hit area, and the trigger takes the height of the buttons beside it, so a row
+needs no page-local responsive rule for its touch targets.
+
+The menu is
 [`ActionOverflowMenu`](../../src-ui/src/components/ActionOverflowMenu.tsx),
-which the dock header's More menu also uses.
+which the dock header's More menu also uses. It is placed from measured
+geometry: below its trigger when it fits, otherwise on the side with more
+room, capped to that room with internal scroll, kept inside the viewport
+gutters, and re-placed on scroll and resize. Opened from inside a dialog it
+takes a layer above the dialog; elsewhere it stays on the navigation layer,
+below dialogs.
 
 The [button-cap ratchet](../../scripts/button-cap-ratchet.mjs)
 (`npm run button-cap:ratchet`) holds the same line for rows written without
@@ -149,17 +160,27 @@ with a `reason` is one the scan misreads; one without is a row still to fold.
 The scan reads source structure, not layout. It does not see actions assembled
 from an array or split across components, anchors styled as buttons, whether
 siblings render in one line, or how a header collapses as width shrinks.
-Tabs, menu items, pressed or selected toggles and title-and-description cards
-are not counted. `&&` branches all count unless their guards are textually
-exclusive (`x` and `!x`, or one expression compared with different literals),
-so branches that are exclusive for any other reason overcount.
+It counts only `Button` and `button`, plus an `ActionRow`'s filled slots and
+an overflow menu that inlines a single command; other components that render
+a button, and labels passed as props or spreads, are not seen. Tabs, menu
+items, toggles carrying `aria-pressed`, `aria-selected` or `aria-checked`,
+menu triggers (`aria-haspopup` bare, `true`, `"menu"` or `"listbox"`) and
+title-and-description cards are not counted. An element with content between
+two buttons ends a run. `&&` branches all count unless the syntax tree proves
+their guards exclusive: a name or dotted chain against its own `!`, or one
+chain compared with literals. A guard containing `||`, `??` or a call is
+never proved exclusive, so such branches are summed. A file that does not
+parse fails the gate. Renaming a recorded row's file, component or class
+reports it as new; edit that entry's `row` by hand.
 
 For what the scan cannot see, a Playwright spec can count what a page shows
 with [`actionRowsOverCap`](../../tests/helpers/visible-action-count.ts): the
 visible buttons displaying a word, per `[role="toolbar"]`, `header` or
 `.action-row`, at the viewport the spec set. Its
 [own test](../../src-ui/src/__tests__/visible-action-count.rendered.test.tsx)
-proves the count in Chromium; no product journey calls it yet.
+proves the count in Chromium, and
+[the Skills journey](../../tests/skills.spec.ts) asserts it on the skill
+detail header at 1280 and 390 pixels. No other screen calls it yet.
 
 For changed behavior, use the existing owner tests and an affected caller
 journey. Check initial focus, Tab traversal, Escape/backdrop, history behavior,

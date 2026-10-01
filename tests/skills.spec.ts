@@ -1,5 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import {
+  actionRowsOverCap,
+  visibleLabelledActions,
+} from './helpers/visible-action-count';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
 type SkillRecord = {
@@ -443,6 +447,48 @@ test.describe('Command skills', () => {
   // no-op and every button unclickable. A visibility assertion alone cannot
   // tell the two states apart — this proves focus and a real click instead,
   // the same shape #1131's `plugin-update.spec.ts` coverage uses.
+  // #3045: the rendered half of the two-action cap, on a real screen. The
+  // static scan reads JSX; this counts the labelled buttons the skill detail
+  // header actually shows, at a desktop and a phone width, and then finds the
+  // folded actions where they went.
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`the skill detail header shows at most two labelled actions at ${viewport.width}px`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await seedCommandSkillRoutes(page);
+      await page.goto('/guidance/release-check?tab=skills');
+      await page.waitForSelector('.skill-detail', { timeout: 15_000 });
+
+      // The WHOLE header is one row: a button added beside the ActionRow is
+      // the third label on screen, so it must be counted with the other two.
+      const selector = '.skill-detail .detail-header';
+      const [header] = await visibleLabelledActions(page, selector);
+      // The premise: the row is on screen with its labelled actions, so an
+      // empty "over cap" list below is not an empty page.
+      expect(header?.labels).toContain('▶ Test');
+      expect(await actionRowsOverCap(page, { selector })).toEqual([]);
+
+      await page.getByRole('button', { name: 'More skill actions' }).click();
+      const menu = page.getByRole('menu', { name: 'More skill actions' });
+      await expect(
+        menu.getByRole('menuitem', { name: 'Export .md' }),
+      ).toBeVisible();
+      await expect(
+        menu.getByRole('menuitem', { name: 'Remove' }),
+      ).toBeVisible();
+      // Opening the menu adds no labelled button to the row.
+      expect(await actionRowsOverCap(page, { selector })).toEqual([]);
+      await page.screenshot({
+        path: testInfo.outputPath(`skill-header-menu-${viewport.width}.png`),
+        animations: 'disabled',
+      });
+    });
+  }
+
   test('skill dialogs stay reachable around a phone mobile detail sheet', async ({
     page,
   }) => {
