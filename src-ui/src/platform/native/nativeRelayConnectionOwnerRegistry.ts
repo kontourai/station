@@ -45,7 +45,7 @@ export function prepareRegisteredNativeRelayConnectionOwner(
 ): Promise<NativeRelayConnectionOwner> {
   const current = entries.get(key);
   if (current?.owner?.isCurrent()) return Promise.resolve(current.owner);
-  if (current?.pending) return current.pending;
+  if (current?.pending && !current.owner) return current.pending;
   if (current) retireEntry(key, current);
 
   for (const [otherKey, entry] of [...entries]) {
