@@ -1,6 +1,9 @@
 .project-task-board {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(100%, calc(var(--k-space-6) * 6)), 1fr)
+    );
   gap: var(--k-space-3);
   min-width: 0;
 }
@@ -56,8 +59,7 @@
   outline-offset: 2px;
 }
 
-.project-task-board__card span,
-.project-task-board__empty {
+.project-task-board__card span {
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
@@ -71,16 +73,4 @@
 
 .project-page__task-grid.project-page__task-grid--board {
   grid-template-columns: minmax(0, 1fr);
-}
-
-@media (max-width: 1100px) {
-  .project-task-board {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 640px) {
-  .project-task-board {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

@@ -37,9 +37,6 @@ export function ProjectTaskBoard({
             <h3>
               {column.label} <span>{items.length}</span>
             </h3>
-            {items.length === 0 ? (
-              <p className="project-task-board__empty">No tasks</p>
-            ) : null}
             <ul>
               {items.map((task) => (
                 <li key={task.id}>
