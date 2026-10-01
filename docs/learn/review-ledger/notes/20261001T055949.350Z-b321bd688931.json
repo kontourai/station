@@ -1,0 +1,11 @@
+{
+  "revision": "61f31f5bade67ee3c6eb6f8d6ed20bbaf0e8c015",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"tests/skills.spec.ts gained two cases (#3045) that count the visible labelled buttons in the skill detail header at 1280 and 390 pixels and open its overflow menu. Added that to the Skills row; the rest of the row still matches the spec's other tests, which are unchanged."},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Rewrote the Action rows section after review. Checked against the sources: ActionRow's aloneText and the labelled trigger; ActionOverflowMenu's aria-disabled rows with aria-describedby, measured placement (side choice, max-height, gutters, scroll/resize) and the above-dialog layer; the ratchet's AST-only exclusivity proof, its exemptions (choice attributes, readable aria-haspopup values), run breaks, parse-error failure and rename behaviour; and that tests/skills.spec.ts now calls actionRowsOverCap at both widths."},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gained one classification, for src-ui/src/__tests__/ActionOverflowMenu.dialog-layering.test.tsx (#3045), beside the other real-Chromium UI tests. No instruction in this file changed."}
+  ]
+}
