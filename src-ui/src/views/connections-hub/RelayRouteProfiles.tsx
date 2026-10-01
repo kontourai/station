@@ -325,7 +325,7 @@ function NativeRelayGrantControls({
               event.clipboardData.getData('text');
             if (!text) return;
             event.preventDefault();
-            setInvitation(text.replace(/\r\n?/gu, ' '));
+            setInvitation(text.replace(/\r\n?|\n/gu, ''));
           }}
         />
       </label>
@@ -605,7 +605,10 @@ export function NativeRelayAccountSessionPanel({
             <span className="editor-label">Account invitation token</span>
             <input
               className="editor-input"
+              type="password"
               autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
               spellCheck={false}
               value={invitation}
               onChange={(event) => setInvitation(event.target.value)}

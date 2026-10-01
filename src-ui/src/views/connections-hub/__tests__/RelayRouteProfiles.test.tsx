@@ -846,7 +846,11 @@ describe('RelayRouteProfiles', () => {
     expect(routingInvitationField.getAttribute('autocapitalize')).toBe('none');
     expect(routingInvitationField.getAttribute('autocorrect')).toBe('off');
     expect(routingInvitationField.getAttribute('spellcheck')).toBe('false');
-    pastePlainText(routingInvitationField, JSON.stringify(invitation, null, 2));
+    const routingInvitationJson = JSON.stringify(invitation, null, 2);
+    pastePlainText(routingInvitationField, routingInvitationJson);
+    expect(routingInvitationField.value).toBe(
+      routingInvitationJson.replace(/\r\n?|\n/gu, ''),
+    );
     fireEvent.click(
       screen.getByRole('button', { name: 'Redeem routing grant' }),
     );
@@ -977,6 +981,14 @@ describe('RelayRouteProfiles', () => {
       screen.getByLabelText('Operator registration invitation'),
       { target: { value: 'test-operator-invitation' } },
     );
+    const operatorInvitationField = screen.getByLabelText(
+      'Operator registration invitation',
+    ) as HTMLInputElement;
+    expect(operatorInvitationField.type).toBe('password');
+    expect(operatorInvitationField.getAttribute('autocomplete')).toBe('off');
+    expect(operatorInvitationField.getAttribute('autocapitalize')).toBe('none');
+    expect(operatorInvitationField.getAttribute('autocorrect')).toBe('off');
+    expect(operatorInvitationField.getAttribute('spellcheck')).toBe('false');
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Register and request Device approval',
@@ -1235,7 +1247,15 @@ describe('RelayRouteProfiles', () => {
         ),
     ).toBe(true);
 
-    fireEvent.change(screen.getByLabelText('Account invitation token'), {
+    const accountInvitationField = screen.getByLabelText(
+      'Account invitation token',
+    ) as HTMLInputElement;
+    expect(accountInvitationField.type).toBe('password');
+    expect(accountInvitationField.getAttribute('autocomplete')).toBe('off');
+    expect(accountInvitationField.getAttribute('autocapitalize')).toBe('none');
+    expect(accountInvitationField.getAttribute('autocorrect')).toBe('off');
+    expect(accountInvitationField.getAttribute('spellcheck')).toBe('false');
+    fireEvent.change(accountInvitationField, {
       target: { value: 'one-time-account-invitation' },
     });
     fireEvent.click(
@@ -1977,5 +1997,31 @@ describe('RelayRouteProfiles', () => {
     expect(
       screen.getByRole('button', { name: 'Prepare native Station identity' }),
     ).toBeTruthy();
+  });
+
+  test('removes actual line breaks from pasted Station invitation JSON and keeps escaped newlines literal', async () => {
+    mocks.prepareKey.mockResolvedValue({
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      appIdentifier: 'io.kontourai.station',
+      channel: 'stable',
+      clientInstanceId: 'install-1',
+      keyThumbprint: 'sha256:install-proof',
+      publicKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+    });
+    renderRoutes();
+    await screen.findByText('Station key untrusted');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    );
+    await screen.findByText('sha256:install-proof');
+    const input = screen.getByLabelText(
+      'One-time Station invitation',
+    ) as HTMLInputElement;
+    const opaque = '{\n"invitationSecret":"literal\\nsequence"\r\n}';
+    pastePlainText(input, opaque);
+    expect(input.value).toBe('{"invitationSecret":"literal\\nsequence"}');
   });
 });
