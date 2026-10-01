@@ -531,6 +531,73 @@ describe('#2344: the toast reports what happened to its answer', () => {
     }
   });
 
+  test('an answered request stops waiting on the user at the click', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Allow Once');
+
+    // Marked answered before the engine's `request.resolved` arrives, and
+    // never taken back: the decision was delivered.
+    const answered = updateChat.mock.calls
+      .map(([, patch]) => patch.answeredApprovals)
+      .filter((value) => value !== undefined);
+    expect(answered).toEqual([['req-1']]);
+  });
+
+  test('a decision that was not delivered waits on the user again', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
+      new Error('Station is not reachable.'),
+    );
+    vi.mocked(inspectAttentionRequest).mockResolvedValue({
+      state: 'open',
+    } as never);
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Deny');
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
+
+    const answered = updateChat.mock.calls
+      .map(([, patch]) => patch.answeredApprovals)
+      .filter((value) => value !== undefined);
+    expect(answered).toEqual([['req-1'], []]);
+  });
+
+  test('the resolution takes the request off the answered list', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: ['req-1', 'req-2'],
+      answeredApprovals: ['req-1'],
+    });
+    updateChat.mockClear();
+
+    handleRequestResolvedEvent({
+      provider: 'claude',
+      threadId: 'thread-1',
+      createdAt: '2026-09-05T00:00:01.000Z',
+      method: 'request.resolved',
+      requestId: 'req-1',
+      status: 'approved',
+    } as unknown as Parameters<typeof handleRequestResolvedEvent>[0]);
+
+    expect(updateChat).toHaveBeenCalledWith(
+      'thread-1',
+      expect.objectContaining({
+        pendingApprovals: ['req-2'],
+        answeredApprovals: [],
+      }),
+    );
+  });
+
   test('an accepted decision adds no notice of its own', async () => {
     vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
     handleRequestOpenedEvent(

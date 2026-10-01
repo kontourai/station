@@ -280,6 +280,24 @@ describe('ChatDockBody floating status pill', () => {
     expect(pill()?.textContent).toContain('Working');
   });
 
+  test('a request the user already answered is no longer an approval in the pill', async () => {
+    renderDock(
+      buildSession({
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+        status: 'sending',
+        // Still open on the server until `request.resolved`, but answered.
+        pendingApprovals: ['req-1'],
+        answeredApprovals: ['req-1'],
+        messages: [{ role: 'user', content: 'Go', timestamp: 1 }],
+      } as Partial<ChatSession>),
+    );
+    await waitFor(() =>
+      expect(pill()?.getAttribute('data-chat-status-pill')).toBe('working'),
+    );
+    expect(getApprovalClaims().has(buildSession().id)).toBe(false);
+  });
+
   test('an approval the pill cannot bring on screen opens the approval queue', async () => {
     renderDock(
       buildSession({

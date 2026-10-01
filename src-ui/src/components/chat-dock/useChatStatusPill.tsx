@@ -60,7 +60,16 @@ export function useChatStatusPill({
   );
   const onMounted = useCallback(() => setView('mounted'), []);
   const onUnavailable = useCallback(() => setView('unavailable'), []);
-  const pendingApprovals = activeSession.pendingApprovals ?? [];
+  // Requests still waiting on the user: open on the server and not yet
+  // answered here (an answered one stays open until `request.resolved`).
+  const answeredApprovals = activeSession.answeredApprovals;
+  const pendingApprovals = useMemo(
+    () =>
+      (activeSession.pendingApprovals ?? []).filter(
+        (id) => !answeredApprovals?.includes(id),
+      ),
+    [activeSession.pendingApprovals, answeredApprovals],
+  );
   const approvalCount = pendingApprovals.length;
   const input: ChatStatusInput = {
     approvalCount,

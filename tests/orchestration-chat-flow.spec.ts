@@ -374,11 +374,22 @@ test.describe('Orchestration Chat Flow', () => {
       },
     });
 
+    // The chat pane presents its own pending approval in its floating status
+    // pill, so the app-wide queue does not float a second "1 pending
+    // approval" trigger over the pane. This request is bound to no transcript
+    // row, so the pill has no card to reveal and opens the queue instead.
     const approvalQueue = page.getByRole('button', {
-      name: '1 pending approval',
+      name: /^Approval needed/,
     });
     await expect(approvalQueue).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: '1 pending approval' }),
+    ).toHaveCount(0);
     await expect(page.getByText('Tool Approval Request')).toBeHidden();
+    // The pill floats in with a scale transform; measure the settled box.
+    await approvalQueue.evaluate((pill) =>
+      Promise.all(pill.getAnimations().map((animation) => animation.finished)),
+    );
     const queueBox = await approvalQueue.boundingBox();
     expect(queueBox).not.toBeNull();
     expect(queueBox!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -415,14 +426,23 @@ test.describe('Orchestration Chat Flow', () => {
      * walk's browser-side verification is invisible to it. The unit suite
      * covers the removal-and-walk half; this covers the half only Chromium can
      * answer.
+     *
+     * The trigger is now the chat pane's status pill, which stops being a
+     * button once the request is answered. The walk's substitute is the
+     * nearest surviving ancestor on the path the trigger occupied, so focus
+     * stays inside the chat pane rather than falling back to the app root.
      */
     await expect
       .poll(() =>
-        page.evaluate(
-          () => document.activeElement?.id || document.activeElement?.tagName,
-        ),
+        page.evaluate(() => {
+          const active = document.activeElement;
+          if (!active || active === document.body) return 'body';
+          return active.closest('.chat-dock__body')
+            ? 'inside the chat pane'
+            : active.id || active.tagName;
+        }),
       )
-      .toBe('root');
+      .toBe('inside the chat pane');
 
     await page.setViewportSize({ width: 1280, height: 720 });
     await openChatRegion(page);

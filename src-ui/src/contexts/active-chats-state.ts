@@ -521,6 +521,14 @@ export type ChatUIState = {
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
   /**
+   * Requests the user has answered from the approval queue whose
+   * `request.resolved` has not arrived yet. They are still open on the
+   * server (so they stay in `pendingApprovals`), but they no longer wait on
+   * the user: status surfaces count `pendingApprovals` minus these. A
+   * decision that fails to deliver takes its request back off this list.
+   */
+  answeredApprovals?: string[];
+  /**
    * #2880: recorded decisions the engine has reported NOT acknowledged
    * (`request.delivery` `unacknowledged`). A later `acknowledged` for the
    * same request removes it, and the list empties when the session ends or

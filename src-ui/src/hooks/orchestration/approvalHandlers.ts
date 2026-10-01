@@ -137,12 +137,28 @@ function showApprovalToast(
  * request again: it is still open and still waiting on the user, exactly as
  * the inline card re-enables its buttons.
  */
+function setAnswered(threadId: string, requestId: string, answered: boolean) {
+  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+  if (!chat) return;
+  const others = (chat.answeredApprovals ?? []).filter(
+    (id) => id !== requestId,
+  );
+  activeChatsStore.updateChat(threadId, {
+    answeredApprovals: answered ? [...others, requestId] : others,
+  });
+}
+
 async function answerFromToast(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
 ) {
+  // The request stops waiting on the user at the click, not at the engine's
+  // `request.resolved`: the queue card is already gone, and a status surface
+  // that kept saying "Approval needed" until the round trip finished would
+  // contradict it.
+  setAnswered(event.threadId, event.requestId, true);
   try {
     // Loaded on demand: the answer path runs only after a click, so it stays
     // out of the entry chunk (same precedent as queueDrain's dispatcher). A
@@ -167,6 +183,8 @@ async function answerFromToast(
       error instanceof Error && error.message
         ? error.message
         : 'Station did not accept this decision.';
+    // Not delivered: the request waits on the user again.
+    setAnswered(event.threadId, event.requestId, false);
     toastStore.show(
       `Your decision on ${view.toolName} was not delivered: ${reason}`,
       event.threadId,
@@ -240,6 +258,9 @@ export function handleRequestResolvedEvent(
   approvalToasts.delete(event.requestId);
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
+    answeredApprovals: (chat.answeredApprovals ?? []).filter(
+      (id) => id !== event.requestId,
+    ),
     approvalToasts,
     ...(event.blocking === false
       ? {}

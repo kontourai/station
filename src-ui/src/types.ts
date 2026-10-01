@@ -374,6 +374,8 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  /** See ChatUIState.answeredApprovals. */
+  answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */
   unacknowledgedDecisions?: UnacknowledgedDecision[];
   isProcessingStep?: boolean;

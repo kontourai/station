@@ -145,6 +145,15 @@ button.chat-status-pill {
   cursor: pointer;
 }
 
+/* An actionable pill is a tap target: at phone width or on a touch screen it
+   meets the 44px floor the rest of the chrome keeps (the app-wide approval
+   trigger it stands in for was 44px). The read-only pill stays compact. */
+@media (max-width: 768px), (pointer: coarse) {
+  button.chat-status-pill {
+    min-height: 44px;
+  }
+}
+
 .chat-status-pill:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
