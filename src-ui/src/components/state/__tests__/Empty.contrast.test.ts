@@ -66,6 +66,12 @@ describe('shared Empty primitive contrast', () => {
       /\.empty__description\s*\{[\s\S]*?color:\s*var\(--k-text-muted\)/,
     );
 
+    // Both modes pass AA, so reading one block twice would pass too. The two
+    // blocks must really be different surfaces.
+    expect(tokenSet('light')['--k-panel']).not.toBe(
+      tokenSet('dark')['--k-panel'],
+    );
+
     for (const theme of ['dark', 'light'] as const) {
       const tokens = tokenSet(theme);
       for (const [role, token] of [

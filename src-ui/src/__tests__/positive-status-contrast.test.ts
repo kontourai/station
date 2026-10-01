@@ -157,6 +157,17 @@ describe('StatusBadge tone contrast (station#923)', () => {
   });
 
   test('all four quiet treatments clear AA in every channel and theme', () => {
+    // Every pair below clears AA in both modes, so a reader that returned the
+    // dark block for light would pass unnoticed (it did, for the kit-backed
+    // active tone, after @kontourai/ui 1.17). The modes must really differ.
+    for (const [source, token] of Object.values(TONES).map(
+      ({ background }) => background,
+    )) {
+      expect(themedHex(source, token, 'light'), token).not.toBe(
+        themedHex(source, token, 'dark'),
+      );
+    }
+
     // The a11y render ratchet only exercises the DEFAULT channel. Its dark
     // --k-brand-contrast is near-black, so filled tones passed there while the
     // beta/nightly white override failed for owners. Keep channels explicit.
