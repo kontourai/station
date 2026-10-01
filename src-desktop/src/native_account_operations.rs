@@ -26,6 +26,7 @@ const OPERATION_VERSION: &str = "station-native-account-operation/v1";
 const PROOF_TYPE: &str = "station.application-session-native+jwt";
 const CHALLENGE_PATH: &str = "/api/account-auth/continuations/native/challenge";
 const EXCHANGE_PATH: &str = "/api/account-auth/continuations/native/exchange";
+const ACCEPT_INVITATION_PATH: &str = "/api/account-auth/accept-invitation";
 const CONTINUATION_HEADER: &str = "X-Station-Native-Account-Continuation";
 const PROOF_HEADER: &str = "X-Station-Native-Account-Proof";
 const REFUSED: &str = "native_account_operation_refused";
@@ -380,6 +381,45 @@ impl NativeAccountOperations {
         keys: &impl AccountKeys,
     ) -> Result<HashMap<&'static str, String>> {
         validate_read_target(&request)?;
+        self.request_headers(capture, handle, continuation, request, now, keys)
+    }
+    fn accept_invitation(
+        &self,
+        capture: NativeDeviceReceiptCapture,
+        handle: &str,
+        continuation: NativeAccountContinuation,
+        token: String,
+        now: u64,
+        keys: &impl AccountKeys,
+    ) -> Result<NativeAccountInvitationPrepared> {
+        if !opaque(&token) {
+            return refused();
+        }
+        let headers = self.request_headers(
+            capture,
+            handle,
+            continuation,
+            NativeAccountReadTarget {
+                method: "POST".into(),
+                path: ACCEPT_INVITATION_PATH.into(),
+            },
+            now,
+            keys,
+        )?;
+        Ok(NativeAccountInvitationPrepared {
+            body: NativeAccountInvitationBody { token },
+            headers,
+        })
+    }
+    fn request_headers(
+        &self,
+        capture: NativeDeviceReceiptCapture,
+        handle: &str,
+        continuation: NativeAccountContinuation,
+        request: NativeAccountReadTarget,
+        now: u64,
+        keys: &impl AccountKeys,
+    ) -> Result<HashMap<&'static str, String>> {
         if !opaque(&continuation.credential)
             || !opaque(&continuation.nonce)
             || continuation.expires_at_ms <= now
@@ -682,6 +722,56 @@ pub(crate) async fn station_native_account_exchange_prepare(
     .await
     .map_err(|_| REFUSED.to_owned())?
 }
+#[derive(Serialize)]
+pub(crate) struct NativeAccountInvitationPrepared {
+    body: NativeAccountInvitationBody,
+    headers: HashMap<&'static str, String>,
+}
+#[derive(Serialize)]
+struct NativeAccountInvitationBody {
+    token: String,
+}
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_account_accept_invitation_prepare(
+    window: WebviewWindow,
+    app: AppHandle,
+    account_context_handle: String,
+    continuation: NativeAccountContinuation,
+    token: String,
+) -> Result<NativeAccountInvitationPrepared> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if !opaque(&token) {
+        return refused();
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app
+            .try_state::<NativeAccountOperations>()
+            .ok_or_else(|| REFUSED.to_owned())?;
+        let (name, revision) = state.selection(&account_context_handle)?;
+        with_current_reconciled_native_device_owner(&app, &name, revision, |capture| {
+            let started = now_ms()?;
+            let result = state.accept_invitation(
+                capture.clone(),
+                &account_context_handle,
+                continuation,
+                token,
+                started,
+                &NativeAccountProofKeyVault::new(),
+            )?;
+            state.finish(
+                &account_context_handle,
+                &capture,
+                started,
+                now_ms,
+                &NativeAccountProofKeyVault::new(),
+            )?;
+            Ok(result)
+        })
+    })
+    .await
+    .map_err(|_| REFUSED.to_owned())?
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub(crate) async fn station_native_account_request_headers(
     window: WebviewWindow,
@@ -834,6 +924,90 @@ mod tests {
         // Incoming order is intentionally opposite the emitted typed struct.
         serde_json::from_str(r#"{"password":"🔒 café\u2028λ","username":"operator"}"#).unwrap()
     }
+    #[test]
+    fn fixed_invitation_preparation_signs_only_token_leaf_and_keeps_read_operation_closed() {
+        let now = 1_800_000_000_000;
+        let capture = capture(now);
+        let state = NativeAccountOperations::default();
+        let keys = MemoryNativeAccountProofKeyVault::new();
+        let prepared = state.prepare(capture.clone(), now, &keys).unwrap();
+        state
+            .exchange(
+                capture.clone(),
+                &prepared.account_context_handle,
+                challenge(now),
+                credentials(),
+                now + 1,
+                &keys,
+            )
+            .unwrap();
+        let continuation = || NativeAccountContinuation {
+            credential: URL_SAFE_NO_PAD.encode([3u8; 32]),
+            nonce: URL_SAFE_NO_PAD.encode([4u8; 32]),
+            expires_at_ms: now + 100000,
+        };
+        let token = URL_SAFE_NO_PAD.encode([8u8; 32]);
+        let acceptance = state
+            .accept_invitation(
+                capture.clone(),
+                &prepared.account_context_handle,
+                continuation(),
+                token.clone(),
+                now + 2,
+                &keys,
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&acceptance.body).unwrap(),
+            serde_json::json!({"token":token})
+        );
+        let proof = acceptance.headers.get(PROOF_HEADER).unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(proof.split('.').nth(1).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(payload["purpose"], "request");
+        assert_eq!(payload["method"], "POST");
+        assert_eq!(payload["path"], ACCEPT_INVITATION_PATH);
+        assert!(state
+            .accept_invitation(
+                capture.clone(),
+                &prepared.account_context_handle,
+                continuation(),
+                "bad".into(),
+                now + 3,
+                &keys
+            )
+            .is_err());
+        assert!(state
+            .headers(
+                capture.clone(),
+                &prepared.account_context_handle,
+                continuation(),
+                NativeAccountReadTarget {
+                    method: "POST".into(),
+                    path: ACCEPT_INVITATION_PATH.into()
+                },
+                now + 4,
+                &keys
+            )
+            .is_err());
+        let mut changed = capture;
+        changed.grant_digest = sha256(b"changed");
+        assert!(state
+            .accept_invitation(
+                changed,
+                &prepared.account_context_handle,
+                continuation(),
+                token,
+                now + 5,
+                &keys
+            )
+            .is_err());
+    }
+
     #[test]
     fn owner_change_expiry_replay_and_bad_targets_refuse_without_key_replacement() {
         let now = 1_800_000_000_000;

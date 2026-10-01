@@ -133,7 +133,8 @@ export function nativeDeviceProofPilotRoute(
   if (method === 'POST')
     return (
       path === APPLICATION_SESSION_NATIVE_CHALLENGE_PATH ||
-      path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH
+      path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH ||
+      path === '/api/account-auth/accept-invitation'
     );
   if (method === 'GET' || method === 'HEAD')
     return path === '/api/projects' || /^\/api\/projects\/[^/]+$/.test(path);

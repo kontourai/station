@@ -213,7 +213,110 @@ function hostProvider(
   };
 }
 
+function invitationHostProvider(
+  key: Parameters<typeof hostProvider>[0],
+  trust: Parameters<typeof hostProvider>[1],
+): NativeApplicationSessionProofProvider {
+  return {
+    ...hostProvider(key, trust),
+    async prepareInvitationAcceptance({ continuation, token }) {
+      const proof = await createNativeApplicationSessionProof(key, trust(), {
+        purpose: 'request',
+        deviceId: trust().deviceId,
+        nonce: continuation.nonce,
+        method: 'POST',
+        path: '/api/account-auth/accept-invitation',
+        expiresAtMs: continuation.expiresAtMs,
+        credentialHash: createHash('sha256')
+          .update(continuation.credential)
+          .digest('base64url'),
+      });
+      return {
+        body: { token },
+        headers: {
+          [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+          [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,
+        },
+      };
+    },
+  };
+}
+
 describe('structured native account proof provider', () => {
+  test('fixed invitation preparation validates the token and host proof without widening GET/HEAD request headers', async () => {
+    const prepare = vi.fn();
+    const reads = vi.fn();
+    const h = await fixture((key, trust) => {
+      const host = invitationHostProvider(key, trust);
+      prepare.mockImplementation(host.prepareInvitationAcceptance!);
+      reads.mockImplementation(host.requestHeaders);
+      return {
+        ...host,
+        prepareInvitationAcceptance: prepare,
+        requestHeaders: reads,
+      };
+    });
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    const token = Buffer.alloc(32, 8).toString('base64url');
+    const prepared = await h.client.prepareInvitationAcceptance(
+      continuation,
+      token,
+    );
+    expect(prepared.body).toEqual({ token });
+    expect(Object.isFrozen(prepared.body)).toBe(true);
+    expect(reads).not.toHaveBeenCalled();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/account-auth/accept-invitation',
+      }),
+    ).rejects.toThrow('only Project reads');
+    await expect(
+      h.client.prepareInvitationAcceptance(continuation, 'bad-token'),
+    ).rejects.toThrow();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    h.fetchSpy.mockRestore();
+  });
+  test('fixed invitation preparation refuses substituted body and stale owner while preserving observable failure', async () => {
+    let substitution = true;
+    let changed: () => void = () => {};
+    const h = await fixture((key, trust) => {
+      const host = invitationHostProvider(key, trust);
+      return {
+        ...host,
+        async prepareInvitationAcceptance(input) {
+          const prepared = await host.prepareInvitationAcceptance!(input);
+          if (substitution)
+            return {
+              ...prepared,
+              body: { token: Buffer.alloc(32, 9).toString('base64url') },
+            };
+          changed();
+          return prepared;
+        },
+      };
+    });
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    const token = Buffer.alloc(32, 8).toString('base64url');
+    await expect(
+      h.client.prepareInvitationAcceptance(continuation, token),
+    ).rejects.toThrow();
+    substitution = false;
+    changed = () =>
+      h.setTrust({ deviceId: '99999999-9999-4999-8999-999999999999' });
+    await expect(
+      h.client.prepareInvitationAcceptance(continuation, token),
+    ).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
   test('validates and sends the ordered host exchange body before transport framing', async () => {
     const h = await fixture(hostProvider);
     const result = await h.client.exchange({

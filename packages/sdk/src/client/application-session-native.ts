@@ -55,7 +55,17 @@ export interface NativeApplicationSessionProofProvider {
       readonly path: string;
     };
   }): Promise<Readonly<Record<string, string>>>;
+  prepareInvitationAcceptance?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+    readonly token: string;
+  }): Promise<NativeProjectInvitationAcceptancePreparation>;
 }
+
+export interface NativeProjectInvitationAcceptancePreparation {
+  readonly body: { readonly token: string };
+  readonly headers: Readonly<Record<string, string>>;
+}
+const INVITATION_ACCEPT_PATH = '/api/account-auth/accept-invitation';
 
 const localCredentials = z
   .object({
@@ -792,6 +802,57 @@ export class NativeApplicationSessionClient {
    * transport. Each call mints a fresh one-use JTI and rechecks the trust
    * snapshot and continuation before signing.
    */
+  async prepareInvitationAcceptance(
+    continuation: NativeApplicationSessionContinuationV1,
+    token: string,
+  ): Promise<NativeProjectInvitationAcceptancePreparation> {
+    const trust = this.current();
+    const thumbprint = await applicationSessionKeyThumbprint(
+      this.key.publicKey,
+    );
+    const current = parseContinuation(continuation, trust, thumbprint);
+    if (
+      !OPAQUE.test(token) ||
+      !isHostProofProvider(this.key) ||
+      !this.key.prepareInvitationAcceptance
+    )
+      throw new Error('Native host invitation acceptance is unavailable.');
+    const prepared = await this.key.prepareInvitationAcceptance({
+      continuation: Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      }),
+      token,
+    });
+    const body = z
+      .object({ token: z.literal(token) })
+      .strict()
+      .parse(prepared.body);
+    const headers = hostRequestHeaders.parse(prepared.headers);
+    if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+      throw new Error('Native host account continuation changed.');
+    const claims = await verifyHostProof(
+      headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+      this.key.publicKey,
+      trust,
+      {
+        purpose: 'request',
+        nonce: current.nonce,
+        method: 'POST',
+        path: INVITATION_ACCEPT_PATH,
+        keyThumbprint: current.keyThumbprint,
+        credentialHash: await hashText(current.credential),
+      },
+    );
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      body: Object.freeze({ ...body }),
+      headers: Object.freeze({ ...headers }),
+    });
+  }
+
   async headers(
     continuation: NativeApplicationSessionContinuationV1,
     request: { readonly method: string; readonly path: string },
