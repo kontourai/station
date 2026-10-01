@@ -9,24 +9,24 @@
 
   "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
 
-  "document": {"digest":"dc9d3869d68103edc974ac9d1efc43142b7cfc93676e34f1f75b0c6b9b556616","revision":"6e119fee9b02cbea153c0589c84a388499b71a0e"},
+  "document": {"digest":"1b765475c35e08509363d73a271964644cb0eca204b4a5cd60e8cec4e92574e0","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
 
   "sources": [
     {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"3371634931a5f0c9e3a0fc7b579925947a0c93eb64b9b4f73ce9131da58f3214","revision":"d8cb76aa85043a26719e6964766a879c005f7b87"},
+    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"8befc40cf9d072c0e623de8cb85c4ae05c14f6b89bfa6ba8ba6555bf7c77444d","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
 
     {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/shared/src/runtime-event-projection.ts","digest":"b6e58833d00c3823cf7cc0410b757ec27b4ec1a65ef2d26b2efa37a76bac8fc3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"packages/shared/src/tool-request-preview.ts","digest":"36463361ca3e7537aa8a4cf4241b4c3bee3c04f1ac3d4098e2465274ceb2f1c7","revision":"6e119fee9b02cbea153c0589c84a388499b71a0e"},
+    {"path":"packages/shared/src/tool-request-preview.ts","digest":"f1d0e07a94b2f81fba255d8e684a043ada97ca4b65254b2d342f6732afb03458","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
 
     {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"549cba438c83b9d5f4744f97906c38d3c9329f480682aa89852695ee3e363b6a","revision":"6e119fee9b02cbea153c0589c84a388499b71a0e"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"5025ed2715e8c2cd6aa5de806944db78cb6a69936973bc1305c808dd1f7c048b","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -34,7 +34,7 @@
 
     {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"7f4d51f441897955e89406fa876e73af3b894bbe1c31c2699a16bac59890e963","revision":"835201d7c73568b7889f267cc5634fa16f73e575"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"43a9bf6e33bd361933dff035c1108288cd73a4577345335ec08604e78cd9acfe","revision":"6e119fee9b02cbea153c0589c84a388499b71a0e"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"c325e539ffdea9be736b30c6d781ae23a1f31c48824d42c9e987e8012a4b84b8","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -60,9 +60,9 @@
 
     {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"b2ad336b2a519684fb2c2e4759207610b250779c971ab2fc7330f7b03c11a611","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"src-server/providers/adapters/claude-permission-frames.ts","digest":"40941cd9692beeea0d82ed48d336c526cf716905c42db39c983dde2401f80491","revision":"6e119fee9b02cbea153c0589c84a388499b71a0e"},
+    {"path":"src-server/providers/adapters/claude-permission-frames.ts","digest":"300ade87b015d85e3752dc8c3f6acd15119066baf8f40b75f62c3b1c1331978d","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
 
-    {"path":"src-server/providers/adapters/claude-code-spawn.ts","digest":"4bbd6680f81534126d49e4afabf6416d1851009d2442113ff99c9d7911a8cb52","revision":"6e119fee9b02cbea153c0589c84a388499b71a0e"}
+    {"path":"src-server/providers/adapters/claude-code-spawn.ts","digest":"3099ddc2f4bdc915e5a9b20b6d9a38fe46186e42d684c5909e306afee94aab18","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"}
   ],
 
   "checks": [
