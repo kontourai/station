@@ -567,6 +567,33 @@ describe('native application transport client', () => {
     expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
   });
 
+  test('closing an adopted peer during signing refuses proof with a still-live request signal', async () => {
+    const f = await fixture();
+    const channel = await f.transport.openChannel(new AbortController().signal);
+    const signing = f.deferSign();
+    const request = {
+      method: 'GET',
+      path: '/api/projects',
+      body: new Uint8Array(0),
+      headers: new Headers(),
+      signal: new AbortController().signal,
+    };
+    const preparing = channel.prepareRequest!(request);
+    const rejected = expect(preparing).rejects.toThrow(
+      'native_application_trust_retired',
+    );
+    await signing.started;
+    channel.close();
+    signing.resolve();
+    await rejected;
+    expect(request.signal.aborted).toBe(false);
+    expect(f.requests).toHaveLength(0);
+    await expect(channel.prepareRequest!(request)).rejects.toThrow(
+      'native_application_trust_retired',
+    );
+    expect(f.signaling.sign).toHaveBeenCalledOnce();
+  });
+
   test('a wrong Station proof never reaches setRemoteDescription or dispatch', async () => {
     const f = await fixture();
     f.overrideBinding({ stationFingerprint: CLIENT_FP });

@@ -625,8 +625,10 @@ export function createNativeVerifiedPeerTransport(
 export function createNativeApplicationTransport(
   input: NativeApplicationTransportInput,
 ) {
+  const signaling = input.signaling;
   const transport = createNativeVerifiedPeerTransport({
     ...input,
+    signaling,
     peerVersion: 'station-native-application-peer/v1',
   });
   const openChannel = async (
@@ -655,7 +657,7 @@ export function createNativeApplicationTransport(
         if (body.byteLength > NATIVE_APPLICATION_BODY_LIMIT_BYTES)
           throw new Error('native_application_request_too_large');
         const proof = await raceOwnedLifetime(
-          input.signaling.sign(
+          signaling.sign(
             opened.peer.peerHandle,
             request.method,
             request.path,
