@@ -257,6 +257,7 @@ describe.skipIf(process.platform === 'win32')(
     describe('a planted repository whose core.worktree steers discovery above the Project', () => {
       const OPERATOR_BRANCH = 'operator-only-branch';
       const OPERATOR_SUBJECT = 'operator-only-commit-subject';
+      const PLANTED_BRANCH = 'planted-branch';
 
       /**
        * The operator's repository holds a file at the path the Project's
@@ -273,9 +274,13 @@ describe.skipIf(process.platform === 'win32')(
         );
         const above = join(higher, 'a');
         project = join(above, 'proj');
-        const folder = join(project, 'sub');
-        mkdirSync(folder, { recursive: true });
-        git(folder, ['init', '-q', '-b', 'main']);
+        // The member's own repository, with a branch of its own, so every
+        // route has something to report if it reads this pairing.
+        const folder = repo(
+          join(project, 'sub'),
+          { 'own.txt': 'own\n' },
+          { branch: PLANTED_BRANCH },
+        );
         git(folder, ['config', 'core.worktree', above]);
         return { folder, above };
       }
@@ -294,6 +299,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(response.text).not.toContain(SECRET);
         expect(response.text).not.toContain(OPERATOR_BRANCH);
         expect(response.text).not.toContain(OPERATOR_SUBJECT);
+        expect(response.text).not.toContain(PLANTED_BRANCH);
       });
     });
 
