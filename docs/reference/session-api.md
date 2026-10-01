@@ -211,6 +211,23 @@ answered request leaves the inbox when the decision is recorded; an
 unacknowledged decision surfaces as a `runtime.warning` on its session, not
 as a reopened request.
 
+A request also closes, with no decision, when the turn that opened it is
+aborted. An adapter that aborts a live turn resolves that turn's open requests
+`cancelled` first. When Station restarts mid-turn there is no adapter left to
+do it, so
+[interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+records `request.resolved` with status `expired` and `response.reason:
+'turn-interrupted'` before it aborts the turn, and the session reads
+`needs_input` with transition reason `runtime_exit`, not `review_pending`. A
+later decision on that request is refused. A log written before recovery did
+this holds the abort with the request still open; the session summary
+(`pendingReview`, `openRequestIds`), the attention inbox and the request's
+replayed outcome treat that request as settled all the same, through
+[`foldRequestTurnOwnership`](../../src-server/services/orchestration/session-lifecycle-service.ts).
+A client that folds raw events itself still sees it open there. A request
+opened while no turn was running belongs to no turn and stays open until it is
+answered, and an ordinary `turn.completed` settles nothing.
+
 ### Other command types
 
 The remaining controls are defined by
