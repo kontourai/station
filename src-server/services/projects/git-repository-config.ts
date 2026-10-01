@@ -24,9 +24,7 @@
  *   how git reads the repository, and one Station has not looked at is not
  *   assumed harmless.
  * - Programs: `credential.*` (helpers), `core.askPass`, `core.sshCommand`,
- *   `core.gitProxy`, `core.editor`, `sequence.editor`, `core.pager` and a
- *   `pager.<command>` that names a program rather than a boolean,
- *   `core.alternateRefsCommand`, `gpg.*` (`gpg.program`,
+ *   `core.gitProxy`, `core.alternateRefsCommand`, `gpg.*` (`gpg.program`,
  *   `gpg.<format>.program`, `gpg.ssh.defaultKeyCommand`),
  *   `gc.recentObjectsHook`, `uploadpack.*` (`packObjectsHook`),
  *   `remote.<name>.vcs|uploadpack|receivepack|proxy`, and a
@@ -36,18 +34,20 @@
  *   `http.proxy*`, `http.cookieFile`, `http.saveCookies`),
  *   `fetch.bundleURI`.
  *
- * - Files read by name: `include`/`includeIf` (more configuration, read
- *   when git runs rather than when Station judged it),
- *   `core.excludesFile`, `core.attributesFile`, `mailmap.file|blob`,
- *   `diff.orderFile`, `blame.ignoreRevsFile`. `commit.template` is not
- *   among them: Station commits with `-m`, which never reads it.
+ * - Files read by name: `core.excludesFile`, `core.attributesFile`,
+ *   `mailmap.file|blob`, `diff.orderFile`, `blame.ignoreRevsFile`.
+ *   `commit.template` is not among them: Station commits with `-m`, which
+ *   never reads it.
  *
- * These are the READ refusals, applied by every coding git read. Before the
- * operator's COMMIT or PUSH, which run with the operator's credentials and
- * signing, these are refused as well: every `http.*` key, a remote NAMED by
- * an address, a `core.fsmonitor` that is a program rather than the builtin
- * daemon's
- * boolean, and a PARTIAL CLONE (`extensions.partialClone`,
+ * These are the READ refusals. Where git reads the repository's config
+ * itself (`live`: checkout, worktree provisioning, the review workspace),
+ * `include`/`includeIf` are refused too: more configuration from another
+ * file, read when git runs rather than when Station judged this one. A read
+ * resolves includes once, into its own copy (`git-read-repository.ts`).
+ * Before the operator's COMMIT or PUSH, which run with the operator's
+ * credentials and signing, these are refused as well: every `http.*` key, a
+ * remote NAMED by an address, a `core.fsmonitor` that is a program rather
+ * than the builtin daemon's boolean, and a PARTIAL CLONE (`extensions.partialClone`,
  * `remote.<name>.promisor`, `remote.<name>.partialCloneFilter`).
  *
  * PARTIAL CLONES. With a promisor remote, a missing object makes any command
@@ -70,8 +70,10 @@
  * `commit --trailer`), `sendemail.*`, `imap.*`, `instaweb.*`, `web.browser`,
  * `browser.*`, `man.*`, `gui.*`, `guitool.*`. `remote.<name>.url` itself is
  * what every clone has; a push validates it, and no read connects to it.
- * `core.hooksPath` (husky) and a boolean `core.fsmonitor` are overridden by
- * the runner on every call, and so is `protocol.*` (re-enabling a transport
+ * `core.hooksPath` (husky), a boolean `core.fsmonitor`, `core.editor` and
+ * `core.pager` are overridden by the runner on every call (a
+ * `pager.<command>` or `sequence.editor` only runs on a terminal or in an
+ * interactive rebase, neither of which Station has), and so is `protocol.*` (re-enabling a transport
  * such as `ext::`): the runner's `GIT_ALLOW_PROTOCOL` outranks every config
  * file, and `git clone -c protocol.file.allow=always` leaves that key in an
  * ordinary clone.
@@ -86,7 +88,15 @@
  */
 import { execGit } from '../../utils/git-exec.js';
 
-export type RepositoryConfigPurpose = 'read' | 'write';
+/**
+ * - `read`: git runs with Station's own copy of this configuration
+ *   (`git-read-repository.ts`), in which includes are already resolved.
+ * - `live`: git reads the repository's configuration itself (checkout,
+ *   worktree provisioning, the review workspace), so more configuration
+ *   included from another file is refused: it would be read when git runs.
+ * - `write`: the operator's Commit and Push.
+ */
+export type RepositoryConfigPurpose = 'read' | 'live' | 'write';
 
 /**
  * `extensions.*` keys (lowercased) that only describe how the repository's
@@ -110,8 +120,7 @@ const READ_REFUSED = [
   /^diff\.external$/,
   /^diff\..+\.(?:textconv|command)$/,
   /^credential\./,
-  /^core\.(?:sshcommand|askpass|gitproxy|alternaterefscommand|editor|pager)$/,
-  /^sequence\.editor$/,
+  /^core\.(?:sshcommand|askpass|gitproxy|alternaterefscommand)$/,
   /^gpg\./,
   /^gc\.recentobjectshook$/,
   /^uploadpack\./,
@@ -119,10 +128,6 @@ const READ_REFUSED = [
   /^url\..+\.(?:insteadof|pushinsteadof)$/,
   /^http\.(?:.+\.)?(?:proxy[a-z]*|cookiefile|savecookies)$/,
   /^fetch\.bundleuri$/,
-  // More configuration from another file, read when git runs rather than
-  // when Station judged this one.
-  /^include\./,
-  /^includeif\./,
   // A file git reads and acts on by name. Pointed outside the Project (by an
   // absolute path, or through a link) it answers questions about a file the
   // member cannot read: which names its patterns match, which authors it
@@ -135,8 +140,17 @@ const READ_REFUSED = [
 ];
 
 /** Keys (lowercased) refused before an operator commit or push. */
-const WRITE_REFUSED = [
+/** Also refused where git reads the repository's configuration itself. */
+const LIVE_REFUSED = [
   ...READ_REFUSED,
+  // More configuration from another file, read when git runs rather than
+  // when Station judged this one.
+  /^include\./,
+  /^includeif\./,
+];
+
+const WRITE_REFUSED = [
+  ...LIVE_REFUSED,
   /^extensions\.partialclone$/,
   /^remote\..+\.(?:promisor|partialclonefilter)$/,
   // Everything under `http.`: where a push connects, what it trusts and
@@ -170,15 +184,17 @@ function refused(
   if (lower.startsWith('extensions.') && !SAFE_EXTENSIONS.has(lower)) {
     return true;
   }
-  // `pager.<command>` is a boolean, or the program to page that command with.
-  if (lower.startsWith('pager.')) return !BOOLEAN_VALUE.test(value ?? '');
   // `submodule.<name>.update=!command` runs the command.
   if (/^submodule\..+\.update$/.test(lower)) {
     return (value ?? '').trimStart().startsWith('!');
   }
-  return (purpose === 'read' ? READ_REFUSED : WRITE_REFUSED).some((rule) =>
-    rule.test(lower),
-  );
+  const rules =
+    purpose === 'read'
+      ? READ_REFUSED
+      : purpose === 'live'
+        ? LIVE_REFUSED
+        : WRITE_REFUSED;
+  return rules.some((rule) => rule.test(lower));
 }
 
 export type RepositoryConfigVerdict =
@@ -199,24 +215,40 @@ export async function checkRepositoryConfig(
   cwd: string,
   purpose: RepositoryConfigPurpose,
   gitArgs: readonly string[] = [],
-  env?: NodeJS.ProcessEnv,
 ): Promise<RepositoryConfigVerdict> {
   let stdout: string;
   try {
     ({ stdout } = await execGit(
       [...gitArgs, 'config', '--show-scope', '--null', '--list'],
-      {
-        cwd,
-        encoding: 'utf-8',
-        timeout: 10_000,
-        maxBuffer: 4 * 1024 * 1024,
-        ...(env ? { env } : {}),
-      },
+      { cwd, encoding: 'utf-8', timeout: 10_000, maxBuffer: 4 * 1024 * 1024 },
     ));
   } catch {
     return { ok: false, code: 'repository-config-unreadable' };
   }
   return judgeRepositoryConfig(stdout, purpose);
+}
+
+/** One configuration entry, as git lists it. `value` is `null` for a
+ * key written with no `=` at all. */
+export interface RepositoryConfigEntry {
+  scope: string;
+  key: string;
+  value: string | null;
+}
+
+/** Judges entries of the repository's own scopes (`local`, `worktree`). */
+export function judgeRepositoryConfigEntries(
+  entries: readonly RepositoryConfigEntry[],
+  purpose: RepositoryConfigPurpose,
+): RepositoryConfigVerdict {
+  const keys = new Set<string>();
+  for (const { scope, key, value } of entries) {
+    if (scope !== 'local' && scope !== 'worktree') continue;
+    if (refused(key, value, purpose)) keys.add(key);
+  }
+  return keys.size === 0
+    ? { ok: true }
+    : { ok: false, code: 'repository-config-refused', keys: [...keys].sort() };
 }
 
 /**
@@ -230,17 +262,15 @@ export function judgeRepositoryConfig(
   purpose: RepositoryConfigPurpose,
 ): RepositoryConfigVerdict {
   const tokens = stdout.split('\0');
-  const keys = new Set<string>();
+  const entries: RepositoryConfigEntry[] = [];
   for (let index = 0; index + 1 < tokens.length; index += 2) {
-    const scope = tokens[index];
-    if (scope !== 'local' && scope !== 'worktree') continue;
     const record = tokens[index + 1];
     const newline = record.indexOf('\n');
-    const key = newline === -1 ? record : record.slice(0, newline);
-    const value = newline === -1 ? null : record.slice(newline + 1);
-    if (refused(key, value, purpose)) keys.add(key);
+    entries.push({
+      scope: tokens[index],
+      key: newline === -1 ? record : record.slice(0, newline),
+      value: newline === -1 ? null : record.slice(newline + 1),
+    });
   }
-  return keys.size === 0
-    ? { ok: true }
-    : { ok: false, code: 'repository-config-refused', keys: [...keys].sort() };
+  return judgeRepositoryConfigEntries(entries, purpose);
 }

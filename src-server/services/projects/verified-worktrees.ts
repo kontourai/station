@@ -1,6 +1,7 @@
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { lstat, realpath } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
+import { readSmallRegularFile } from './git-directory-confinement.js';
 import { resolveProjectRepositoryForRead } from './git-read-repository.js';
 
 /** Enough for any real set of session worktrees; bounds a hostile one. */
@@ -46,19 +47,8 @@ export async function listVerifiedWorktrees(
       timeout: timeoutMs,
       maxBuffer: 1024 * 1024,
     };
-    common = realpathSync(
-      (
-        await execGit(
-          [
-            ...repository.repoArgs,
-            'rev-parse',
-            '--path-format=absolute',
-            '--git-common-dir',
-          ],
-          opts,
-        )
-      ).stdout.trim(),
-    );
+    // The common directory the check validated, not one asked for again.
+    common = repository.commonDir;
     listing = (
       await execGit(
         [...repository.repoArgs, 'worktree', 'list', '--porcelain'],
@@ -73,22 +63,35 @@ export async function listVerifiedWorktrees(
   for (const line of listing.split('\n')) {
     if (!line.startsWith('worktree ')) continue;
     if (verified.length >= WORKTREE_LIST_LIMIT) break;
-    const checkout = leadsBackTo(line.slice('worktree '.length), common);
+    const checkout = await leadsBackTo(line.slice('worktree '.length), common);
     if (checkout) verified.push(checkout);
   }
   return verified;
 }
 
-/** `path`'s realpath when its `.git` leads back to `common`, else null. */
-function leadsBackTo(path: string, common: string): string | null {
+/**
+ * `path`'s realpath when its `.git` leads back to `common`, else null.
+ * `path` is whatever the repository's writers registered, so its `.git` is
+ * read as a member-controlled file: not followed if it is a link, not
+ * waited on if it is a FIFO, not read if it is not small.
+ */
+async function leadsBackTo(
+  path: string,
+  common: string,
+): Promise<string | null> {
   try {
-    const checkout = realpathSync(path);
+    const checkout = await realpath(path);
     const dotGit = join(checkout, '.git');
-    if (statSync(dotGit).isDirectory())
-      return realpathSync(dotGit) === common ? checkout : null;
-    const pointer = /^gitdir: (.+)$/m.exec(readFileSync(dotGit, 'utf-8'));
+    const stats = await lstat(dotGit);
+    if (stats.isDirectory()) {
+      return (await realpath(dotGit)) === common ? checkout : null;
+    }
+    if (!stats.isFile()) return null;
+    const pointer = /^gitdir: ([^\r\n]+)/.exec(
+      (await readSmallRegularFile(dotGit, 8 * 1024))?.toString('utf8') ?? '',
+    );
     if (!pointer) return null;
-    const gitdir = realpathSync(resolve(checkout, pointer[1].trim()));
+    const gitdir = await realpath(resolve(checkout, pointer[1].trim()));
     return dirname(gitdir) === join(common, 'worktrees') ? checkout : null;
   } catch {
     return null;

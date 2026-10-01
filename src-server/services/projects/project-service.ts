@@ -192,7 +192,8 @@ async function checkWorktreeDirectory(
       // a member-writable folder can name any repository on this computer,
       // and worktree isolation would then branch and check THAT one out.
       try {
-        await requireProjectRepository(resolve(expandTilde(workingDirectory)));
+        const folder = resolve(expandTilde(workingDirectory));
+        await requireProjectRepository(folder, folder);
         return;
       } catch (error) {
         if (!(error instanceof ProjectRepositoryRefusedError)) throw error;

@@ -73,8 +73,6 @@ export interface CheckoutRemoteReadOptions {
    * folder). Absent, git discovers it from `absolutePath`.
    */
   gitArgs?: readonly string[];
-  /** Environment for that git call (the coding reads' config snapshot). */
-  gitEnv?: NodeJS.ProcessEnv;
 }
 
 export type CheckoutRemoteReader = (
@@ -163,7 +161,6 @@ export const readCheckoutRemotes: CheckoutRemoteReader = async (
     ({ stdout } = await execGit([...(options?.gitArgs ?? []), 'remote', '-v'], {
       cwd: absolutePath,
       timeout: timeoutMs,
-      ...(options?.gitEnv ? { env: options.gitEnv } : {}),
     }));
   } catch (error) {
     const code = (error as { code?: unknown }).code;

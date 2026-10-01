@@ -1,6 +1,6 @@
 /**
- * Which repository a git READ (status, log, diff, branches, the repository
- * listing, a file's changes) may act on for a folder of a Project.
+ * Which repository git may act on for a folder of a Project, and how a READ
+ * (status, log, diff, branches, the repository listing, a checkpoint) runs.
  *
  * git discovers its repository from the folder it runs in, and a Project's
  * folders are member-writable. A `.git` FILE can name another repository's
@@ -13,71 +13,87 @@
  *
  * So ONE discovery runs in the requested folder, and nothing else. The pair
  * it reports (work tree, git directory) is classified by where the work
- * tree starts, checked, and handed back as explicit `--git-dir`/
- * `--work-tree` arguments for every later call: git never discovers again,
- * so a `.git` swapped after the check is not followed by a second lookup.
+ * tree starts and checked ({@link resolveProjectRepositoryForRead}).
  *
- * WHAT A SWAP CAN STILL DO, and what narrows it. The arguments name a PATH,
- * and git opens it when it runs. A member can swap `.git`, or a folder above
+ * WHAT A READ RUNS GIT WITH. Not the repository's git directory: a
+ * directory Station owns, built once per read ({@link
+ * openRepositorySnapshot}) and named with `--git-dir`. It holds
+ * - `config`: the repository's own configuration as git listed it at that
+ *   moment, written out again key by key. Includes are already resolved in
+ *   it, per-worktree configuration is already folded in, and
+ *   `extensions.worktreeConfig` is not carried, so git reads no
+ *   `config.worktree` and no included file later;
+ * - `HEAD`, and a COPY of the index (a read never writes the member's);
+ * - `objects`, `refs` and `packed-refs`, linked back to the repository.
+ * `info/attributes`, hooks and reflogs are not carried. A repository's
+ * config can name programs (a clean filter, a diff driver), and it can be
+ * rewritten in place between Station judging it and git reading it; this
+ * way the bytes Station judged are the only configuration git has, and
+ * in-tree `.gitattributes` can only select a filter or driver they do not
+ * define.
+ *
+ * WHAT A SWAP CAN STILL DO. `objects` and `refs` are links to PATHS, and
+ * git opens them when it runs. A member can swap `.git`, or a folder above
  * the repository, after the check and put it back afterwards. git cannot be
  * handed an already-opened directory, so the check cannot be made atomic
- * with the command.
- *
- * For a READ, {@link readProjectRepository} checks again afterwards and
- * discards the output unless everything the check looked at has the same
- * identity and change times as before (the guard's `unchanged`: the folders
- * down to the repository, the `.git` entry, every directory listed, and the
- * files that steer git). What that leaves:
+ * with the command. {@link readProjectRepository} checks again afterwards
+ * and discards the output unless everything the check looked at has the
+ * same identity and change times as before (the guard's `unchanged`). What
+ * that leaves:
  * - a swap-and-restore that the file system's change times do not record.
- *   A rename updates the renamed entry's change time on APFS, ext4, XFS and
- *   Btrfs, and the containing folder's times everywhere; the folder the
- *   repository sits DIRECTLY in the member-writable root is watched by its
- *   own change time alone, because the root's times change whenever
- *   anything is created in it. The clock's tick is nanoseconds on APFS and
- *   up to a few milliseconds where Linux stamps files from its coarse
- *   clock; a check-read-check spans several git processes and outlasts
- *   that in practice, which is an observation, not a proof;
+ *   A rename updates the renamed entry's change time on APFS (measured);
+ *   ext4, XFS and Btrfs document the same and were NOT measured here. The
+ *   folder the repository sits DIRECTLY in the member-writable root is
+ *   watched by its own change time alone, because the root's times change
+ *   whenever anything is created in it. Where Linux stamps files from its
+ *   coarse clock, a swap-and-restore inside one tick (a few milliseconds)
+ *   is not recorded; a check-read-check spans several git processes and
+ *   outlasts that in practice, which is an observation, not a proof;
  * - content a member can reach WITHOUT a link, such as a hard link to
  *   another repository's object file. That takes an account that can
  *   already read that file.
  *
- * For a WRITE (checkout) there is nothing to discard. The check is repeated
- * immediately before git starts and the identity of what was checked is
- * compared afterwards, which reports a swap but cannot undo it.
- *
- * WHAT A READ RUNS. A repository's config can name programs (a clean filter,
- * a diff driver), and config can be rewritten in place between Station
- * judging it and git reading it. So a read does not read the repository's
- * config at all: {@link readProjectRepository} copies it ONCE into a
- * directory Station owns, has git use that directory as the repository's
- * common directory (`GIT_COMMON_DIR`, with `objects` and `refs` linked
- * back), and the judgement and every git call of the read see those same
- * bytes. `info/attributes` is not carried over, per-worktree config is
- * folded into the copy, and in-tree `.gitattributes` can only select a
- * filter or driver that the copy does not define.
+ * It also means a repository that is being written (a commit landing, an
+ * object being added) reads as changed. The read is repeated a few times
+ * and then answered `busy`, which is not a refusal: a new entry in a
+ * fan-out directory is exactly what a linked loose object looks like, and
+ * one planted during the read and replaced by an ordinary file afterwards
+ * cannot be told from an honest write once it is over.
  */
+import { constants } from 'node:fs';
 import {
   copyFile,
   lstat,
   mkdir,
   mkdtemp,
-  open,
+  opendir,
   realpath,
   rm,
   symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
-import { gitDirectoryInsideProject } from './git-directory-confinement.js';
+import {
+  type GitDirectoryCheckOptions,
+  gitDirectoryInsideProject,
+  readSmallRegularFile,
+} from './git-directory-confinement.js';
+import {
+  judgeRepositoryConfigEntries,
+  type RepositoryConfigEntry,
+} from './git-repository-config.js';
 
 export type ProjectRepositoryForRead =
   | {
       ok: true;
       /** The work tree's root, symlink-resolved. Run git here. */
       top: string;
-      /** `--git-dir=… --work-tree=…`, to prefix every git call with. */
+      /**
+       * `--git-dir=… --work-tree=…` naming the repository ITSELF. For a
+       * write; a read runs git with a snapshot's arguments instead.
+       */
       repoArgs: string[];
       /** Symlink-resolved. */
       gitDir: string;
@@ -100,13 +116,15 @@ export interface ProjectRepositoryReadOptions {
   /**
    * The verified worktrees of the Project's repository (session worktrees
    * and the main checkout), symlink-resolved, from `listVerifiedWorktrees`
-   * (which trusts the Project's repository only when it is its own). Asked for only when the
-   * folder's work tree is neither inside the Project nor above it. Absent:
-   * there are none.
+   * (which trusts the Project's repository only when it is its own). Asked
+   * for only when the folder's work tree is neither inside the Project nor
+   * above it. Absent: there are none.
    */
   registeredWorktrees?: () => Promise<readonly string[]>;
   /** Deadline for each discovery call. A deadline throws; it is not "no". */
   timeoutMs?: number;
+  /** See `GitDirectoryCheckOptions.storage`. */
+  storage?: GitDirectoryCheckOptions['storage'];
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -138,11 +156,11 @@ type Discovery =
 
 /**
  * What git discovers from `cwd`: the work tree's root, its git directory
- * and its common directory, from one `rev-parse`, each symlink-resolved. Not found when
- * git finds no work tree there (not a repository, a bare one, a folder
- * inside `.git`). `rev-parse` cannot NUL-terminate paths, so anything but
- * exactly three lines (a path holding a line break) is `unparseable` and is
- * never guessed at.
+ * and its common directory, from one `rev-parse`, each symlink-resolved.
+ * Not found when git finds no work tree there (not a repository, a bare
+ * one, a folder inside `.git`). `rev-parse` cannot NUL-terminate paths, so
+ * anything but exactly three lines (a path holding a line break) is
+ * `unparseable` and is never guessed at.
  */
 async function discover(cwd: string, timeoutMs: number): Promise<Discovery> {
   let stdout: string;
@@ -186,9 +204,11 @@ async function confined(
   found: { top: string; gitDir: string; commonDir: string },
   projectRoot: string,
   alsoMemberWritable: readonly string[],
+  storage: GitDirectoryCheckOptions['storage'],
 ): Promise<ProjectRepositoryForRead> {
   const verdict = await gitDirectoryInsideProject(found.top, projectRoot, {
     alsoMemberWritable,
+    storage,
   });
   if (verdict.verdict === 'outside') return refused(verdict.reason);
   if (
@@ -209,7 +229,7 @@ async function confined(
 }
 
 /**
- * The repository a read of `folder` may act on, or why there is none.
+ * The repository git may act on for `folder`, or why there is none.
  * `projectRoot` and `folder` are symlink-resolved, and `folder` is one the
  * caller already admitted (inside the Project, a registered worktree, or
  * the checkout above the Project).
@@ -244,7 +264,7 @@ export async function resolveProjectRepositoryForRead(
     if (!within(folder, top)) {
       return refused('its git directory names a work tree elsewhere');
     }
-    return confined(found, projectRoot, []);
+    return confined(found, projectRoot, [], options.storage);
   }
   if (within(projectRoot, top)) {
     const confirmed = within(found.gitDir, projectRoot)
@@ -273,20 +293,22 @@ export async function resolveProjectRepositoryForRead(
   // Only the worktree's root: a repository nested in a session worktree is
   // not the Project's.
   if (!worktrees.includes(top)) return NOT_A_REPOSITORY;
-  return confined(found, projectRoot, [top]);
+  return confined(found, projectRoot, [top], options.storage);
 }
 
 /**
  * The Project's own repository at `folder`, or a refusal, for a caller that
  * is about to run git there and has no request to answer: the repository
  * git would discover from a member-writable folder is not trusted (a `.git`
- * file there can name any repository on this computer). `projectRoot`
- * defaults to the folder itself, for callers given a Project's working
- * directory. Both are resolved through symlinks here.
+ * file there can name any repository on this computer). `projectRoot` is
+ * the member-writable root `folder` is in (the Project's working directory;
+ * the folder itself when that is what the caller was given). Both are
+ * resolved through symlinks here.
  */
 export async function requireProjectRepository(
   folder: string,
-  projectRoot: string = folder,
+  projectRoot: string,
+  options: Pick<ProjectRepositoryReadOptions, 'storage'> = {},
 ): Promise<Extract<ProjectRepositoryForRead, { ok: true }>> {
   let root: string;
   let target: string;
@@ -296,7 +318,11 @@ export async function requireProjectRepository(
   } catch {
     throw new ProjectRepositoryRefusedError('the folder does not exist');
   }
-  const repository = await resolveProjectRepositoryForRead(root, target);
+  const repository = await resolveProjectRepositoryForRead(
+    root,
+    target,
+    options,
+  );
   if (repository.ok) return repository;
   throw new ProjectRepositoryRefusedError(
     repository.state === 'refused'
@@ -312,7 +338,7 @@ export async function requireProjectRepository(
  */
 export async function ownRepositoryGitArgs(
   folder: string,
-  projectRoot: string = folder,
+  projectRoot: string,
 ): Promise<{ top: string; args: string[]; unchanged: () => Promise<boolean> }> {
   const repository = await requireProjectRepository(folder, projectRoot);
   return {
@@ -334,31 +360,71 @@ export class ProjectRepositoryRefusedError extends Error {
 /** The most bytes of a repository file Station copies for a read. */
 const MAX_SNAPSHOT_FILE_BYTES = 1024 * 1024;
 
+/** Keys that are not carried into a snapshot's config. See the header. */
+const NOT_CARRIED = [
+  /^extensions\.worktreeconfig$/,
+  /^core\.(?:worktree|bare)$/,
+  /^include\./,
+  /^includeif\./,
+];
+
+const CONFIG_NAME = /^[A-Za-z0-9-]+$/;
+
 /**
- * The bytes of a regular file, opened without following a link, or `null`
- * when it is absent. Anything else (a link, a directory, an oversized
- * file) throws: it is not copied and not guessed at.
+ * Configuration text git parses back to exactly `entries`, or `null` when
+ * an entry cannot be written (a key git itself would not have produced).
+ * Every value is quoted, with the escapes git reads inside quotes, so no
+ * value can end a line, open a section or start a comment.
  */
-async function regularFileBytes(path: string): Promise<Buffer | null> {
-  let stats: Awaited<ReturnType<typeof lstat>>;
-  try {
-    stats = await lstat(path);
-  } catch {
-    return null;
+export function serializeRepositoryConfig(
+  entries: readonly Pick<RepositoryConfigEntry, 'key' | 'value'>[],
+): string | null {
+  const lines: string[] = [];
+  for (const { key, value } of entries) {
+    const first = key.indexOf('.');
+    const last = key.lastIndexOf('.');
+    if (first <= 0 || last === key.length - 1) return null;
+    const section = key.slice(0, first);
+    const name = key.slice(last + 1);
+    const subsection = first === last ? null : key.slice(first + 1, last);
+    if (!CONFIG_NAME.test(section) || !CONFIG_NAME.test(name)) return null;
+    if (subsection !== null && /[\n\0]/.test(subsection)) return null;
+    if (value?.includes('\0')) return null;
+    lines.push(
+      subsection === null
+        ? `[${section}]`
+        : `[${section} "${subsection.replace(/[\\"]/g, '\\$&')}"]`,
+    );
+    lines.push(
+      value === null
+        ? `\t${name}`
+        : `\t${name} = "${value
+            .replace(/[\\"]/g, '\\$&')
+            .replace(/\n/g, '\\n')
+            .replace(/\t/g, '\\t')
+            .replace(/[\b]/g, '\\b')}"`,
+    );
   }
-  if (!stats.isFile() || stats.size > MAX_SNAPSHOT_FILE_BYTES) {
-    throw new Error('not a regular file of a size Station copies');
+  return `${lines.join('\n')}\n`;
+}
+
+/** `git config --list --show-scope --show-origin -z`, parsed. */
+function parseConfigListing(
+  stdout: string,
+): Array<RepositoryConfigEntry & { origin: string }> {
+  const tokens = stdout.split('\0');
+  const entries: Array<RepositoryConfigEntry & { origin: string }> = [];
+  for (let index = 0; index + 2 < tokens.length; index += 3) {
+    const record = tokens[index + 2];
+    const newline = record.indexOf('\n');
+    entries.push({
+      scope: tokens[index],
+      origin: tokens[index + 1],
+      key: newline === -1 ? record : record.slice(0, newline),
+      value: newline === -1 ? null : record.slice(newline + 1),
+    });
   }
-  const handle = await open(path, 'r');
-  try {
-    const bytes = await handle.readFile();
-    if (bytes.length > MAX_SNAPSHOT_FILE_BYTES) {
-      throw new Error('not a regular file of a size Station copies');
-    }
-    return bytes;
-  } finally {
-    await handle.close();
-  }
+  return entries;
 }
 
 /** Links `target` at `path`; a file is copied where links need privilege. */
@@ -384,40 +450,127 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+/** A git directory Station owns, standing in for a repository's. */
+export interface RepositorySnapshot {
+  /** `--git-dir=<the copy> --work-tree=<top>`, for every git call. */
+  repoArgs: string[];
+  /** The repository's own configuration, as carried into the copy. */
+  config: RepositoryConfigEntry[];
+  /**
+   * Links directories of the common directory (named relative to it) into
+   * the copy, so git reaches them through it: a checkpoint's refs and
+   * their reflogs. With `create`, each is created in the repository first
+   * when missing; without, a missing one is left out.
+   */
+  link: (names: readonly string[], create: boolean) => Promise<void>;
+  dispose: () => Promise<void>;
+}
+
+export type RepositorySnapshotResult =
+  | { ok: true; snapshot: RepositorySnapshot }
+  /** The configuration includes a file from outside the repository. */
+  | { ok: false; state: 'config-refused'; keys: string[] }
+  | { ok: false; state: 'config-unreadable' }
+  | { ok: false; state: 'refused'; reason: string };
+
+export interface RepositorySnapshotOptions {
+  /** Copy the index too (status and diff need it). */
+  index?: boolean;
+  timeoutMs?: number;
+}
+
 /**
- * A common directory Station owns, standing in for the repository's during
- * one read (see WHAT A READ RUNS in the header). `null` when the
- * repository's config cannot be copied as it stands.
+ * Builds the Station-owned git directory described in the header for a
+ * repository {@link resolveProjectRepositoryForRead} admitted. The caller
+ * judges `config` and must `dispose` it.
  */
-async function snapshotCommonDirectory(repository: {
-  gitDir: string;
-  commonDir: string;
-}): Promise<{ dir: string; env: NodeJS.ProcessEnv } | null> {
-  const { gitDir, commonDir } = repository;
-  const dir = await mkdtemp(join(tmpdir(), 'station-git-read-'));
+export async function openRepositorySnapshot(
+  repository: Extract<ProjectRepositoryForRead, { ok: true }>,
+  options: RepositorySnapshotOptions = {},
+): Promise<RepositorySnapshotResult> {
+  const { top, gitDir, commonDir } = repository;
+  let listing: Array<RepositoryConfigEntry & { origin: string }>;
   try {
-    const config = await regularFileBytes(join(commonDir, 'config'));
-    if (!config) throw new Error('no config');
-    // Per-worktree config is read from the git directory only when the
-    // config enables it; folded in here so git reads nothing later.
-    const worktreeConfig = /worktreeconfig/i.test(config.toString('latin1'))
-      ? await regularFileBytes(join(gitDir, 'config.worktree'))
-      : null;
-    await writeFile(
-      join(dir, 'config'),
-      worktreeConfig
-        ? Buffer.concat([
-            config,
-            Buffer.from('\n'),
-            worktreeConfig,
-            Buffer.from('\n[extensions]\n\tworktreeConfig = false\n'),
-          ])
-        : config,
-      { mode: 0o600 },
-    );
+    // The one time git reads the repository's configuration for this read.
+    // `git config` runs no filter, hook or helper.
+    listing = parseConfigListing(
+      (
+        await execGit(
+          [
+            ...repository.repoArgs,
+            'config',
+            '--list',
+            '--show-scope',
+            '--show-origin',
+            '-z',
+          ],
+          {
+            cwd: top,
+            encoding: 'utf-8',
+            timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+            maxBuffer: 4 * 1024 * 1024,
+          },
+        )
+      ).stdout,
+    ).filter((entry) => entry.scope === 'local' || entry.scope === 'worktree');
+  } catch (error) {
+    if (timedOut(error)) throw error;
+    return { ok: false, state: 'config-unreadable' };
+  }
+  // Every file the configuration came from is the repository's own: its
+  // config, its per-worktree config, or a file an include names INSIDE the
+  // work tree or the git directory. One from anywhere else would put a
+  // file the member cannot read into the configuration git runs with.
+  const origins = new Set(listing.map((entry) => entry.origin));
+  for (const origin of origins) {
+    let file: string | null = null;
+    if (origin.startsWith('file:')) {
+      try {
+        file = await realpath(resolve(top, origin.slice('file:'.length)));
+      } catch {
+        file = null;
+      }
+    }
+    if (
+      !file ||
+      !(within(file, top) || within(file, commonDir) || within(file, gitDir))
+    ) {
+      return { ok: false, state: 'config-refused', keys: ['include.path'] };
+    }
+  }
+  const config = listing.map(({ scope, key, value }) => ({
+    scope,
+    key,
+    value,
+  }));
+  const text = serializeRepositoryConfig(
+    config.filter(
+      (entry) =>
+        !NOT_CARRIED.some((rule) => rule.test(entry.key.toLowerCase())),
+    ),
+  );
+  if (text === null) return { ok: false, state: 'config-unreadable' };
+
+  const dir = await mkdtemp(join(tmpdir(), 'station-git-read-'));
+  const fail = async (reason: string): Promise<RepositorySnapshotResult> => {
+    await rm(dir, { recursive: true, force: true });
+    return { ok: false, state: 'refused', reason };
+  };
+  try {
+    const head = await readSmallRegularFile(join(gitDir, 'HEAD'), 4096);
+    if (!head) return await fail('.git/HEAD is missing');
+    await writeFile(join(dir, 'config'), text, { mode: 0o600 });
+    await writeFile(join(dir, 'HEAD'), head);
     await linkOrCopy(join(commonDir, 'objects'), join(dir, 'objects'), 'dir');
     await linkOrCopy(join(commonDir, 'refs'), join(dir, 'refs'), 'dir');
     if (await exists(join(commonDir, 'reftable'))) {
+      // A linked worktree keeps its own HEAD in its own reftable stack,
+      // which a single directory cannot stand in for.
+      if (gitDir !== commonDir) {
+        return await fail(
+          'it is a linked worktree of a repository that stores its refs as a reftable, which Station does not read',
+        );
+      }
       await linkOrCopy(
         join(commonDir, 'reftable'),
         join(dir, 'reftable'),
@@ -429,16 +582,55 @@ async function snapshotCommonDirectory(repository: {
         await linkOrCopy(join(commonDir, file), join(dir, file), 'file');
       }
     }
-    const exclude = await regularFileBytes(join(commonDir, 'info', 'exclude'));
+    const exclude = await readSmallRegularFile(
+      join(commonDir, 'info', 'exclude'),
+      MAX_SNAPSHOT_FILE_BYTES,
+    );
     if (exclude) {
       await mkdir(join(dir, 'info'));
       await writeFile(join(dir, 'info', 'exclude'), exclude);
     }
-    return { dir, env: { GIT_COMMON_DIR: dir } };
+    if (options.index) {
+      const index = join(gitDir, 'index');
+      const stats = await lstat(index).catch(() => null);
+      if (stats && !stats.isFile()) {
+        return await fail('.git/index is not an ordinary file');
+      }
+      if (stats) {
+        // A copy: git may refresh it, and the member's is never written.
+        await copyFile(index, join(dir, 'index'), constants.COPYFILE_FICLONE);
+        // A split index names its shared half by file name beside it.
+        for await (const entry of await opendir(gitDir)) {
+          if (entry.isFile() && entry.name.startsWith('sharedindex.')) {
+            await linkOrCopy(
+              join(gitDir, entry.name),
+              join(dir, entry.name),
+              'file',
+            );
+          }
+        }
+      }
+    }
   } catch {
-    await rm(dir, { recursive: true, force: true });
-    return null;
+    return await fail('.git holds a file Station could not copy');
   }
+  return {
+    ok: true,
+    snapshot: {
+      repoArgs: [`--git-dir=${dir}`, `--work-tree=${top}`],
+      config,
+      link: async (names, create) => {
+        for (const name of names) {
+          if (await exists(join(dir, name))) continue;
+          if (create) await mkdir(join(commonDir, name), { recursive: true });
+          else if (!(await exists(join(commonDir, name)))) continue;
+          await mkdir(dirname(join(dir, name)), { recursive: true });
+          await linkOrCopy(join(commonDir, name), join(dir, name), 'dir');
+        }
+      },
+      dispose: () => rm(dir, { recursive: true, force: true }),
+    },
+  };
 }
 
 /** What a read runs git with. */
@@ -446,28 +638,34 @@ export interface ReadRepository {
   top: string;
   /** `--git-dir=… --work-tree=…`, to prefix every git call with. */
   repoArgs: string[];
-  /** The environment every git call of the read must carry. */
-  repoEnv: NodeJS.ProcessEnv;
 }
 
-/** Attempts before a repository that keeps changing is refused. */
-const READ_ATTEMPTS = 3;
+/** Attempts before a repository that keeps changing is answered `busy`. */
+const READ_ATTEMPTS = 4;
+/** Pause before each further attempt, times the attempt's number. */
+const READ_RETRY_PAUSE_MS = 40;
 
 export type ProjectRepositoryRead<T> =
   | { ok: true; top: string; value: T }
   | { ok: false; state: 'not-a-repository' }
-  | { ok: false; state: 'refused'; reason: string };
+  | { ok: false; state: 'refused'; reason: string }
+  /** The repository's own config sets `keys`, which Station does not run
+   * git with (`git-repository-config.ts`), or could not be read at all. */
+  | { ok: false; state: 'config-refused'; keys: string[] }
+  | { ok: false; state: 'config-unreadable' }
+  /** It kept changing while it was read. Not a refusal: try again. */
+  | { ok: false; state: 'busy' };
 
 /**
- * Runs `read` against the repository {@link resolveProjectRepositoryForRead}
- * admits, and returns its result only if the repository is unchanged
- * afterwards. A change (a commit landing, git refreshing its own index, or
- * a swapped `.git`) discards the result and reads again, a bounded number
- * of times; a repository that never holds still is refused. A `read` that
+ * Runs `read` against a snapshot of the repository {@link
+ * resolveProjectRepositoryForRead} admits, after judging the snapshot's
+ * config, and returns its result only if the repository is unchanged
+ * afterwards. A change (a commit landing, an object being written, or a
+ * swapped `.git`) discards the result and reads again, a bounded number of
+ * times; a repository that never holds still is `busy`. A `read` that
  * throws is treated the same way while the repository is changing, so a
  * failure caused by a swap is never reported in git's words. Every git call
- * `read` makes must carry `repoArgs` AND `repoEnv`: the environment is what
- * keeps git on the copied config (see WHAT A READ RUNS in the header).
+ * `read` makes must carry the `repoArgs` it is given.
  */
 export async function readProjectRepository<T>(
   projectRoot: string,
@@ -476,41 +674,48 @@ export async function readProjectRepository<T>(
   read: (repository: ReadRepository) => Promise<T>,
 ): Promise<ProjectRepositoryRead<T>> {
   for (let attempt = 0; attempt < READ_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((done) =>
+        setTimeout(done, READ_RETRY_PAUSE_MS * attempt),
+      );
+    }
     const repository = await resolveProjectRepositoryForRead(
       projectRoot,
       folder,
-      options,
+      { ...options, storage: 'read' },
     );
     if (!repository.ok) return repository;
-    const snapshot = await snapshotCommonDirectory(repository);
-    if (!snapshot) {
-      return {
-        ok: false,
-        state: 'refused',
-        reason: '.git/config or .git/info/exclude is not an ordinary file',
-      };
+    const opened = await openRepositorySnapshot(repository, {
+      index: true,
+      timeoutMs: options.timeoutMs,
+    });
+    if (!opened.ok) {
+      // A refusal reached while the repository was changing may be the
+      // change's doing (a half-written config); look again first.
+      if (!(await repository.unchanged())) continue;
+      return opened;
     }
+    const { snapshot } = opened;
     let outcome: { value: T } | { error: unknown };
     try {
+      const verdict = judgeRepositoryConfigEntries(snapshot.config, 'read');
+      if (!verdict.ok) {
+        if (!(await repository.unchanged())) continue;
+        return verdict.code === 'repository-config-refused'
+          ? { ok: false, state: 'config-refused', keys: verdict.keys }
+          : { ok: false, state: 'config-unreadable' };
+      }
       outcome = {
-        value: await read({
-          top: repository.top,
-          repoArgs: repository.repoArgs,
-          repoEnv: snapshot.env,
-        }),
+        value: await read({ top: repository.top, repoArgs: snapshot.repoArgs }),
       };
     } catch (error) {
       outcome = { error };
     } finally {
-      await rm(snapshot.dir, { recursive: true, force: true });
+      await snapshot.dispose();
     }
     if (!(await repository.unchanged())) continue;
     if ('error' in outcome) throw outcome.error;
     return { ok: true, top: repository.top, value: outcome.value };
   }
-  return {
-    ok: false,
-    state: 'refused',
-    reason: '.git kept changing while Station read it',
-  };
+  return { ok: false, state: 'busy' };
 }

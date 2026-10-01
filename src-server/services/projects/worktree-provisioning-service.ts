@@ -536,7 +536,10 @@ export class WorktreeProvisioningService {
     // check out whichever one git finds. Only the folder's own repository
     // is provisioned from, and every call below names it (`repo`) rather
     // than letting git discover it again.
-    const repository = await this.ownRepository(request.repoPath);
+    const repository = await this.ownRepository(
+      request.repoPath,
+      request.repoPath,
+    );
     const repoRoot = repository.top;
     const repo = repository.args;
 
@@ -561,7 +564,7 @@ export class WorktreeProvisioningService {
       // Unreadable is not "nothing refused": refuse rather than check out.
       throw new WorktreeRepositoryConfigError([]);
     }
-    const verdict = judgeRepositoryConfig(configList, 'read');
+    const verdict = judgeRepositoryConfig(configList, 'live');
     if (!verdict.ok) {
       throw new WorktreeRepositoryConfigError(
         verdict.code === 'repository-config-refused' ? verdict.keys : [],

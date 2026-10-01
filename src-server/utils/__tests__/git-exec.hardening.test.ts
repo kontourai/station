@@ -410,9 +410,12 @@ describe.skipIf(process.platform === 'win32')(
         [['cat-file', '-p', 'HEAD:README.md']],
         [['checkout', '--', 'README.md']],
       ])('execGit %j neither runs the helper nor connects', async (args) => {
-        expect(await settledWithin(execGit(args, { cwd: repo }))).not.toBe(
-          'hung',
-        );
+        // Bounded by the runner itself: should a change ever let git start
+        // the fetch, the process group is killed and this fails, rather
+        // than a fetch outliving the test.
+        expect(
+          await settledWithin(execGit(args, { cwd: repo, timeout: 8_000 })),
+        ).not.toBe('hung');
         await settle();
         expect(existsSync(marker)).toBe(false);
         expect(connections).toBe(0);
@@ -423,15 +426,18 @@ describe.skipIf(process.platform === 'win32')(
           execGitSync(['show', 'HEAD:README.md'], {
             cwd: repo,
             stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: 8_000,
           });
         } catch {
           // The object is missing; failing is the expected outcome.
         }
         await new Promise((resolve) => {
-          spawnGit(['diff'], { cwd: repo, stdio: 'ignore' }).on(
-            'close',
-            resolve,
-          );
+          const child = spawnGit(['diff'], { cwd: repo, stdio: 'ignore' });
+          const stop = setTimeout(() => child.kill('SIGKILL'), 8_000);
+          child.on('close', () => {
+            clearTimeout(stop);
+            resolve(undefined);
+          });
         });
         await settle();
         expect(existsSync(marker)).toBe(false);

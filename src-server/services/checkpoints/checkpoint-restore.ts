@@ -5,13 +5,18 @@ import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { execGit } from '../../utils/git-exec.js';
 import { JsonFileStore } from '../infra/json-store.js';
-import { requireProjectRepository } from '../projects/git-read-repository.js';
-import { checkRepositoryConfig } from '../projects/git-repository-config.js';
+import { judgeRepositoryConfigEntries } from '../projects/git-repository-config.js';
 import type {
   CheckpointIndexStore,
   TurnCheckpointPhase,
 } from './checkpoint-index-store.js';
-import type { CheckpointRefStore } from './checkpoint-ref-store.js';
+import {
+  type CheckpointRefStore,
+  type CheckpointRepository,
+  CheckpointRepositoryRefused,
+  dropNestedRepositoryChanges,
+  withCheckpointRepository,
+} from './checkpoint-ref-store.js';
 import { CHECKPOINT_MUTATION_LOCK } from './checkpoint-retention.js';
 
 const RESTORE_GIT_TIMEOUT_MS = 60_000;
@@ -199,10 +204,16 @@ export class CheckpointRestoreService {
     if (input.isAuthorized?.() === false)
       throw new CheckpointRestoreError('authorization_changed');
     const recoveryRef = `refs/station/restore-recovery/${input.previewId}`;
-    await execGit(['update-ref', recoveryRef, currentTree], {
-      cwd: preview.repoRoot,
-      timeout: RESTORE_GIT_TIMEOUT_MS,
-      encoding: 'utf-8',
+    await inOwnRepository(preview.repoRoot, async (repository) => {
+      await assertStillOwn(repository);
+      await execGit(
+        [...repository.repoArgs, 'update-ref', recoveryRef, currentTree],
+        {
+          cwd: repository.top,
+          timeout: RESTORE_GIT_TIMEOUT_MS,
+          encoding: 'utf-8',
+        },
+      );
     });
     const previous = [...this.audit.read().events]
       .reverse()
@@ -266,18 +277,10 @@ export class CheckpointRestoreService {
     // A restore cleans and rewrites the work tree of whichever repository
     // git finds from this folder, and the folder is member-writable: only
     // the folder's own repository is restored into.
-    try {
-      await requireProjectRepository(phase.repoRoot);
-    } catch {
-      throw new CheckpointRestoreError('workspace_changed');
-    }
-    const canonicalRoot = (
-      await execGit(['rev-parse', '--show-toplevel'], {
-        cwd: phase.repoRoot,
-        timeout: RESTORE_GIT_TIMEOUT_MS,
-        encoding: 'utf-8',
-      })
-    ).stdout.trim();
+    const canonicalRoot = await inOwnRepository(
+      phase.repoRoot,
+      async (repository) => repository.top,
+    );
     return { ...phase, repoRoot: canonicalRoot };
   }
 
@@ -298,32 +301,88 @@ export class CheckpointRestoreService {
   }
 }
 
-async function changedPaths(repoRoot: string, current: string, target: string) {
-  const output = await execGit(
-    ['diff', '--name-status', '--no-renames', '-z', current, target, '--'],
-    { cwd: repoRoot, timeout: RESTORE_GIT_TIMEOUT_MS, encoding: 'utf-8' },
-  );
-  const fields = output.stdout.split('\0').filter(Boolean);
-  return fields.flatMap((field, index) => {
-    if (index % 2 !== 0) return [];
-    return [{ status: field, path: fields[index + 1] ?? '' }];
-  });
+/**
+ * Runs `run` against a snapshot of `repoRoot`'s own repository
+ * (`withCheckpointRepository`): the repository is named on every git call,
+ * never discovered from the folder, and git runs with the config that was
+ * judged here, not one read again from `.git/config`.
+ *
+ * #2410: a snapshot of the work tree runs `add -A` (a repository-defined
+ * clean filter) and materializing runs `read-tree -u` (a smudge filter), as
+ * the operator. A repository whose own config defines one is refused, by
+ * the rule the coding routes and checkpoint capture apply.
+ */
+async function inOwnRepository<T>(
+  repoRoot: string,
+  run: (repository: CheckpointRepository) => Promise<T>,
+): Promise<T> {
+  try {
+    return await withCheckpointRepository(
+      repoRoot,
+      { timeoutMs: RESTORE_GIT_TIMEOUT_MS },
+      (repository) => {
+        const verdict = judgeRepositoryConfigEntries(repository.config, 'read');
+        if (!verdict.ok) {
+          throw new CheckpointRestoreError(
+            verdict.code === 'repository-config-refused'
+              ? 'repository_config_refused'
+              : 'repository_config_unreadable',
+          );
+        }
+        return run(repository);
+      },
+    );
+  } catch (error) {
+    if (!(error instanceof CheckpointRepositoryRefused)) throw error;
+    throw new CheckpointRestoreError(
+      error.reason === 'repository_config_refused'
+        ? 'repository_config_refused'
+        : 'workspace_changed',
+    );
+  }
 }
 
 /**
- * #2410: the snapshot below runs `add -A` (a repository-defined clean
- * filter) and materializing runs `read-tree -u` (a smudge filter), as the
- * operator. A repository whose own config defines one is refused, by the
- * rule the coding routes and checkpoint capture apply.
+ * Immediately before anything is written, cleaned or checked out: the
+ * repository must still be the folder's own and the same files. A `.git`
+ * swapped in the moment between this and git opening the path is still
+ * followed.
  */
-async function assertRepositoryConfigRunnable(repoRoot: string) {
-  const verdict = await checkRepositoryConfig(repoRoot, 'read');
-  if (!verdict.ok)
-    throw new CheckpointRestoreError(
-      verdict.code === 'repository-config-refused'
-        ? 'repository_config_refused'
-        : 'repository_config_unreadable',
+async function assertStillOwn(repository: CheckpointRepository): Promise<void> {
+  if (!(await repository.stillOwn())) {
+    throw new CheckpointRestoreError('workspace_changed');
+  }
+}
+
+function changedPaths(repoRoot: string, current: string, target: string) {
+  return inOwnRepository(repoRoot, async (repository) => {
+    const output = await execGit(
+      [
+        ...repository.repoArgs,
+        'diff',
+        '--name-status',
+        '--no-renames',
+        '-z',
+        current,
+        target,
+        '--',
+      ],
+      {
+        cwd: repository.top,
+        timeout: RESTORE_GIT_TIMEOUT_MS,
+        encoding: 'utf-8',
+      },
     );
+    const fields = output.stdout.split('\0').filter(Boolean);
+    return fields.flatMap((field, index) => {
+      if (index % 2 !== 0) return [];
+      return [{ status: field, path: fields[index + 1] ?? '' }];
+    });
+  });
+}
+
+function assertRepositoryConfigRunnable(repoRoot: string): Promise<void> {
+  return inOwnRepository(repoRoot, async () => undefined);
 }
 
 async function withTemporaryIndex<T>(
@@ -337,39 +396,42 @@ async function withTemporaryIndex<T>(
   }
 }
 
-async function snapshotWorkingTree(repoRoot: string): Promise<string> {
-  return withTemporaryIndex(async (index) => {
-    const options = {
-      cwd: repoRoot,
+/** git in `repository`, with a temporary index. */
+function indexedGit(repository: CheckpointRepository, index: string) {
+  return (args: string[], options: { input?: string } = {}) =>
+    execGit([...repository.repoArgs, ...args], {
+      cwd: repository.top,
       encoding: 'utf-8' as const,
       timeout: RESTORE_GIT_TIMEOUT_MS,
       env: { GIT_INDEX_FILE: index },
-    };
-    await execGit(['read-tree', 'HEAD'], options);
-    await execGit(['add', '-A', '--', '.'], options);
-    return (await execGit(['write-tree'], options)).stdout.trim();
-  });
+      ...options,
+    });
 }
 
-async function materializeTree(
-  repoRoot: string,
-  commitSha: string,
-): Promise<void> {
-  await withTemporaryIndex(async (index) => {
-    const options = {
-      cwd: repoRoot,
-      encoding: 'utf-8' as const,
-      timeout: RESTORE_GIT_TIMEOUT_MS,
-      env: { GIT_INDEX_FILE: index },
-    };
-    await execGit(['read-tree', 'HEAD'], options);
-    // Remove only untracked, non-ignored files. Ignored build/config material is not part of checkpoints.
-    await execGit(['clean', '-fd', '--', '.'], options);
-    await execGit(
-      ['read-tree', '--reset', '-u', `${commitSha}^{tree}`],
-      options,
-    );
-  });
+function snapshotWorkingTree(repoRoot: string): Promise<string> {
+  return inOwnRepository(repoRoot, (repository) =>
+    withTemporaryIndex(async (index) => {
+      const git = indexedGit(repository, index);
+      await git(['read-tree', 'HEAD']);
+      await git(['add', '-A', '--', '.']);
+      await dropNestedRepositoryChanges(git);
+      return (await git(['write-tree'])).stdout.trim();
+    }),
+  );
+}
+
+function materializeTree(repoRoot: string, commitSha: string): Promise<void> {
+  return inOwnRepository(repoRoot, (repository) =>
+    withTemporaryIndex(async (index) => {
+      const git = indexedGit(repository, index);
+      await git(['read-tree', 'HEAD']);
+      await assertStillOwn(repository);
+      // Remove only untracked, non-ignored files. Ignored build/config material is not part of checkpoints.
+      await git(['clean', '-fd', '--', '.']);
+      await assertStillOwn(repository);
+      await git(['read-tree', '--reset', '-u', `${commitSha}^{tree}`]);
+    }),
+  );
 }
 
 class CheckpointRestoreError extends Error {

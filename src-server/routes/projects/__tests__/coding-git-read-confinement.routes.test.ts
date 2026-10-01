@@ -32,8 +32,16 @@ import { CheckpointRefStore } from '../../../services/checkpoints/checkpoint-ref
 import { GitReviewWorkspaceSource } from '../../../services/evidence/git-review-workspace-source.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
-import { gitDirectoryInsideProject } from '../../../services/projects/git-directory-confinement.js';
-import { readProjectRepository } from '../../../services/projects/git-read-repository.js';
+import {
+  gitDirectoryInsideProject,
+  NotARegularFileError,
+  readSmallRegularFile,
+} from '../../../services/projects/git-directory-confinement.js';
+import {
+  readProjectRepository,
+  serializeRepositoryConfig,
+} from '../../../services/projects/git-read-repository.js';
+import { listVerifiedWorktrees } from '../../../services/projects/verified-worktrees.js';
 import { WorktreeProvisioningService } from '../../../services/projects/worktree-provisioning-service.js';
 import { execGit } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
@@ -367,7 +375,10 @@ describe.skipIf(process.platform === 'win32')(
       });
     });
 
-    test('a `.git` flipped between the member’s own repository and a link to an outside one never leaks it', async () => {
+    // A smoke test of the whole path under a racing process. It is NOT what
+    // proves the after-read check (it passes without it more often than
+    // not): the deterministic swap tests under `readProjectRepository` are.
+    test('smoke: a `.git` flipped by another process between the member’s own repository and a link to an outside one leaks nothing', async () => {
       const outside = outsideRepository();
       const outsideHead = git(outside, ['rev-parse', 'HEAD']);
       repo(project, { 'README.md': '# project\n' });
@@ -963,10 +974,12 @@ describe.skipIf(process.platform === 'win32')(
     function ownRepository(): { folder: string; outside: string } {
       const outside = outsideRepository();
       repo(project, { 'README.md': '# project\n' });
+      // On a branch named as the outside repository's is: a read keeps the
+      // HEAD it copied, so only a branch of that name resolves over there.
       const folder = repo(
         join(project, 'sub'),
         { 'own.txt': 'own\n' },
-        { subject: 'member work' },
+        { subject: 'member work', branch: OUTSIDE_BRANCH },
       );
       return { folder, outside };
     }
@@ -980,10 +993,7 @@ describe.skipIf(process.platform === 'win32')(
 
     test('a .git swapped for a link during the read and put back afterwards: the output is discarded', async () => {
       const { folder, outside } = ownRepository();
-      writeFileSync(
-        join(folder, '.git-file'),
-        `gitdir: ${join(outside, '.git')}\n`,
-      );
+      symlinkSync(join(outside, '.git'), join(folder, '.git-link'));
       const seen: string[] = [];
 
       const result = await readProjectRepository(
@@ -992,25 +1002,21 @@ describe.skipIf(process.platform === 'win32')(
         {},
         async (repository) => {
           renameSync(join(folder, '.git'), join(folder, '.git-real'));
-          renameSync(join(folder, '.git-file'), join(folder, '.git'));
+          renameSync(join(folder, '.git-link'), join(folder, '.git'));
           try {
             const read = await subject(repository);
             seen.push(read);
             return read;
           } finally {
-            renameSync(join(folder, '.git'), join(folder, '.git-file'));
+            renameSync(join(folder, '.git'), join(folder, '.git-link'));
             renameSync(join(folder, '.git-real'), join(folder, '.git'));
           }
         },
       );
 
       // Live: every read went through the link, to the outside repository.
-      expect(seen).toEqual([OUTSIDE_SUBJECT, OUTSIDE_SUBJECT, OUTSIDE_SUBJECT]);
-      expect(result).toEqual({
-        ok: false,
-        state: 'refused',
-        reason: '.git kept changing while Station read it',
-      });
+      expect(seen).toEqual(Array(4).fill(OUTSIDE_SUBJECT));
+      expect(result).toEqual({ ok: false, state: 'busy' });
     });
 
     test('alternates planted during the read and removed afterwards: the output is discarded', async () => {
@@ -1045,7 +1051,7 @@ describe.skipIf(process.platform === 'win32')(
         },
       );
 
-      expect(seen).toEqual([SECRET, SECRET, SECRET]);
+      expect(seen).toEqual(Array(4).fill(SECRET));
       expect(result.ok).toBe(false);
     });
 
@@ -1083,12 +1089,8 @@ describe.skipIf(process.platform === 'win32')(
       );
 
       // Live: by that path git read the outside repository, every time.
-      expect(seen).toEqual([OUTSIDE_SUBJECT, OUTSIDE_SUBJECT, OUTSIDE_SUBJECT]);
-      expect(result).toEqual({
-        ok: false,
-        state: 'refused',
-        reason: '.git kept changing while Station read it',
-      });
+      expect(seen).toEqual(Array(4).fill(OUTSIDE_SUBJECT));
+      expect(result).toEqual({ ok: false, state: 'busy' });
     });
 
     test('config rewritten in place during the read to name programs: none runs, and the output is discarded', async () => {
@@ -1125,7 +1127,7 @@ describe.skipIf(process.platform === 'win32')(
           writeFileSync(attributes, '*.txt diff=evil filter=evil\n');
           writeFileSync(join(project, 'a.txt'), `two ${reads}\n`);
           try {
-            const options = { cwd: repository.top, env: repository.repoEnv };
+            const options = { cwd: repository.top };
             await execGit(
               [...repository.repoArgs, 'status', '--porcelain'],
               options,
@@ -1141,12 +1143,195 @@ describe.skipIf(process.platform === 'win32')(
 
       expect(ran(), 'a program the rewritten config names ran').toBe(0);
       // The rewrite was noticed, and what was read is not returned.
-      expect(reads).toBe(3);
+      expect(reads).toBe(4);
       expect(result.ok).toBe(false);
       // Control: plain git, reading the repository's own config, runs it.
       writeFileSync(config, hostile);
       git(project, ['diff']);
       expect(ran(), 'control: plain git runs the program').toBeGreaterThan(0);
+    });
+
+    /** A program that records it ran, and config that makes a clean filter of it. */
+    function plantedFilter(): { filter: string; ran: () => number } {
+      const marker = join(root, 'ran.log');
+      const program = join(root, 'program.sh');
+      writeFileSync(program, `#!/bin/sh\necho ran >> '${marker}'\ncat\n`, {
+        mode: 0o755,
+      });
+      return {
+        filter: `[filter "evil"]\n\tclean = ${program}\n`,
+        ran: () =>
+          existsSync(marker)
+            ? readFileSync(marker, 'utf-8').split('\n').filter(Boolean).length
+            : 0,
+      };
+    }
+
+    test.each([
+      ['the repository itself', false],
+      ['a linked worktree', true],
+    ])(
+      'per-worktree config written during the read (%s) is not read: its filter does not run',
+      async (_name, linked) => {
+        repo(project, {
+          'a.txt': 'one\n',
+          '.gitattributes': '* filter=evil\n',
+        });
+        git(project, ['config', 'extensions.worktreeConfig', 'true']);
+        let folder = project;
+        let worktreeConfig = join(project, '.git', 'config.worktree');
+        if (linked) {
+          folder = join(project, 'lane');
+          git(project, ['worktree', 'add', '-q', '-b', 'lane', folder]);
+          worktreeConfig = join(
+            project,
+            '.git',
+            'worktrees',
+            'lane',
+            'config.worktree',
+          );
+        }
+        writeFileSync(join(folder, 'a.txt'), 'two\n');
+        const { filter, ran } = plantedFilter();
+        let reads = 0;
+
+        await readProjectRepository(project, folder, {}, async (repository) => {
+          reads += 1;
+          // After Station copied and judged the configuration.
+          writeFileSync(worktreeConfig, filter);
+          try {
+            const options = { cwd: repository.top };
+            await execGit(
+              [...repository.repoArgs, 'status', '--porcelain'],
+              options,
+            );
+            return (await execGit([...repository.repoArgs, 'diff'], options))
+              .stdout;
+          } finally {
+            rmSync(worktreeConfig);
+          }
+        });
+
+        expect(reads).toBeGreaterThan(0);
+        expect(ran(), 'the per-worktree filter ran').toBe(0);
+        // Control: plain git reads the per-worktree config and runs it.
+        writeFileSync(worktreeConfig, filter);
+        git(folder, ['diff']);
+        expect(ran(), 'control: plain git runs the filter').toBeGreaterThan(0);
+      },
+    );
+
+    test('per-worktree config that ends in a line continuation does not keep the extension on, and its keys are judged', async () => {
+      repo(project, {
+        'a.txt': 'one\n',
+        '.gitattributes': '* filter=evil\n',
+      });
+      git(project, ['config', 'extensions.worktreeConfig', 'true']);
+      const { filter, ran } = plantedFilter();
+      // Ends in a backslash: text appended after it would be swallowed.
+      writeFileSync(
+        join(project, '.git', 'config.worktree'),
+        '[core]\n\tabbrev = 12\\',
+      );
+      writeFileSync(join(project, 'a.txt'), 'two\n');
+      let listed = '';
+
+      const result = await readProjectRepository(
+        project,
+        project,
+        {},
+        async (repository) => {
+          const options = { cwd: repository.top };
+          listed = (
+            await execGit(
+              [...repository.repoArgs, 'config', '--show-scope', '--list'],
+              options,
+            )
+          ).stdout;
+          // Now a filter, where the per-worktree config would be read from.
+          writeFileSync(join(project, '.git', 'config.worktree'), filter);
+          try {
+            return (await execGit([...repository.repoArgs, 'diff'], options))
+              .stdout;
+          } finally {
+            writeFileSync(
+              join(project, '.git', 'config.worktree'),
+              '[core]\n\tabbrev = 12\\',
+            );
+          }
+        },
+      );
+
+      // The key was folded into the copy, and the extension is not in it.
+      expect(listed).toMatch(/^local\tcore\.abbrev=12$/m);
+      expect(listed).not.toMatch(/worktreeconfig/i);
+      expect(listed).not.toMatch(/^worktree\t/m);
+      expect(ran()).toBe(0);
+      expect(result.ok).toBe(false);
+
+      // And a filter that IS there when Station copies it is refused.
+      writeFileSync(join(project, '.git', 'config.worktree'), filter);
+      expect(
+        await readProjectRepository(project, project, {}, async () => 'read'),
+      ).toEqual({
+        ok: false,
+        state: 'config-refused',
+        keys: ['filter.evil.clean'],
+      });
+    });
+
+    test('a loose object linked in during the read and replaced by an ordinary file afterwards: the output is discarded', async () => {
+      const { folder, outside } = ownRepository();
+      const outsideHead = git(outside, ['rev-parse', 'HEAD']);
+      const objects = [
+        outsideHead,
+        git(outside, ['rev-parse', 'HEAD^{tree}']),
+        git(outside, ['rev-parse', 'HEAD:secret.txt']),
+      ].map((object) =>
+        join('.git', 'objects', object.slice(0, 2), object.slice(2)),
+      );
+      for (const object of objects) {
+        mkdirSync(dirname(join(folder, object)), { recursive: true });
+      }
+      const seen: string[] = [];
+
+      const result = await readProjectRepository(
+        project,
+        folder,
+        {},
+        async (repository) => {
+          for (const object of objects) {
+            symlinkSync(join(outside, object), join(folder, object));
+          }
+          try {
+            const read = (
+              await execGit(
+                [
+                  ...repository.repoArgs,
+                  'cat-file',
+                  '-p',
+                  `${outsideHead}:secret.txt`,
+                ],
+                { cwd: repository.top },
+              )
+            ).stdout.trim();
+            seen.push(read);
+            return read;
+          } finally {
+            // Gone again, with an ordinary file left in its place: what an
+            // honest write to the object store looks like afterwards.
+            for (const object of objects) {
+              rmSync(join(folder, object));
+              writeFileSync(join(folder, `${object}.decoy`), '');
+              rmSync(join(folder, `${object}.decoy`));
+              writeFileSync(join(dirname(join(folder, object)), 'decoy'), '');
+            }
+          }
+        },
+      );
+
+      expect(seen[0]).toBe(SECRET);
+      expect(result).toEqual({ ok: false, state: 'busy' });
     });
 
     test('a change during the first read only: the read is repeated and the second answer is returned', async () => {
@@ -1349,6 +1534,40 @@ describe.skipIf(process.platform === 'win32')(
       ).toHaveLength(1);
     });
 
+    test('an independent review does not check out a repository whose own config names a smudge filter', async () => {
+      repo(project, {
+        'a.txt': 'one\n',
+        '.gitattributes': '*.txt filter=evil\n',
+      });
+      const base = git(project, ['rev-parse', 'HEAD']);
+      writeFileSync(join(project, 'a.txt'), 'two\n');
+      git(project, ['commit', '-q', '-am', 'second']);
+      const head = git(project, ['rev-parse', 'HEAD']);
+      const marker = join(root, 'ran.log');
+      const program = join(root, 'program.sh');
+      writeFileSync(program, `#!/bin/sh\necho ran >> '${marker}'\ncat\n`, {
+        mode: 0o755,
+      });
+      git(project, ['config', 'filter.evil.smudge', program]);
+
+      await expect(
+        new GitReviewWorkspaceSource(
+          { workspace: () => project },
+          join(root, 'review-workspaces'),
+        ).open({
+          kind: 'git-range',
+          projectSlug: 'acme',
+          baseRevision: base,
+          headRevision: head,
+        }),
+      ).rejects.toThrow(/filter\.evil\.smudge/);
+
+      expect(existsSync(marker), 'the smudge filter ran').toBe(false);
+      // Control: plain git checking a worktree out runs it.
+      git(project, ['worktree', 'add', '-q', '--detach', join(root, 'plain')]);
+      expect(existsSync(marker), 'control: plain git runs it').toBe(true);
+    });
+
     test('a checkpoint capture writes nothing into an outside repository', async () => {
       const outside = plantedProject();
       const refs = () => git(outside, ['for-each-ref']);
@@ -1488,6 +1707,134 @@ describe.skipIf(process.platform === 'win32')(
       renameSync(join(folder, '.git'), join(folder, '.git-real'));
       mkdirSync(join(folder, '.git'));
       expect(await verdict.sameIdentity()).toBe(false);
+    });
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  'the configuration a read runs git with',
+  () => {
+    test('git parses the written configuration back to exactly the entries it was written from', () => {
+      const entries = [
+        { key: 'core.abbrev', value: '12' },
+        { key: 'core.bare', value: null },
+        { key: 'user.name', value: ' leading and trailing ' },
+        { key: 'alias.x', value: 'a "quoted" \\ back\\slash' },
+        { key: 'alias.y', value: 'line one\nline two\ttabbed' },
+        { key: 'alias.z', value: 'ends in a backslash\\' },
+        { key: 'alias.hash', value: 'not # a comment ; either' },
+        {
+          key: 'alias.inject',
+          value: 'x"\n[filter "evil"]\n\tclean = touch /tmp/x',
+        },
+        { key: 'remote.a "b" \\ c.d.url', value: 'https://example.test/x.git' },
+        { key: 'branch.feature/x.remote', value: '' },
+      ];
+      const text = serializeRepositoryConfig(entries);
+      if (text === null) throw new Error('not written');
+      const file = join(root, 'written.gitconfig');
+      writeFileSync(file, text);
+
+      const listed = git(root, ['config', '--file', file, '--list', '-z'])
+        .split('\0')
+        .filter(Boolean)
+        .map((record) => {
+          const newline = record.indexOf('\n');
+          return newline === -1
+            ? { key: record, value: null }
+            : {
+                key: record.slice(0, newline),
+                value: record.slice(newline + 1),
+              };
+        });
+
+      expect(listed).toEqual(entries);
+      expect(
+        serializeRepositoryConfig([{ key: 'nodot', value: 'x' }]),
+      ).toBeNull();
+      expect(
+        serializeRepositoryConfig([{ key: 'a.b\nc.d', value: 'x' }]),
+      ).toBeNull();
+    });
+
+    test('an include of a file inside the repository is read once and applied; one from outside is refused by name', async () => {
+      repo(project, {
+        'README.md': '# project\n',
+        'shared.gitconfig': '[status]\n\tshowUntrackedFiles = no\n',
+      });
+      writeFileSync(join(project, 'untracked.txt'), 'x\n');
+      git(project, ['config', 'include.path', '../shared.gitconfig']);
+
+      const inside = await read('status', project);
+      expect(inside.status).toBe(200);
+      // The included setting applied: untracked files are not listed.
+      expect(inside.json.data.changes).toEqual([]);
+
+      const elsewhere = join(root, 'elsewhere.gitconfig');
+      writeFileSync(elsewhere, '[status]\n\tshowUntrackedFiles = no\n');
+      git(project, ['config', 'include.path', elsewhere]);
+      const outsideInclude = await read('status', project);
+      expect(outsideInclude.status).toBe(409);
+      expect(outsideInclude.json.code).toBe('repository-config-refused');
+      expect(outsideInclude.json.keys).toEqual(['include.path']);
+      expect(outsideInclude.json.error).toContain('include.path');
+      expect(outsideInclude.json.error).toContain('git config --local --unset');
+    });
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  'member-controlled paths are read without following or waiting',
+  () => {
+    test('readSmallRegularFile reads a small file, and refuses a link, a FIFO and a large file', async () => {
+      const dir = join(root, 'files');
+      mkdirSync(dir);
+      writeFileSync(join(dir, 'small'), 'gitdir: x\n');
+      symlinkSync(join(dir, 'small'), join(dir, 'link'));
+      execFileSync('mkfifo', [join(dir, 'fifo')]);
+      writeFileSync(join(dir, 'large'), Buffer.alloc(4096));
+
+      expect(
+        (await readSmallRegularFile(join(dir, 'small'), 64))?.toString(),
+      ).toBe('gitdir: x\n');
+      expect(await readSmallRegularFile(join(dir, 'absent'), 64)).toBeNull();
+      for (const name of ['link', 'fifo', 'large']) {
+        await expect(
+          readSmallRegularFile(join(dir, name), 64),
+        ).rejects.toBeInstanceOf(NotARegularFileError);
+      }
+    });
+
+    test('a registered worktree whose .git is a FIFO does not hold the server', async () => {
+      repo(project, { 'README.md': '# project\n' });
+      // A registration written by hand, naming a folder whose `.git` is a
+      // FIFO: reading it the ordinary way waits for a writer forever.
+      const entry = join(project, '.git', 'worktrees', 'x');
+      mkdirSync(entry, { recursive: true });
+      mkdirSync(join(project, 'w'));
+      writeFileSync(join(entry, 'gitdir'), `${join(project, 'w', '.git')}\n`);
+      writeFileSync(join(entry, 'HEAD'), 'ref: refs/heads/main\n');
+      writeFileSync(join(entry, 'commondir'), '../..\n');
+      execFileSync('mkfifo', [join(project, 'w', '.git')]);
+      expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
+        `worktree ${join(project, 'w')}`,
+      );
+      let ticks = 0;
+      const ticking = setInterval(() => {
+        ticks += 1;
+      }, 20);
+
+      const listed = await Promise.race([
+        listVerifiedWorktrees(project, 10_000),
+        new Promise<'held'>((resolve) =>
+          setTimeout(() => resolve('held'), 5_000),
+        ),
+      ]);
+      clearInterval(ticking);
+
+      expect(listed).toEqual([project]);
+      // The event loop kept turning while it ran.
+      expect(ticks).toBeGreaterThan(0);
     });
   },
 );

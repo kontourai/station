@@ -33,7 +33,7 @@
  *    - `core.fsmonitor=false`: a repo-local fsmonitor hook would otherwise
  *      run on `git status`, which the Project page calls on mount.
  *    - NO SUBMODULE IS ENTERED OR REPORTED. `diff.ignoreSubmodules=all`,
- *      `diff.submodule=short`, `status.submoduleSummary=false`, and
+ *      `status.submoduleSummary=false`, and
  *      `--ignore-submodules=all` forced onto `status` and every command that
  *      prints a diff (the flag, because a `.gitmodules`
  *      `submodule.<name>.ignore=none` outranks the setting). A nested
@@ -531,7 +531,6 @@ function hardeningSettings(
   return [
     ...(options.operatorHooks ? [] : [`core.hooksPath=${HOOKS_DISABLED}`]),
     'diff.ignoreSubmodules=all',
-    'diff.submodule=short',
     'status.submoduleSummary=false',
     'core.fsmonitor=false',
     'core.pager=cat',

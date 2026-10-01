@@ -271,7 +271,7 @@ function changesTouchPolicy(changes: readonly ReviewPathChange[]): boolean {
 async function revision(root: string, rev: string): Promise<string> {
   // The trusted policy must come from the Project's own repository, not
   // from one a `.git` planted in its member-writable folder names.
-  const repository = await ownRepositoryGitArgs(root);
+  const repository = await ownRepositoryGitArgs(root, root);
   const value = (
     await execGit([
       ...repository.args,
@@ -289,7 +289,7 @@ async function gitShow(
   sha: string,
   path: string,
 ): Promise<string> {
-  const repository = await ownRepositoryGitArgs(root);
+  const repository = await ownRepositoryGitArgs(root, root);
   return (
     await execGit([...repository.args, 'show', `${sha}:${path}`], {
       encoding: 'utf8',

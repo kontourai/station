@@ -10,6 +10,7 @@ import type {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { execGit } from '../../utils/git-exec.js';
 import { ownRepositoryGitArgs } from '../projects/git-read-repository.js';
+import { checkRepositoryConfig } from '../projects/git-repository-config.js';
 import type {
   ReadOnlyReviewWorkspace,
   ReviewWorkspaceSource,
@@ -71,7 +72,10 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
     // any repository on this computer, and a review checks out and reads
     // whichever one git finds. Only the Project's own is reviewed, and it
     // is named on every call rather than discovered again.
-    const repository = await ownRepositoryGitArgs(configuredWorkspace);
+    const repository = await ownRepositoryGitArgs(
+      configuredWorkspace,
+      configuredWorkspace,
+    );
     const canonicalRepoRoot = repository.top;
     const inspection = await inspectGitReviewRange(canonicalRepoRoot, input);
     const { target } = inspection;
@@ -89,6 +93,29 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
       if (retained.length >= this.#maxWorkspaces) {
         throw new Error(
           'Review workspace capacity is exhausted by protected workspaces.',
+        );
+      }
+      // `worktree add` checks the head out, which runs a smudge filter the
+      // repository's own config defines, as the operator. Refused by the
+      // rule worktree provisioning applies (`git-repository-config.ts`),
+      // and the repository must still be the one that was checked when the
+      // checkout starts. The config is read again by git itself, so one
+      // rewritten in the moment between this and the checkout still runs.
+      const config = await checkRepositoryConfig(
+        repository.top,
+        'live',
+        repository.args.slice(2),
+      );
+      if (!config.ok) {
+        throw new Error(
+          config.code === 'repository-config-refused'
+            ? `Review target repository's own git configuration sets ${config.keys.join(', ')}, which Station does not check out with.`
+            : "Review target repository's git configuration could not be read.",
+        );
+      }
+      if (!(await repository.unchanged())) {
+        throw new Error(
+          'Review target repository changed while it was checked.',
         );
       }
       try {
@@ -154,7 +181,7 @@ export async function inspectGitReviewRange(
 ): Promise<GitReviewRangeInspection> {
   // Callers pass a Project's folder or its repository's root; either way
   // the repository must be that folder's own (see `open`).
-  const repository = await ownRepositoryGitArgs(repositoryRoot);
+  const repository = await ownRepositoryGitArgs(repositoryRoot, repositoryRoot);
   const baseSha = await resolveCommit(repository.args, input.baseRevision);
   const headSha = await resolveCommit(repository.args, input.headRevision);
   if (baseSha === headSha)

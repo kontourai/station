@@ -1,18 +1,70 @@
 /**
  * Whether a checkout's git directory belongs to the Project (#2363), shared
  * by everything that runs git in a member-writable folder: the coding
- * toolbar's Commit and Push, and every coding git read
- * (`git-read-repository.ts`).
+ * toolbar's Commit and Push, and everything that resolves a repository
+ * through `git-read-repository.ts`.
  */
-import type { BigIntStats, Dirent } from 'node:fs';
-import { lstat, opendir, readFile, realpath } from 'node:fs/promises';
+import { type BigIntStats, constants } from 'node:fs';
+import { lstat, open, opendir, realpath } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { execGit } from '../../utils/git-exec.js';
 
 /** Names the repository explicitly, so git never discovers another one. */
 export function repositoryArgs(root: string): string[] {
   return [`--git-dir=${join(root, '.git')}`, `--work-tree=${root}`];
 }
+
+/** Thrown for a path that is there but is not a small regular file. */
+export class NotARegularFileError extends Error {}
+
+/**
+ * The bytes of a small regular file at a member-controlled path, or `null`
+ * when nothing is there. The path is opened without following a link and
+ * without blocking (a FIFO planted there would otherwise hold the caller
+ * until someone wrote to it), and it is the OPENED file that is checked: a
+ * regular file of at most `maxBytes`. Anything else throws.
+ */
+export async function readSmallRegularFile(
+  path: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(
+      path,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    // ELOOP (a link), ENXIO (a socket), EISDIR, EACCES, …
+    throw new NotARegularFileError(`not a readable regular file: ${path}`);
+  }
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile() || stats.size > maxBytes) {
+      throw new NotARegularFileError(`not a small regular file: ${path}`);
+    }
+    const bytes = Buffer.alloc(stats.size);
+    let read = 0;
+    while (read < bytes.length) {
+      const { bytesRead } = await handle.read(
+        bytes,
+        read,
+        bytes.length - read,
+        read,
+      );
+      if (bytesRead === 0) break;
+      read += bytesRead;
+    }
+    return bytes.subarray(0, read);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** A `.git` file, a `commondir` or a `gitdir` pointer is one short line. */
+const MAX_POINTER_BYTES = 8 * 1024;
 
 /**
  * Whether `target`'s git directory is the Project's own (#2363). A `.git`
@@ -26,6 +78,10 @@ export function repositoryArgs(root: string): string[] {
  * A symlinked `.git` is refused outright, and so is a real one whose OWN
  * entries lead elsewhere (`redirectedGitEntry`).
  *
+ * The two directories are found the way git finds them, by reading the
+ * `.git` entry and the `commondir` pointer, not by asking git: this runs
+ * before every read, and a git process costs more than the reads it guards.
+ *
  * `alsoMemberWritable` names further member-writable roots (a session
  * worktree beside the Project): a git directory or common directory inside
  * one counts as inside, and is walked the same way.
@@ -38,10 +94,9 @@ export function repositoryArgs(root: string): string[] {
  *   down to `target` (renaming a folder ABOVE the repository swaps the whole
  *   repository without touching anything inside it), the `.git` entry,
  *   every directory the check listed, and the files whose content steers
- *   git (`commondir`, `config`, `config.worktree`, `info/attributes`). For
- *   after a READ: on `false` the output is discarded. It costs one `lstat`
- *   per path and lists nothing again: adding, removing or renaming an entry
- *   changes its directory's times.
+ *   git (`STEERING_FILES`). For after a READ: on `false` the output is
+ *   discarded. It costs one `lstat` per path and lists nothing again:
+ *   adding, removing or renaming an entry changes its directory's times.
  * - `sameIdentity`: the folders down to `target`, the `.git` entry and the
  *   git directories are still the same files (device and inode), whatever
  *   their times. For after a WRITE, which changes the times itself.
@@ -70,6 +125,14 @@ export type GitDirectoryVerdict =
 
 export interface GitDirectoryCheckOptions {
   alsoMemberWritable?: readonly string[];
+  /**
+   * What the caller's git will read through this directory. `read`: a
+   * Station-owned copy of the per-worktree files with `objects` and `refs`
+   * linked back (`git-read-repository.ts`), which never opens `logs/`, so
+   * reflogs are neither listed nor counted. `all` (the default): the
+   * directory itself, as Commit and Push use it.
+   */
+  storage?: 'read' | 'all';
   /** The walk's bounds; for tests of the bounds themselves. */
   limits?: { entries: number; objectEntries: number };
 }
@@ -123,12 +186,53 @@ interface Stamps {
   listed: Map<string, string>;
 }
 
-/** Files in a git directory whose content steers git. */
+/**
+ * Files in a git directory whose content steers git, and which can be
+ * rewritten in place (which no directory's times record): the config, the
+ * per-worktree config, the attributes, the packed refs (a ref repointed at
+ * another repository's commit), and where HEAD points.
+ */
 const STEERING_FILES = [
   'config',
   'config.worktree',
   join('info', 'attributes'),
+  'packed-refs',
+  'HEAD',
 ];
+
+/**
+ * The git directory and common directory `target/.git` leads to, as git
+ * resolves them: a directory is the git directory; a file names it
+ * (`gitdir: <path>`, relative to `target`); a `commondir` file inside it
+ * names the common directory (relative to the git directory).
+ */
+async function locateGitDirectories(
+  target: string,
+  dotGit: string,
+  dotGitStats: BigIntStats,
+): Promise<{ gitDir: string; commonDir: string } | null> {
+  try {
+    let gitDir: string;
+    if (dotGitStats.isDirectory()) {
+      gitDir = await realpath(dotGit);
+    } else {
+      const pointer = await readSmallRegularFile(dotGit, MAX_POINTER_BYTES);
+      const named = /^gitdir: ([^\r\n]+)/.exec(pointer?.toString('utf8') ?? '');
+      if (!named) return null;
+      gitDir = await realpath(resolve(target, named[1].trim()));
+    }
+    const common = await readSmallRegularFile(
+      join(gitDir, 'commondir'),
+      MAX_POINTER_BYTES,
+    );
+    const commonDir = common
+      ? await realpath(resolve(gitDir, common.toString('utf8').trim()))
+      : gitDir;
+    return { gitDir, commonDir };
+  } catch {
+    return null;
+  }
+}
 
 export async function gitDirectoryInsideProject(
   target: string,
@@ -154,36 +258,17 @@ export async function gitDirectoryInsideProject(
       stamps.pinned.set(folder, await currentStamp(folder));
     }
   }
+  let dotGitStats: BigIntStats;
   try {
-    const stats = await lstat(dotGit, { bigint: true });
-    if (stats.isSymbolicLink()) {
-      return outside('.git is a symbolic link');
-    }
-    stamps.pinned.set(dotGit, stampOf(stats));
+    dotGitStats = await lstat(dotGit, { bigint: true });
   } catch {
     return outside('.git is missing');
   }
-  let gitDir: string;
-  let commonDir: string;
-  try {
-    const { stdout } = await execGit(
-      [
-        ...repositoryArgs(target),
-        'rev-parse',
-        '--path-format=absolute',
-        '--git-dir',
-        '--git-common-dir',
-      ],
-      { cwd: target, encoding: 'utf-8', timeout: 10_000 },
-    );
-    // Exactly two lines: a path holding a line break is not guessed at.
-    const lines = stdout.replace(/\r?\n$/, '').split(/\r?\n/);
-    if (lines.length !== 2) throw new Error('unexpected rev-parse output');
-    gitDir = await realpath(lines[0]);
-    commonDir = await realpath(lines[1]);
-  } catch {
-    return outside('git could not locate its git directory');
-  }
+  if (dotGitStats.isSymbolicLink()) return outside('.git is a symbolic link');
+  stamps.pinned.set(dotGit, stampOf(dotGitStats));
+  const located = await locateGitDirectories(target, dotGit, dotGitStats);
+  if (!located) return outside('git could not locate its git directory');
+  const { gitDir, commonDir } = located;
   const inside = (path: string) =>
     memberWritable.some(
       (writable) => path === writable || path.startsWith(writable + sep),
@@ -192,12 +277,10 @@ export async function gitDirectoryInsideProject(
   // symlinks into, or alternates of, another repository.
   for (const dir of new Set([gitDir, commonDir])) {
     if (!inside(dir)) continue;
-    const redirected = await redirectedGitEntry(
-      dir,
-      inside,
-      stamps,
-      options.limits ?? DEFAULT_LIMITS,
-    );
+    const redirected = await redirectedGitEntry(dir, inside, stamps, {
+      limits: options.limits ?? DEFAULT_LIMITS,
+      reflogs: options.storage !== 'read',
+    });
     if (redirected) return outside(redirected);
   }
   const accepted = (verdict: 'inside' | 'linked-worktree') => ({
@@ -220,13 +303,18 @@ export async function gitDirectoryInsideProject(
     return outside('.git points at a repository outside this Project');
   }
   try {
-    const backPointer = (
-      await readFile(join(gitDir, 'gitdir'), 'utf-8')
-    ).trim();
+    const backPointer = await readSmallRegularFile(
+      join(gitDir, 'gitdir'),
+      MAX_POINTER_BYTES,
+    );
+    if (!backPointer) {
+      return outside('.git points at a repository outside this Project');
+    }
     // git writes it absolute, or relative to the entry it lives in
     // (`worktree.useRelativePaths`, `git worktree add --relative-paths`).
-    return (await realpath(resolve(gitDir, backPointer))) ===
-      (await realpath(dotGit))
+    return (await realpath(
+      resolve(gitDir, backPointer.toString('utf8').trim()),
+    )) === (await realpath(dotGit))
       ? accepted('linked-worktree')
       : outside(".git points at another checkout's worktree entry");
   } catch {
@@ -235,21 +323,19 @@ export async function gitDirectoryInsideProject(
 }
 
 /**
- * The most directory entries the symlink walk will examine in one git
- * directory before giving up. A repository past it is refused as
- * unverifiable rather than walked without bound; loose refs are normally
- * few (git packs them), so an ordinary repository is far below it.
+ * The most entries the symlink walk will examine among a git directory's
+ * own entries, its refs and (for Commit and Push) its reflogs before giving
+ * up. A repository past it is refused as unverifiable rather than walked
+ * without bound.
  */
-const MAX_WALKED_ENTRIES = 50_000;
+const MAX_WALKED_ENTRIES = 200_000;
 
 /**
  * The same bound for `objects/`, counted on its own. Loose objects are not
  * few: git only packs them when its automatic maintenance runs, and a
- * repository agents commit in all day was measured holding 90,000 of them,
- * which the bound above would refuse outright. Listing them costs one
- * `readdir` per fan-out directory whatever their number, so the bound is
- * there to stop a directory tree built to be walked forever, not to limit
- * an ordinary repository.
+ * repository agents commit in all day was measured holding 90,000 of them.
+ * The bound is there to stop a directory tree built to be walked forever,
+ * not to limit an ordinary repository.
  */
 const MAX_WALKED_OBJECT_ENTRIES = 2_000_000;
 
@@ -260,6 +346,49 @@ const DEFAULT_LIMITS = {
 
 class WalkLimitExceeded extends Error {}
 
+/** What one listing of a directory found. Names only where they matter. */
+interface Listing {
+  stamp: string;
+  count: number;
+  links: string[];
+  subdirectories: string[];
+}
+
+/**
+ * Listings by directory, reused while the directory's stamp is the one the
+ * listing was taken under. Adding, removing or renaming an entry changes a
+ * directory's times, which is what the after-read check already relies on,
+ * so an unchanged stamp means the listing still holds and the directory is
+ * not read again: a repository holding 96,000 loose objects cost 165 ms to
+ * walk on every read, and costs one `lstat` per fan-out directory this way.
+ *
+ * Not reused when the directory changed within `RACY_NS` of being listed: a
+ * file system that stamps from a coarse clock could give a later change the
+ * same times, and a stale listing here would be believed for as long as the
+ * process lives, not for one read.
+ */
+const listings = new Map<string, Listing>();
+const MAX_CACHED_LISTINGS = 20_000;
+const RACY_NS = 2_000_000_000n;
+
+function remember(dir: string, listing: Listing, stats: BigIntStats): void {
+  const newest = stats.mtimeNs > stats.ctimeNs ? stats.mtimeNs : stats.ctimeNs;
+  if (BigInt(Date.now()) * 1_000_000n - newest < RACY_NS) {
+    listings.delete(dir);
+    return;
+  }
+  if (listings.size >= MAX_CACHED_LISTINGS && !listings.has(dir)) {
+    const oldest = listings.keys().next().value;
+    if (oldest !== undefined) listings.delete(oldest);
+  }
+  listings.set(dir, listing);
+}
+
+/** For tests: forget every remembered listing. */
+export function forgetGitDirectoryListings(): void {
+  listings.clear();
+}
+
 /**
  * True when `gitDir` borrows another repository's storage (#2363 review
  * rounds 2 and 3). Git never creates a symbolic link in a repository it
@@ -269,12 +398,11 @@ class WalkLimitExceeded extends Error {}
  * another repository's objects, and a push then sends them. So, rather
  * than naming the dangerous entries, ANY symbolic link is refused among:
  * - the git directory's top-level entries (HEAD, index, config, …);
- * - everything under `refs/`, `logs/` and `objects/`, recursively. That
- *   includes each loose object inside its fan-out directory: a linked
- *   `objects/ab/cdef…` serves another repository's object as surely as a
- *   linked fan-out directory does. Entries are read with `readdir`'s own
- *   types, one call per directory and no `lstat` per object, so the walk
- *   costs one listing for each of at most 256 fan-out directories.
+ * - everything under `refs/` and `objects/`, recursively, and under
+ *   `logs/` when the caller's git reads reflogs. That includes each loose
+ *   object inside its fan-out directory: a linked `objects/ab/cdef…` serves
+ *   another repository's object as surely as a linked fan-out directory
+ *   does.
  * Alternates (`objects/info/alternates`, `http-alternates`) are refused
  * outright: they make git read another repository's objects.
  *
@@ -286,54 +414,63 @@ async function redirectedGitEntry(
   gitDir: string,
   insideProject: (path: string) => boolean,
   stamps: Stamps,
-  limits: { entries: number; objectEntries: number },
+  options: {
+    limits: { entries: number; objectEntries: number };
+    reflogs: boolean;
+  },
 ): Promise<string | null> {
   let walked = 0;
-  let limit = limits.entries;
-  // Entries of `dir` by the directory's own types (an lstat: a link is a
-  // link), read one at a time so the bound stops the listing itself: a
-  // directory holding millions of entries is never held in memory whole.
-  const entries = async (dir: string) => {
+  let limit = options.limits.entries;
+  // What `dir` holds, by the directory's own types (an lstat: a link is a
+  // link), read one entry at a time so the bound stops the listing itself:
+  // a directory holding millions of entries is never held in memory whole.
+  const listingOf = async (dir: string): Promise<Listing> => {
     const record = dir === gitDir ? stamps.pinned : stamps.listed;
-    const list: Dirent[] = [];
+    const empty = (stamp: string): Listing => ({
+      stamp,
+      count: 0,
+      links: [],
+      subdirectories: [],
+    });
+    let stats: BigIntStats;
     let handle: Awaited<ReturnType<typeof opendir>>;
     try {
-      record.set(dir, stampOf(await lstat(dir, { bigint: true })));
+      stats = await lstat(dir, { bigint: true });
+      record.set(dir, stampOf(stats));
+      const known = listings.get(dir);
+      if (known && known.stamp === stampOf(stats)) {
+        walked += known.count;
+        if (walked > limit) throw new WalkLimitExceeded();
+        return known;
+      }
       handle = await opendir(dir);
-    } catch {
+    } catch (error) {
+      if (error instanceof WalkLimitExceeded) throw error;
       // Missing, or not a directory: nothing to list, and it must stay so.
-      record.set(dir, await currentStamp(dir));
-      return list;
+      const stamp = await currentStamp(dir);
+      record.set(dir, stamp);
+      return empty(stamp);
     }
+    const listing = empty(stampOf(stats));
     for await (const entry of handle) {
       walked += 1;
+      listing.count += 1;
       if (walked > limit) throw new WalkLimitExceeded();
-      list.push(entry);
+      if (entry.isSymbolicLink()) listing.links.push(entry.name);
+      else if (entry.isDirectory()) listing.subdirectories.push(entry.name);
     }
-    return list;
+    remember(dir, listing, stats);
+    return listing;
   };
   const named = (path: string) => `.git/${relative(gitDir, path)}`;
   const linkBelow = async (dir: string): Promise<string | null> => {
-    const list = await entries(dir);
-    const link = list.find((entry) => entry.isSymbolicLink());
-    if (link) return join(dir, link.name);
+    const listing = await listingOf(dir);
+    if (listing.links.length > 0) return join(dir, listing.links[0]);
     // Subdirectories side by side: `objects/` has up to 256 of them.
     const below = await Promise.all(
-      list
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => linkBelow(join(dir, entry.name))),
+      listing.subdirectories.map((name) => linkBelow(join(dir, name))),
     );
     return below.find((found) => found !== null) ?? null;
-  };
-  const linkIn = async (
-    dir: string,
-    allowed: (path: string) => boolean | Promise<boolean>,
-  ) => {
-    for (const entry of await entries(dir)) {
-      const path = join(dir, entry.name);
-      if (entry.isSymbolicLink() && !(await allowed(path))) return path;
-    }
-    return null;
   };
   // `hooks` is the one entry a link is ordinary for (`.git/hooks ->
   // ../scripts/hooks`), and it is not storage: hooks are off for every
@@ -348,13 +485,21 @@ async function redirectedGitEntry(
     }
   };
   try {
-    let found =
-      (await linkIn(gitDir, hooksInsideProject)) ??
-      (await linkBelow(join(gitDir, 'refs'))) ??
-      (await linkBelow(join(gitDir, 'logs')));
+    let found: string | null = null;
+    for (const name of (await listingOf(gitDir)).links) {
+      const path = join(gitDir, name);
+      if (!(await hooksInsideProject(path))) {
+        found = path;
+        break;
+      }
+    }
+    found ??= await linkBelow(join(gitDir, 'refs'));
+    if (!found && options.reflogs) {
+      found = await linkBelow(join(gitDir, 'logs'));
+    }
     if (!found) {
       walked = 0;
-      limit = limits.objectEntries;
+      limit = options.limits.objectEntries;
       found = await linkBelow(join(gitDir, 'objects'));
     }
     if (found) return `${named(found)} is a symbolic link`;

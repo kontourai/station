@@ -10,7 +10,7 @@ function listing(entries: Array<[scope: string, key: string, value: string]>) {
 
 const refusedKeys = (
   entries: Array<[string, string, string]>,
-  purpose: 'read' | 'write' = 'read',
+  purpose: 'read' | 'live' | 'write' = 'read',
 ) => {
   const verdict = judgeRepositoryConfig(listing(entries), purpose);
   return verdict.ok ? [] : 'keys' in verdict ? verdict.keys : ['unreadable'];
@@ -24,10 +24,6 @@ describe('judgeRepositoryConfig', () => {
     ['core.sshcommand', 'sh -c x'],
     ['core.gitproxy', 'proxy-command'],
     ['core.askpass', '/tmp/ask'],
-    ['core.editor', 'sh -c x'],
-    ['sequence.editor', 'sh -c x'],
-    ['core.pager', 'sh -c x'],
-    ['pager.diff', 'sh -c x'],
     ['gpg.program', '/tmp/gpg'],
     ['gpg.ssh.defaultkeycommand', 'sh -c x'],
     ['gc.recentobjectshook', 'sh -c x'],
@@ -39,8 +35,6 @@ describe('judgeRepositoryConfig', () => {
     ['http.https://github.com/.proxy', 'http://evil.test:8080'],
     ['http.cookiefile', '/tmp/cookies'],
     ['fetch.bundleuri', 'https://evil.test/bundle'],
-    ['include.path', '/tmp/more'],
-    ['includeif.gitdir:/x/.path', '/tmp/more'],
     ['core.excludesfile', '/etc/passwd'],
     ['core.attributesfile', '/tmp/attributes'],
     ['mailmap.file', '/tmp/mailmap'],
@@ -75,6 +69,12 @@ describe('judgeRepositoryConfig', () => {
       ['local', 'branch.main.vscode-merge-base', 'origin/main'],
       ['local', 'branch.main.pushremote', 'origin'],
       ['local', 'pager.branch', 'false'],
+      // Overridden by the runner on every call, or never run without a
+      // terminal: not a reason to refuse the git panel.
+      ['local', 'core.editor', 'code --wait'],
+      ['local', 'core.pager', 'delta'],
+      ['local', 'pager.diff', 'delta'],
+      ['local', 'sequence.editor', 'code --wait'],
       ['local', 'submodule.lib.update', 'rebase'],
       ['local', 'submodule.lib.url', 'https://github.com/acme/lib.git'],
       ['local', 'protocol.file.allow', 'always'],
@@ -83,6 +83,22 @@ describe('judgeRepositoryConfig', () => {
     ];
     expect(refusedKeys(ordinary, 'read')).toEqual([]);
     expect(refusedKeys(ordinary, 'write')).toEqual([]);
+  });
+
+  test('an include is refused wherever git reads the config itself, not where Station runs git with its own copy', () => {
+    const entries: Array<[string, string, string]> = [
+      ['local', 'include.path', '../shared.gitconfig'],
+      ['local', 'includeif.gitdir:/x/.path', '/tmp/more'],
+    ];
+    expect(refusedKeys(entries, 'read')).toEqual([]);
+    expect(refusedKeys(entries, 'live')).toEqual([
+      'include.path',
+      'includeif.gitdir:/x/.path',
+    ]);
+    expect(refusedKeys(entries, 'write')).toEqual([
+      'include.path',
+      'includeif.gitdir:/x/.path',
+    ]);
   });
 
   test('a commit or push also refuses a partial clone, http settings, a remote named by an address, and a program fsmonitor', () => {

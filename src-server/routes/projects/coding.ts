@@ -201,34 +201,37 @@ async function isBranchName(dir: string, branch: string): Promise<boolean> {
   }
 }
 
-const CONFIG_REFUSED_MESSAGE =
-  "This repository's own .git/config sets options that run programs or redirect a push, and Station runs git here with this computer's credentials. Remove them (listed in `keys`), or use git from a terminal";
+/**
+ * What a repository-config refusal says: which keys, and what the operator
+ * can do about them. The keys come from `git-repository-config.ts`.
+ */
+function configRefusedMessage(keys: readonly string[]): string {
+  const named = keys.length > 0 ? keys.join(', ') : 'options';
+  return `This repository's own .git/config sets ${named}. Station runs git here as this computer's user, and does not while a repository's own configuration names a program to run, an address to connect to, or a file outside the repository to read. To use Station's git panel here, remove ${keys.length === 1 ? 'it' : 'them'} (\`git config --local --unset <key>\`; an included file from outside the repository is \`include.path\`), or use git from a terminal`;
+}
+
+const CONFIG_UNREADABLE_MESSAGE =
+  "git could not read this repository's configuration";
 
 /**
- * The read-side refusal (#2363): a repository whose own config defines a
- * filter or diff driver, declares itself a partial clone, or names a
- * program or a network target (`git-repository-config.ts`) is not read or
- * checked out, because those commands would run or reach it. `null` means
- * go ahead. `gitArgs`
- * names the repository the route resolved.
+ * The refusal before a checkout (#2363): `checkout` runs smudge filters the
+ * repository's own config defines, and reads that config itself, so the
+ * `live` rules apply (`git-repository-config.ts`). `null` means go ahead.
+ * `gitArgs` names the repository the route resolved.
  */
-async function readRefusal(
-  dir: string,
-  gitArgs: readonly string[],
-  env?: NodeJS.ProcessEnv,
-) {
-  const verdict = await checkRepositoryConfig(dir, 'read', gitArgs, env);
+async function checkoutRefusal(dir: string, gitArgs: readonly string[]) {
+  const verdict = await checkRepositoryConfig(dir, 'live', gitArgs);
   if (verdict.ok) return null;
   return verdict.code === 'repository-config-refused'
     ? {
         success: false as const,
-        error: CONFIG_REFUSED_MESSAGE,
+        error: configRefusedMessage(verdict.keys),
         code: verdict.code,
         keys: verdict.keys,
       }
     : {
         success: false as const,
-        error: "git could not read this repository's configuration",
+        error: CONFIG_UNREADABLE_MESSAGE,
         code: verdict.code,
       };
 }
@@ -253,9 +256,9 @@ function repositoryRefused(c: Context, reason: string): Response {
 function refusalMessage(refusal: CodingGitRefusal): string {
   switch (refusal.code) {
     case 'repository-config-refused':
-      return CONFIG_REFUSED_MESSAGE;
+      return configRefusedMessage(refusal.keys);
     case 'repository-config-unreadable':
-      return "git could not read this repository's configuration";
+      return CONFIG_UNREADABLE_MESSAGE;
     case 'git-dir-outside-project':
       return `That folder's .git leads outside this Project (${refusal.reason}), so Station will not commit or push from it`;
     case 'secrets':
@@ -518,23 +521,49 @@ export function createCodingRoutes(
         registeredWorktrees: () => registeredWorktrees(c, location.projectRoot),
         timeoutMs: GIT_QUICK_TIMEOUT_MS,
       },
-      async (repository) => {
-        const refusal = await readRefusal(
-          repository.top,
-          repository.repoArgs,
-          repository.repoEnv,
-        );
-        return refusal ? { refusal } : { data: await read(repository) };
-      },
+      read,
     );
-    if (!outcome.ok) {
-      return outcome.state === 'not-a-repository'
-        ? c.json({ success: true, data: notRepository })
-        : repositoryRefused(c, outcome.reason);
+    if (outcome.ok) return c.json({ success: true, data: outcome.value });
+    switch (outcome.state) {
+      case 'not-a-repository':
+        return c.json({ success: true, data: notRepository });
+      case 'refused':
+        return repositoryRefused(c, outcome.reason);
+      case 'config-refused':
+        return c.json(
+          {
+            success: false,
+            error: configRefusedMessage(outcome.keys),
+            code: 'repository-config-refused',
+            keys: outcome.keys,
+          },
+          409,
+        );
+      case 'config-unreadable':
+        return c.json(
+          {
+            success: false,
+            error: CONFIG_UNREADABLE_MESSAGE,
+            code: 'repository-config-unreadable',
+          },
+          409,
+        );
+      default:
+        // Not a refusal: the repository was being written (a commit
+        // landing, objects being added) each time Station read it, and a
+        // read is only answered from a repository that held still.
+        c.header('Retry-After', '1');
+        return c.json(
+          {
+            success: false,
+            error:
+              'The repository was being changed while Station read it. Nothing is wrong with it; try again in a moment',
+            code: 'repository-busy',
+            retryable: true,
+          },
+          503,
+        );
     }
-    return 'refusal' in outcome.value
-      ? c.json(outcome.value.refusal, 409)
-      : c.json({ success: true, data: outcome.value.data });
   };
 
   /** A coding edit, checkout or command: the Project or its worktrees. */
@@ -706,7 +735,6 @@ export function createCodingRoutes(
         async (repository) => {
           const opts = {
             cwd: repository.top,
-            env: repository.repoEnv,
             encoding: 'utf-8' as const,
             windowsHide: true,
             timeout: GIT_READ_TIMEOUT_MS,
@@ -732,10 +760,7 @@ export function createCodingRoutes(
               // no remotes" and "git could not be run" apart — collapsing
               // them would disable Push over an unreadable config, which is
               // a different fact.
-              readRemotes(repository.top, {
-                gitArgs: repository.repoArgs,
-                gitEnv: repository.repoEnv,
-              }),
+              readRemotes(repository.top, { gitArgs: repository.repoArgs }),
             ]);
 
           const changes = statusOut.stdout
@@ -832,7 +857,6 @@ export function createCodingRoutes(
             ],
             {
               cwd: repository.top,
-              env: repository.repoEnv,
               encoding: 'utf-8',
               timeout: GIT_READ_TIMEOUT_MS,
             },
@@ -871,7 +895,6 @@ export function createCodingRoutes(
         diff: (
           await execGit([...repository.repoArgs, 'diff'], {
             cwd: repository.top,
-            env: repository.repoEnv,
             encoding: 'utf-8',
             timeout: GIT_DIFF_TIMEOUT_MS,
           })
@@ -901,7 +924,6 @@ export function createCodingRoutes(
             ],
             {
               cwd: repository.top,
-              env: repository.repoEnv,
               encoding: 'utf-8',
               timeout: GIT_READ_TIMEOUT_MS,
             },
@@ -982,7 +1004,6 @@ export function createCodingRoutes(
                 [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
                 {
                   cwd: repository.top,
-                  env: repository.repoEnv,
                   encoding: 'utf-8',
                   timeout: GIT_QUICK_TIMEOUT_MS,
                 },
@@ -1068,7 +1089,7 @@ export function createCodingRoutes(
               );
         }
         // #2363: `checkout` runs repository-defined smudge filters.
-        const refusal = await readRefusal(resolved.top, resolved.repoArgs);
+        const refusal = await checkoutRefusal(resolved.top, resolved.repoArgs);
         if (refusal) return c.json(refusal, 409);
         if (await resolved.unchanged()) repository = resolved;
       }
