@@ -120,7 +120,13 @@
 
     {"path":"src-ui/src/hooks/useNewChatSelectionModel.ts","digest":"79d62da2bce71d836669cfc7836952c832e88aa7e23a95566712733b566a86a7","revision":"df34c2497051350c571a5b33d841277ff2fba301"},
 
-    {"path":"src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx","digest":"566b9dea66cb2c32635c55440662a8a089db3bf5c3ebd7b0889a573d93542129","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"}
+    {"path":"src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx","digest":"566b9dea66cb2c32635c55440662a8a089db3bf5c3ebd7b0889a573d93542129","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
+
+    {"path":"src-ui/src/views/ScheduleView.css","digest":"48632c62f243163ee177a8a2a531a85c6645785b501355a9b276ab59eaf72702","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
+
+    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"6064bbe2d77da5154cf3e39a33201982ad5592063ef921993b2cb18ec66afdc7","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
+
+    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"223050ca10be2f4139e5ef70900f8184c4be95704dea435ba11b9bcb46275075","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"}
   ],
 
   "checks": [
