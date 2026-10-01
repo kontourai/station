@@ -9,7 +9,7 @@
 
   "limits": "Bounded source review and isolated Node Runtime/membership/pairing smoke, plus inspected debug macOS frozen-harness evidence. No release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external provider, two-person, ordinary native UI or fresh relay-only enrollment qualification. Prior dated lab receipts remain historical.",
 
-  "document": {"digest":"202df09f6d5170449a1eac71ce2050060e0452b9a8e9695c2b145400ab03d3dc","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+  "document": {"digest":"f864b79f840a494374f43e79abb84a89f7a4aca6dcc2dc91a32ed4f3ddb6e71c","revision":"2acae44ff0fa0592bc6e4c0c08b9c7cca4fcaa8c"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
@@ -34,7 +34,7 @@
 
     {"path":"packages/shared/src/connection-proof.ts","digest":"921ea3f05e5e87aa308552c46b7dc567a340ca6c02989b710306ecfc6dd3c6b4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/browser-transport-lab.ts","digest":"bcb681ee30437f1c49cdb64a99d6a3e19807829fd26df32f44eb33f30d2ff197","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/browser-transport-lab.ts","digest":"b3866740371e611d96fe882c982946d55f9ba02c8dc29252e116c3e75a148d25","revision":"363462bb4b6ebc1a46303a31187d2996e8e57579"},
 
     {"path":"scripts/connection-key.ts","digest":"d21d2c52fa8fb316669f3dacf21bc89140cf6d09691c8b5d3cb168de66b97b33","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -154,7 +154,7 @@
 
     {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"157157e7fa3f0b182b50ccba2dd6bf298f6fba9c787252f617bda3d82fe9380a","revision":"363462bb4b6ebc1a46303a31187d2996e8e57579"},
 
     {"path":"scripts/lib/local-collaboration-process.mjs","digest":"0fc1aaf62f721e3a44cae207c198946066a17fea2e484ac7dd5343123e952b71","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -196,7 +196,11 @@
 
     {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
 
-    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"}
+    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"scripts/lib/self-hosted-broker-process.ts","digest":"2cd2f2c6928e7394202414f6f0e6d13a1e6bd40cf67ad5c6b9af1f6c3517909a","revision":"4b64ec1b160f835881be47e6311c4e313e6b0092"},
+
+    {"path":"scripts/__tests__/browser-transport-fixture.test.ts","digest":"168029bc4e1428419b2f39637c6a9705d71c741b4b63c6bcb13efee264a226bb","revision":"4b64ec1b160f835881be47e6311c4e313e6b0092"}
   ],
 
   "checks": [

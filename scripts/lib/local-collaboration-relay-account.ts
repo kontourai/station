@@ -925,7 +925,7 @@ export async function startRelayAccountStationGroup() {
               },
             ),
           );
-          return { ...fixture, stop };
+          return { ...fixture, stopStation: fixture.stop, stop };
         } catch (error) {
           admissionClosed = true;
           throw error;
