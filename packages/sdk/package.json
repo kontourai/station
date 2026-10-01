@@ -67,7 +67,8 @@
     "./relay-enrollment": "./src/client/relay-enrollment.ts",
     "./native-device-proof": "./src/client/native-device-proof.ts",
     "./application-session-native": "./src/client/application-session-native.ts",
-    "./device-code-login": "./src/device-code-login.ts"
+    "./device-code-login": "./src/device-code-login.ts",
+    "./engine-accounts": "./src/engine-accounts.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -107,7 +108,7 @@
     "@kontourai/station-shared": "^0.8.0",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0",
-    "@kontourai/ui": "^1.16.0",
+    "@kontourai/ui": "^1.18.0",
     "zod": "^4.6.5"
   },
   "peerDependencies": {

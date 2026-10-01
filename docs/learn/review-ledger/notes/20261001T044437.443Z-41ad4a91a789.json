@@ -1,0 +1,9 @@
+{
+  "revision": "9db342177d6ae77484d1af58798f0faf27091b14",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Review of the merged bytes after merging main (through #3037) into the @kontourai/ui 1.18.0 bump. This branch's edit: the branding theme paragraph says the theme applies only if the package's validateBrandOverride checks and Station's stricter text check for the action fill pass (was 'stricter text checks'); checked against branding-theme.ts, where STATION_SURFACE_TEXT_RULES holds only --k-action and acceptance is all or nothing. Main's edit (#2987): the new paragraphs on raw stream error fields and the [CHAT_ERROR] marker text sit in the chat and conversation sections and do not touch the branding paragraph; they were reviewed and recorded by that change and both edits merged textually without overlap. The branding route is untouched and still passes the theme through unvalidated."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Review after merging main (through #3037) into the @kontourai/ui 1.18.0 bump: its source docs/reference/api.md now carries both this branch's one-sentence branding wording change (stricter text check names only the action fill) and main's #2987 chat-error text paragraphs. The guide names neither the white-label contrast rules nor the chat error marker text, so its prose remains accurate. Source review is separate from executed test evidence."}
+  ]
+}

@@ -32,8 +32,8 @@ function addInput(remoteProjectPath: string) {
 const verifiedIdentity = {
   environmentId: '11111111-1111-4111-8111-111111111111',
   hostIdentity: 'ssh:fixture',
-  remoteHome: '/home/brian',
-  verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
+  remoteHome: '/home/user',
+  verifiedProjectPath: '/home/user/dev/github/kontourai/station',
   workerProtocolVersion: 1,
 };
 
@@ -79,8 +79,8 @@ describe('SshEnvironmentProfileStore', () => {
     const verified = await store.recordVerified(first.id, {
       environmentId: '11111111-1111-4111-8111-111111111111',
       hostIdentity: 'ssh:fixture',
-      remoteHome: '/home/brian',
-      verifiedProjectPath: '/home/brian/dev/github/kontourai/station',
+      remoteHome: '/home/user',
+      verifiedProjectPath: '/home/user/dev/github/kontourai/station',
       workerProtocolVersion: 1,
     });
     expect(verified.lastConnectedAt).toBeTruthy();

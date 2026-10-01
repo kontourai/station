@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import type {
   ProjectTaskRoomAuthority,
@@ -15,13 +16,16 @@ import type {
   TaskRecord,
 } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   DEFAULT_LIVE_WORK_BOUNDS,
   type LiveWorkRecoveryState,
   LiveWorkSession,
 } from '../../../domain/live-work-session.js';
 import { SharedWorkingState } from '../../../domain/shared-working-state.js';
+import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
+import { TaskRoomWorkModule } from '../../projects/task-room-work-module.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
 import { projectTaskRoomChannelId } from '../project-task-room-history.js';
@@ -51,6 +55,7 @@ test('browser heartbeat cadence remains comfortably below live TTL', () => {
   );
 });
 
+const makeTempDir = trackTempDirs();
 const directories: string[] = [];
 afterEach(() => {
   vi.useRealTimers();
@@ -242,6 +247,9 @@ function runtimeComposition(
   store: EventStore,
   options: {
     unavailableAfterCommitOnce?: boolean;
+    readAgentRequests?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['readAgentRequests'];
     taskRecord?: TaskRecord;
     requestAuthority?: ProjectTaskRoomRequestAuthority;
     maxRetainedOperations?: number;
@@ -309,6 +317,9 @@ function runtimeComposition(
     },
     ...(options.readAgentLifecycle
       ? { readAgentLifecycle: options.readAgentLifecycle }
+      : {}),
+    ...(options.readAgentRequests
+      ? { readAgentRequests: options.readAgentRequests }
       : {}),
   });
   return {
@@ -508,6 +519,77 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test('a human message bound to an earlier Task incarnation never appends to its replacement', async () => {
+    const directory = makeTempDir('station-room-message-incarnation-');
+    const path = join(directory, 'orchestration.sqlite');
+    const store = new EventStore(path);
+    const probe = new DatabaseSync(path);
+    probe.exec('PRAGMA busy_timeout = 0');
+    let replaceAtCommit = false;
+    let replacementObserved = false;
+    const currentTask: TaskRecord = { ...task, createdBy: 'operator-1' };
+    const { runtime } = runtimeComposition(store, {
+      taskRecord: currentTask,
+      requestAuthority: {
+        resolve: async () => {
+          if (replaceAtCommit) {
+            try {
+              probe.exec('BEGIN IMMEDIATE');
+              probe.exec('ROLLBACK');
+            } catch (error) {
+              if (!isSqliteContentionError(error)) throw error;
+              replacementObserved = true;
+              currentTask.createdAt = '2026-09-30T00:00:00.000Z';
+            }
+          }
+          return {
+            kind: 'granted',
+            operatorId: 'operator-1',
+            deviceId: 'device-1',
+            policyRevision: 'pairing-v1',
+          };
+        },
+      },
+    });
+    const request = new Request('http://station');
+    try {
+      expect((await runtime.discover({ taskId: task.id, request })).kind).toBe(
+        'opened',
+      );
+      const first = await runtime.message({
+        taskId: task.id,
+        request,
+        proposalId: 'message-before-replacement',
+        text: 'Original discussion',
+        expectedTaskCreatedAt: task.createdAt,
+      });
+      expect(first.kind).toBe('committed');
+      replaceAtCommit = true;
+      const stale = await runtime.message({
+        taskId: task.id,
+        request,
+        proposalId: 'message-after-replacement',
+        text: 'Old private draft',
+        expectedTaskCreatedAt: task.createdAt,
+      });
+      expect(replacementObserved).toBe(true);
+      replaceAtCommit = false;
+      expect(stale.kind).toBe('not-found');
+      const history = await runtime.history({ taskId: task.id, request });
+      expect(history.kind).toBe('available');
+      if (history.kind !== 'available')
+        throw new Error('Missing real history read');
+      expect(history.records).toHaveLength(1);
+      expect(history.records[0].body).toMatchObject({
+        kind: 'human-message',
+        text: 'Original discussion',
+      });
+    } finally {
+      await runtime.close();
+      probe.close();
+      store.close();
+    }
+  });
   test.each(['heartbeat', 'cadence', 'snapshot'] as const)(
     'concurrent %s cannot arm another request or invalidate its pending announcement',
     async (activity) => {
@@ -1720,6 +1802,126 @@ describe('ProjectTaskRoomRuntime', () => {
         snapshot: snapshot!,
       }).text(),
     ).toBe('');
+    await runtime.close();
+    store.close();
+  });
+
+  test('publishes and recovers independently requested agents only with a matching durable room binding and Task incarnation', async () => {
+    const directory = makeTempDir('station-room-request-publication-');
+    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const work = new TaskRoomWorkModule(join(directory, 'requests.json'));
+    const currentTask: TaskRecord = {
+      ...task,
+      agentId: 'lead-agent',
+      sessionId: 'lead-session',
+    };
+    const scope = {
+      projectId: task.projectId,
+      projectSlug: 'project',
+      roomProjectId: task.projectId,
+      taskCreatedAt: task.createdAt,
+      requesterId: 'requesting-owner',
+    };
+    const submitted = await work.submit(
+      task.id,
+      scope.requesterId,
+      {
+        operationId: 'request-publication',
+        agentId: 'research-agent',
+        prompt: 'Investigate this task.',
+      },
+      async () => scope,
+      async (sessionId) => ({ sessionId }),
+    );
+    if (submitted.kind !== 'recorded') throw new Error('Request not recorded');
+    const sessionId = submitted.record.sessionId;
+    const readAgentRequests = async () =>
+      (
+        await work.readPublicationRequests({
+          taskId: task.id,
+          projectId: task.projectId,
+          roomProjectId: task.projectId,
+          taskCreatedAt: currentTask.createdAt,
+          readBinding: (id) => store.readProjectTaskRoomExecutionBinding(id),
+        })
+      ).map((record) => ({
+        sessionId: record.sessionId,
+        agentId: record.agentId,
+        ownerOperatorId: record.ownerId,
+        taskCreatedAt: record.taskCreatedAt,
+        createdAt: record.createdAt,
+      }));
+    const readAgentLifecycle = async ({
+      sessionId: id,
+    }: {
+      sessionId: string;
+    }) =>
+      id === sessionId
+        ? { provider: 'claude', outcome: 'completed' as const }
+        : undefined;
+    let runtime = runtimeComposition(store, {
+      taskRecord: currentTask,
+      readAgentRequests,
+      readAgentLifecycle,
+    }).runtime;
+    const request = new Request('http://station');
+    await runtime.discover({ taskId: task.id, request });
+    await runtime.reconcileAgentLifecycles([task.id]);
+    let history = await runtime.history({ taskId: task.id, request });
+    expect(history).toMatchObject({ kind: 'available' });
+    if (history.kind !== 'available') throw new Error('History unavailable');
+    expect(
+      history.records.filter((record) => record.correlationId === sessionId),
+    ).toHaveLength(0);
+    expect(
+      await store.bindProjectTaskRoomExecution({
+        projectId: task.projectId,
+        taskId: task.id,
+        sessionId,
+      }),
+    ).toEqual({ kind: 'bound' });
+    await runtime.reconcileAgentLifecycles([task.id]);
+    history = await runtime.history({ taskId: task.id, request });
+    if (history.kind !== 'available') throw new Error('History unavailable');
+    expect(
+      history.records.filter((record) => record.correlationId === sessionId),
+    ).toMatchObject([
+      {
+        principal: {
+          kind: 'agent',
+          agentId: 'research-agent',
+          ownerOperatorId: 'requesting-owner',
+        },
+        body: { kind: 'live-work-started', sessionId },
+      },
+      {
+        principal: { kind: 'agent', agentId: 'research-agent' },
+        body: { kind: 'live-work-finished', sessionId, outcome: 'completed' },
+      },
+    ]);
+    expect(currentTask).toMatchObject({
+      agentId: 'lead-agent',
+      sessionId: 'lead-session',
+    });
+    await runtime.close();
+    runtime = runtimeComposition(store, {
+      taskRecord: currentTask,
+      readAgentRequests,
+      readAgentLifecycle,
+    }).runtime;
+    await runtime.reconcileAgentLifecycles([task.id]);
+    currentTask.createdAt = '2026-10-01T00:00:00.000Z';
+    await runtime.publishAgentFinished({
+      taskId: task.id,
+      sessionId,
+      provider: 'claude',
+      outcome: 'failed',
+    });
+    history = await runtime.history({ taskId: task.id, request });
+    if (history.kind !== 'available') throw new Error('History unavailable');
+    expect(
+      history.records.filter((record) => record.correlationId === sessionId),
+    ).toHaveLength(2);
     await runtime.close();
     store.close();
   });
