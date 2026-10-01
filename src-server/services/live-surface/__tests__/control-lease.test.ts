@@ -310,3 +310,86 @@ describe('live surface control lease', () => {
     expect(state.snapshot()).toMatchObject({ holder: null });
   });
 });
+
+describe('a person keep-alive (not input, capped from their last real input)', () => {
+  // humanHoldMs 1 000 → maxHumanHoldMs defaults to 4 000.
+  test('keeps the hold alive up to the cap, then is refused and control lapses', () => {
+    const { clock, state } = lease();
+    const claimed = state.claimForHumanInput(alice, 0);
+    const epoch = claimed.lease.epoch;
+    for (const t of [900, 1_800, 2_700, 3_600]) {
+      clock.t = t;
+      expect(state.keepHumanAlive(alice, epoch).ok).toBe(true);
+    }
+    // Never past the cap: the last renewal ends at 4 000, not 4 600.
+    expect(state.snapshot().expiresAt).toBe(4_000);
+    clock.t = 4_000;
+    const refused = state.keepHumanAlive(alice, epoch);
+    expect(refused).toMatchObject({ ok: false });
+    expect(state.snapshot().holder).toBeNull();
+  });
+
+  test('refused at the cap even while still holding, and a real input resets the cap', () => {
+    const { clock, state } = lease();
+    const epoch = state.claimForHumanInput(alice, 0).lease.epoch;
+    for (const t of [900, 1_800, 2_700, 3_600]) {
+      clock.t = t;
+      state.keepHumanAlive(alice, epoch);
+    }
+    clock.t = 3_999;
+    // Held until 4 000; one ms before, a renewal may only reach the cap.
+    expect(state.keepHumanAlive(alice, epoch).ok).toBe(true);
+    expect(state.snapshot().expiresAt).toBe(4_000);
+    // Real input moves the cap to 3 999 + 4 000.
+    expect(state.claimForHumanInput(alice, epoch).ok).toBe(true);
+    clock.t = 4_500;
+    expect(state.keepHumanAlive(alice, epoch).ok).toBe(true);
+    expect(state.snapshot().expiresAt).toBe(5_500);
+  });
+
+  test('a stale keep-alive never takes control back from an agent, nor renews another person', () => {
+    const { clock, state } = lease();
+    const aliceEpoch = state.claimForHumanInput(alice, 0).lease.epoch;
+    clock.t = 1_001;
+    // Alice's hold lapsed; an agent claims.
+    expect(state.claimForAgent(agent.principal, agent.sessionId).ok).toBe(true);
+    const refused = state.keepHumanAlive(alice, aliceEpoch);
+    expect(refused).toMatchObject({ ok: false, code: 'not-holder' });
+    expect(state.snapshot().holder).toMatchObject({ kind: 'agent' });
+    // Another person holding: Alice's keep-alive renews nothing.
+    const bobEpoch = state.claimForHumanInput(bob, state.snapshot().epoch).lease
+      .epoch;
+    expect(state.keepHumanAlive(alice, bobEpoch)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+    });
+  });
+
+  test('the same person on a different device cannot keep the hold alive', () => {
+    const { state } = lease();
+    const epoch = state.claimForHumanInput(alice, 0).lease.epoch;
+    const aliceOnPhone = { ...alice, device: 'device:phone' } as const;
+    expect(state.keepHumanAlive(aliceOnPhone, epoch)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+    });
+    expect(state.snapshot().holder).toEqual(alice);
+  });
+
+  test("a keep-alive with an earlier hold's epoch is refused", () => {
+    const { clock, state } = lease();
+    const first = state.claimForHumanInput(alice, 0).lease.epoch;
+    clock.t = 1_001;
+    state.claimForAgent(agent.principal, agent.sessionId);
+    clock.t = 3_100;
+    // Alice takes it back: a NEW epoch. The old one is stale.
+    const second = state.claimForHumanInput(alice, state.snapshot().epoch).lease
+      .epoch;
+    expect(second).not.toBe(first);
+    expect(state.keepHumanAlive(alice, first)).toMatchObject({
+      ok: false,
+      code: 'stale-epoch',
+    });
+    expect(state.keepHumanAlive(alice, second).ok).toBe(true);
+  });
+});

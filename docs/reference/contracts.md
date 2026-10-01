@@ -22,6 +22,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 | Module | Owns |
 |---|---|
+| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota and provider-owned login projections; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |

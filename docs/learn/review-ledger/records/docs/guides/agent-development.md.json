@@ -16,7 +16,7 @@
 
     {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
-    {"path":"packages/sdk/package.json","digest":"64ccd22f32ad10aa0218633f333b3ee1fec4c1fc0f0ef1547780218d6415ba11","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
     {"path":"packages/sdk/src/__tests__/browser-entry-bundles.test.ts","digest":"cbd20ee2ae028c4276a9412ddc5335b10957251f5d37597e53369968264d37f5","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 

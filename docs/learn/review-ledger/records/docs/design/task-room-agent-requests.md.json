@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/task-room-work.ts","digest":"02c044c3f8b04a116c48a14ad0273baba2d44afb4540fbd720732e7c08f2968f","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
 
-    {"path":"packages/contracts/package.json","digest":"a9e4315d91320b5dce16af7b0129ea34c13c76da3f079e855abda209b3268f8d","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"packages/sdk/src/client/task-room-work.ts","digest":"b1ac914584adc89df0329ea881462366ece5e424157c1732be1a6e23f64eba2d","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
 

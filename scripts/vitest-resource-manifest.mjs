@@ -122,6 +122,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
   'scripts/__tests__/ci-event-environment.test.ts',
@@ -1006,6 +1007,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
+  // #90: owns Chromium to measure the held page-dialog card's action row
+  // (the icon-only Open in pane beside OK and Cancel) against the real
+  // cascade, in the float's compact card and the pane's card.
+  'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPageDialog.touch-target.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved

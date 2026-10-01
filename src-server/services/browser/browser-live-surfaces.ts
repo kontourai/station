@@ -8,6 +8,15 @@
  * reference to an earlier generation's surface is a 404, never a stream from
  * a different process.
  *
+ * JavaScript dialogs: one that opens while a PERSON holds the live view's
+ * control is held for a person to answer (`pendingDialogFor` /
+ * `answerDialog`); one that opens while an agent holds it, or nobody does,
+ * is answered automatically, exactly as before. The agent path is
+ * unchanged, and an agent never answers a dialog a person is being shown.
+ *
+ * Each binding also captures the page's console (`consoleFor`), in memory
+ * and bounded, for the generation it serves.
+ *
  * Every surface action is authorized per request (D5 + D7): the Station
  * operator may view and drive any session; a Project admin/owner only
  * sessions in their OWN profile; everyone else nothing. A check with no
@@ -27,12 +36,20 @@ import type {
 import type { BrowserProjectAuthorizer } from './browser-access.js';
 import { browserAgentGrantAllows } from './browser-agent-authority.js';
 import {
+  BrowserConsoleLog,
+  type BrowserConsoleSnapshot,
+} from './browser-console-log.js';
+import {
   actorOwnsSessionProfile,
   type BrowserSessionActor,
   type BrowserSessionRecord,
   type BrowserSessionRegistry,
 } from './browser-session-registry.js';
-import { ChromiumScreencastProducer } from './chromium-screencast-producer.js';
+import {
+  type AnswerDialogResult,
+  ChromiumScreencastProducer,
+  type PendingJavaScriptDialog,
+} from './chromium-screencast-producer.js';
 
 /** `bs_<uuid>` + generation → a live-surface id (no `_` in that grammar). */
 export function browserSurfaceId(
@@ -46,6 +63,7 @@ interface Binding {
   surfaceId: string;
   generation: number;
   producer: ChromiumScreencastProducer;
+  console: BrowserConsoleLog;
   unregister: () => Promise<void>;
   offNavigated: () => void;
   offLease: () => void;
@@ -61,10 +79,13 @@ export interface BrowserLiveSurfacesOptions {
     | 'observeCommittedUrl'
     | 'noteInput'
     | 'recordControlChange'
+    | 'recordDialogAnswer'
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'register' | 'get'>;
   authorizeProject: BrowserProjectAuthorizer;
   dispatchTimeoutMs?: number;
+  /** How long a dialog held for a person waits before its automatic answer. */
+  dialogHoldMs?: number;
   onError?: (message: string, error: unknown) => void;
 }
 
@@ -162,6 +183,57 @@ export class BrowserLiveSurfaces {
     return this.bindings.get(browserSessionId)?.surfaceId;
   }
 
+  /** The dialog a live session's page holds for a person, if any. */
+  pendingDialogFor(
+    browserSessionId: string,
+  ): PendingJavaScriptDialog | undefined {
+    return (
+      this.bindings.get(browserSessionId)?.producer.pendingDialog() ?? undefined
+    );
+  }
+
+  /**
+   * A person's answer to the dialog `dialogId` held on this session's page.
+   * The caller has already authorized `actor` to drive the session; the
+   * answer is recorded as theirs. `no-dialog` when that dialog is no longer
+   * the one held (answered elsewhere, timed out, the page moved on).
+   */
+  async answerDialog(
+    browserSessionId: string,
+    dialogId: string,
+    answer: { accept: boolean; promptText?: string },
+    actor: BrowserSessionActor,
+  ): Promise<AnswerDialogResult> {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding) return { ok: false, code: 'no-dialog' };
+    const result = await binding.producer.answerDialog(dialogId, answer);
+    if (result.ok)
+      this.options.sessions.recordDialogAnswer(
+        browserSessionId,
+        binding.generation,
+        {
+          type: result.dialog.type,
+          message: result.dialog.message,
+          accepted: answer.accept,
+        },
+        actor,
+      );
+    return result;
+  }
+
+  /** A live session's console entries newer than `after`, else undefined. */
+  consoleFor(
+    browserSessionId: string,
+    after?: number,
+  ): (BrowserConsoleSnapshot & { generation: number }) | undefined {
+    const binding = this.bindings.get(browserSessionId);
+    // The generation names which browser the entries came from: `seq`
+    // restarts with each one, so a reader must not mix two.
+    return binding
+      ? { ...binding.console.read(after), generation: binding.generation }
+      : undefined;
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     this.offChange();
@@ -191,6 +263,7 @@ export class BrowserLiveSurfaces {
     const surfaceId = browserSurfaceId(id, live.generation);
     const generation = live.generation;
     let producer: ChromiumScreencastProducer;
+    let consoleLog: BrowserConsoleLog | undefined;
     let offNavigated: () => void;
     try {
       const cdp = live.host.cdp();
@@ -203,6 +276,15 @@ export class BrowserLiveSurfaces {
           : {}),
         onDialog: (dialog) =>
           this.options.sessions.recordDialog(id, generation, dialog),
+        // Held for a person only while a person holds control: their input
+        // (or their page, while they drive it) opened it. An agent's input,
+        // or a page nobody controls, is answered automatically as before.
+        holdDialog: () =>
+          this.options.surfaces.get(surfaceId)?.lease.snapshot().holder
+            ?.kind === 'human',
+        ...(this.options.dialogHoldMs !== undefined
+          ? { dialogHoldMs: this.options.dialogHoldMs }
+          : {}),
         // Whoever holds control is who this input is from; a navigation it
         // causes is then attributed to them, not to the page.
         onInput: (input) => {
@@ -219,6 +301,12 @@ export class BrowserLiveSurfaces {
         },
         ...(this.options.onError ? { onError: this.options.onError } : {}),
       });
+      consoleLog = new BrowserConsoleLog({
+        cdp,
+        cdpSessionId: live.target.cdpSessionId,
+        ...(this.options.onError ? { onError: this.options.onError } : {}),
+      });
+      void consoleLog.enable();
       offNavigated = cdp.on('Page.frameNavigated', (params, sessionId) => {
         if (sessionId !== live.target.cdpSessionId) return;
         const frame = (
@@ -229,6 +317,7 @@ export class BrowserLiveSurfaces {
           this.options.sessions.observeCommittedUrl(id, generation, frame.url);
       });
     } catch (error) {
+      consoleLog?.dispose();
       this.options.onError?.('browser surface could not be created', error);
       return;
     }
@@ -288,6 +377,7 @@ export class BrowserLiveSurfaces {
       });
     } catch (error) {
       producer.dispose();
+      consoleLog.dispose();
       offNavigated();
       this.options.onError?.('browser surface could not be registered', error);
       return;
@@ -296,6 +386,11 @@ export class BrowserLiveSurfaces {
     const offLease =
       lease?.onChange((next) => {
         const holder = next.holder;
+        // A dialog held for a person does not outlive their control: once
+        // it is released, lapses or passes to an agent, it is dismissed, so
+        // nobody is left behind a modal page (the pane renews the person's
+        // hold while it shows them the dialog).
+        if (holder?.kind !== 'human') producer.releaseHeldDialog();
         // Nobody holding (a lapse or a release) says nothing about who
         // drives next; the last holder is remembered across it.
         if (!holder) return;
@@ -311,6 +406,7 @@ export class BrowserLiveSurfaces {
       surfaceId,
       generation,
       producer,
+      console: consoleLog,
       unregister,
       offNavigated,
       offLease,
@@ -321,6 +417,7 @@ export class BrowserLiveSurfaces {
     binding.offLease();
     binding.offNavigated();
     binding.producer.dispose();
+    binding.console.dispose();
     try {
       await binding.unregister();
     } catch (error) {

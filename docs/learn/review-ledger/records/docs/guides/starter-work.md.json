@@ -34,7 +34,7 @@
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"7f03adbf1b54dcd4a7fa983c1580d64f1ba9c284af54cb9fc9e29d8b4b1ef64a","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
-    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
 
     {"path":"src-ui/src/lib/starter-work-operation-store.ts","digest":"d3c5ace0dae590debb023c5954ae91564e94d343fc08a19da311522f340daf68","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

@@ -4473,6 +4473,9 @@ export function configureRuntimeRoutes(
         registry: browserService.registry,
         acquisition: browserService.acquisition,
         surfaceIdFor: browserService.surfaceIdFor,
+        pendingDialogFor: browserService.pendingDialogFor,
+        answerDialog: browserService.answerDialog,
+        consoleFor: browserService.consoleFor,
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
@@ -4525,6 +4528,8 @@ export function configureRuntimeRoutes(
       sessions: browserService.registry,
       surfaces: liveSurfaceRegistry ?? { get: () => undefined },
       surfaceIdFor: browserService.surfaceIdFor,
+      dialogWaitingForPerson: (browserSessionId) =>
+        browserService?.pendingDialogFor(browserSessionId) !== undefined,
       settings: browserService.projectSettings,
       locatorEngine: loadLocatorEngineInstallExpression,
     });

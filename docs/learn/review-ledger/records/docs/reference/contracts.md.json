@@ -9,12 +9,12 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"145555f7b92714dbd48a398ef41b0ca256f8550b50677f3714c889bf21c1062c","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+  "document": {"digest":"02c541bee46622d0a91c8c34003a6dae93863bd9dfa556d2b9c635e66408b64c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/package.json","digest":"a9e4315d91320b5dce16af7b0129ea34c13c76da3f079e855abda209b3268f8d","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-record-observation.ts","digest":"2f31998cc94993c1e8502f1407f167c2d56b8380c50045b8d78948391915d7a0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
     {"path":"src-server/providers/adapters/claude-sdk-turns.ts","digest":"3a6e6078a3d208e96742fa1b29877697c6586ca5da312854c9b42adb56760f19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

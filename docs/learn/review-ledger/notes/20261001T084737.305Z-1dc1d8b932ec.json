@@ -1,0 +1,7 @@
+{
+  "revision": "4750f0dd4c17a766da91628dca97b2c7627ca0ed",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed new stdin stream error handler: write callbacks alone did not consumeEPIPE error events. The real closed-pipe regression catches an uncaught host event before repair and none after, while public failure text remains fixed and secret-free. No authority, namespace or command surface expands."}
+  ]
+}

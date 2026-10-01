@@ -677,6 +677,13 @@ describe('delegated engine sign-in HTTP admission', () => {
           },
           loginCapabilities: capabilities,
           deviceCodeLogins: closedLogins,
+          accountAuth: async () => ({ state: 'unauthenticated' }),
+          accountUsage: async () => ({
+            status: 'ok',
+            fetchedAt: '2026-10-01T00:00:00Z',
+            exhausted: false,
+            windows: [{ id: 'five-hour', label: '5 hour', usedPercent: 20 }],
+          }),
           isLoginReadCurrent: (request) =>
             isRuntimeRequestPrincipalCurrent(request, security),
         }),
@@ -727,6 +734,55 @@ describe('delegated engine sign-in HTTP admission', () => {
       },
     });
     expect(JSON.stringify(body)).not.toContain('CLI_ARGUMENT_CANARY');
+    const accounts = await harness.request(
+      '/api/connections/agent/codex/accounts',
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(accounts.status).toBe(200);
+    expect(await accounts.json()).toMatchObject({
+      success: true,
+      data: {
+        engine: 'codex',
+        accounts: [
+          { ref: null, label: 'Default account' },
+          { ref: 'http-login-read-smoke', label: 'Smoke profile' },
+        ],
+      },
+    });
+    const usage = await harness.request(
+      '/api/connections/agent/codex/account-usage?profileRef=http-login-read-smoke',
+      cookieInit(credential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(usage.status).toBe(403);
+    const operatorUsage = await harness.request(
+      '/api/connections/agent/codex/account-usage?profileRef=http-login-read-smoke',
+      { headers: { Authorization: `Bearer ${harness.operatorCredential}` } },
+    );
+    expect(operatorUsage.status).toBe(200);
+    expect(JSON.stringify(await operatorUsage.json())).not.toContain(
+      'CLI_ARGUMENT_CANARY',
+    );
+    const globalLogin = await harness.request(
+      '/api/connections/agent/codex/account-login',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      '203.0.113.42',
+    );
+    expect(globalLogin.status).toBe(400);
+    const missingAccount = await harness.request(
+      '/api/connections/agent/codex/account-usage?profileRef=unregistered',
+      cookieInit(harness.operatorCredential, 'GET'),
+      '203.0.113.42',
+    );
+    expect(missingAccount.status).toBe(404);
     for (const [method, suffix] of [
       ['GET', 'credential-recovery'],
       ['GET', 'enrolment/http-login-read-smoke'],
