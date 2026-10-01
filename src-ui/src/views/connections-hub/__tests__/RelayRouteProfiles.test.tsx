@@ -25,6 +25,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { NativeStationProfileRepository } from '../../../platform/native/stationProfileStorage';
@@ -1919,43 +1920,58 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByText('sha256:full-station-key-id');
     expect(screen.getByText('ABCD-1234-EFGH-5678')).toBeTruthy();
+    const candidateRegion = screen.getByRole('region', {
+      name: 'Candidate from native verification',
+    });
+    const routeDetails = candidateRegion.querySelector('details');
+    const operatorCode = screen.getByLabelText('Operator comparison code');
+    const operatorKeyId = screen.getByLabelText(
+      'Full key ID confirmed by operator',
+    );
+    const separateChannelAttestation = screen.getByLabelText(
+      /I got these values from the Station operator through a separate channel/,
+    );
+    const approveButton = screen.getByRole('button', {
+      name: 'Approve Station key',
+    });
+    expect(routeDetails).not.toBeNull();
+    expect(routeDetails?.open).toBe(false);
     expect(
-      screen
-        .getByRole('button', { name: 'Approve Station key' })
-        .hasAttribute('disabled'),
-    ).toBe(true);
+      within(candidateRegion).getByText('Untrusted candidate'),
+    ).toBeVisible();
+    expect(
+      within(candidateRegion).getByText('sha256:full-station-key-id'),
+    ).toBeVisible();
+    expect(
+      within(candidateRegion).getByText('ABCD-1234-EFGH-5678'),
+    ).toBeVisible();
+    expect(
+      within(candidateRegion).getByText(stationId).closest('details'),
+    ).toBe(routeDetails);
+    expect(operatorCode).toBeVisible();
+    expect(operatorKeyId).toBeVisible();
+    expect(separateChannelAttestation).toBeVisible();
+    expect(approveButton).toBeVisible();
+    expect(approveButton).toBeDisabled();
+    expect(
+      approveButton.compareDocumentPosition(routeDetails!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
 
-    fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+    fireEvent.change(operatorCode, {
       target: { value: 'ABCD-1234-EFGH-567I' },
     });
-    fireEvent.change(
-      screen.getByLabelText('Full key ID confirmed by operator'),
-      {
-        target: { value: candidate.keyId },
-      },
-    );
-    fireEvent.click(
-      screen.getByLabelText(
-        /I got these values from the Station operator through a separate channel/,
-      ),
-    );
-    expect(
-      screen
-        .getByRole('button', { name: 'Approve Station key' })
-        .hasAttribute('disabled'),
-    ).toBe(true);
+    fireEvent.change(operatorKeyId, {
+      target: { value: candidate.keyId },
+    });
+    fireEvent.click(separateChannelAttestation);
+    expect(approveButton).toBeDisabled();
     expect(mocks.approveKey).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+    fireEvent.change(operatorCode, {
       target: { value: 'abcd-1234-efgh-5678' },
     });
-    expect(
-      screen
-        .getByRole('button', { name: 'Approve Station key' })
-        .hasAttribute('disabled'),
-    ).toBe(false);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Approve Station key' }),
-    );
+    expect(approveButton).toBeEnabled();
+    fireEvent.click(approveButton);
     await waitFor(() =>
       expect(mocks.approveKey).toHaveBeenCalledWith({
         pendingId: 'pending-1',
