@@ -59,6 +59,7 @@ async function fixture() {
     grantsDeviceAccess: false as const,
   };
   let acceptanceResponse: unknown = { data: membership };
+  let logoutResponse: unknown = { data: { revoked: true } };
   let hangAcceptance = false;
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const application: NativeAccountApplicationOwner = {
@@ -90,6 +91,7 @@ async function fixture() {
         });
       if (url.endsWith('/native/exchange'))
         return Response.json({ data: continuation });
+      if (url.endsWith('/native/revoke')) return Response.json(logoutResponse);
       if (url.endsWith('/accept-invitation'))
         return hangAcceptance
           ? new Response(new ReadableStream())
@@ -147,7 +149,11 @@ async function fixture() {
         deviceId,
         nonce: continuation.nonce,
         method: request?.method ?? 'POST',
-        path: request?.path ?? '/api/account-auth/accept-invitation',
+        path:
+          request?.path ??
+          (command === 'station_native_account_revoke_prepare'
+            ? '/api/account-auth/continuations/native/revoke'
+            : '/api/account-auth/accept-invitation'),
         credentialHash: createHash('sha256')
           .update(continuation.credential)
           .digest('base64url'),
@@ -158,6 +164,8 @@ async function fixture() {
         [PROOF]: proof,
       };
       if (command === 'station_native_account_request_headers') return headers;
+      if (command === 'station_native_account_revoke_prepare')
+        return { body: {}, headers };
       if (command === 'station_native_account_accept_invitation_prepare')
         return { body: { token: args.token }, headers };
       throw new Error('unlisted command');
@@ -173,6 +181,9 @@ async function fixture() {
   return {
     bridge,
     membership,
+    setLogout: (result: unknown) => {
+      logoutResponse = result;
+    },
     setAcceptance: (result: unknown) => {
       acceptanceResponse = result;
     },
@@ -253,5 +264,31 @@ test('native account bridge cancellation clears public scope and settles a calle
   );
   h.signal.abort();
   await expect(pending).rejects.toThrow();
+  expect(h.bridge.current()).toBeNull();
+});
+
+test('remote native logout consumes only the fixed host prepared operation and retires public account state after confirmed acknowledgment', async () => {
+  const h = await fixture();
+  await h.bridge.login({ username: 'zach', password: 'password' });
+  await expect(h.bridge.logout()).resolves.toEqual({ revoked: true });
+  expect(h.bridge.current()).toBeNull();
+  const request = h.calls.find((call) => call.url.endsWith('/native/revoke'));
+  expect(request?.init?.body).toBe('{}');
+  expect(request?.init?.method).toBe('POST');
+  expect(
+    h.invoke.invoke.mock.calls.some(
+      (call) => call[0] === 'station_native_account_revoke_prepare',
+    ),
+  ).toBe(true);
+  await expect(
+    h.bridge.requestHeaders({ method: 'GET', path: '/api/projects' }),
+  ).rejects.toThrow();
+});
+
+test('remote native logout refuses an unconfirmed success response while still removing local account scope', async () => {
+  const h = await fixture();
+  await h.bridge.login({ username: 'zach', password: 'password' });
+  h.setLogout({ data: { revoked: false } });
+  await expect(h.bridge.logout()).rejects.toThrow();
   expect(h.bridge.current()).toBeNull();
 });

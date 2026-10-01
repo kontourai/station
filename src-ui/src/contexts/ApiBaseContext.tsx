@@ -861,6 +861,7 @@ export function useNativeRelayAccountSession() {
       (await selectedOwner()).login(credentials),
     acceptInvitation: async (token: string) =>
       (await selectedOwner()).acceptInvitation(token),
+    logout: async () => (await selectedOwner()).logout(),
     retireAccount: async () => (await selectedOwner()).retireAccount(),
   };
 }

@@ -7,6 +7,7 @@ import {
 import { z } from 'zod/v3';
 import { createNativeEnrollmentSignalingBridge } from './nativeEnrollmentSignalingBridge';
 import type { TauriInvoker } from './nativeRelaySignalingBridge';
+import { invokeTauri } from './tauriInvoke';
 
 const handle = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -70,6 +71,27 @@ const active = z
     transitionHandle: handle,
   })
   .strict();
+const recoveredAttempt = z
+  .object({
+    enrollmentHandle: handle,
+    phase: z.enum([
+      'begin-required',
+      'candidate',
+      'staged',
+      'activation-unknown',
+      'active',
+      'cancel-required',
+    ]),
+    profileRevision: revision,
+    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    registrationAvailable: z.boolean(),
+    candidate: candidate.nullable(),
+    transition: active.nullable(),
+  })
+  .strict();
+const recovery = z
+  .object({ version, attempts: z.array(recoveredAttempt).max(16) })
+  .strict();
 const prepared = z
   .object({
     version: z.literal('station-native-enrollment-request/v1'),
@@ -90,7 +112,7 @@ export interface NativeRelayEnrollmentClientInput {
   readonly expectedProfileRevision: number;
   readonly stationAudience: string;
   readonly signal: AbortSignal;
-  readonly invoke: TauriInvoker;
+  readonly invoke?: TauriInvoker;
 }
 
 /** Fixed host operations own signing, sealed custody, activation and recovery. */
@@ -100,7 +122,11 @@ export function createNativeRelayEnrollmentClient(
   const profileName = input.profileName;
   const stationAudience = input.stationAudience;
   const signal = input.signal;
-  const invoke = input.invoke;
+  const invoke =
+    input.invoke ??
+    ({
+      invoke: (command, args) => invokeTauri<unknown>(command, args),
+    } satisfies TauriInvoker);
   let profileRevision = input.expectedProfileRevision;
   let enrollmentHandle: string | undefined;
   let busy = false;
@@ -234,7 +260,60 @@ export function createNativeRelayEnrollmentClient(
     return result;
   };
 
+  const recoveryProjection = async () => {
+    signal.throwIfAborted();
+    const projection = recovery.parse(
+      await invoke.invoke('station_native_enrollment_resume', {
+        profileName,
+        expectedProfileRevision: profileRevision,
+      }),
+    );
+    signal.throwIfAborted();
+    for (const attempt of projection.attempts) {
+      if (
+        attempt.profileRevision !== profileRevision ||
+        (attempt.phase === 'active') !== (attempt.transition !== null) ||
+        (attempt.transition &&
+          (attempt.transition.enrollmentHandle !== attempt.enrollmentHandle ||
+            attempt.transition.profileRevision !== attempt.profileRevision))
+      )
+        throw new Error('native_enrollment_recovery_invalid');
+    }
+    return projection;
+  };
+
   return Object.freeze({
+    recovery: recoveryProjection,
+    resume: async (selectedHandle: string) => {
+      signal.throwIfAborted();
+      if (busy) throw new Error('native_enrollment_operation_pending');
+      busy = true;
+      try {
+        const projection = await recoveryProjection();
+        const attempt = projection.attempts.find(
+          (value) => value.enrollmentHandle === selectedHandle,
+        );
+        if (
+          !attempt ||
+          (attempt.phase !== 'active' && attempt.expiresAt <= Date.now())
+        )
+          throw new Error('native_enrollment_recovery_invalid');
+        if (enrollmentHandle && enrollmentHandle !== attempt.enrollmentHandle)
+          throw new Error('native_enrollment_attempt_changed');
+        enrollmentHandle = attempt.enrollmentHandle;
+        if (attempt.transition) {
+          pendingPublication = attempt.transition;
+          await assertTransition(attempt.transition);
+          signal.throwIfAborted();
+          completed = true;
+          profileRevision = attempt.transition.profileRevision;
+          pendingPublication = undefined;
+        }
+        return attempt;
+      } finally {
+        busy = false;
+      }
+    },
     begin: () =>
       operation(
         'station_native_enrollment_begin_prepare',

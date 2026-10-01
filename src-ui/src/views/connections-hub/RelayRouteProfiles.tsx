@@ -16,6 +16,7 @@ import {
   nativeProfileRepository,
   usePlatformProfile,
 } from '../../platform/PlatformProfileContext';
+import { NativeRelayEnrollmentWizard } from './NativeRelayEnrollmentWizard';
 import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import './ComputersSection.css';
@@ -79,6 +80,7 @@ function grantSelection(profile: StationProfile) {
 }
 
 function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
+  const [enrollmentStarted, setEnrollmentStarted] = useState(false);
   const queryClient = useQueryClient();
   const [invitation, setInvitation] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +104,21 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
       trust.data.brokerOrigin === selection.expectedRoute.brokerOrigin &&
       trust.data.stationId === selection.expectedRoute.stationId &&
       trust.data.enrollmentId === selection.expectedRoute.enrollmentId,
+  );
+  const activeGrant = status.data?.grants[0];
+  const cleanupPending = Boolean(
+    status.data?.cleanups.some(
+      (cleanup) =>
+        !cleanup.brokerRetired ||
+        (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
+    ),
+  );
+  const canEnroll = Boolean(
+    trustMatchesRoute &&
+      activeGrant &&
+      !activeGrant.expired &&
+      activeGrant.metadata.expiresAt > Date.now() &&
+      !cleanupPending,
   );
   const redeem = useMutation({
     mutationFn: async (invitationJson: string) => {
@@ -207,14 +224,23 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
         </p>
       ) : null}
       {status.data ? <NativeRelayGrantSummary state={status.data} /> : null}
-      {status.data?.cleanups.some(
-        (cleanup) =>
-          !cleanup.brokerRetired ||
-          (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
-      ) ? (
+      {cleanupPending ? (
         <p role="status">
           A previous grant cleanup is still pending on this device.
         </p>
+      ) : null}
+      {canEnroll || enrollmentStarted ? (
+        <NativeRelayEnrollmentWizard
+          profile={profile}
+          onEnrollmentStart={() => setEnrollmentStarted(true)}
+          onEnrollmentCancel={() => setEnrollmentStarted(false)}
+          refreshGrantStatus={async () => {
+            const refreshed = await status.refetch();
+            if (refreshed.isError || !refreshed.data)
+              throw new Error('Native relay grant status is unavailable.');
+            return refreshed.data;
+          }}
+        />
       ) : null}
       <label>
         One-time routing invitation
@@ -355,7 +381,7 @@ export function RelayRouteProfiles() {
           }
         >
           <NativeRelayGrantControls
-            key={`grant:${profile.name}:${profile.updatedAt}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
+            key={`grant:${profile.name.toLowerCase()}:${profile.endpoint}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
             profile={profile}
           />
           <RelayRouteKeyApproval

@@ -1,10 +1,22 @@
 /** @vitest-environment jsdom */
 
 import { defaultStorage } from '@kontourai/station-connect';
+import type { NativeVerifiedPeerSignaling } from '@kontourai/station-connect/native-application';
+import type { NativeEnrollmentOpenedPeer } from '@kontourai/station-connect/native-enrollment';
 import {
   emptyStationProfileStore,
   type StationProfileStore,
 } from '@kontourai/station-contracts';
+import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import {
+  NATIVE_RELAY_ENROLLMENT_ACTIVATE_PATH,
+  NATIVE_RELAY_ENROLLMENT_BEGIN_PATH,
+  NATIVE_RELAY_ENROLLMENT_FINALIZE_PATH,
+  NATIVE_RELAY_ENROLLMENT_LOGIN_PATH,
+  NATIVE_RELAY_ENROLLMENT_REGISTER_PATH,
+  NATIVE_RELAY_ENROLLMENT_STATUS_PATH,
+  NATIVE_RELAY_ENROLLMENT_VERSION,
+} from '@kontourai/station-contracts/native-relay-enrollment';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -33,6 +45,13 @@ const mocks = vi.hoisted(() => ({
   revokeKey: vi.fn(),
   keyStatus: vi.fn(),
   grantInvoke: vi.fn(),
+  enrollmentInvoke: vi.fn(),
+  exchangeResponse: vi.fn(),
+  openVerifiedPeer: vi.fn(),
+  exchangeSignals: [] as AbortSignal[],
+  finalizeResponses: [] as unknown[],
+  recoveryAttempts: [] as unknown[],
+  transitionCurrentFails: false,
 }));
 
 vi.mock(
@@ -47,6 +66,80 @@ vi.mock(
       nativeRelayGrantAdapter: actual.createNativeRelayGrantAdapter(
         mocks.grantInvoke,
       ),
+    };
+  },
+);
+
+vi.mock('../../../platform/native/tauriInvoke', () => ({
+  invokeTauri: <T,>(command: string, args?: Record<string, unknown>) =>
+    mocks.enrollmentInvoke(command, args) as Promise<T>,
+}));
+
+vi.mock(
+  '@kontourai/station-connect/native-application',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-connect/native-application')
+      >();
+    return {
+      ...actual,
+      createNativeVerifiedPeerTransport: (input: {
+        signaling: NativeVerifiedPeerSignaling;
+        origin: string;
+        trust: {
+          current(): ApprovedStationConnectionTrust | null;
+          recheck(
+            value: ApprovedStationConnectionTrust,
+            stage: 'checkpoint' | 'before-remote-description',
+          ): Promise<boolean>;
+        };
+      }) => ({
+        openVerifiedPeer: (signal: AbortSignal) =>
+          mocks.openVerifiedPeer(input, signal),
+      }),
+    };
+  },
+);
+
+vi.mock(
+  '@kontourai/station-connect/native-enrollment',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-connect/native-enrollment')
+      >();
+    return {
+      ...actual,
+      createNativeEnrollmentExchange: (input: {
+        signal: AbortSignal;
+        open: (signal: AbortSignal) => Promise<NativeEnrollmentOpenedPeer>;
+      }) => {
+        mocks.exchangeSignals.push(input.signal);
+        return async (
+          prepare: (peerHandle: string) => Promise<{
+            requestHandle: string;
+            path: string;
+          }>,
+          accept: (
+            requestHandle: string,
+            response: unknown,
+            status: number,
+          ) => Promise<unknown>,
+        ) => {
+          input.signal.throwIfAborted();
+          const opened = await input.open(input.signal);
+          try {
+            const request = await prepare(opened.peer.peerHandle);
+            const response = await mocks.exchangeResponse(request);
+            const result = await accept(request.requestHandle, response, 200);
+            await opened.assertCurrent();
+            return result;
+          } finally {
+            await opened.close();
+          }
+        };
+      },
     };
   },
 );
@@ -118,6 +211,286 @@ function currentProfileStore(revision = 12, updatedAt = 2) {
   return store;
 }
 
+const enrollmentHandle = 'E'.repeat(43);
+const enrollmentPeerHandle = 'P'.repeat(43);
+const enrollmentNonce = 'N'.repeat(43);
+const enrollmentTransitionHandle = 'T'.repeat(43);
+const enrollmentSurface = {
+  kind: 'station-native' as const,
+  appIdentifier: 'io.kontourai.station',
+  channel: 'nightly' as const,
+  clientInstanceId: '33333333-3333-4333-8333-333333333333',
+  keyThumbprint: 'A'.repeat(43),
+};
+const enrollmentSigningKey = {
+  kty: 'EC' as const,
+  crv: 'P-256' as const,
+  x: 'X'.repeat(43),
+  y: 'Y'.repeat(43),
+};
+const enrollmentCandidate = {
+  version: 'station-native-device-binding-candidate/v1',
+  stationId,
+  deviceId: '44444444-4444-4444-8444-444444444444',
+  bindingId: '55555555-5555-4555-8555-555555555555',
+  surface: enrollmentSurface,
+  deviceProofJwk: {
+    kty: 'EC',
+    crv: 'P-256',
+    x: 'X'.repeat(43),
+    y: 'Y'.repeat(43),
+  },
+  deviceProofKeyThumbprint: 'D'.repeat(43),
+};
+
+function configureEnrollmentHost() {
+  let requestCounter = 0;
+  mocks.openVerifiedPeer.mockImplementation(
+    async (
+      input: {
+        signaling: NativeVerifiedPeerSignaling;
+        origin: string;
+        trust: {
+          current(): ApprovedStationConnectionTrust | null;
+          recheck(
+            value: ApprovedStationConnectionTrust,
+            stage: 'checkpoint' | 'before-remote-description',
+          ): Promise<boolean>;
+        };
+      },
+      signal: AbortSignal,
+    ) => {
+      const peer = await input.signaling.prepare(signal);
+      await input.signaling.open(peer.peerHandle, 'offer-sdp', signal);
+      await input.signaling.read(peer.peerHandle, signal);
+      return {
+        peer,
+        stationAudience: input.origin,
+        channel: {
+          send() {},
+          close() {},
+          subscribe: () => () => {},
+        },
+        assertCurrent: async () => {
+          const current = input.trust.current();
+          if (!current || !(await input.trust.recheck(current, 'checkpoint')))
+            throw new Error('test_binding_stale');
+        },
+        close: () => input.signaling.close(peer.peerHandle),
+      };
+    },
+  );
+  mocks.enrollmentInvoke.mockImplementation(
+    async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'station_native_enrollment_resume')
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          attempts: mocks.recoveryAttempts,
+        };
+      if (command === 'station_native_relay_enrollment_binding')
+        return {
+          profileName: 'Home Station',
+          profileRevision: 12,
+          scope: { stationId, enrollmentId, routingGeneration: 4 },
+          surface: enrollmentSurface,
+          trustRevision: 4,
+          stationId,
+          enrollmentId,
+          generation: 3,
+          signingKey: enrollmentSigningKey,
+        };
+      if (command === 'station_native_relay_ice_configuration')
+        return {
+          version: 'station-relay-ice-configuration/v1',
+          scope: { stationId, enrollmentId, routingGeneration: 4 },
+          surface: enrollmentSurface,
+          iceTransportPolicy: 'relay',
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + 600_000,
+          iceServers: [
+            {
+              urls: ['turns:relay.example:5349?transport=tcp'],
+              username: 'short-lived-user',
+              credential: 'short-lived-secret',
+            },
+          ],
+        };
+      if (command === 'station_native_enrollment_peer_prepare')
+        return {
+          version: 'station-native-enrollment-peer/v1',
+          peerHandle: enrollmentPeerHandle,
+          nonce: enrollmentNonce,
+          connectionId: enrollmentSurface.clientInstanceId,
+          expiresAt: Date.now() + 120_000,
+          scope: { stationId, enrollmentId, routingGeneration: 4 },
+          surface: enrollmentSurface,
+          stationAudience: 'https://station.example',
+          trust: {
+            stationId,
+            enrollmentId,
+            generation: 3,
+            signingKey: enrollmentSigningKey,
+          },
+        };
+      if (command === 'station_native_enrollment_peer_open')
+        return { expiresAt: Date.now() + 110_000 };
+      if (command === 'station_native_enrollment_peer_read')
+        return {
+          version: 'station-broker-native-connection-answer/v2',
+          answerSdp: 'test-answer-sdp',
+          stationProof: 'test-station-proof',
+          expiresAt: Date.now() + 100_000,
+        };
+      if (command === 'station_native_enrollment_peer_close') return undefined;
+      if (command.endsWith('_prepare')) {
+        const path =
+          command === 'station_native_enrollment_begin_prepare'
+            ? NATIVE_RELAY_ENROLLMENT_BEGIN_PATH
+            : command === 'station_native_enrollment_login_prepare'
+              ? args?.invitation
+                ? NATIVE_RELAY_ENROLLMENT_REGISTER_PATH
+                : NATIVE_RELAY_ENROLLMENT_LOGIN_PATH
+              : command === 'station_native_enrollment_finalize_prepare'
+                ? NATIVE_RELAY_ENROLLMENT_FINALIZE_PATH
+                : command === 'station_native_enrollment_activate_prepare'
+                  ? NATIVE_RELAY_ENROLLMENT_ACTIVATE_PATH
+                  : command === 'station_native_enrollment_status_prepare'
+                    ? NATIVE_RELAY_ENROLLMENT_STATUS_PATH
+                    : null;
+        if (!path) throw new Error(`Unexpected enrollment prepare ${command}`);
+        return {
+          version: 'station-native-enrollment-request/v1',
+          requestHandle: `${String(++requestCounter).padStart(42, '0')}Q`,
+          peerHandle: String(args?.peerHandle ?? enrollmentPeerHandle),
+          enrollmentHandle:
+            typeof args?.enrollmentHandle === 'string'
+              ? args.enrollmentHandle
+              : enrollmentHandle,
+          method: 'POST',
+          path,
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        };
+      }
+      if (command === 'station_native_enrollment_challenge_accept')
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          enrollmentHandle,
+          candidate: enrollmentCandidate,
+          registrationAvailable: true,
+        };
+      if (
+        command === 'station_native_enrollment_pending_accept' ||
+        command === 'station_native_enrollment_status_accept'
+      )
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          enrollmentHandle,
+          state: 'pending',
+        };
+      if (command === 'station_native_enrollment_delivery_accept')
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          enrollmentHandle,
+          state: 'staged',
+        };
+      if (
+        command === 'station_native_enrollment_activation_accept' ||
+        command === 'station_native_enrollment_transition_current'
+      ) {
+        if (
+          command === 'station_native_enrollment_transition_current' &&
+          mocks.transitionCurrentFails
+        )
+          throw new Error('native_enrollment_transition_retired');
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          enrollmentHandle:
+            typeof args?.enrollmentHandle === 'string'
+              ? args.enrollmentHandle
+              : enrollmentHandle,
+          state: 'active',
+          profileRevision:
+            typeof args?.expectedProfileRevision === 'number'
+              ? args.expectedProfileRevision
+              : 13,
+          transitionHandle:
+            typeof args?.transitionHandle === 'string'
+              ? args.transitionHandle
+              : enrollmentTransitionHandle,
+        };
+      }
+      if (command === 'station_native_enrollment_abort') return undefined;
+      throw new Error(`Unexpected native enrollment command: ${command}`);
+    },
+  );
+  mocks.exchangeResponse.mockImplementation(
+    async (request: { path: string }) => {
+      if (request.path === NATIVE_RELAY_ENROLLMENT_BEGIN_PATH)
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          enrollmentHandle,
+          candidate: enrollmentCandidate,
+          registrationAvailable: true,
+        };
+      if (
+        request.path === NATIVE_RELAY_ENROLLMENT_LOGIN_PATH ||
+        request.path === NATIVE_RELAY_ENROLLMENT_REGISTER_PATH
+      )
+        return { state: 'pending' };
+      if (request.path === NATIVE_RELAY_ENROLLMENT_STATUS_PATH)
+        return { state: 'pending' };
+      if (request.path === NATIVE_RELAY_ENROLLMENT_FINALIZE_PATH)
+        return mocks.finalizeResponses.shift() ?? { state: 'delivered' };
+      if (request.path === NATIVE_RELAY_ENROLLMENT_ACTIVATE_PATH)
+        return { state: 'active' };
+      throw new Error(`Unexpected enrollment request path ${request.path}`);
+    },
+  );
+}
+
+function configureEnrollmentReadyRoute() {
+  configureEnrollmentHost();
+  const liveStore = currentProfileStore();
+  const grant = {
+    route: {
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      routingGeneration: 4,
+      grantId: 'abcdefghijklmnopqrstuv',
+    },
+    stationSigningKeyId: 'sha256:station-signing-key',
+    stationSigningGeneration: 3,
+    expiresAt: Date.now() + 3_600_000,
+  };
+  mocks.grantInvoke.mockImplementation(async (command: string) => {
+    if (command === 'station_profile_store_read') return liveStore;
+    if (command === 'station_native_relay_grant_status')
+      return {
+        profileName: 'Home Station',
+        profileRevision: 12,
+        stationId,
+        enrollmentId,
+        grants: [{ metadata: grant, expired: false }],
+        cleanups: [],
+      };
+    throw new Error(`Unexpected native grant command: ${command}`);
+  });
+  mocks.keyStatus.mockResolvedValue({
+    status: 'approved',
+    trustRevision: 4,
+    profileName: 'Home Station',
+    brokerOrigin: 'https://broker.example',
+    stationId,
+    enrollmentId,
+    generation: 3,
+    keyId: 'sha256:station-signing-key',
+  });
+  mocks.pendingKey.mockResolvedValue(null);
+  return { liveStore };
+}
+
 function renderRoutes() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -148,6 +521,13 @@ describe('RelayRouteProfiles', () => {
     mocks.revokeKey.mockReset();
     mocks.keyStatus.mockReset();
     mocks.grantInvoke.mockReset();
+    mocks.enrollmentInvoke.mockReset();
+    mocks.exchangeResponse.mockReset();
+    mocks.openVerifiedPeer.mockReset();
+    mocks.exchangeSignals.length = 0;
+    mocks.finalizeResponses.length = 0;
+    mocks.recoveryAttempts.length = 0;
+    mocks.transitionCurrentFails = false;
     mocks.keyStatus.mockResolvedValue({
       status: 'untrusted',
       trustRevision: 0,
@@ -274,6 +654,7 @@ describe('RelayRouteProfiles', () => {
             cleanups: [],
           };
         }
+
         if (command === 'station_native_relay_grant_redeem') {
           expect(args).toEqual({
             profileName: 'Home Station',
@@ -321,7 +702,9 @@ describe('RelayRouteProfiles', () => {
         invitation,
       }),
     );
-    expect(mocks.grantInvoke).toHaveBeenCalledTimes(5);
+    expect(mocks.grantInvoke).toHaveBeenCalledWith(
+      'station_profile_store_read',
+    );
     expect(screen.getByText('Not connected')).toBeTruthy();
     expect(
       screen.getByText(
@@ -402,6 +785,321 @@ describe('RelayRouteProfiles', () => {
     );
     expect(mocks.grantInvoke).not.toHaveBeenCalledWith(
       'station_native_relay_grant_redeem',
+      expect.anything(),
+    );
+  });
+
+  test('runs the explicit enrollment, registration, approval, staging and activation journey', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.finalizeResponses.push({ state: 'pending' }, { state: 'delivered' });
+    const rendered = renderRoutes();
+
+    await screen.findByRole('heading', { name: 'Device setup' });
+    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
+    await screen.findByRole('heading', {
+      name: 'Public Device candidate for the Station operator',
+    });
+    expect(screen.getByText(enrollmentCandidate.deviceId)).toBeTruthy();
+    expect(
+      screen.getByText(enrollmentCandidate.deviceProofKeyThumbprint),
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Station account username'), {
+      target: { value: 'operator-account@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Station account password'), {
+      target: { value: 'test-password-only' },
+    });
+    fireEvent.click(
+      screen.getByLabelText(
+        'I have an operator invitation to register a new Station account',
+      ),
+    );
+    fireEvent.change(
+      screen.getByLabelText('Operator registration invitation'),
+      { target: { value: 'test-operator-invitation' } },
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Register and request Device approval',
+      }),
+    );
+
+    await screen.findByRole('region', { name: 'Pending operator approval' });
+    expect(
+      screen.getByText(
+        'Waiting for the Station operator to approve this Device.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText('Station account password')).toBeNull();
+    const loginCall = mocks.enrollmentInvoke.mock.calls.find(
+      ([command]) => command === 'station_native_enrollment_login_prepare',
+    );
+    expect(loginCall?.[1]).toMatchObject({
+      credentials: {
+        username: 'operator-account@example.test',
+        password: 'test-password-only',
+      },
+      invitation: 'test-operator-invitation',
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check operator approval' }),
+    );
+    await screen.findByText(
+      'The Station operator has not completed approval yet.',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check and stage Device delivery' }),
+    );
+    await screen.findByText(
+      'Operator approval is still pending. You can check again later.',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check and stage Device delivery' }),
+    );
+    await screen.findByRole('region', { name: 'Device delivery staged' });
+    expect(
+      mocks.enrollmentInvoke.mock.calls.some(
+        ([command]) => command === 'station_native_enrollment_activate_prepare',
+      ),
+    ).toBe(false);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Activate this Device' }),
+    );
+    await screen.findByText(/Device configured/);
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(
+      screen.getByText(/Account sign-in and Project access remain separate/),
+    ).toBeTruthy();
+    expect(
+      mocks.enrollmentInvoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_enrollment_transition_current',
+      ),
+    ).toBe(true);
+
+    rendered.unmount();
+    expect(
+      mocks.enrollmentInvoke.mock.calls.some(
+        ([command]) => command === 'station_native_enrollment_abort',
+      ),
+    ).toBe(false);
+  });
+
+  test('requires explicit resume selection and runs begin only for the selected saved attempt', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'begin-required',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: null,
+      transition: null,
+    });
+    renderRoutes();
+
+    const resumeButton = await screen.findByRole('button', {
+      name: `Resume saved setup 1`,
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Begin Device setup' }),
+    ).toBeNull();
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
+      expect.anything(),
+    );
+
+    fireEvent.click(resumeButton);
+    await screen.findByRole('heading', {
+      name: 'Public Device candidate for the Station operator',
+    });
+    expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
+      expect.objectContaining({ enrollmentHandle }),
+    );
+    expect(
+      screen.getByText(
+        /does not sign in for application use or grant Project access/,
+      ),
+    ).toBeTruthy();
+  });
+
+  test('rechecks recovery before begin and blocks a setup that appeared meanwhile', async () => {
+    configureEnrollmentReadyRoute();
+    renderRoutes();
+    const beginButton = await screen.findByRole('button', {
+      name: 'Begin Device setup',
+    });
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'candidate',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: enrollmentCandidate,
+      transition: null,
+    });
+
+    fireEvent.click(beginButton);
+    await screen.findByRole('button', {
+      name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+    });
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
+      expect.anything(),
+    );
+  });
+
+  test('shows configured only after selected active attempt passes host currentness', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'active',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: null,
+      transition: {
+        version: NATIVE_RELAY_ENROLLMENT_VERSION,
+        enrollmentHandle,
+        state: 'active',
+        profileRevision: 12,
+        transitionHandle: enrollmentTransitionHandle,
+      },
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Resume saved setup 1' }),
+    );
+    await screen.findByText(/Device configured/);
+    expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+      'station_native_enrollment_transition_current',
+      {
+        enrollmentHandle,
+        transitionHandle: enrollmentTransitionHandle,
+        expectedProfileRevision: 12,
+      },
+    );
+    expect(
+      screen.getByText(/Account sign-in and Project access remain separate/),
+    ).toBeTruthy();
+  });
+
+  test('does not display configured when selected active attempt fails host currentness', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.transitionCurrentFails = true;
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'active',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: null,
+      transition: {
+        version: NATIVE_RELAY_ENROLLMENT_VERSION,
+        enrollmentHandle,
+        state: 'active',
+        profileRevision: 12,
+        transitionHandle: enrollmentTransitionHandle,
+      },
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Resume saved setup 1' }),
+    );
+    await screen.findByRole('alert');
+    expect(screen.queryByText('Device configured')).toBeNull();
+  });
+
+  test('resumes staged delivery without automatically activating it', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'staged',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: enrollmentCandidate,
+      transition: null,
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+      }),
+    );
+    await screen.findByRole('button', { name: 'Activate this Device' });
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_activate_prepare',
+      expect.anything(),
+    );
+  });
+
+  test('aborts the owned attempt and network signal when the user cancels', async () => {
+    configureEnrollmentReadyRoute();
+    renderRoutes();
+    await screen.findByRole('heading', { name: 'Device setup' });
+    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
+    await screen.findByRole('heading', {
+      name: 'Public Device candidate for the Station operator',
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel Device setup' }),
+    );
+    await screen.findByRole('button', { name: 'Begin Device setup' });
+    expect(mocks.exchangeSignals.at(-1)?.aborted).toBe(true);
+    expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+      'station_native_enrollment_abort',
+      { enrollmentHandle },
+    );
+    expect(screen.queryByText(/Device configured/)).toBeNull();
+  });
+
+  test('disposes an unfinished enrollment on row unmount', async () => {
+    configureEnrollmentReadyRoute();
+    const rendered = renderRoutes();
+    await screen.findByRole('heading', { name: 'Device setup' });
+    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
+    await screen.findByRole('heading', {
+      name: 'Public Device candidate for the Station operator',
+    });
+    const ownedSignal = mocks.exchangeSignals.at(-1);
+
+    rendered.unmount();
+
+    expect(ownedSignal?.aborted).toBe(true);
+    await waitFor(() =>
+      expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+        'station_native_enrollment_abort',
+        { enrollmentHandle },
+      ),
+    );
+  });
+
+  test('revalidates the captured public row epoch against live host profile storage before begin', async () => {
+    const { liveStore } = configureEnrollmentReadyRoute();
+    renderRoutes();
+    await screen.findByRole('button', { name: 'Begin Device setup' });
+
+    liveStore.revision = 13;
+    liveStore.profiles[0].updatedAt = 3;
+    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
+
+    await screen.findByText(
+      'The saved route changed. Reopen setup and try again.',
+    );
+    expect(mocks.grantInvoke).toHaveBeenCalledWith(
+      'station_profile_store_read',
+    );
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
       expect.anything(),
     );
   });

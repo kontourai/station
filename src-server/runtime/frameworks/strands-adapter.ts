@@ -27,6 +27,7 @@ import {
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
+import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   currentScheduledPrincipal,
@@ -253,8 +254,13 @@ class StrandsAgentWrapper implements IAgent {
           return false;
         }
       };
+      // Replayed to the model: the failed-turn marker is excluded exactly
+      // as the VoltAgent prompt view and native-memory history exclude it
+      // (it is a UI record, and a pre-fix one may hold provider text).
       messages = original
-        ? await adapter.getMessages(userId, conversationId)
+        ? excludeChatErrorMarkers(
+            await adapter.getMessages(userId, conversationId),
+          )
         : [];
       if (!(await isCurrent()))
         throw new Error('Direct Strands conversation ownership changed.');

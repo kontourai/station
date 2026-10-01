@@ -4,8 +4,9 @@ This page records the native enrollment ceremony and its evidence boundaries.
 Server routes are composed only with `STATION_NATIVE_ENROLLMENT_PILOT=1`, the
 existing native Device-proof pilot, a configured relay and a supported pending
 account provider. Ordinary solo operation does not construct this service.
-The host command source is registered on desktop and mobile; compilation,
-physical iOS lifecycle and the ordinary UI journey still require qualification.
+The host commands are registered on desktop and mobile. The combined Rust
+source compiles and its library tests pass; physical iOS lifecycle and the
+complete ordinary UI journey still require qualification.
 
 The [native contract](../../packages/contracts/src/native-relay-enrollment.ts)
 separates Station trust, routing scope, native installation surface, fresh
@@ -125,12 +126,24 @@ backgrounding or physical iOS operation. Focused server integration exercises ac
 maintained local provider, real operator credentials, private Pion adapter facts,
 Device/binding owners, sealed delivery, ACK, new-peer status and cancellation.
 An await barrier around actual Station receipt crypto verifies that concurrent
-Device revocation cannot return a stale signed ACTIVE receipt. The test replaces
-the Pion process with typed in-memory channels; membership acceptance currently
-drives the actual membership service, not its native HTTP consumer.
+Device revocation cannot return a stale signed ACTIVE receipt. The enrollment test replaces the Pion process with typed in-memory channels.
+A separate mounted runtime test now drives the actual native account challenge,
+exchange, invitation acceptance and protected Project HTTP consumer using
+private adapter provenance. It refuses direct HTTP imitation, conflicting
+Origin/cookies, replayed proofs, changed bodies and revoked account sessions;
+account revocation preserves the independently approved Device.
 
-Rust coordinator compilation, host journal/publication cancellation and lost-ACK
-races, actual Keychain lifecycle, native account/invitation HTTP composition and
-public TURN/physical iOS operation remain **NOT_VERIFIED** for this slice. The
-ordinary native UI must qualify those seams with a physical second person before
-claiming full [relay acceptance](connection-broker.md).
+The native route UI now mounts the host-owned Device enrollment ceremony,
+including explicit operator approval, activation and recovery from the host
+journal. Ordinary route selection composes fresh ICE, verified Station proof,
+Device signing and a separate account continuation for a bounded read surface.
+These are executed frontend and server composition checks with mocked native
+IPC/peer boundaries, not a packaged-client result. Recovery hints do not grant
+account or Project authority; an unknown activation publication is rechecked
+against the host before its configured revision is accepted.
+
+Actual Keychain/process-relaunch lifecycle, the newly composed Tauri IPC journey,
+public TURN application traffic and physical iOS operation remain
+**NOT_VERIFIED** for this slice. The ordinary native UI must qualify those
+seams with a physical second person before claiming full
+[relay acceptance](connection-broker.md).

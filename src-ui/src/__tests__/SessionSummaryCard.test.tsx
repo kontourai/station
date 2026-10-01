@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const generateMutate = vi.fn();
@@ -47,6 +47,11 @@ vi.mock('../utils/logger', () => ({
 }));
 
 import { SessionSummaryCard } from '../components/chat/SessionSummaryCard';
+import {
+  chooseOverflow,
+  openOverflow,
+  overflowItems,
+} from './helpers/overflow-menu';
 
 const SUMMARY = {
   text: 'The bounded path was selected.',
@@ -103,11 +108,49 @@ describe('SessionSummaryCard', () => {
     expect(summary.textContent).toContain('final message partially included');
     expect(summary.closest('[role="log"]')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss summary' }));
+    // #3045: one labelled action on the row; Dismiss and Delete are menu
+    // rows, not buttons beside Regenerate.
+    expect(
+      screen.queryByRole('button', { name: 'Dismiss summary' }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More summary actions' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Dismiss summary' }));
     expect(generateMutate).toHaveBeenCalledWith({
       agentSlug: 'station',
       conversationId: 'c1',
     });
+    expect(dismissMutate).toHaveBeenCalledWith({
+      agentSlug: 'station',
+      conversationId: 'c1',
+    });
+  });
+
+  // Review M3: both folded actions are present, Delete is destructive, and
+  // Delete still goes through its confirmation to the mutation.
+  test('the summary menu holds Dismiss and a destructive Delete, and Delete still confirms', () => {
+    queryResult = { data: SUMMARY, isLoading: false, error: null };
+    renderCard();
+
+    expect(overflowItems(openOverflow('More summary actions'))).toEqual([
+      { name: 'Dismiss summary', danger: false },
+      { name: 'Delete', danger: true },
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(deleteMutate).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('alertdialog', {
+      name: 'Delete derived summary',
+    });
+    fireEvent.click(
+      within(confirm).getByRole('button', { name: 'Delete summary' }),
+    );
+    expect(deleteMutate).toHaveBeenCalledWith({
+      agentSlug: 'station',
+      conversationId: 'c1',
+    });
+
+    chooseOverflow('More summary actions', 'Dismiss summary');
     expect(dismissMutate).toHaveBeenCalledWith({
       agentSlug: 'station',
       conversationId: 'c1',

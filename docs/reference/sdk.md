@@ -83,12 +83,22 @@ and default-Agent migration remain separately tracked by #1372.
 ## Credential-profile device-code login
 
 The `@kontourai/station-sdk/device-code-login` subpath exports
+`useEngineLoginProfilesQuery(connectionId, requestScope)`,
 `useDeviceCodeLoginQuery(target, enabled)`, `useStartDeviceCodeLoginMutation()`
 and `useCancelDeviceCodeLoginMutation()`. A target contains `connectionId`,
 `profileRef` and an explicit `requestScope` (`apiBase`, `authorityKey`). Hooks
 use the authenticated transport and partition status by that authority and
 profile. A host Query Client and a matching current SDK transport authority
 are required.
+
+`useEngineLoginProfilesQuery` returns `EngineLoginProfiles`: profile references,
+optional display labels, authentication states and observed device-code support.
+It uses the dedicated sign-in read, never the credential-management or manual
+enrolment endpoints. Its cache is partitioned by current request authority;
+failed reads stay visible and are not retried automatically. `EngineLoginProfiles`
+is exported from the same subpath.
+The profile-index hook and DTO are available in repository source and
+scheduled for the next minor package release.
 
 The status query treats an absent login as `null` and polls every two seconds
 only while starting, awaiting approval or verifying. Mutations are never
@@ -1483,8 +1493,8 @@ The constructor also accepts `NativeApplicationSessionProofProvider`, identified
 by `kind: station-native-host-proof-provider/v1`. Its `prepareExchange` operation
 takes only opaque challenge data and local username/password credentials and
 returns the complete host-prepared exchange body plus matching proof header.
-`requestHeaders` takes opaque continuation data and a canonical GET/HEAD Project
-target. The client checks the returned signature, public key, target, nonce,
+`requestHeaders` takes opaque continuation data and a canonical GET/HEAD
+target from the fixed Station health and member Project read inventory. The client checks the returned signature, public key, target, nonce,
 hashes, body order and headers before dispatch. The ordered host credentials
 body is retained: its hash must match Node's `JSON.stringify` of the credentials
 the server parses, including Unicode. Other provider credential shapes are
@@ -1505,7 +1515,7 @@ import { NativeApplicationSessionClient } from '@kontourai/station-sdk/applicati
 
 const accounts = new NativeApplicationSessionClient(encryptedTransport, () => trustedSnapshot, key);
 const continuation = await accounts.exchange({ username, password });
-const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
+const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/projects' });
 ```
 
 The host proof provider may implement `prepareInvitationAcceptance({continuation, token})`.
@@ -1518,6 +1528,22 @@ body through the current native application transport: the separate Device
 proof authenticates its exact bytes, and the server independently rechecks the
 real account, Device binding and invitation/membership owner. No browser Origin
 or cookie conversion is part of this request.
+
+The optional host operation `prepareRevocation({continuation})` and client
+`prepareRevocation(continuation)` return a frozen empty body and validated proof
+headers for only `POST /api/account-auth/continuations/native/revoke`. The server
+requires the current native Device and separate account continuation, removes
+that exact continuation before awaiting actual provider revocation, and confirms
+that provider session is no longer valid before returning `{revoked: true}`.
+Device custody and grants remain intact. The native bridge's `logout()` clears
+local account scope even when the remote outcome is uncertain; a rejected or
+lost acknowledgment never means remote logout completed. Its `retire()` remains
+local removal only. A new account context is required for reauthentication.
+
+The native bridge parses invitation acceptance into
+`ProjectInvitationAcceptance` from the shared `project-membership` contract:
+exact Station/local/portable Project scope and `grantsDeviceAccess: false`.
+An arbitrary HTTP 200 or a foreign Station response does not confirm membership.
 
 ### Fresh relay enrollment proof helpers
 
@@ -1576,9 +1602,13 @@ can exceed that aggregate bound; the helper refuses it before invoking the signe
 The source-opt-in server pilot under #2893 stores operator-approved bindings,
 verifies the JWS and exact body against private native peer provenance, consumes
 replay state before dispatch, and applies independent current Device, account
-and Project authorization. Its protected surface is limited to native account
-challenge/exchange and Project reads. No product UI or Tauri signing command
-consumes this helper yet; it does not establish a packaged native journey.
+and Project authorization. The source-opt-in native producer permits only
+fixed account challenge/exchange/revoke, invitation acceptance, neutral Station
+health observations, and member Project/shared-work document/history/publication
+reads. Each write control has a separate fixed host preparation operation; the
+read signer remains GET/HEAD only. Operator configuration, terminal, catalog,
+and contribution writes are excluded. Source and focused runtime checks do not
+establish a packaged or physical-device native journey.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project

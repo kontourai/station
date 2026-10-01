@@ -1011,10 +1011,15 @@ function configureRuntimeSecurity(
         requiredCapability.capability === 'pairing-scope' &&
         requiredCapability.scope !== undefined &&
         grantedScope !== undefined &&
-        pairingScopeSatisfiesHttpRoute(grantedScope, requiredCapability.scope, {
-          method: c.req.method,
-          path: c.req.path,
-        });
+        pairingScopeSatisfiesHttpRoute(
+          grantedScope,
+          requiredCapability.scope,
+          {
+            method: c.req.method,
+            path: c.req.path,
+          },
+          authority === 'operator-credential',
+        );
       if (!permitted) {
         if (cookieCredential) {
           deviceSessionAuthorizations.add(1, {

@@ -7,11 +7,13 @@
  * so its `/agent/:id/app-home…` path never collides with that file's
  * `/agents` (plural, existing) or `/:id` (catch-all) routes.
  */
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   CredentialProfileApplicationProjection,
   CredentialRecoveryGroupProjection,
+  EngineLoginProfiles,
 } from '@kontourai/station-contracts/connection-recovery';
 import { type Context, Hono } from 'hono';
 import { defaultClaudeGlobalConfigDirs } from '../../providers/adapters/claude-skills-materialization.js';
@@ -176,6 +178,7 @@ export function createAppHomeRoutes(deps?: {
    * engine's CLI. The default probes for real: what an engine supports is not
    * something this file is allowed to assert on its own.
    */
+  isLoginReadCurrent?: (request: Request) => boolean;
   loginCapabilities?: (
     engine: EnrolmentEngine,
   ) => Promise<EngineLoginCapabilities>;
@@ -232,6 +235,53 @@ export function createAppHomeRoutes(deps?: {
   // Credential recovery is a separate management surface. Unlike the legacy
   // app-home status route above, it never returns a profile directory: refs
   // are opaque registry identity only and resolve server-side to hashed paths.
+  app.get('/agent/:id/device-code-profiles', async (c) => {
+    const current = () => deps?.isLoginReadCurrent?.(c.req.raw) === true;
+    const refused = () =>
+      c.json({ error: { code: 'insufficient_scope' } }, 403);
+    if (!current()) return refused();
+    try {
+      const context = await credentialRecoveryContext(param(c, 'id'));
+      if (!context?.engine) return c.json(credentialRecoveryUnavailable(), 404);
+      if (!current()) return refused();
+      const engine = context.engine;
+      const capabilities = await readLoginCapabilities(engine.provider);
+      const mechanisms: Array<'device-code'> = loginMechanisms(
+        capabilities,
+      ).includes('device-code')
+        ? ['device-code']
+        : [];
+      const profiles: EngineLoginProfiles['profiles'] = [];
+      for (const profile of context.recovery.profiles) {
+        if (!current()) return refused();
+        const dir = credentialProfileAppHomeDir(
+          engine.credentialProfileEngineId,
+          profile.ref,
+        );
+        // No target store exists yet: POST creates it before starting login.
+        const authState = existsSync(dir)
+          ? (await verifyEnrolment(engine.provider, dir)).state
+          : 'unauthenticated';
+        profiles.push({
+          ref: profile.ref,
+          ...(profile.label ? { label: profile.label } : {}),
+          authState,
+          mechanisms,
+        });
+      }
+      if (!current()) return refused();
+      return c.json({
+        success: true,
+        data: { profiles } satisfies EngineLoginProfiles,
+      });
+    } catch {
+      return c.json(
+        { success: false, error: 'Sign-in profiles could not be loaded.' },
+        500,
+      );
+    }
+  });
+
   app.get('/agent/:id/credential-recovery', async (c) => {
     try {
       const context = await credentialRecoveryContext(param(c, 'id'));

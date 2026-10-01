@@ -108,7 +108,7 @@ describe('ChatSettingsPanel accessibility', () => {
     const dialog = screen.getByRole('dialog', { name: 'Chat Settings' });
     expect(document.activeElement).toBe(dialog);
 
-    const first = screen.getByRole('button', { name: 'A−' });
+    const first = screen.getByRole('button', { name: 'Decrease font size' });
     const last = screen.getByRole('button', { name: 'Done' });
     first.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });

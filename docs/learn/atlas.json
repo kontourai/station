@@ -105,6 +105,8 @@
         "VirtualApplicationIngress",
         "NativeRelayGrantRenewalSupervisor",
         "NativeApplicationSignaling",
+        "Native relay enrollment",
+        "Native relay account and requests",
         "PendingPairingCompletion",
         "ConnectionInspector",
         "SecretBindingAdministration and IntegrationSecretResolver",
