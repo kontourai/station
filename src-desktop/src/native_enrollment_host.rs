@@ -524,10 +524,10 @@ fn consume_request(app: &AppHandle, id: &str, purpose: &str) -> Result<RequestCa
 fn point(capture: &RequestCapture) -> NativeEnrollmentPublicJwk {
     let p = &capture.route.context.station_trust.signing_key;
     NativeEnrollmentPublicJwk {
-        kty: p.kty.clone(),
-        crv: p.crv.clone(),
-        x: p.x.clone(),
-        y: p.y.clone(),
+        kty: p.kty().to_owned(),
+        crv: p.crv().to_owned(),
+        x: p.x().to_owned(),
+        y: p.y().to_owned(),
     }
 }
 fn channel(value: &str) -> Result<NativeProofKeyChannel> {
@@ -716,10 +716,10 @@ pub(crate) async fn station_native_enrollment_challenge_accept(
                 .ok_or_else(|| REFUSED.to_owned())?,
             surface: attempt.surface.clone(),
             device_proof_jwk: NativeEnrollmentPublicJwk {
-                kty: jwk.kty.clone(),
-                crv: jwk.crv.clone(),
-                x: jwk.x.clone(),
-                y: jwk.y.clone(),
+                kty: jwk.kty().to_owned(),
+                crv: jwk.crv().to_owned(),
+                x: jwk.x().to_owned(),
+                y: jwk.y().to_owned(),
             },
             device_proof_key_thumbprint: public.thumbprint().into(),
         };
