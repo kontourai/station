@@ -106,7 +106,7 @@
 
     {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
     {"path":"src-server/providers/adapters/bedrock-adapter.ts","digest":"6b4d3cac2bc65e6ce6d40008a21a8641ed2a268176f1f53534a98d8e9a85a5b6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -254,7 +254,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 

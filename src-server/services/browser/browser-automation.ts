@@ -83,6 +83,9 @@ export type BrowserToolRefusalCode =
   | 'session-not-found'
   | 'not-live'
   | 'human-controlling'
+  // The page is showing a dialog Station is holding for a person to answer
+  // (one opened while they were in control). Agents never answer it.
+  | 'dialog-open'
   | 'held-by-other'
   | 'interrupted'
   | 'surface-wedged'
@@ -139,6 +142,7 @@ function refuse(
  */
 const RECORDED_REFUSALS: ReadonlySet<BrowserToolRefusalCode> = new Set([
   'human-controlling',
+  'dialog-open',
   'held-by-other',
   'interrupted',
   'not-permitted',
@@ -515,6 +519,12 @@ export interface BrowserAutomationDeps {
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
   surfaceIdFor(browserSessionId: string): string | undefined;
+  /**
+   * Whether the session's page holds a dialog for a PERSON to answer. While
+   * it does, every action on the page is refused `dialog-open`: the page is
+   * modal, and the answer is theirs. Absent: never.
+   */
+  dialogWaitingForPerson?(browserSessionId: string): boolean;
   settings: Pick<BrowserProjectSettingsStore, 'evaluateAllowed'>;
   /** Playwright's injected-script installer; undefined when unavailable. */
   locatorEngine(): Promise<string | undefined>;
@@ -703,6 +713,15 @@ export class BrowserAutomation {
     return this.serial(first.browserSessionId, async () => {
       const selected = this.selectLive(authority, first.browserSessionId);
       if ('ok' in selected) return selected;
+      if (this.deps.dialogWaitingForPerson?.(first.browserSessionId))
+        return this.noteRefusal(
+          authority,
+          first.browserSessionId,
+          refuse(
+            'dialog-open',
+            'The page is showing a dialog that is waiting for a person to answer it in the Browser pane. Do not retry immediately: wait for them (browser_status shows dialogWaitingForPerson), or ask them to answer it.',
+          ),
+        );
       try {
         return this.noteRefusal(
           authority,
@@ -1308,6 +1327,8 @@ export class BrowserAutomation {
               : 'another-agent',
         viewers: entry?.hub.viewerCount ?? 0,
         wedged: state?.wedged === true,
+        dialogWaitingForPerson:
+          this.deps.dialogWaitingForPerson?.(session.browserSessionId) === true,
         updatedAt: session.updatedAt,
       };
     });
@@ -2308,6 +2329,14 @@ function inputRefusal(
       refuse(
         'surface-wedged',
         'The page stopped taking input (an earlier input has not finished; a dialog or a hung page can do this). Wait a moment and take a snapshot before trying again.',
+        { accepted },
+      ),
+    );
+  if (code === 'page-dialog-open')
+    return new ToolRefusal(
+      refuse(
+        'dialog-open',
+        'The page is showing a dialog that is waiting for a person to answer it in the Browser pane. Do not retry immediately: wait for them, or ask them to answer it.',
         { accepted },
       ),
     );

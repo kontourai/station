@@ -19,6 +19,7 @@ import type { HumanController } from '../services/live-surface/control-lease.js'
 import {
   claimHumanControl,
   dispatchHumanInput,
+  keepHumanControlAlive,
   type LiveSurfaceDecision,
   type LiveSurfaceEntry,
   type LiveSurfaceRegistry,
@@ -360,7 +361,9 @@ export function createLiveSurfaceRoutes(
     const result: LiveSurfaceLeaseResult =
       request.action === 'claim'
         ? claimHumanControl(found.value, human)
-        : releaseHumanControl(found.value, human, request.epoch);
+        : request.action === 'keep-alive'
+          ? keepHumanControlAlive(found.value, human, request.epoch)
+          : releaseHumanControl(found.value, human, request.epoch);
     return c.json({ success: result.ok, data: result }, result.ok ? 200 : 409);
   });
 
