@@ -52,7 +52,7 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-ui/src/index.css","digest":"ad2e708fcb650ea156d50cbf5fb564705e1aeffda5dcc37ca01d5744b15777a5","revision":"4ce4b63ea7c1eb235990079a5eb2b5b62470185a"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

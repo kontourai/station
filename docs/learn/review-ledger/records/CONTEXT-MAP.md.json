@@ -24,7 +24,7 @@
 
     {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","digest":"0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/glossary.md","digest":"d2f2c06ee81aeff206a27dce2ad76c0cb0bd9830a381a75dc2aa10696a9617b8","revision":"6423df870808e78717df6ad4b73b2fbd56b5997d"},
+    {"path":"docs/glossary.md","digest":"7c46732a611b29731c89b190d4574e72663c36bb405865ea99c733da81a27a52","revision":"f4ae00082c24cd2c85da0ca3320c5308cf96e6e8"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

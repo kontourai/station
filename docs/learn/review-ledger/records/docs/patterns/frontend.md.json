@@ -64,7 +64,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/index.css","digest":"ad2e708fcb650ea156d50cbf5fb564705e1aeffda5dcc37ca01d5744b15777a5","revision":"4ce4b63ea7c1eb235990079a5eb2b5b62470185a"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
