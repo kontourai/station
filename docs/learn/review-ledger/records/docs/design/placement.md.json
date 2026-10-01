@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"59272a6d227bd7febd99d0f0a8a8a4cf306a2a7c34b30d952e1565c679da3b50","revision":"47f976a2ce8085003c1d010080c93dff57cd8665"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"d2800512b948b35140393daaed09ddef7fe47cc18028242344e6cd33185a5e32","revision":"08fd77f74f71bf494dbf0ae3171da6e9622ff015"},
 
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
