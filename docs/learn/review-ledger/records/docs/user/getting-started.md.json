@@ -72,7 +72,7 @@
 
     {"path":"src-ui/src/hooks/useChatInput.ts","digest":"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"src-ui/src/index.css","digest":"4f94ce8636feab1ca4d00004b29e3ebd3ac1f4bce558e3290355492e9bbf5b33","revision":"96d7bdbbd4bc907b0eac5f16e5f409018975ebbb"},
 
     {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
