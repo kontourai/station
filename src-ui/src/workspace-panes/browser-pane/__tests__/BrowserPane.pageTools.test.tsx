@@ -172,6 +172,7 @@ async function clickWhenEnabled(name: string) {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   controlHolder.state = null;
 });
 
@@ -475,6 +476,35 @@ describe('screenshots', () => {
 });
 
 describe('the toolbar', () => {
+  test('the pane marks a coarse pointer and a narrow window for its CSS, each on its own', async () => {
+    controlHolder.state = control();
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      // The shared mobile query is the narrow one; the pointer query is coarse.
+      matches: query === '(pointer: coarse)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    renderPane({
+      [SUMMARY]: () => ({ body: { success: true, data: sessionView() } }),
+    });
+    await screen.findByTestId('live-canvas');
+    const pane = document.querySelector('.browser-pane');
+    expect(pane?.hasAttribute('data-coarse')).toBe(true);
+    expect(pane?.hasAttribute('data-narrow')).toBe(false);
+  });
+
+  test('a fine pointer in a wide window carries neither mark', async () => {
+    controlHolder.state = control();
+    renderPane({
+      [SUMMARY]: () => ({ body: { success: true, data: sessionView() } }),
+    });
+    await screen.findByTestId('live-canvas');
+    const pane = document.querySelector('.browser-pane');
+    expect(pane?.hasAttribute('data-coarse')).toBe(false);
+    expect(pane?.hasAttribute('data-narrow')).toBe(false);
+  });
+
   test('Close session lives in the ⋯ menu, last and on its own, and closes the session', async () => {
     controlHolder.state = control();
     let closed = false;

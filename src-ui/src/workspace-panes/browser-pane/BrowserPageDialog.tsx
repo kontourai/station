@@ -2,6 +2,7 @@ import type { BrowserPendingDialogView } from '@kontourai/station-contracts/work
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { MonitorGlyph } from '../../components/icons/Glyph';
+import { useCoarsePointer } from './useCoarsePointer';
 import './BrowserPageDialog.css';
 
 /**
@@ -43,6 +44,7 @@ export function BrowserPageDialog({
   compact?: boolean;
 }) {
   const titleId = useId();
+  const coarsePointer = useCoarsePointer();
   const messageId = useId();
   const [text, setText] = useState(dialog.defaultPrompt ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +100,7 @@ export function BrowserPageDialog({
     <form
       ref={cardRef}
       className={`browser-pane__page-dialog${compact ? ' browser-pane__page-dialog--compact' : ''}`}
+      data-pointer={coarsePointer ? 'coarse' : 'fine'}
       role="alertdialog"
       aria-labelledby={titleId}
       aria-describedby={messageId}

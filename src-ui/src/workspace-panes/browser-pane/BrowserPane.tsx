@@ -37,6 +37,7 @@ import {
   useRecentDriver,
 } from '../../float-over-chat/recentDriver';
 import { useAnnounceShownSource } from '../../float-over-chat/shownSources';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
   LiveSurfaceCanvas,
@@ -74,6 +75,7 @@ import {
   browserPaneKeys,
   describeBrowserFailure,
 } from './browserPaneApi';
+import { useCoarsePointer } from './useCoarsePointer';
 import './BrowserPane.css';
 
 /**
@@ -556,6 +558,8 @@ function BrowserSessionPane({
   >('none');
   const [addressFocused, setAddressFocused] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
+  const coarsePointer = useCoarsePointer();
+  const narrow = useIsMobile();
   const [shot, setShot] = useState<BrowserScreenshotShot | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
@@ -916,6 +920,8 @@ function BrowserSessionPane({
   return (
     <div
       className="browser-pane"
+      data-coarse={coarsePointer || undefined}
+      data-narrow={narrow || undefined}
       ref={paneRef}
       onKeyDownCapture={(event) => {
         // The screenshot shortcut, anywhere in the pane (even the live view's

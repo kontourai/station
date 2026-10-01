@@ -136,3 +136,30 @@ describe('Escape', () => {
     }
   });
 });
+
+describe('the pointer the card sizes itself for', () => {
+  function stubPointer(coarse: boolean) {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(pointer: coarse)' ? coarse : false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+
+  test('a coarse pointer marks the card coarse, so the compact density never applies', () => {
+    stubPointer(true);
+    renderCard({ compact: true });
+    expect(screen.getByRole('alertdialog').getAttribute('data-pointer')).toBe(
+      'coarse',
+    );
+  });
+
+  test('a fine pointer marks the card fine, which is what the compact density keys on', () => {
+    stubPointer(false);
+    renderCard({ compact: true });
+    expect(screen.getByRole('alertdialog').getAttribute('data-pointer')).toBe(
+      'fine',
+    );
+  });
+});

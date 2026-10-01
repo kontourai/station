@@ -204,17 +204,17 @@
 /* --- Toolbar (#90): quiet chrome, one row --------------------------------
    Omnibox, driver chip, Console, ⋯. Layout and sizing only: every button is
    the shared Button (`variant="icon"`), every menu the shared menu surface.
-   On a coarse pointer or a phone-width window every target is 44px and the
-   row never wraps: the path gives way first, then the host truncates. */
+   On a coarse pointer or a phone-width window (`data-coarse` / `data-narrow`, set
+   by the pane from the shared hooks: media queries are the primitives' business) every
+   target is 44px and the row never wraps: the path gives way first, then the
+   host truncates. */
 
 .browser-pane {
   --browser-pane-control: 30px;
 }
 
-@media (pointer: coarse), (max-width: 768px) {
-  .browser-pane {
-    --browser-pane-control: 44px;
-  }
+.browser-pane:is([data-coarse], [data-narrow]) {
+  --browser-pane-control: 44px;
 }
 
 .browser-pane__toolbar {
@@ -271,7 +271,6 @@
   font: inherit;
   font-size: var(--k-text-sm);
   height: var(--browser-pane-control);
-  outline: none;
   padding: 0 4px;
   text-overflow: ellipsis;
   width: 100%;
@@ -317,7 +316,7 @@
    there is no hover, so they are always there. */
 .browser-pane__omni-reveal {
   opacity: 0;
-  transition: opacity var(--k-dur, 150ms) var(--k-ease, ease);
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 .browser-pane__toolbar:hover .browser-pane__omni-reveal,
@@ -325,22 +324,18 @@
   opacity: 1;
 }
 
-@media (pointer: coarse) {
-  .browser-pane__omni-reveal {
-    opacity: 1;
-  }
+.browser-pane[data-coarse] .browser-pane__omni-reveal {
+  opacity: 1;
 }
 
-@media (max-width: 768px) {
-  /* Phone widths: the host needs the lock's room more than the lock does. */
-  .browser-pane__omni-lock {
-    display: none;
-  }
+/* Phone widths: the host needs the lock's room more than the lock does. */
+.browser-pane[data-narrow] .browser-pane__omni-lock {
+  display: none;
+}
 
-  .browser-pane__omni {
-    gap: 0;
-    padding-left: var(--k-space-2);
-  }
+.browser-pane[data-narrow] .browser-pane__omni {
+  gap: 0;
+  padding-left: var(--k-space-2);
 }
 
 /* The driver chip: a soft tint, a dot and one word. */
@@ -389,7 +384,8 @@
 
 /* An agent drove recently: the dot breathes. */
 .browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot {
-  animation: browser-pane-breathe 2s ease-in-out infinite;
+  animation: browser-pane-breathe var(--motion-status-breathe)
+    var(--ease-standard) infinite;
 }
 
 @keyframes browser-pane-breathe {
@@ -402,19 +398,14 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot {
-    animation: none;
-  }
-}
+/* Reduced motion: the global reset in tokens.css limits the breathing to one
+   near-instant iteration, so no local rule is needed. */
 
-@media (pointer: coarse), (max-width: 768px) {
-  /* The chip that opens a menu is a 44px target; the tint stays 24px. */
-  .browser-pane__chip--button {
-    background-clip: content-box;
-    height: 44px;
-    padding: 10px;
-  }
+/* The chip that opens a menu is a 44px target; the tint stays 24px. */
+.browser-pane:is([data-coarse], [data-narrow]) .browser-pane__chip--button {
+  background-clip: content-box;
+  height: 44px;
+  padding: 10px;
 }
 
 .browser-pane__chip-menu {
@@ -459,7 +450,7 @@
   pointer-events: none;
   position: absolute;
   transform: translateX(-50%);
-  transition: opacity var(--k-dur, 150ms) var(--k-ease, ease);
+  transition: opacity var(--motion-fast) var(--ease-standard);
   white-space: nowrap;
   z-index: 1;
 }
@@ -468,10 +459,8 @@
   opacity: 1;
 }
 
-@media (pointer: coarse) {
-  .browser-pane__takeover-hint {
-    opacity: 1;
-  }
+.browser-pane[data-coarse] .browser-pane__takeover-hint {
+  opacity: 1;
 }
 
 /* The ⋯ menu: the shared .menu-surface look, bounded with its own scroll. */
@@ -518,11 +507,7 @@
   color: var(--k-negative);
 }
 
-@media (pointer: coarse), (max-width: 768px) {
-  .browser-pane__menu-row {
-    min-height: 44px;
-  }
-}
+/* The 44px touch floor for `.menu-row` is the shared one (chat.css). */
 
 .browser-pane__console {
   display: flex;
