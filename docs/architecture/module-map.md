@@ -35,6 +35,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while a native renderer is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
+| [Native relay enrollment](#native-relay-enrollment) | Enroll one explicitly approved Device without exposing its credential to the WebView. | `src-desktop/src/native_enrollment_host.rs` |
+| [Native relay account and requests](#native-relay-account-and-requests) | Compose selected Device transport with separate person sessions and bounded member reads. | `src-ui/src/platform/native/nativeRelayConnectionOwner.ts` |
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -820,6 +822,50 @@ server account/Project checks. The browser/Node diagnostic lab does not exercise
 this Tauri interface. Source and service tests do not establish
 executed IPC, native keyring behavior or a packaged/device journey. See the
 [native command contract](../design/native-capabilities.md#desktop-application-signaling-commands).
+
+## Native relay enrollment
+
+The [host coordinator](../../src-desktop/src/native_enrollment_host.rs) owns one
+profile-bound enrollment attempt, its OS journal, recipient key, exact Device
+candidate and activation publication. The
+[contract](../../packages/contracts/src/native-relay-enrollment.ts) exposes
+public preparations and opaque operation handles. The
+[UI controller](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx)
+use fixed host operations through a fresh verified encrypted peer. Network
+cleanup does not cancel a staged or committed enrollment. Explicit cancellation
+retires only the owned attempt. Recovery reads host state; an active transition
+must pass the host's currentness lookup before accepting its profile revision.
+
+The [Station service](../../src-server/services/identity/native-relay-enrollment-service.ts)
+requires supported pending account verification and a real operator's approval
+of the exact person/Device candidate. Signed, HPKE-encrypted delivery contains
+the Device credential only. Activation grants neither an account continuation
+nor Project membership. The [native enrollment record](../design/native-relay-enrollment.md)
+traces cryptography, journals, revocation and the evidence boundaries. Combined
+Rust tests and mounted frontend/server composition pass; fresh packaged iOS,
+actual process recovery and two-person public delivery remain unqualified.
+
+## Native relay account and requests
+
+The [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+composes an opaque host Device binding with the
+[application runtime](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
+Each request obtains fresh short-lived ICE and a verified Station peer; there
+is no direct HTTP fallback. Exact supported health, authority and member Project
+reads are admitted before allocation. Operator Workspace resources and writes
+remain unsupported. The CLI does not select these routes as defaults.
+
+The [account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
+uses the SDK native continuation client and fixed host proof operations. The
+person session is independent of Device custody. The public account scope
+qualifies query caches and requests by the current selected owner and session;
+account rejection retires that scope without erasing the approved Device.
+Changing the saved route, trust or binding fences prior results. The
+[ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx) mounts this owner
+into ordinary SDK requests and health probes. Its executed composition tests
+mock native IPC and peers; they do not prove an installed client, arbitrary
+provider support or a physical iPhone journey.
 
 ## NativeRelayGrantRenewalSupervisor
 
