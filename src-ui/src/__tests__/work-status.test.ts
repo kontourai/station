@@ -12,6 +12,7 @@ import {
   type ChatUIState,
   createDefaultChatState,
 } from '../contexts/active-chats-state';
+import { sessionStatusWord } from '../utils/session-state';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import {
   buildHomeWorkItems,
@@ -97,7 +98,7 @@ function rowFor(summary: OrchestrationSessionSummary): {
 
 function statusOf(summary: OrchestrationSessionSummary) {
   const { item, facts } = rowFor(summary);
-  const { line, lane, rung } = workStatus(item, NOW, { facts });
+  const { line, lane, rung } = workStatus(item, NOW, facts);
   return { line, lane, rung };
 }
 
@@ -158,21 +159,57 @@ describe('the status ladder, from real server summaries', () => {
   });
 
   it('a run the watchdog marks silent is its own cautionary rung, still in Running', () => {
-    // `turnProgress` is the watchdog's process-local observation, handed to
-    // the summary builder as an option rather than folded from events.
-    const silent = rowFor(folded('runningTool', { turnProgress: SILENCE }));
-    const status = workStatus(silent.item, NOW, { facts: silent.facts });
+    // The marker is the real watchdog's: nothing arrived for its 180s window.
+    const summary = folded('silentRun');
+    expect(summary.turnProgress?.progressSilence).toMatchObject({
+      windowMs: 180_000,
+      silentSinceEventAt: '2026-09-30T10:00:04.000Z',
+    });
+    const silent = rowFor(summary);
+    const status = workStatus(silent.item, NOW, silent.facts);
     expect(status).toMatchObject({
       rung: 'quiet',
       lane: 'running',
       tone: 'caution',
-      line: 'No progress for 6m · Bash · 1m 12s',
+      line: 'No progress for 1m · Bash · 1m 12s',
     });
     // Never drawn as the healthy run it sits beside.
     const healthy = rowFor(RUNNING_TOOL);
-    expect(
-      workStatus(healthy.item, NOW, { facts: healthy.facts }),
-    ).toMatchObject({ rung: 'running', tone: 'active' });
+    expect(workStatus(healthy.item, NOW, healthy.facts)).toMatchObject({
+      rung: 'running',
+      tone: 'active',
+    });
+  });
+
+  it('a turn that ended while its sub-agents kept running reads as running, not Done', () => {
+    // Ordinary turns end `idle` (#2540). The session is not finished while
+    // the engine still reports children under it.
+    const summary = folded('idleWithChildren');
+    expect(summary).toMatchObject({
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+      conversationActivity: { runningChildWork: { count: 2 } },
+    });
+    expect(statusOf(summary)).toEqual({
+      rung: 'childWork',
+      lane: 'running',
+      line: '2 sub-agents running',
+    });
+    // The Sessions list's word comes from the same label fold and agrees.
+    expect(sessionStatusWord(summary)).toBe('Running');
+    // Without the children the same ending is simply done.
+    expect(statusOf(TURN_COMPLETED).line).toBe('Done');
+    expect(sessionStatusWord(TURN_COMPLETED)).toBe('Completed');
+  });
+
+  it('a session nothing was sent to is a Draft', () => {
+    const summary = folded('draft');
+    expect(summary.draft).toBe(true);
+    expect(statusOf(summary)).toEqual({
+      rung: 'draft',
+      lane: 'drafts',
+      line: 'Draft · nothing sent yet',
+    });
   });
 
   it('an interrupted turn waits on you and says so', () => {
@@ -200,7 +237,7 @@ describe('the status ladder, from real server summaries', () => {
       observedBy: 'station-a',
     });
     const { item, facts } = rowFor(summary);
-    const status = workStatus(item, NOW, { facts });
+    const status = workStatus(item, NOW, facts);
     expect(status.rung).toBe('unanswerable');
     expect(status.lane).toBe('idle');
     expect(status.line).toBe(`Can't answer here · ${item.unanswerableNotice}`);
@@ -224,18 +261,6 @@ describe('the status ladder, from real server summaries', () => {
       lane: 'finished',
       line: 'Done',
     });
-  });
-
-  it('the summary carries no workspace isolation, so no branch is ever claimed', () => {
-    // `ProviderSession` declares the field, and a worktree session's row in
-    // the store has it; the summary builder does not pass it on. A branch
-    // chip read from it would show for nobody.
-    // The fixture's session ROW was stored with a worktree and its branch.
-    expect(
-      FOLD_FIXTURES.worktreeSession.options.workspaceIsolation.branch,
-    ).toBe('station/inbox-row');
-    const summary = folded('worktreeSession');
-    expect(summary.workspaceIsolation).toBeUndefined();
   });
 
   it('a stuck earlier execution child does not borrow the current child’s turn', () => {
@@ -274,9 +299,9 @@ describe('the status ladder, from real server summaries', () => {
         { environmentId: 'env-1', sessions: [APPROVAL_IN_OPEN_TURN] },
       ],
     });
-    expect(
-      workStatus(items[0], NOW, { facts: facts.get(items[0].id) }).line,
-    ).toBe('Needs approval');
+    expect(workStatus(items[0], NOW, facts.get(items[0].id)).line).toBe(
+      'Needs approval',
+    );
   });
 });
 
@@ -414,6 +439,14 @@ const TABLE: ReadonlyArray<
     'running',
   ],
   [
+    'sub-agents still running after their turn ended',
+    { lifecycleLabel: 'Running', activeReason: 'background' },
+    { activity: { childWorkCount: 2 } },
+    '2 sub-agents running',
+    'running',
+    'running',
+  ],
+  [
     'running a tool',
     { lifecycleLabel: 'Running', activeReason: 'turn' },
     { activity: ACTIVITY },
@@ -454,18 +487,6 @@ const TABLE: ReadonlyArray<
     'idle',
   ],
   [
-    'idle, changed since it was opened',
-    {
-      lifecycleLabel: 'Recent',
-      conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
-      acknowledgedAt: Date.parse('2026-09-30T09:00:00.000Z'),
-    },
-    undefined,
-    'Idle · new activity 25m ago',
-    'idle',
-    'idle',
-  ],
-  [
     'idle with no recorded time',
     { lifecycleLabel: 'Current', updatedAt: 0 },
     undefined,
@@ -490,13 +511,13 @@ const TABLE: ReadonlyArray<
     'settled',
   ],
   [
-    'done, not opened',
+    'done, not opened: Just finished, with no extra claim on the row',
     {
       lifecycleLabel: 'Completed',
       conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
     },
     undefined,
-    'Done · not opened yet',
+    'Done',
     'finished',
     'recentlyFinished',
   ],
@@ -526,7 +547,7 @@ function bucketOf(row: HomeWorkItem): string {
 describe('the status ladder, state by state', () => {
   it.each(TABLE)('%s', (_name, over, facts, line, lane, bucket) => {
     const row = item(over);
-    const status = workStatus(row, NOW, { facts });
+    const status = workStatus(row, NOW, facts);
     expect(status.line).toBe(line);
     expect(status.lane).toBe(lane);
     expect(bucketOf(row)).toBe(bucket);
@@ -557,52 +578,16 @@ describe('the status ladder, state by state', () => {
       const row = item({ lifecycleLabel });
       const bare = workStatus(row, NOW).lane;
       for (const facts of everyFact) {
-        expect(workStatus(row, NOW, { facts }).lane).toBe(bare);
+        expect(workStatus(row, NOW, facts).lane).toBe(bare);
       }
     }
     // And a fact its label does not explain changes nothing at all.
     expect(
       workStatus(item({ lifecycleLabel: 'Ready' }), NOW, {
-        facts: { attention: 'approval', activity: ACTIVITY },
+        attention: 'approval',
+        activity: ACTIVITY,
       }).line,
     ).toBe('Idle · last activity 25m ago');
-  });
-
-  it('marks unread only when the conversation changed after it was opened', () => {
-    const unread = (over: Partial<HomeWorkItem>) =>
-      workStatus(item(over), NOW).unread;
-    expect(unread({})).toBe(false);
-    expect(unread(OPENED)).toBe(false);
-    expect(
-      unread({
-        conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
-        acknowledgedAt: Date.parse('2026-09-30T09:36:14.000Z'),
-      }),
-    ).toBe(true);
-    expect(unread({ conversationUpdatedAt: '2026-09-30T09:36:15.000Z' })).toBe(
-      true,
-    );
-  });
-
-  it('the conversation on screen is never unread, in the flag or the words', () => {
-    const changed = item({
-      lifecycleLabel: 'Recent',
-      conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
-      acknowledgedAt: Date.parse('2026-09-30T09:00:00.000Z'),
-    });
-    expect(workStatus(changed, NOW)).toMatchObject({
-      unread: true,
-      line: 'Idle · new activity 25m ago',
-    });
-    expect(workStatus(changed, NOW, { current: true })).toMatchObject({
-      unread: false,
-      line: 'Idle · last activity 25m ago',
-    });
-    const finished = item({
-      lifecycleLabel: 'Completed',
-      conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
-    });
-    expect(workStatus(finished, NOW, { current: true }).line).toBe('Done');
   });
 
   it('formats a duration so it reads the same while it ticks', () => {
@@ -635,7 +620,7 @@ describe('status facts for chat, task and merged rows', () => {
     return {
       item: items[0],
       facts: facts.get(items[0].id),
-      line: workStatus(items[0], NOW, { facts: facts.get(items[0].id) }).line,
+      line: workStatus(items[0], NOW, facts.get(items[0].id)).line,
     };
   };
   const asConversation = (summary: OrchestrationSessionSummary) => ({

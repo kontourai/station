@@ -13,6 +13,9 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
  * therefore fails that test, and the client tests that import these
  * literals are then updated against the new truth instead of drifting.
  *
+ * To regenerate `SUMMARIES` after an intended fold change, run that test
+ * with `FOLD_FIXTURES_DUMP=<file>` and paste the result.
+ *
  * The client test cannot run the fold itself: `typecheck:ui` does not
  * resolve the server module graph.
  */
@@ -24,8 +27,12 @@ export interface FoldFixtureOptions {
   runningChildren?: number;
   /** The serving process no longer holds the thread or its provider. */
   detached?: boolean;
-  /** Stored on the session row, as a worktree session's is. */
-  workspaceIsolation?: OrchestrationSessionSummary['workspaceIsolation'];
+  /**
+   * After the last event, the turn-stall watchdog's clock runs this long
+   * with nothing arriving, so the real `TurnProgressTracker` writes its
+   * silence marker.
+   */
+  silentForMs?: number;
 }
 
 export interface FoldFixture {
@@ -49,7 +56,9 @@ export const FOLD_FIXTURE_KEYS = [
   'terminalAttribution',
   'answerability',
   'conversationActivity',
-  'workspaceIsolation',
+  'draft',
+  'turnProgress',
+  'updatedAt',
 ] as const satisfies readonly (keyof OrchestrationSessionSummary)[];
 
 /** The fold's clock: the session exists from :01, events land one second
@@ -91,155 +100,20 @@ const RECOVERY: FoldEvent[] = [
   },
 ];
 
-export const FOLD_FIXTURES = {
-  runningTool: {
-    events: [TURN, BASH],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'running',
-      previousLifecycleState: 'running',
-      transitionReason: 'turn_started',
-      transitionSource: 'runtime',
-      pendingReview: false,
-      hasActiveTurn: true,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 2,
-        openTurn: {
-          turnId: 't1',
-          threadId: 'T',
-          startedAt: '2026-09-30T10:00:03.000Z',
-        },
-        runningTools: [
-          {
-            name: 'Bash',
-            callId: 'c1',
-            startedAt: '2026-09-30T10:00:04.000Z',
-          },
-        ],
-        lastActivityAt: '2026-09-30T10:00:04.000Z',
-      },
-    },
-  },
+const SEQUENCES = {
+  /** A session nothing has been sent to. */
+  draft: { events: [] as FoldEvent[] },
+  runningTool: { events: [TURN, BASH] },
   runningWithChildren: {
     events: [TURN, BASH],
     options: { runningChildren: 3 },
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'running',
-      previousLifecycleState: 'running',
-      transitionReason: 'turn_started',
-      transitionSource: 'runtime',
-      pendingReview: false,
-      hasActiveTurn: true,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 2,
-        runningChildWork: {
-          count: 3,
-          producers: ['engine-subagent'],
-        },
-        openTurn: {
-          turnId: 't1',
-          threadId: 'T',
-          startedAt: '2026-09-30T10:00:03.000Z',
-        },
-        runningTools: [
-          {
-            name: 'Bash',
-            callId: 'c1',
-            startedAt: '2026-09-30T10:00:04.000Z',
-          },
-        ],
-        lastActivityAt: '2026-09-30T10:00:04.000Z',
-      },
-    },
   },
-  approvalInOpenTurn: {
-    events: [TURN, BASH, APPROVAL],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'review_pending',
-      previousLifecycleState: 'running',
-      transitionReason: 'review_requested',
-      transitionSource: 'runtime',
-      pendingReview: true,
-      hasActiveTurn: true,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 3,
-        openTurn: {
-          turnId: 't1',
-          threadId: 'T',
-          startedAt: '2026-09-30T10:00:03.000Z',
-        },
-        runningTools: [
-          {
-            name: 'Bash',
-            callId: 'c1',
-            startedAt: '2026-09-30T10:00:04.000Z',
-          },
-        ],
-        lastActivityAt: '2026-09-30T10:00:05.000Z',
-      },
-    },
-  },
+  /** The watchdog's default window is 180s; the turn has been silent 6m. */
+  silentRun: { events: [TURN, BASH], options: { silentForMs: 360_000 } },
+  approvalInOpenTurn: { events: [TURN, BASH, APPROVAL] },
   detachedApproval: {
     events: [TURN, BASH, APPROVAL],
     options: { detached: true },
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'review_pending',
-      previousLifecycleState: 'running',
-      transitionReason: 'review_requested',
-      transitionSource: 'runtime',
-      pendingReview: true,
-      hasActiveTurn: true,
-      answerability: {
-        answerable: false,
-        observedBy: 'station-a',
-        observedAt: '2026-09-30T10:00:10.000Z',
-        qualification: 'provider_absent',
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 3,
-        openTurn: {
-          turnId: 't1',
-          threadId: 'T',
-          startedAt: '2026-09-30T10:00:03.000Z',
-        },
-        runningTools: [
-          {
-            name: 'Bash',
-            callId: 'c1',
-            startedAt: '2026-09-30T10:00:04.000Z',
-          },
-        ],
-        lastActivityAt: '2026-09-30T10:00:05.000Z',
-      },
-    },
   },
   questionInOpenTurn: {
     events: [
@@ -251,78 +125,9 @@ export const FOLD_FIXTURES = {
         title: 'Which database?',
       },
     ],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'needs_input',
-      previousLifecycleState: 'running',
-      transitionReason: 'input_requested',
-      transitionSource: 'runtime',
-      pendingReview: false,
-      hasActiveTurn: true,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 2,
-        openTurn: {
-          turnId: 't1',
-          threadId: 'T',
-          startedAt: '2026-09-30T10:00:03.000Z',
-        },
-        lastActivityAt: '2026-09-30T10:00:04.000Z',
-      },
-    },
   },
-  interrupted: {
-    events: [TURN, ...RECOVERY],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'needs_input',
-      previousLifecycleState: 'needs_input',
-      transitionReason: 'runtime_exit',
-      transitionSource: 'system_recovery',
-      pendingReview: false,
-      hasActiveTurn: false,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 3,
-        lastActivityAt: '2026-09-30T10:00:05.000Z',
-      },
-    },
-  },
-  staleApprovalAfterInterruption: {
-    events: [TURN, APPROVAL, ...RECOVERY],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'review_pending',
-      previousLifecycleState: 'needs_input',
-      transitionReason: 'review_requested',
-      transitionSource: 'runtime',
-      pendingReview: true,
-      hasActiveTurn: false,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 4,
-        lastActivityAt: '2026-09-30T10:00:06.000Z',
-      },
-    },
-  },
+  interrupted: { events: [TURN, ...RECOVERY] },
+  staleApprovalAfterInterruption: { events: [TURN, APPROVAL, ...RECOVERY] },
   blocked: {
     events: [
       {
@@ -336,50 +141,12 @@ export const FOLD_FIXTURES = {
         transitionSource: 'user_action',
       },
     ],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'blocked',
-      previousLifecycleState: 'blocked',
-      transitionReason: 'blocked_by_user',
-      transitionSource: 'user_action',
-      pendingReview: false,
-      blockedReason: 'raw adapter text',
-      hasActiveTurn: false,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 1,
-        lastActivityAt: '2026-09-30T10:00:03.000Z',
-      },
-    },
   },
-  turnCompleted: {
+  turnCompleted: { events: [TURN, { method: 'turn.completed', turnId: 't1' }] },
+  /** The turn ended (`idle` since #2540) while its sub-agents kept running. */
+  idleWithChildren: {
     events: [TURN, { method: 'turn.completed', turnId: 't1' }],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'idle',
-      previousLifecycleState: 'running',
-      transitionReason: 'turn_completed',
-      transitionSource: 'runtime',
-      pendingReview: false,
-      hasActiveTurn: false,
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 2,
-        lastActivityAt: '2026-09-30T10:00:04.000Z',
-      },
-    },
+    options: { runningChildren: 2 },
   },
   failed: {
     events: [
@@ -391,77 +158,409 @@ export const FOLD_FIXTURES = {
         turnId: 't1',
       },
     ],
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'failed',
-      previousLifecycleState: 'running',
-      transitionReason: 'runtime_error',
-      transitionSource: 'runtime',
-      pendingReview: false,
-      blockedReason: 'rate limit',
-      hasActiveTurn: false,
-      terminalAttribution: {
-        kind: 'runtime_error',
-        detail: 'The engine reported an error: rate limit',
-      },
-      answerability: {
-        answerable: true,
-      },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 2,
-        lastActivityAt: '2026-09-30T10:00:04.000Z',
-      },
-    },
   },
-  worktreeSession: {
-    events: [TURN, BASH],
-    options: {
-      workspaceIsolation: {
-        mode: 'worktree',
-        repoPath: '/repo',
-        path: '/repo-worktrees/a',
-        branch: 'station/inbox-row',
-        baseRef: 'main',
-        cleanupPolicy: 'cleanup',
-        preserveOnFailure: true,
-        createdAt: '2026-09-30T10:00:00.000Z',
-      },
+} satisfies Record<string, Pick<FoldFixture, 'events' | 'options'>>;
+
+export type FoldFixtureName = keyof typeof SEQUENCES;
+
+// GENERATED by the fold (see the header); pinned by the server test.
+const SUMMARIES = {
+  draft: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'running',
+    pendingReview: false,
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
     },
-    summary: {
-      threadId: 'T',
-      status: 'running',
-      controlMode: 'station-owned',
-      lifecycleState: 'running',
-      previousLifecycleState: 'running',
-      transitionReason: 'turn_started',
-      transitionSource: 'runtime',
-      pendingReview: false,
-      hasActiveTurn: true,
-      answerability: {
-        answerable: true,
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 0,
+    },
+    draft: true,
+    updatedAt: '2026-09-30T10:00:02.000Z',
+  },
+  runningTool: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'running',
+    previousLifecycleState: 'running',
+    transitionReason: 'turn_started',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: true,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      openTurn: {
+        turnId: 't1',
+        threadId: 'T',
+        startedAt: '2026-09-30T10:00:03.000Z',
       },
-      conversationActivity: {
-        conversationId: 'T',
-        currentThreadId: 'T',
-        asOfSequence: 2,
-        openTurn: {
-          turnId: 't1',
-          threadId: 'T',
-          startedAt: '2026-09-30T10:00:03.000Z',
+      runningTools: [
+        {
+          name: 'Bash',
+          callId: 'c1',
+          startedAt: '2026-09-30T10:00:04.000Z',
         },
-        runningTools: [
-          {
-            name: 'Bash',
-            callId: 'c1',
-            startedAt: '2026-09-30T10:00:04.000Z',
-          },
-        ],
-        lastActivityAt: '2026-09-30T10:00:04.000Z',
+      ],
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    turnProgress: {
+      threadId: 'T',
+      turnId: 't1',
+      lastProgressEventAt: '2026-09-30T10:00:04.000Z',
+    },
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
+  runningWithChildren: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'running',
+    previousLifecycleState: 'running',
+    transitionReason: 'turn_started',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: true,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      runningChildWork: {
+        count: 3,
+        producers: ['engine-subagent'],
+      },
+      openTurn: {
+        turnId: 't1',
+        threadId: 'T',
+        startedAt: '2026-09-30T10:00:03.000Z',
+      },
+      runningTools: [
+        {
+          name: 'Bash',
+          callId: 'c1',
+          startedAt: '2026-09-30T10:00:04.000Z',
+        },
+      ],
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    turnProgress: {
+      threadId: 'T',
+      turnId: 't1',
+      lastProgressEventAt: '2026-09-30T10:00:04.000Z',
+    },
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
+  silentRun: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'running',
+    previousLifecycleState: 'running',
+    transitionReason: 'turn_started',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: true,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      openTurn: {
+        turnId: 't1',
+        threadId: 'T',
+        startedAt: '2026-09-30T10:00:03.000Z',
+      },
+      runningTools: [
+        {
+          name: 'Bash',
+          callId: 'c1',
+          startedAt: '2026-09-30T10:00:04.000Z',
+        },
+      ],
+      progressSilence: {
+        detectedAt: '2026-09-30T10:03:04.000Z',
+        windowMs: 180000,
+        silentSinceEventAt: '2026-09-30T10:00:04.000Z',
+        provider: 'claude',
+      },
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    turnProgress: {
+      threadId: 'T',
+      turnId: 't1',
+      lastProgressEventAt: '2026-09-30T10:00:04.000Z',
+      progressSilence: {
+        detectedAt: '2026-09-30T10:03:04.000Z',
+        windowMs: 180000,
+        silentSinceEventAt: '2026-09-30T10:00:04.000Z',
+        provider: 'claude',
       },
     },
+    updatedAt: '2026-09-30T10:00:04.000Z',
   },
-} satisfies Record<string, FoldFixture>;
+  approvalInOpenTurn: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'review_pending',
+    previousLifecycleState: 'running',
+    transitionReason: 'review_requested',
+    transitionSource: 'runtime',
+    pendingReview: true,
+    hasActiveTurn: true,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 3,
+      openTurn: {
+        turnId: 't1',
+        threadId: 'T',
+        startedAt: '2026-09-30T10:00:03.000Z',
+      },
+      runningTools: [
+        {
+          name: 'Bash',
+          callId: 'c1',
+          startedAt: '2026-09-30T10:00:04.000Z',
+        },
+      ],
+      lastActivityAt: '2026-09-30T10:00:05.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:05.000Z',
+  },
+  detachedApproval: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'review_pending',
+    previousLifecycleState: 'running',
+    transitionReason: 'review_requested',
+    transitionSource: 'runtime',
+    pendingReview: true,
+    hasActiveTurn: true,
+    answerability: {
+      answerable: false,
+      observedBy: 'station-a',
+      observedAt: '2026-09-30T10:00:10.000Z',
+      qualification: 'provider_absent',
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 3,
+      openTurn: {
+        turnId: 't1',
+        threadId: 'T',
+        startedAt: '2026-09-30T10:00:03.000Z',
+      },
+      runningTools: [
+        {
+          name: 'Bash',
+          callId: 'c1',
+          startedAt: '2026-09-30T10:00:04.000Z',
+        },
+      ],
+      lastActivityAt: '2026-09-30T10:00:05.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:05.000Z',
+  },
+  questionInOpenTurn: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'needs_input',
+    previousLifecycleState: 'running',
+    transitionReason: 'input_requested',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: true,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      openTurn: {
+        turnId: 't1',
+        threadId: 'T',
+        startedAt: '2026-09-30T10:00:03.000Z',
+      },
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
+  interrupted: {
+    threadId: 'T',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'needs_input',
+    previousLifecycleState: 'needs_input',
+    transitionReason: 'runtime_exit',
+    transitionSource: 'system_recovery',
+    pendingReview: false,
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 3,
+      lastActivityAt: '2026-09-30T10:00:05.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:05.000Z',
+  },
+  staleApprovalAfterInterruption: {
+    threadId: 'T',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'review_pending',
+    previousLifecycleState: 'needs_input',
+    transitionReason: 'review_requested',
+    transitionSource: 'runtime',
+    pendingReview: true,
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 4,
+      lastActivityAt: '2026-09-30T10:00:06.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:06.000Z',
+  },
+  blocked: {
+    threadId: 'T',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'blocked',
+    previousLifecycleState: 'blocked',
+    transitionReason: 'blocked_by_user',
+    transitionSource: 'user_action',
+    pendingReview: false,
+    blockedReason: 'raw adapter text',
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 1,
+      lastActivityAt: '2026-09-30T10:00:03.000Z',
+    },
+    draft: true,
+    updatedAt: '2026-09-30T10:00:03.000Z',
+  },
+  turnCompleted: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'idle',
+    previousLifecycleState: 'running',
+    transitionReason: 'turn_completed',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
+  idleWithChildren: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'idle',
+    previousLifecycleState: 'running',
+    transitionReason: 'turn_completed',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      runningChildWork: {
+        count: 2,
+        producers: ['engine-subagent'],
+      },
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
+  failed: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'failed',
+    previousLifecycleState: 'running',
+    transitionReason: 'runtime_error',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    blockedReason: 'rate limit',
+    hasActiveTurn: false,
+    terminalAttribution: {
+      kind: 'runtime_error',
+      detail: 'The engine reported an error: rate limit',
+    },
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
+} as unknown as Record<FoldFixtureName, Partial<OrchestrationSessionSummary>>;
+
+export const FOLD_FIXTURES = Object.fromEntries(
+  (Object.keys(SEQUENCES) as FoldFixtureName[]).map((name) => [
+    name,
+    { ...SEQUENCES[name], summary: SUMMARIES[name] },
+  ]),
+) as unknown as Record<FoldFixtureName, FoldFixture>;

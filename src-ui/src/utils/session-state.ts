@@ -173,8 +173,11 @@ export function orchestrationLifecycleLabel(
   // A completed or stopped parent turn may leave reported children running.
   // Keep the attention fold unchanged: background work is not a request to
   // the user. A closed or failed session retains its terminal outcome.
+  // `idle` is how an ordinary turn ends since #2540; without it a session
+  // whose turn finished while its sub-agents kept running read Completed.
   if (
-    (session.lifecycleState === 'completed' ||
+    (session.lifecycleState === 'idle' ||
+      session.lifecycleState === 'completed' ||
       session.lifecycleState === 'canceled') &&
     session.status !== 'closed' &&
     currentChildWork &&
@@ -222,8 +225,8 @@ export function orchestrationLifecycleLabel(
  * NOT DISTINGUISHED HERE (#3071): a turn interrupted by a restart while an
  * approval was open keeps reading `review_pending`, because recovery does not
  * settle the request the dead turn opened. Nothing on the summary reliably
- * tells that apart from a live approval, so it is not guessed at; the fix is
- * server-side.
+ * tells that apart from a live approval, so it is not guessed at. It will
+ * read Interrupted once the server settles the request.
  */
 export function sessionAttentionKind(
   session: Pick<
@@ -237,7 +240,8 @@ export function sessionAttentionKind(
 ): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
-  // A stale approval left by an interrupted turn also lands here (#3071).
+  // A stale approval left by an interrupted turn also lands here until the
+  // server settles the request (#3071); it will then read Interrupted.
   if (disposition.via === 'review_pending') return 'approval';
   if (disposition.via === 'blocked') return 'blocked';
   if (session.transitionReason === 'input_requested') return 'answer';
