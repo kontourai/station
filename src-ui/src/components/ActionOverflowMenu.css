@@ -26,24 +26,26 @@
 }
 
 /* Beside an `ActionRow`'s buttons the trigger takes THEIR height — 32px by a
-   small button, 44px by a touch-sized one — and stays square, so no host has
-   to size it. */
+   small button, 44px by a touch-sized one — so no host has to size it. 44px
+   wide, which makes it square beside a touch-sized button. (`aspect-ratio`
+   cannot do this: a stretched flex item's height is not a size the ratio is
+   allowed to read, so it resolved against `min-height` and stayed 32px.) */
 .action-row > .action-overflow__trigger {
   width: auto;
+  min-width: 44px;
   height: auto;
   min-height: 32px;
   align-self: stretch;
-  aspect-ratio: 1;
 }
 
-/* Standing alone, the trigger carries a word: see `triggerText`. */
-.action-overflow__trigger.action-overflow__trigger--labelled {
-  width: auto;
+/* Standing alone, the trigger carries a word (see `triggerText`) and is drawn
+   as the shared small secondary `.button`, so it is sized, themed and given
+   its touch height by the same rules as the button it stands in for. */
+.action-overflow__trigger--labelled {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-3);
-  padding: 0 var(--space-5);
-  aspect-ratio: auto;
-  font-size: var(--text-md);
-  font-weight: 500;
 }
 
 /* A menu opened from inside a dialog belongs ABOVE that dialog. The base

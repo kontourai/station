@@ -358,7 +358,7 @@ export function ActionOverflowMenu({
       <button
         ref={setTrigger}
         type="button"
-        className={`${triggerClassName}${triggerText ? ' action-overflow__trigger--labelled' : ''}${open ? ' is-active' : ''}`}
+        className={`${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : triggerClassName}${open ? ' is-active' : ''}`}
         // The count is part of the NAME, not only a painted badge: the badge is
         // `aria-hidden` (it is a glyph for the same fact), so without this a
         // screen reader would hear no difference between an idle dock and one
