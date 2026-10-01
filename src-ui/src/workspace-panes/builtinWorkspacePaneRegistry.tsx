@@ -641,7 +641,9 @@ function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
  * many approval requests still wait on the USER (a request already answered
  * from the queue stays open on the server but no longer waits on them).
  */
-export function workflowPlanRuntimeState(planSession: ChatSession | undefined) {
+export function workflowPlanRuntimeState(
+  planSession: ChatSession | null | undefined,
+) {
   return {
     status: planSession?.orchestrationStatus ?? planSession?.status ?? null,
     pendingApprovals: planSession
