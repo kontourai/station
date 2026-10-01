@@ -250,7 +250,7 @@
 
     {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"ab37f64c68ddb16cfc6e93c58963d911f6cb3df9fd01660aadfe9fa0e62aaeee","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"00a93ca284f42d9129bdffbbb022fa4e2af671f8bfad2e182f1150ead84e6649","revision":"569b2089287d33b204561dbc9b7c416a6f323459"},
 
     {"path":"src-server/services/connections/browser-code-login.ts","digest":"12d79b1b4d412be8ab19cccfeed4eadfb872a7bbc5b03febd487a11df662b9d6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
