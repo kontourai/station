@@ -243,6 +243,178 @@ test.describe('Project forms', () => {
     );
   });
 
+  /**
+   * #2799, in a real browser: jsdom has no layout, so only Chromium can say
+   * whether a long working directory leaves the Workspace section intact. On
+   * main the header's identity preview never shrank, so an unbreakable path
+   * took the whole row: the description collapsed to a one-word column, the
+   * avatar landed on the heading, and the "saved as" pill ran out of the card.
+   */
+  test('a long working directory leaves the Workspace section header, description and controls intact at 360px, 768px and 1280px (#2799)', async ({
+    page,
+  }) => {
+    const deep = Array.from(
+      { length: 9 },
+      (_, index) => `deeply-nested-directory-segment-${index}`,
+    ).join('/');
+    const paths = {
+      'no spaces': `/private/var/folders/zz/${deep}/station-project-home`,
+      'with spaces': `/Users/someone/Library/Application Support/${deep.replaceAll('-', ' ')}/station project home`,
+      'one unbroken segment': `/tmp/${'unbroken'.repeat(28)}`,
+    };
+    let workingDirectory = '';
+    await page.route(/\/api\/projects\/long-path(?:\?|$)/, async (route) => {
+      await route.fulfill(
+        json({
+          success: true,
+          data: {
+            id: 'p-long-path',
+            slug: 'long-path',
+            name: 'Long Path Project',
+            workingDirectory,
+            layouts: [],
+            hasWorkingDirectory: true,
+            layoutCount: 0,
+            hasKnowledge: false,
+            createdAt: '2026-07-20T00:00:00.000Z',
+            updatedAt: '2026-07-20T00:00:00.000Z',
+          },
+        }),
+      );
+    });
+
+    const section = page.locator('#section-workspace');
+    const box = async (selector: string, context: string) => {
+      const rect = await section.locator(selector).boundingBox();
+      expect(rect, `${context}: ${selector} box`).not.toBeNull();
+      return rect!;
+    };
+    const intersects = (
+      a: { x: number; y: number; width: number; height: number },
+      b: { x: number; y: number; width: number; height: number },
+    ) =>
+      a.x < b.x + b.width &&
+      b.x < a.x + a.width &&
+      a.y < b.y + b.height &&
+      b.y < a.y + a.height;
+
+    // The one-line treatment is for a path. With no directory the preview
+    // prints a sentence, which has to wrap rather than be cut at 320px.
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.goto('/projects/demo/edit');
+    const unset = section.locator('.project-settings__identity-path');
+    await expect(unset).toHaveText('No working directory configured');
+    expect(
+      await unset.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      'unset preview text shown whole at 320px',
+    ).toBe(true);
+
+    for (const [label, value] of Object.entries(paths)) {
+      expect(value.length, `${label}: fixture length`).toBeGreaterThan(200);
+      workingDirectory = value;
+      for (const width of [360, 768, 1280]) {
+        const context = `${label} at ${width}px`;
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto('/projects/long-path/edit');
+        const input = section.locator('#project-working-directory');
+        await expect(input).toHaveValue(value);
+
+        const card = await box(':scope', context);
+        const inside = async (selector: string) => {
+          const rect = await box(selector, context);
+          expect(
+            rect.x,
+            `${context}: ${selector} left edge`,
+          ).toBeGreaterThanOrEqual(card.x - 0.5);
+          expect(
+            rect.x + rect.width,
+            `${context}: ${selector} right edge`,
+          ).toBeLessThanOrEqual(card.x + card.width + 0.5);
+          return rect;
+        };
+
+        // The description keeps a readable measure: on main it was squeezed
+        // to the width of its longest word (about 60px) at every width where
+        // the header is a row.
+        const description = await inside('.page-section__description');
+        expect(
+          description.width,
+          `${context}: description width`,
+        ).toBeGreaterThanOrEqual(240);
+
+        // Nothing in the header sits on anything else.
+        const eyebrow = await inside('.page-section__eyebrow');
+        const title = await inside('.page-section__title');
+        const preview = await inside('.project-settings__identity-preview');
+        for (const [name, rect] of [
+          ['eyebrow', eyebrow],
+          ['title', title],
+          ['description', description],
+        ] as const) {
+          expect(
+            intersects(rect, preview),
+            `${context}: identity preview over the ${name}`,
+          ).toBe(false);
+        }
+
+        // The preview keeps the leaf folder in view and offers the whole
+        // path; the pill below prints the whole path, wrapped inside the card.
+        const previewPath = section.locator('.project-settings__identity-path');
+        const previewLine = await inside('.project-settings__identity-path');
+        // One line (18px at this size), never a wrapped block.
+        expect(
+          previewLine.height,
+          `${context}: preview path is one line`,
+        ).toBeLessThan(30);
+        await expect(previewPath).toHaveAttribute('title', value);
+        const leaf = await inside('.project-settings__identity-path-leaf');
+        expect(leaf.width, `${context}: leaf width`).toBeGreaterThan(40);
+        if (label !== 'one unbroken segment') {
+          expect(
+            await section
+              .locator('.project-settings__identity-path-leaf')
+              .evaluate((node) => node.scrollWidth <= node.clientWidth),
+            `${context}: leaf folder shown whole`,
+          ).toBe(true);
+        }
+        const savedAs = section
+          .locator('.project-settings__path-pill')
+          .filter({ hasText: 'saved as' });
+        await expect(savedAs.locator('code')).toHaveText(value);
+        for (const pill of await section
+          .locator('.project-settings__path-pill')
+          .all()) {
+          const rect = (await pill.boundingBox())!;
+          expect(
+            rect.x + rect.width,
+            `${context}: path pill right edge`,
+          ).toBeLessThanOrEqual(card.x + card.width + 0.5);
+        }
+
+        const field = await inside('#project-working-directory');
+        expect(field.width, `${context}: input width`).toBeGreaterThan(200);
+        if (width === 360) {
+          expect(
+            field.height,
+            `${context}: input touch target`,
+          ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+        }
+
+        expect(
+          await page.evaluate(() => {
+            const body = document.querySelector('.project-settings__body');
+            return (
+              document.documentElement.scrollWidth <= window.innerWidth &&
+              body !== null &&
+              body.scrollWidth <= body.clientWidth
+            );
+          }),
+          `${context}: no horizontal overflow`,
+        ).toBe(true);
+      }
+    }
+  });
+
   for (const viewport of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },

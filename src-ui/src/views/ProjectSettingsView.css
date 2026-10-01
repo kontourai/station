@@ -179,24 +179,54 @@
   flex-wrap: wrap;
   gap: 0.55rem;
 }
+/* A pill never outgrows the field (#2799): its label stays on one line and
+   the path inside wraps at any character, so the whole value stays readable.
+   The radius is the control radius, not a full round — a wrapped pill is
+   several lines tall. */
 .project-settings__path-pill {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 0.35rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--k-radius-md);
+  white-space: nowrap;
   background: color-mix(in srgb, var(--bg-secondary) 86%, white 14%);
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
 }
 .project-settings__path-pill code {
+  min-width: 0;
   color: var(--text-primary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* #2799: PageSection's actions slot never shrinks (it holds buttons), so an
+   unbreakable working directory in the identity preview took the whole row
+   and squeezed the heading to one word per line. Here the slot holds text:
+   let it shrink, and cap it at half the row so the description keeps its
+   measure. Below 641px the shared header stacks and the slot is full width. */
+.project-settings__section--hero .page-section__actions {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+@media (min-width: 641px) {
+  .project-settings__section--hero .page-section__actions {
+    max-width: 50%;
+  }
 }
 .project-settings__identity-preview {
   display: flex;
   gap: 0.85rem;
   align-items: flex-start;
+  min-width: 0;
+  max-width: 100%;
+}
+.project-settings__identity-copy {
+  flex: 1 1 auto;
   min-width: 0;
 }
 .project-settings__identity-icon {
@@ -225,7 +255,38 @@
   font-family: var(--font-mono);
   font-size: 0.76rem;
   line-height: 1.5;
-  word-break: break-word;
+  /* One line: the parent gives way first and the leaf folder stays in view.
+     The whole path is the element's text and its title. */
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.project-settings__identity-path--unset {
+  display: block;
+  white-space: normal;
+}
+/* rtl puts the ellipsis at the START of the parent; the inner ltr isolate
+   keeps character order (same treatment as `.project-page__dir-parent`). */
+.project-settings__identity-path-parent {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+}
+.project-settings__identity-path-parent-text {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+/* The leaf never yields to the parent; only a leaf wider than the whole line
+   is itself cut. */
+.project-settings__identity-path-leaf {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
 }
 .project-settings__identity-card {
   padding: 1rem;
@@ -310,7 +371,6 @@
     min-width: 0;
     max-width: 100%;
   }
-  .project-settings__identity-path,
   .project-settings__identity-card-name {
     overflow-wrap: anywhere;
     word-break: break-word;

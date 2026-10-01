@@ -269,6 +269,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     form.workingDirectory ?? '',
   );
   const workingDirectoryLeaf = getWorkingDirectoryLeaf(workingDirectory);
+  // The header preview start-truncates the parent so the leaf folder stays in
+  // view (#2799); a root (`/`, `~`, `D:\`) has no leaf to split off.
+  const workingDirectoryParent = workingDirectoryLeaf
+    ? workingDirectory.slice(0, -workingDirectoryLeaf.length)
+    : workingDirectory;
 
   function setField<K extends keyof ProjectForm>(
     key: K,
@@ -368,13 +373,37 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 layout={{ name: form.name, icon: form.icon || project?.icon }}
                 size={46}
               />
-              <div>
+              <div className="project-settings__identity-copy">
                 <div className="project-settings__identity-name">
                   {form.name}
                 </div>
-                <div className="project-settings__identity-path">
-                  {workingDirectory || 'No working directory configured'}
-                </div>
+                {workingDirectory ? (
+                  <div
+                    className="project-settings__identity-path"
+                    title={workingDirectory}
+                  >
+                    {/* rtl only for the start-side ellipsis; the inner ltr
+                        isolate restores character order (the Project page
+                        header's treatment, #304). */}
+                    <span className="project-settings__identity-path-parent">
+                      <span
+                        dir="ltr"
+                        className="project-settings__identity-path-parent-text"
+                      >
+                        {workingDirectoryParent}
+                      </span>
+                    </span>
+                    {workingDirectoryLeaf && (
+                      <span className="project-settings__identity-path-leaf">
+                        {workingDirectoryLeaf}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="project-settings__identity-path project-settings__identity-path--unset">
+                    No working directory configured
+                  </div>
+                )}
               </div>
             </div>
           }
