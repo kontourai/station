@@ -83,12 +83,22 @@ and default-Agent migration remain separately tracked by #1372.
 ## Credential-profile device-code login
 
 The `@kontourai/station-sdk/device-code-login` subpath exports
+`useEngineLoginProfilesQuery(connectionId, requestScope)`,
 `useDeviceCodeLoginQuery(target, enabled)`, `useStartDeviceCodeLoginMutation()`
 and `useCancelDeviceCodeLoginMutation()`. A target contains `connectionId`,
 `profileRef` and an explicit `requestScope` (`apiBase`, `authorityKey`). Hooks
 use the authenticated transport and partition status by that authority and
 profile. A host Query Client and a matching current SDK transport authority
 are required.
+
+`useEngineLoginProfilesQuery` returns `EngineLoginProfiles`: profile references,
+optional display labels, authentication states and observed device-code support.
+It uses the dedicated sign-in read, never the credential-management or manual
+enrolment endpoints. Its cache is partitioned by current request authority;
+failed reads stay visible and are not retried automatically. `EngineLoginProfiles`
+is exported from the same subpath.
+The profile-index hook and DTO are available in repository source and
+scheduled for the next minor package release.
 
 The status query treats an absent login as `null` and polls every two seconds
 only while starting, awaiting approval or verifying. Mutations are never
