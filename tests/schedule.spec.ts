@@ -1,5 +1,6 @@
 import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './helpers/fixture-audit';
 
 type ScheduleJobRecord = {
   name: string;
