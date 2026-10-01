@@ -208,6 +208,35 @@ describe('TaskOutputModule', () => {
     ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
   });
 
+  test('legacy deleted declaration receipts refuse the same candidate under a fresh operation', async () => {
+    const { home, workspace, module } = fixture();
+    const bytes = 'deleted legacy candidate';
+    writeFileSync(join(workspace, 'declared.txt'), bytes);
+    const input = {
+      operationId: 'legacy-deleted',
+      title: 'Declared',
+      sourceWorkspace: workspace,
+      relativePath: 'declared.txt',
+      digest: createHash('sha256').update(bytes).digest('hex'),
+      length: Buffer.byteLength(bytes),
+      fingerprintContext: 'session-a:event-deleted',
+    };
+    const kept = await module().createDeclared('task-a', input);
+    await module().delete('task-a', kept.output.id);
+    const index = join(home, 'task-outputs', 'index.json');
+    const legacy = JSON.parse(readFileSync(index, 'utf8'));
+    legacy.schemaVersion = 1;
+    delete legacy.deletedOperations[0].taskCreatedAt;
+    writeFileSync(index, JSON.stringify(legacy));
+    await expect(
+      module().createDeclared('task-a', {
+        ...input,
+        operationId: 'fresh-operation',
+      }),
+    ).rejects.toBeInstanceOf(TaskOutputDeletedOperationError);
+    expect(await module().list('task-a')).toEqual([]);
+  });
+
   test('Task replacement during descriptor read refuses publication', async () => {
     const { workspace, module, setTaskCreatedAt } = fixture();
     writeFileSync(join(workspace, 'one.txt'), 'one');

@@ -364,7 +364,8 @@ export class TaskOutputModule {
         store.deletedOperations.some(
           (receipt) =>
             receipt.taskId === taskId &&
-            receipt.taskCreatedAt === identity.createdAt &&
+            (receipt.taskCreatedAt === undefined ||
+              receipt.taskCreatedAt === identity.createdAt) &&
             receipt.fingerprint === fingerprint,
         )
       ) {
