@@ -34,7 +34,7 @@
 
     {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

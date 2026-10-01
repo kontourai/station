@@ -9,12 +9,12 @@
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"54dbde49ea19b5f3e05144263676fa83394bf31728bbcd846452a9263b46d364","revision":"6f12f85a362de9345606a3f962adb32b36f99cb1"},
+  "document": {"digest":"3c3f4e2a42c08f0acd6d57f7d2ebd594b6563310d69b03a75e9298cd9f588c61","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
 
   "sources": [
     {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b37bf446801986b1d3f4ff2237a0a0dc8209732e1e507699405e592d060ab0d7","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
 
@@ -24,7 +24,7 @@
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
 
     {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
 
     {"path":"src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","digest":"311cb357976129526312eddafdaea13d78f1bdb9f96b28adfdf0187388bc1769","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

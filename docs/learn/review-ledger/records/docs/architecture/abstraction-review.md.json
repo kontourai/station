@@ -62,7 +62,7 @@
 
     {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts","digest":"48925af379888c49356fd0902d0b42f0f23ccf785355ca45557feddbbe3f8f90","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"8384fdd2685097c42593beb42a035c1292e3d882"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"99d71dd9ff2be2c17ca9c7bc8603f22cc57554c301c56ce7e1109e4774250aa1","revision":"e1ce3538d977a5e3bbde7395e08aebe66e29781c"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

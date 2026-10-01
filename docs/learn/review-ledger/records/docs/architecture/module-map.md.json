@@ -288,7 +288,7 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
@@ -356,7 +356,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"48070ab126e23e9ccc1e9b9a67aeca4c878cdbb7fe08798ef2a380f770529e65","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -572,7 +572,7 @@
 
     {"path":"src-server/services/orchestration/native-invocation-runs.ts","digest":"f60bd1aa1d935d571749b4fe620a754360022df65dc3c10459ecf25ed4ac44eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"99d71dd9ff2be2c17ca9c7bc8603f22cc57554c301c56ce7e1109e4774250aa1","revision":"e1ce3538d977a5e3bbde7395e08aebe66e29781c"},
 
     {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -810,9 +810,9 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/observe.ts","digest":"edbe10fd612c9a33d91709961c6e86886950edacf14d51b2dfac760fdcb848a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"64d6bd975aad5c65afcb356fa9e0694e3cbbbf090e54b5a743d9bbcd5c760211","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"dd0d89d461aae5400f30bebf6ced04a695f87739440bfc3309d744f2e7eae9a9","revision":"4cfca300a183ebcff5a7339b29046666d08b38ae"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
 
     {"path":"src-ui/src/hooks/useOutboundQueueFlush.ts","digest":"4d1c55ae87eafc2fc46ff96fc8d3a8c6b3f9816e38423239e629991efaa86dc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

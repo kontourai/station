@@ -26,7 +26,7 @@
 
     {"path":"docs/glossary.md","digest":"c7d1e5949adcce8b8fd0605b9280cc5f869c72ec9cc4b7b2767db1617b2a4c6a","revision":"335893e0b2f5e87d0ccd02115fd0cfa760b215c1"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
     {"path":"packages/contracts/src/session-lifecycle.ts","digest":"defd4c1f3fd84f5b94d47f5a13c88ce75b92e3f2f7dc9c7ff9358f300e1795cf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
