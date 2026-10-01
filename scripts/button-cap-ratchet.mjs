@@ -35,7 +35,8 @@
 //     a menu item, an option, a pressed/selected/checked toggle — is a choice,
 //     not an action, and is not counted (CHOICE_ROLES, CHOICE_STATE_ATTRS).
 //   - Only `Button` and `button` are actions. An anchor styled as a button is
-//     not seen.
+//     not seen. An `ActionRow` counts as its filled `primary` and `secondary`
+//     slots, so a labelled button placed beside one is still counted with it.
 //
 // So a green result means "no NEW statically visible row of three labelled
 // buttons", not "every row on screen shows at most two". The rendered image
@@ -450,6 +451,15 @@ function tokensInChild(child, guards = []) {
   }
   if (ts.isJsxFragment(child)) {
     return child.children.flatMap((inner) => tokensInChild(inner, guards));
+  }
+  // `ActionRow` renders its `primary` and `secondary` props as labelled
+  // buttons, so it stands in this run as that many — otherwise a button added
+  // BESIDE an ActionRow would be the third label on screen and the first one
+  // the scan saw.
+  if (!ts.isJsxFragment(child) && tagNameOf(child) === 'ActionRow') {
+    return ['primary', 'secondary']
+      .filter((slot) => findAttribute(child, slot))
+      .map((slot) => ({ guards, label: `ActionRow ${slot}` }));
   }
   const kind = classifyAction(child);
   if (kind !== undefined) {

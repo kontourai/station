@@ -304,6 +304,20 @@ describe('button-cap scan', () => {
     ).toBe(0);
   });
 
+  // Found by fault injection: a Button added beside an ActionRow was the third
+  // label on screen and the only one the scan counted.
+  test('an ActionRow counts as its filled slots, so a button beside it is caught', () => {
+    const actionRow =
+      '<ActionRow overflowLabel="More" secondary={<Button>Test</Button>} primary={<Button>Save</Button>} />';
+    expect(count(`${actionRow}<Button>Export</Button>`)).toBe(3);
+    expect(count(actionRow)).toBe(0);
+    expect(
+      count(
+        '<ActionRow overflowLabel="More" primary={<Button>Save</Button>} /><Button>Export</Button>',
+      ),
+    ).toBe(0);
+  });
+
   test('a menu container is where overflow goes and is never a row', () => {
     const rows = scanSource(
       'Menu.tsx',
