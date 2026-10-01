@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md","digest":"fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"docs/reference/session-api.md","digest":"b49f0ad44ef94a7017f60274c66c46ad5d71a24e755ffa0e22cc23642f00da20","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"docs/reference/session-api.md","digest":"8eaae0c08189d6962674ce8aa1afb3c0607fe2a17792ab93043d6cfea3e24c67","revision":"c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96"},
 
     {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
