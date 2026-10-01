@@ -33,12 +33,18 @@ import { fingerprint, sameTrust } from './nativeConnectionShared.js';
 export const APPLICATION_TRANSPORT_CHANNEL = 'station-application-v1';
 
 /** Host-issued, opaque native Pion peer handle. No private owner fields cross. */
-export interface NativeApplicationPeer {
-  readonly version: 'station-native-application-peer/v1';
+export interface NativeVerifiedPeer {
+  readonly version:
+    | 'station-native-application-peer/v1'
+    | 'station-native-enrollment-peer/v1';
   readonly peerHandle: string;
   readonly nonce: string;
   readonly connectionId: string;
   readonly expiresAt: number;
+}
+
+export interface NativeApplicationPeer extends NativeVerifiedPeer {
+  readonly version: 'station-native-application-peer/v1';
 }
 
 /** Readback returned only after the host validates its complete peer transcript. */
@@ -50,10 +56,10 @@ export interface NativeApplicationPeerAnswer {
 }
 
 /** Host-owned native Pion lifecycle and per-request Device proof signing. */
-export interface NativeApplicationSignaling {
+export interface NativeVerifiedPeerSignaling {
   readonly scope: SelfHostedBrokerNativeScopeV2;
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
-  prepare(signal: AbortSignal): Promise<NativeApplicationPeer>;
+  prepare(signal: AbortSignal): Promise<NativeVerifiedPeer>;
   open(
     peerHandle: string,
     offerSdp: string,
@@ -63,6 +69,12 @@ export interface NativeApplicationSignaling {
     peerHandle: string,
     signal: AbortSignal,
   ): Promise<NativeApplicationPeerAnswer>;
+  close(peerHandle: string): Promise<void>;
+}
+
+export interface NativeApplicationSignaling
+  extends NativeVerifiedPeerSignaling {
+  prepare(signal: AbortSignal): Promise<NativeApplicationPeer>;
   sign(
     peerHandle: string,
     method: string,
@@ -70,7 +82,6 @@ export interface NativeApplicationSignaling {
     body: Uint8Array,
     signal: AbortSignal,
   ): Promise<string>;
-  close(peerHandle: string): Promise<void>;
 }
 
 const NATIVE_APPLICATION_PEER_HANDLE = /^[A-Za-z0-9_-]{43}$/u;
@@ -96,7 +107,8 @@ function validatePeer(
   value: unknown,
   expectedConnectionId: string,
   now: number,
-): NativeApplicationPeer {
+  expectedVersion: NativeVerifiedPeer['version'],
+): NativeVerifiedPeer {
   const keys = ['version', 'peerHandle', 'nonce', 'connectionId', 'expiresAt'];
   if (
     typeof value !== 'object' ||
@@ -105,9 +117,9 @@ function validatePeer(
     !keys.every((key) => Object.hasOwn(value, key))
   )
     throw new Error('native_application_peer_invalid');
-  const peer = value as NativeApplicationPeer;
+  const peer = value as NativeVerifiedPeer;
   if (
-    peer.version !== 'station-native-application-peer/v1' ||
+    peer.version !== expectedVersion ||
     !NATIVE_APPLICATION_PEER_HANDLE.test(peer.peerHandle) ||
     !NATIVE_APPLICATION_PEER_HANDLE.test(peer.nonce) ||
     !NATIVE_APPLICATION_CLIENT_ID.test(peer.connectionId) ||
@@ -122,7 +134,7 @@ function validatePeer(
 
 function validatePeerAnswer(
   value: unknown,
-  peer: NativeApplicationPeer,
+  peer: NativeVerifiedPeer,
   priorDeadline: number | undefined,
   now: number,
 ): NativeApplicationPeerAnswer {
@@ -191,8 +203,9 @@ export interface NativeApplicationTrustOwner {
   ): Promise<boolean>;
 }
 
-export interface NativeApplicationTransportInput {
-  readonly signaling: NativeApplicationSignaling;
+export interface NativeVerifiedPeerTransportInput {
+  readonly signaling: NativeVerifiedPeerSignaling;
+  readonly peerVersion: NativeVerifiedPeer['version'];
   /** Canonical Station origin every application request is pinned to. */
   readonly origin: string;
   /** Client lifetime; aborting it closes any in-flight or open channel. */
@@ -203,16 +216,28 @@ export interface NativeApplicationTransportInput {
   readonly now?: () => number;
 }
 
+export interface NativeApplicationTransportInput
+  extends Omit<NativeVerifiedPeerTransportInput, 'signaling' | 'peerVersion'> {
+  readonly signaling: NativeApplicationSignaling;
+}
+
+export interface OpenNativeVerifiedPeer {
+  readonly peer: NativeVerifiedPeer;
+  readonly stationAudience: string;
+  readonly channel: ApplicationChannel;
+  /** Checks persisted authority, including after the one-request channel closes. */
+  assertCurrent(signal?: AbortSignal): Promise<void>;
+  close(): Promise<void>;
+}
+
 /**
- * Opt-in native application transport client. The handshake reuses the
- * host-owned native v2 signaling, verifies the exact approved Station proof
- * before setRemoteDescription, and exposes application traffic only through
- * createApplicationChannelFetch on a station-application-v1 channel. The
- * routing grant and bearer stay inside the native host bridge; this client
- * never reads or returns them and has no HTTP fallback.
+ * Shared native handshake verifies the approved Station transcript before
+ * applying the answer SDP. Enrollment and authenticated traffic retain their
+ * distinct host peer versions; this layer grants neither Device nor account
+ * authority. Routing credentials remain inside the native host.
  */
-export function createNativeApplicationTransport(
-  input: NativeApplicationTransportInput,
+export function createNativeVerifiedPeerTransport(
+  input: NativeVerifiedPeerTransportInput,
 ) {
   const signaling = input.signaling;
   const trustOwner = input.trust;
@@ -254,9 +279,9 @@ export function createNativeApplicationTransport(
    * apply the answer SDP only after verification, and adopt only an open,
    * reliable, ordered station-application-v1 channel.
    */
-  const openChannel = async (
+  const openVerifiedPeer = async (
     signal: AbortSignal,
-  ): Promise<ApplicationChannel> => {
+  ): Promise<OpenNativeVerifiedPeer> => {
     const lifetime = composeOwnedSignal(
       AbortSignal.any([input.signal, signal]),
       45_000,
@@ -265,7 +290,7 @@ export function createNativeApplicationTransport(
     let peer: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
     let hostPeerHandle: string | undefined;
-    let hostPeer: NativeApplicationPeer | undefined;
+    let hostPeer: NativeVerifiedPeer | undefined;
     let hostPeerClose: Promise<void> | undefined;
     let closed = false;
     const closeHostPeer = (handle = hostPeerHandle): Promise<void> => {
@@ -315,7 +340,7 @@ export function createNativeApplicationTransport(
       try {
         const rawPeer = await raceOwnedLifetime(preparePromise, owned);
         hostPeerHandle = peerHandleFrom(rawPeer);
-        hostPeer = validatePeer(rawPeer, clientId, now());
+        hostPeer = validatePeer(rawPeer, clientId, now(), input.peerVersion);
       } catch (error) {
         if (owned.aborted) {
           void preparePromise
@@ -538,42 +563,6 @@ export function createNativeApplicationTransport(
       completed = true;
       const applicationChannel: ApplicationChannel = {
         ...adopted,
-        async prepareRequest(request) {
-          assertBoundCurrent();
-          request.signal.throwIfAborted();
-          await assertCurrent(authority, 'checkpoint', request.signal);
-          if (
-            request.headers.has('authorization') ||
-            request.headers.has('cookie') ||
-            request.headers.has(NATIVE_DEVICE_PROOF_HEADER)
-          )
-            throw new Error('native_application_request_credential_conflict');
-          if (
-            request.method !== request.method.toUpperCase() ||
-            !request.path.startsWith('/') ||
-            new TextEncoder().encode(request.path).byteLength >
-              NATIVE_APPLICATION_PATH_LIMIT_BYTES ||
-            hasUnsafeRequestPathCharacter(request.path)
-          )
-            throw new Error('native_application_request_invalid');
-          const body = request.body.slice();
-          if (body.byteLength > NATIVE_APPLICATION_BODY_LIMIT_BYTES)
-            throw new Error('native_application_request_too_large');
-          const proof = await raceOwnedLifetime(
-            signaling.sign(
-              activeHostPeer.peerHandle,
-              request.method,
-              request.path,
-              body,
-              request.signal,
-            ),
-            request.signal,
-          );
-          request.signal.throwIfAborted();
-          await assertCurrent(authority, 'checkpoint', request.signal);
-          assertBoundCurrent();
-          return [[NATIVE_DEVICE_PROOF_HEADER, validateRequestProof(proof)]];
-        },
         send: (message: string) => {
           assertBoundCurrent();
           adopted.send(message);
@@ -599,25 +588,87 @@ export function createNativeApplicationTransport(
           close();
         },
       };
-      return applicationChannel;
+      return Object.freeze({
+        peer: activeHostPeer,
+        stationAudience: input.origin,
+        channel: applicationChannel,
+        assertCurrent: (signal?: AbortSignal) =>
+          assertCurrent(authority, 'checkpoint', signal ?? input.signal),
+        async close() {
+          close();
+          await closeHostPeer();
+        },
+      });
     } finally {
       if (!completed) close();
     }
   };
 
-  const fetchApplication = createApplicationChannelFetch({
-    origin: input.origin,
-    signal: input.signal,
-    open: openChannel,
-    assertCurrent: async () => {
+  return Object.freeze({
+    openVerifiedPeer,
+    async assertCurrent() {
       const expected = trustOwner.current();
       if (!expected) throw new Error('native_application_trust_unavailable');
       await assertCurrent(expected, 'checkpoint');
     },
   });
+}
 
-  return Object.freeze({
-    fetch: fetchApplication,
-    openChannel,
+/** Authenticated application traffic adds host-owned Device proof signing. */
+export function createNativeApplicationTransport(
+  input: NativeApplicationTransportInput,
+) {
+  const transport = createNativeVerifiedPeerTransport({
+    ...input,
+    peerVersion: 'station-native-application-peer/v1',
   });
+  const openChannel = async (
+    signal: AbortSignal,
+  ): Promise<ApplicationChannel> => {
+    const opened = await transport.openVerifiedPeer(signal);
+    return {
+      ...opened.channel,
+      async prepareRequest(request) {
+        request.signal.throwIfAborted();
+        await opened.assertCurrent(request.signal);
+        if (
+          request.headers.has('authorization') ||
+          request.headers.has('cookie') ||
+          request.headers.has(NATIVE_DEVICE_PROOF_HEADER)
+        )
+          throw new Error('native_application_request_credential_conflict');
+        if (
+          request.method !== request.method.toUpperCase() ||
+          !request.path.startsWith('/') ||
+          new TextEncoder().encode(request.path).byteLength >
+            NATIVE_APPLICATION_PATH_LIMIT_BYTES ||
+          hasUnsafeRequestPathCharacter(request.path)
+        )
+          throw new Error('native_application_request_invalid');
+        const body = request.body.slice();
+        if (body.byteLength > NATIVE_APPLICATION_BODY_LIMIT_BYTES)
+          throw new Error('native_application_request_too_large');
+        const proof = await raceOwnedLifetime(
+          input.signaling.sign(
+            opened.peer.peerHandle,
+            request.method,
+            request.path,
+            body,
+            request.signal,
+          ),
+          request.signal,
+        );
+        request.signal.throwIfAborted();
+        await opened.assertCurrent(request.signal);
+        return [[NATIVE_DEVICE_PROOF_HEADER, validateRequestProof(proof)]];
+      },
+    };
+  };
+  const fetchApplication = createApplicationChannelFetch({
+    origin: input.origin,
+    signal: input.signal,
+    open: openChannel,
+    assertCurrent: transport.assertCurrent,
+  });
+  return Object.freeze({ fetch: fetchApplication, openChannel });
 }
