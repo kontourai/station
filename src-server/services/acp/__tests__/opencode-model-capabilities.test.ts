@@ -1,14 +1,9 @@
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { acpRuntimeCatalogStatus } from '../../connections/connection-service-helpers.js';
 import {
   addACPManagerConnection,
@@ -41,6 +36,8 @@ const OPENCODE: ACPConnectionConfig = {
   args: ['acp'],
   enabled: true,
 };
+
+const makeTempDir = trackTempDirs();
 
 beforeEach(() => resetOpenCodeModelCapabilities());
 
@@ -99,9 +96,8 @@ describe.skipIf(process.platform === 'win32')(
   () => {
     let dir: string;
     beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), 'station-opencode-listing-'));
+      dir = makeTempDir('station-opencode-listing-');
     });
-    afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
     const options = (script: string, extra = {}) => {
       const file = join(dir, 'fake.cjs');
@@ -383,7 +379,7 @@ describe('ACPProbe handshake hook', () => {
   });
 
   test('is called once a handshake succeeds, and a throwing hook does not fail it', async () => {
-    const hook = vi.fn(() => {
+    const hook = vi.fn((_config: ACPConnectionConfig) => {
       throw new Error('hook failed');
     });
     const probe = new ACPProbe(
@@ -401,7 +397,7 @@ describe('ACPProbe handshake hook', () => {
   });
 
   test('is not called when the handshake fails', async () => {
-    const hook = vi.fn();
+    const hook = vi.fn((_config: ACPConnectionConfig) => {});
     const failing = handshakeProcess();
     failing.start.mockRejectedValue(new Error('no engine'));
     const probe = new ACPProbe(
@@ -449,9 +445,8 @@ describe('manager wiring', () => {
     () => {
       let dir: string;
       beforeEach(() => {
-        dir = mkdtempSync(join(tmpdir(), 'station-opencode-e2e-'));
+        dir = makeTempDir('station-opencode-e2e-');
       });
-      afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
       test('a manager handshake fills the cache the catalog then reports', async () => {
         const binary = join(dir, 'opencode');
