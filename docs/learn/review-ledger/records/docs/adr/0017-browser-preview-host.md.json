@@ -54,11 +54,11 @@
 
     {"path":"src-server/services/browser/browser-service.ts","digest":"537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
-    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"da238014e467ecbccac2cb3f3fd44800182e83e6f425ab6814fac3fb7aa5a09e","revision":"98db501812082da5558fc63a96993e23cd4a6a9c"},
 
     {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"61340e4d4b704e7384c236a2c938deed198fa0d73222476360b5c9995da23740","revision":"98db501812082da5558fc63a96993e23cd4a6a9c"},
 
     {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
