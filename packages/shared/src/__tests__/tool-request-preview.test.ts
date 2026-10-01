@@ -429,7 +429,6 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
   test.each([
     'rule',
     'mode',
-    'subcommandResults',
     'permissionPromptTool',
     'hook',
     'asyncAgent',
@@ -450,6 +449,106 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     expect(toolRequestEscalates(request)).toBe(true);
     expect(toolRequestSessionGrant(request)).toBe('none');
     expect(toolRequestIsPlainCall(request)).toBe(false);
+  });
+
+  describe('a compound shell command (subcommandResults)', () => {
+    const compound = (extra: Record<string, unknown> = {}) => ({
+      toolName: 'Bash',
+      toolInput: { command: 'git add -A && git commit -m x' },
+      claudeAsk: { decisionReasonType: 'subcommandResults' },
+      ...extra,
+    });
+
+    test('is a plain call when the frame shows nothing about its parts, on Bash and PowerShell', () => {
+      for (const toolName of ['Bash', 'PowerShell']) {
+        const request = compound({ toolName });
+        expect(claudeAskEscalates(request), toolName).toBe(false);
+        expect(toolRequestSessionGrant(request), toolName).toBe('tool');
+        expect(toolRequestIsPlainCall(request), toolName).toBe(true);
+      }
+      // An empty or blank reason is no reason.
+      for (const decisionReason of [undefined, null, '', '  '])
+        expect(
+          toolRequestSessionGrant(compound({ decisionReason })),
+          String(decisionReason),
+        ).toBe('tool');
+    });
+
+    test.each([
+      [
+        'classifierApprovable false',
+        {
+          claudeAsk: {
+            decisionReasonType: 'subcommandResults',
+            classifierApprovable: false,
+          },
+        },
+      ],
+      [
+        'classifierApprovable true',
+        {
+          claudeAsk: {
+            decisionReasonType: 'subcommandResults',
+            classifierApprovable: true,
+          },
+        },
+      ],
+      [
+        'a matched ask rule',
+        {
+          matchedAskRule: {
+            source: 'projectSettings',
+            toolName: 'Bash',
+            ruleContent: 'git push:*',
+          },
+        },
+      ],
+      ['any reason text', { decisionReason: ORDINARY }],
+      ['a reason that is not text', { decisionReason: 1 }],
+      ['a blocked path', { blockedPath: '/outside/f' }],
+      [
+        'an addDirectories suggestion',
+        {
+          suggestions: [
+            {
+              type: 'addDirectories',
+              directories: ['/outside'],
+              destination: 'session',
+            },
+          ],
+        },
+      ],
+      [
+        'a sandbox override',
+        { toolInput: { command: 'a && b', dangerouslyDisableSandbox: true } },
+      ],
+      ['suppressAlwaysAllowRule', { suppressAlwaysAllowRule: true }],
+      ['defaultToNo', { defaultToNo: true }],
+      ['requiresUserInteraction', { requiresUserInteraction: true }],
+      ['a tool that is not a shell tool', { toolName: 'mcp__x__y' }],
+    ])('escalates with %s', (_label, extra) => {
+      const request = compound(extra);
+      expect(toolRequestEscalates(request)).toBe(true);
+      expect(toolRequestIsPlainCall(request)).toBe(false);
+      expect(toolRequestSessionGrant(request)).not.toBe('tool');
+    });
+
+    test('a read-rule suggestion from a part keeps the folder option and no tool grant', () => {
+      expect(
+        toolRequestSessionGrant(
+          compound({
+            suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+                behavior: 'allow',
+                destination: 'session',
+              },
+            ],
+          }),
+        ),
+      ).toBe('read-folder');
+    });
   });
 
   test('type other is a plain call only with the ordinary reason text', () => {

@@ -19,7 +19,8 @@ for plain calls only (#2933). A pattern never answers an escalation or a plan
 exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
 `tool` or `edit-mode` case of the session-grant computation below. That
 computation reads the engine's structured reason for the ask (#2932), so a
-pattern answers no safety check, ask rule or compound command either. An
+pattern answers no safety check or ask rule either, with the compound-command
+limits stated there. An
 autoApprove match in the staged evaluator (`toolGrant`) is therefore not
 returned as a `PreToolUse` allow. After a hook allow, Claude Code 2.1.278
 (read in its bundled binary, as 2.1.261 was first) re-checks only deny rules,
@@ -160,7 +161,7 @@ card label it:
   session" otherwise. An `acceptEdits` suggested alongside is not forwarded.
 - No session option is shown where there is nothing to forward, and a session
   answer is recorded as a one-call accept. That covers an ask rule, a safety
-  check (read, file edit or shell command), a compound shell command, an ask
+  check (read, file edit or shell command), an ask
   whose engine request Station could not read, and `ExitPlanMode` (#2916). A
   plan exit therefore always prompts, and its suggested mode change is
   dropped.
@@ -234,23 +235,37 @@ Station therefore owns the engine spawn through the SDK's
 (`src-server/providers/adapters/claude-code-spawn.ts`). The engine's stdout
 passes through a tap that forwards every byte unchanged and records those
 fields per `request_id`, which the SDK passes to `canUseTool` as `requestId`
-(`claude-permission-frames.ts`). The tap also reads the requests an
-`initialize` response replays in `pending_permission_requests`. A record is
-consumed when the adapter reads it. At most 256 unread records are kept; the
+(`claude-permission-frames.ts`). The tap also reads the requests replayed in
+`pending_permission_requests`, only on the response to the SDK's `initialize`
+request, which it recognises by watching the SDK's writes to the engine's
+stdin; the SDK itself ignores a replay on any other response. A record is
+consumed when the adapter reads it. Two requests that give one `request_id`
+different reasons leave it unrecorded, so it reads as missing; the same
+request seen twice is kept once. At most 256 unread records are kept; the
 oldest is dropped beyond that. A stdout line longer than 8 MiB is forwarded
 without being read.
 
 `claudeAskEscalates` in the shared computation then decides, for both the
 session grant and `toolRequestIsPlainCall`:
 
-- A reason type other than `other` escalates. That covers a plain
-  `permissions.ask` rule (`rule`, which arrives with no reason text and, for
-  WebFetch, looks exactly like the ordinary ask on the callback), a Bash,
-  PowerShell, read or file-edit safety check (`safetyCheck`), a compound
-  command (`subcommandResults`), a sandbox override, a path outside the
-  working directories, and any type a later engine adds.
+- A reason type other than `other` and `subcommandResults` escalates. That
+  covers a plain `permissions.ask` rule (`rule`, which arrives with no reason
+  text and, for WebFetch, looks exactly like the ordinary ask on the
+  callback), a Bash, PowerShell, read or file-edit safety check
+  (`safetyCheck`), a sandbox override, a path outside the working
+  directories, and any type a later engine adds.
 - `classifier_approvable` set, to either value, escalates. The engine sets it
-  only when a safety check is involved, nested ones included.
+  exactly when a safety check is involved, in the ask itself or in any part
+  of a compound command. Its absence therefore rules a safety check out.
+- Type `subcommandResults` is a compound shell command (`a && b`, a
+  pipeline); PowerShell wraps every ask in it, a single ordinary command
+  included. It is a plain call only when the request shows nothing about
+  its parts: no `classifier_approvable`, no `matched_ask_rule` (the engine
+  sets it when a prefix ask rule matches the command or a part), no
+  `decision_reason` text (where the engine puts a nested warning), and none
+  of the other escalation signals above (a blocked path, a directory
+  suggestion, a sandbox override, the ask flags). On a tool that is not
+  Bash or PowerShell the type escalates.
 - Type `other` escalates unless its reason is exactly `This command requires
   approval`, what 2.1.278 sends for a single Bash command no rule matched.
   Its other `other` reasons are checks: shell operators, an
@@ -274,12 +289,29 @@ the same grant. Other engines publish no `claudeAsk`, which says nothing.
 
 What this costs, and what it still does not cover:
 
-- **Compound commands prompt.** The engine reports a compound Bash command
-  (`a && b`, a pipeline) as `subcommandResults` and does not send the reasons
-  of its parts, so an ask rule or safety check inside one cannot be ruled
-  out. Every compound command therefore prompts, under a Bash grant and
-  under `autoApprove`. PowerShell wraps even its ordinary single-command ask
-  in `subcommandResults`, so a PowerShell grant or pattern answers nothing.
+- **A compound command hides some of what its parts raised (accepted
+  gap).** The engine does not send the reasons of a compound command's
+  parts. A safety check on any part always prompts (`classifier_approvable`),
+  and so does a prefix ask rule on the command or a part
+  (`matched_ask_rule`). Three things are not visible, so a Bash or PowerShell
+  grant, or an `autoApprove` pattern, can answer them:
+  - an ask rule that matches one part exactly (`Bash(git push)`), which the
+    engine does not put on the request;
+  - a part's warning of type `other` that is not a safety check (shell
+    operators inside a part, a `cd` before a write);
+  - a part that writes outside the working directories (`cp`, `mv`, `rm`,
+    `mkdir`, `touch`, `tee`, a `>` redirect) in an `&&` or `;` command where
+    another part also needs approval. The engine then drops that part's
+    blocked path and `addDirectories` suggestion and suggests only command
+    rules. The same holds for a read outside them once the command collects
+    more than five rule suggestions.
+
+  A part's path outside the working directories does prompt in the other
+  shapes: in a pipeline the part's `Read` rule or `addDirectories`
+  suggestion is kept; when it is the only part needing approval the engine
+  sends that part's own ask, with its blocked path; and a read in an `&&`
+  command keeps its `Read` rule among the first five suggestions. These
+  shapes were read in the 2.1.278 binary, not captured from a live session.
 - **The ordinary Bash ask is recognised by its text.** `other` covers both
   the ordinary ask and safety prose, and only the text tells them apart. The
   text was read in 2.1.278. If a later engine rewords it, ordinary Bash calls

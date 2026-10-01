@@ -32,13 +32,40 @@ const MAX_FIELD_LENGTH = 200;
 const NEWLINE = 0x0a;
 const CAN_USE_TOOL_MARKER = '"can_use_tool"';
 
+/** `initialize` requests whose response is still awaited. */
+const MAX_AWAITED_INITIALIZE_RESPONSES = 8;
+const INITIALIZE_MARKER = '"initialize"';
+/** Two frames gave one request id different reasons. */
+const CONFLICTING = Symbol('conflicting');
+
+function sameAsk(a: ClaudePermissionAsk, b: ClaudePermissionAsk): boolean {
+  return (
+    a.decisionReasonType === b.decisionReasonType &&
+    a.classifierApprovable === b.classifierApprovable &&
+    a.decisionReasonCode === b.decisionReasonCode &&
+    a.requiresUserInteraction === b.requiresUserInteraction
+  );
+}
+
+function validId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value !== '' &&
+    value.length <= MAX_FIELD_LENGTH
+  );
+}
+
 /**
  * The asks recorded for one engine process. A record is consumed when it is
  * read. The map never grows past its cap: recording into a full map drops
  * the oldest unread record, which then reads as missing.
  */
 export class ClaudePermissionAsks {
-  private readonly records = new Map<string, ClaudePermissionAsk>();
+  private readonly records = new Map<
+    string,
+    ClaudePermissionAsk | typeof CONFLICTING
+  >();
+  private readonly awaitedInitialize = new Set<string>();
 
   constructor(private readonly maxRecords = MAX_RECORDED_PERMISSION_ASKS) {}
 
@@ -46,15 +73,22 @@ export class ClaudePermissionAsks {
     return this.records.size;
   }
 
-  /** Whether the ask was kept; a malformed request id is refused. */
+  /**
+   * Whether the ask was kept. A malformed request id is refused. The same
+   * ask recorded again for a request id (a live frame and its replay) is
+   * kept once. A different ask for an id already recorded is a conflict:
+   * the id then reads as missing, whatever is recorded for it afterwards,
+   * until it is read.
+   */
   record(requestId: unknown, ask: ClaudePermissionAsk): boolean {
-    if (
-      typeof requestId !== 'string' ||
-      requestId === '' ||
-      requestId.length > MAX_FIELD_LENGTH
-    )
+    if (!validId(requestId)) return false;
+    const existing = this.records.get(requestId);
+    if (existing !== undefined) {
+      if (existing !== CONFLICTING && sameAsk(existing, ask)) return true;
+      this.records.set(requestId, CONFLICTING);
       return false;
-    if (!this.records.has(requestId) && this.records.size >= this.maxRecords) {
+    }
+    if (this.records.size >= this.maxRecords) {
       const oldest = this.records.keys().next();
       if (!oldest.done) this.records.delete(oldest.value);
     }
@@ -67,8 +101,62 @@ export class ClaudePermissionAsks {
     if (typeof requestId !== 'string') return undefined;
     const ask = this.records.get(requestId);
     if (ask !== undefined) this.records.delete(requestId);
-    return ask;
+    return ask === CONFLICTING ? undefined : ask;
   }
+
+  /** The host sent an `initialize` request with this id. */
+  awaitInitializeResponse(requestId: unknown): void {
+    if (!validId(requestId)) return;
+    if (this.awaitedInitialize.size >= MAX_AWAITED_INITIALIZE_RESPONSES) {
+      const oldest = this.awaitedInitialize.values().next();
+      if (!oldest.done) this.awaitedInitialize.delete(oldest.value);
+    }
+    this.awaitedInitialize.add(requestId);
+  }
+
+  /** Whether a response with this id answers an `initialize`; asked once. */
+  takeInitializeResponse(requestId: unknown): boolean {
+    return (
+      typeof requestId === 'string' && this.awaitedInitialize.delete(requestId)
+    );
+  }
+}
+
+/**
+ * Notes an `initialize` control request the host writes to the engine's
+ * stdin, so the tap can tell that request's response from any other. The
+ * SDK writes one whole frame per write; anything else is ignored, and the
+ * replay on that response is then not read (those asks prompt).
+ */
+export function noteClaudeHostFrame(
+  asks: ClaudePermissionAsks,
+  chunk: unknown,
+): void {
+  const text =
+    typeof chunk === 'string'
+      ? chunk
+      : Buffer.isBuffer(chunk)
+        ? chunk.toString('utf8')
+        : undefined;
+  if (
+    text === undefined ||
+    text.length > MAX_PERMISSION_FRAME_BYTES ||
+    !text.includes(INITIALIZE_MARKER)
+  )
+    return;
+  let frame: unknown;
+  try {
+    frame = JSON.parse(text);
+  } catch {
+    return;
+  }
+  if (
+    isRecord(frame) &&
+    frame.type === 'control_request' &&
+    isRecord(frame.request) &&
+    frame.request.subtype === 'initialize'
+  )
+    asks.awaitInitializeResponse(frame.request_id);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,8 +215,9 @@ function recordControlRequest(
 
 /**
  * Records the asks one stdout line carries: a live `can_use_tool` control
- * request, or the requests an `initialize` response replays in
- * `pending_permission_requests` (the SDK calls `canUseTool` for each).
+ * request, or the requests the response to an `initialize` request replays
+ * in `pending_permission_requests` (the SDK calls `canUseTool` for each).
+ * A replay on any other response is ignored, as the SDK ignores it.
  * Any other line, and any line that is not JSON, is ignored.
  */
 export function recordClaudePermissionFrame(
@@ -151,6 +240,8 @@ export function recordClaudePermissionFrame(
   if (frame.type !== 'control_response' || !isRecord(frame.response)) return;
   const pending = frame.response.pending_permission_requests;
   if (!Array.isArray(pending)) return;
+  // The SDK acts on a replay only for its `initialize` request.
+  if (!asks.takeInitializeResponse(frame.response.request_id)) return;
   for (const request of pending.slice(0, MAX_RECORDED_PERMISSION_ASKS))
     recordControlRequest(asks, request);
 }

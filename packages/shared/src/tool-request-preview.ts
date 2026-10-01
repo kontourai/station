@@ -261,8 +261,8 @@ const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
  * - `none`: the session answer is a one-call accept, so none is offered. A
  *   plan exit (#2916); a sandbox network-host ask or an ask flagged
  *   `suppressAlwaysAllowRule` (#2932); an escalation or read with no directory to forward
- *   (an ask rule, a safety check, a compound command, a read of `/`, a
- *   Claude ask whose structured reason was not read); or a file edit with
+ *   (an ask rule, a safety check, a read of `/`, a Claude ask whose
+ *   structured reason was not read); or a file edit with
  *   no mode change to forward or asked in plan mode or under full access
  *   (`bypassPermissions`).
  */
@@ -487,8 +487,9 @@ export function sessionGrantPermissionUpdates<T>(
  *   `ESCALATION_DECISION_REASONS`, or any of the ask flags
  *   `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`.
  * - #2932: the engine's structured reason (`claudeAskEscalates`): an ask
- *   rule, a safety check, a compound command, or a Claude ask whose frame
- *   was not read. The literal rules above stay as a second layer.
+ *   rule, a safety check, a compound command that shows either in a part,
+ *   or a Claude ask whose frame was not read. The literal rules above stay
+ *   as a second layer.
  */
 export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
   return (
@@ -515,12 +516,21 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  * - no `claudeAsk` at all (`undefined`): another engine; no opinion.
  * - a `claudeAsk` that is not an object: the frame was not read. It
  *   escalates, so a changed or dropped frame costs a prompt, never a grant.
- * - `classifierApprovable` set, either way: a safety check is involved.
- * - a reason type other than `other`: an ask rule (`rule`), a safety check,
- *   a compound command (`subcommandResults`, whose parts are not sent, so a
- *   nested ask rule or safety check cannot be ruled out), a sandbox
- *   override, a path outside the working directories, a mode, hook,
- *   classifier or headless-agent ask, and any type added later.
+ * - `classifierApprovable` set, either way: a safety check is involved,
+ *   in the ask itself or in any part of a compound command.
+ * - a reason type other than `other` and `subcommandResults`: an ask rule
+ *   (`rule`), a safety check, a sandbox override, a path outside the
+ *   working directories, a mode, hook, classifier or headless-agent ask,
+ *   and any type added later.
+ * - type `subcommandResults` (a compound shell command; PowerShell wraps
+ *   every ask in it) when the frame shows a signal about one of its parts:
+ *   a `matchedAskRule` (a prefix ask rule matched the command or a part)
+ *   or any `decisionReason` text (the engine sends a nested warning
+ *   there). With `classifierApprovable` absent no part raised a safety
+ *   check. The parts themselves are not sent, so an EXACT ask rule on a
+ *   single part and a part's non-safety `other` warning stay invisible;
+ *   that is an accepted gap. On a tool that is not a shell tool the type
+ *   escalates.
  * - type `other` with any reason text but the ordinary one.
  * - no reason type on a shell tool (Bash, PowerShell). The engine attaches
  *   a reason to every shell ask, so its absence means the field is no
@@ -528,14 +538,16 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  *   shell ask as plain.
  *
  * A plain call is therefore an ask with no reason type on any other tool
- * (an MCP tool, WebFetch, a file edit inside the working directories), or
- * `other` with the ordinary Bash text. PowerShell wraps even its ordinary
- * ask in `subcommandResults`, so every PowerShell ask escalates.
+ * (an MCP tool, WebFetch, a file edit inside the working directories),
+ * `other` with the ordinary Bash text, or a compound shell command with no
+ * signal about its parts. The signals `toolRequestEscalates` reads beside
+ * this one (a blocked path, a directory suggestion, a sandbox override, the
+ * ask flags) apply to a compound command as to any other ask.
  */
 export function claudeAskEscalates(
   request: Pick<
     ToolRequestGrantInput,
-    'toolName' | 'claudeAsk' | 'decisionReason'
+    'toolName' | 'claudeAsk' | 'decisionReason' | 'matchedAskRule'
   >,
 ): boolean {
   const { claudeAsk, decisionReason } = request;
@@ -543,8 +555,16 @@ export function claudeAskEscalates(
   if (!isRecord(claudeAsk) || Array.isArray(claudeAsk)) return true;
   if (claudeAsk.classifierApprovable !== undefined) return true;
   const type = claudeAsk.decisionReasonType;
-  if (type === undefined)
-    return CLAUDE_SHELL_TOOLS.has(request.toolName?.trim() ?? '');
+  const shellTool = CLAUDE_SHELL_TOOLS.has(request.toolName?.trim() ?? '');
+  if (type === undefined) return shellTool;
+  if (type === 'subcommandResults')
+    return (
+      !shellTool ||
+      request.matchedAskRule != null ||
+      (typeof decisionReason === 'string'
+        ? decisionReason.trim() !== ''
+        : decisionReason != null)
+    );
   if (type !== 'other') return true;
   return !(
     typeof decisionReason === 'string' &&
@@ -629,9 +649,10 @@ export function toolRequestSessionGrant(
  * mode, under full access or with no `acceptEdits` suggestion (a safety
  * check once the session is in `acceptEdits`) all reach a person, as do a
  * sandbox network-host ask and the #2932 escalation signals. For a Claude
- * ask those include the engine's structured reason, so a safety check, an
- * ask rule and a compound command reach a person, as does an ask whose
- * frame was not read (`claudeAskEscalates`).
+ * ask those include the engine's structured reason, so a safety check and
+ * an ask rule reach a person, in a compound command too where the engine
+ * shows them, as does an ask whose frame was not read
+ * (`claudeAskEscalates`).
  */
 export function toolRequestIsPlainCall(
   request: ToolRequestGrantInput,

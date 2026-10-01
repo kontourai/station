@@ -205,13 +205,17 @@ same rule applies: these always prompt, under a tool grant or `autoApprove`
 of `*`, and offer no session option unless the engine suggested a directory
 to forward.
 
-- An ask with a reason type other than `other`: an ask rule (`rule`), a
-  safety check (`safetyCheck`), a compound command (`subcommandResults`), a
-  sandbox override, a path outside the working directories, and the mode,
-  hook, classifier, permission-prompt-tool and headless-agent types, plus
-  any type a later engine adds.
-- An ask whose `classifier_approvable` is set, which the engine does only
-  when a safety check is involved.
+- An ask with a reason type other than `other` and `subcommandResults`: an
+  ask rule (`rule`), a safety check (`safetyCheck`), a sandbox override, a
+  path outside the working directories, and the mode, hook, classifier,
+  permission-prompt-tool and headless-agent types, plus any type a later
+  engine adds.
+- An ask whose `classifier_approvable` is set, which the engine does exactly
+  when a safety check is involved, in any part of a compound command too.
+- A compound shell command (`subcommandResults`: `a && b`, a pipeline, and
+  every PowerShell ask) whose request shows something about its parts:
+  `classifier_approvable`, a `matchedAskRule`, any `decisionReason` text, a
+  blocked path, a directory suggestion, a sandbox override or an ask flag.
 - An ask of type `other` whose reason is not exactly `This command requires
   approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
   command.
@@ -226,12 +230,17 @@ with `decisionReasonType`, `classifierApprovable` and `decisionReasonCode`
 where the engine set them, or `null` when the request could not be read.
 Other engines send no `claudeAsk`.
 
-Two limits follow from what the engine sends. It reports a compound Bash
-command (`a && b`, a pipeline) only as `subcommandResults`, without the
-reasons of its parts, so every compound command prompts even under a Bash
-grant. PowerShell wraps its ordinary ask the same way, so a PowerShell grant
-answers nothing. And the ordinary Bash ask is recognised by its text: if a
-later engine rewords it, ordinary Bash calls prompt until Station is updated.
+A compound command with none of those signals is a plain call, so a Bash or
+PowerShell grant, or an `autoApprove` pattern, answers it. The engine does
+not send the reasons of a compound command's parts, which leaves an accepted
+gap. A safety check on any part, and a prefix ask rule on the command or a
+part, always prompt. Not visible, and so answerable by a grant: an ask rule
+that matches one part exactly; a part's `other` warning that is not a safety
+check; and a part that writes outside the working directories in an `&&` or
+`;` command where another part also needs approval (the
+[delivery boundary](../conformance/tool-policy-delivery.md) lists the
+shapes). The ordinary Bash ask is recognised by its text: if a later engine
+rewords it, ordinary Bash calls prompt until Station is updated.
 
 A session answer never writes the engine's settings files: every forwarded
 suggestion is sent with `destination: 'session'`.

@@ -3421,7 +3421,10 @@ describe('ClaudeAdapter', () => {
         decision_reason_type: 'rule',
         tool_use_id: 'toolu_bash',
       };
-      /** A compound command: its parts' reasons are not sent. */
+      /**
+       * A compound command of ordinary parts: its parts' reasons are not
+       * sent, and nothing on the frame speaks of any of them.
+       */
       const bashCompound: ClaudeCanUseToolRequest = {
         tool_name: 'Bash',
         display_name: 'Bash',
@@ -3440,6 +3443,88 @@ describe('ClaudeAdapter', () => {
         ],
         decision_reason_type: 'subcommandResults',
         tool_use_id: 'toolu_bash',
+      };
+      /**
+       * Compound commands the frame says something about. The first three
+       * are what 2.1.278 sets for a part: `classifier_approvable` when any
+       * part raised a safety check (here with the reason text withheld, as
+       * for the outside-reads circuit breaker), `matched_ask_rule` for a
+       * prefix ask rule, and the nested safety warning as `decision_reason`.
+       * The last two are the #2915 signals a part's path check leaves: the
+       * session `Read` rule of a pipeline part that reads outside the
+       * working directories, and a blocked path.
+       */
+      const compoundEscalations: ReadonlyArray<
+        readonly [string, ClaudeCanUseToolRequest]
+      > = [
+        [
+          'compound with classifier_approvable',
+          { ...bashCompound, classifier_approvable: false },
+        ],
+        [
+          'compound with matched_ask_rule',
+          {
+            ...bashCompound,
+            matched_ask_rule: {
+              source: 'projectSettings',
+              tool_name: 'Bash',
+              rule_content: 'git push:*',
+            },
+          },
+        ],
+        [
+          'compound with decision_reason',
+          {
+            ...bashCompound,
+            decision_reason:
+              'This command uses the `&` background operator, which defers execution past approval-time safety checks. Approve only if you trust it.',
+          },
+        ],
+        [
+          'compound with a directory suggestion',
+          {
+            ...bashCompound,
+            input: { command: 'cat /etc/hosts | head' },
+            description: 'cat /etc/hosts | head',
+            permission_suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+                behavior: 'allow',
+                destination: 'session',
+              },
+            ],
+          },
+        ],
+        [
+          'compound with blocked_path',
+          { ...bashCompound, blocked_path: '/outside/f' },
+        ],
+      ];
+      /** An otherwise ordinary ask the engine marked as a safety check. */
+      const bashFlaggedOrdinary: ClaudeCanUseToolRequest = {
+        ...bashOrdinary('git status'),
+        classifier_approvable: true,
+      };
+      /**
+       * PowerShell wraps even a single ordinary command in
+       * `subcommandResults`, with no reason text.
+       */
+      const powerShellOrdinary: ClaudeCanUseToolRequest = {
+        tool_name: 'PowerShell',
+        display_name: 'PowerShell',
+        input: { command: 'Get-ChildItem' },
+        description: 'Get-ChildItem',
+        permission_suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'PowerShell', ruleContent: 'Get-ChildItem:*' }],
+            behavior: 'allow',
+            destination: 'localSettings',
+          },
+        ],
+        decision_reason_type: 'subcommandResults',
+        tool_use_id: 'toolu_ps',
       };
       /** A sandbox override; part 1's input flag and literal mark it too. */
       const bashSandboxOverride: ClaudeCanUseToolRequest = {
@@ -3555,7 +3640,7 @@ describe('ClaudeAdapter', () => {
         return outcome.event;
       };
 
-      test('a Bash session grant answers an ordinary Bash ask and never a safety check, an ask rule, a compound command, a sandbox override or other safety prose', async () => {
+      test('a Bash session grant answers an ordinary Bash ask and an ordinary compound command, and never a safety check, an ask rule, a sandbox override or other safety prose', async () => {
         const { adapter, askFrame } = await grantHarness('thread-frame-bash');
         const mint = await askFrame(bashOrdinary('git status'));
         if (mint.kind !== 'prompted') throw new Error('expected a prompt');
@@ -3585,7 +3670,11 @@ describe('ClaudeAdapter', () => {
         const rule = await expectPrompt(await askFrame(bashAskRule), 'rule');
         expect(rule.payload.claudeAsk).toEqual({ decisionReasonType: 'rule' });
         expect(rule.payload).not.toHaveProperty('decisionReason');
-        await expectPrompt(await askFrame(bashCompound), 'subcommandResults');
+        // A compound command with no signal about its parts is a plain call.
+        await expect(askFrame(bashCompound)).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
         await expectPrompt(
           await askFrame(bashSandboxOverride),
           'sandboxOverride',
@@ -3640,6 +3729,64 @@ describe('ClaudeAdapter', () => {
         await adapter.stopSession('thread-frame-missing');
       });
 
+      test('a Bash grant answers a compound command only when the frame shows nothing about its parts', async () => {
+        const { adapter, askFrame } = await grantHarness(
+          'thread-frame-compound',
+        );
+        // A compound command can mint the grant too.
+        const mint = await askFrame(bashCompound);
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
+          'tool',
+        );
+        await mint.answer('acceptForSession');
+        await expect(askFrame(bashCompound)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+
+        for (const [label, frame] of compoundEscalations) {
+          const outcome = await askFrame(frame);
+          expect(outcome.kind, label).toBe('prompted');
+          if (outcome.kind !== 'prompted') throw new Error('unreachable');
+          // Only a directory suggestion leaves a session option, the folder.
+          expect(
+            toolRequestSessionGrantFromPayload(outcome.event.payload),
+            label,
+          ).toBe(
+            label === 'compound with a directory suggestion'
+              ? 'read-folder'
+              : 'none',
+          );
+          await outcome.answer('decline');
+        }
+        await expectPrompt(
+          await askFrame(bashFlaggedOrdinary),
+          'ordinary ask flagged classifier_approvable',
+        );
+        await adapter.stopSession('thread-frame-compound');
+      });
+
+      test('a PowerShell grant answers the ordinary PowerShell ask, which the engine wraps in subcommandResults', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-ps');
+        const mint = await askFrame(powerShellOrdinary);
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(mint.event.payload.claudeAsk).toEqual({
+          decisionReasonType: 'subcommandResults',
+        });
+        await mint.answer('acceptForSession');
+        await expect(askFrame(powerShellOrdinary)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+        await expectPrompt(
+          await askFrame({
+            ...powerShellOrdinary,
+            classifier_approvable: true,
+          }),
+          'PowerShell safety check',
+        );
+        await adapter.stopSession('thread-frame-ps');
+      });
+
       test('a Bash ask whose frame carries no reason type prompts under a Bash grant: the engine always sends one', async () => {
         const { adapter, askFrame } = await grantHarness(
           'thread-frame-untyped',
@@ -3671,6 +3818,8 @@ describe('ClaudeAdapter', () => {
         // Positive controls: ordinary Bash, MCP, WebFetch and Edit asks.
         for (const ordinary of [
           bashOrdinary('git status'),
+          bashCompound,
+          powerShellOrdinary,
           mcpOrdinary,
           webFetchOrdinary,
           editOrdinary,
@@ -3683,7 +3832,8 @@ describe('ClaudeAdapter', () => {
         for (const [label, frame] of [
           ['safetyCheck', bashSafetyCheck],
           ['rule', bashAskRule],
-          ['subcommandResults', bashCompound],
+          ...compoundEscalations,
+          ['ordinary ask flagged classifier_approvable', bashFlaggedOrdinary],
           ['sandboxOverride', bashSandboxOverride],
           ['other prose', bashShellOperators],
           ['WebFetch ask rule', webFetchAskRule],

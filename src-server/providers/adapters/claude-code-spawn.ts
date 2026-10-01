@@ -8,6 +8,7 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   ClaudePermissionAsks,
   ClaudePermissionFrameTap,
+  noteClaudeHostFrame,
 } from './claude-permission-frames.js';
 
 /** Characters of stderr kept for an exit error (the SDK's own bound). */
@@ -53,7 +54,8 @@ function tailOf(text: string): string {
  *   env as given, no shell, `windowsHide: true`;
  * - `exit` reaches listeners only after stderr has closed, or 200 ms after
  *   the process exit, and stderr is then unreferenced;
- * - `kill`, `killed`, `exitCode` and `signalCode` are the child's own.
+ * - `kill`, `killed`, `exitCode`, `signalCode` and `stdin` are the child's
+ *   own. Writes to stdin are observed, never changed.
  *
  * One thing cannot be reproduced. The SDK appends its own stderr tail to the
  * exit error it builds, and that tail is private to its transport, so with a
@@ -79,6 +81,20 @@ export function createClaudeEngineProcess(
     const { stdin, stdout, stderr } = child;
     if (!stdin || !stdout || !stderr)
       throw new Error('Claude Code process was spawned without piped stdio.');
+
+    // The SDK keeps the child's own stdin; its writes are only observed, to
+    // learn which response answers `initialize` (it carries replayed asks).
+    const writeToStdin = stdin.write.bind(stdin) as (
+      ...args: unknown[]
+    ) => boolean;
+    stdin.write = ((...args: unknown[]) => {
+      try {
+        noteClaudeHostFrame(asks, args[0]);
+      } catch {
+        // Observation is best-effort; an unread replay prompts.
+      }
+      return writeToStdin(...args);
+    }) as typeof stdin.write;
 
     const tap = new ClaudePermissionFrameTap(asks);
     stdout.pipe(tap);

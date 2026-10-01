@@ -3,6 +3,7 @@ import {
   ClaudePermissionAsks,
   ClaudePermissionFrameTap,
   MAX_RECORDED_PERMISSION_ASKS,
+  noteClaudeHostFrame,
 } from '../adapters/claude-permission-frames.js';
 import { claudeCanUseToolFrame } from './claude-engine-process-test-utils.js';
 
@@ -134,35 +135,67 @@ describe('ClaudePermissionFrameTap', () => {
     expect(asks.take('req-big')).toEqual({ decisionReasonType: 'safetyCheck' });
   });
 
-  test('records the requests an initialize response replays in pending_permission_requests', async () => {
+  const replayed = (id: string, type: string) =>
+    JSON.parse(
+      claudeCanUseToolFrame(id, {
+        tool_name: 'Bash',
+        input: { command: 'git push' },
+        decision_reason_type: type,
+      }),
+    );
+  const responseWithReplay = (requestId: string, ids: string[]) =>
+    `${JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { commands: [], models: [] },
+        pending_permission_requests: ids.map((id) => replayed(id, 'rule')),
+        pending_user_dialog_requests: [],
+      },
+    })}\n`;
+  /** The `initialize` request as the SDK writes it to the engine's stdin. */
+  const initializeRequest = (requestId: string) =>
+    `${JSON.stringify({
+      request_id: requestId,
+      type: 'control_request',
+      request: { subtype: 'initialize', hooks: {} },
+    })}\n`;
+
+  test('records the requests the initialize response replays in pending_permission_requests', async () => {
     const asks = new ClaudePermissionAsks();
-    const replayed = (id: string, type: string) =>
-      JSON.parse(
-        claudeCanUseToolFrame(id, {
-          tool_name: 'Bash',
-          input: { command: 'git push' },
-          decision_reason_type: type,
-        }),
-      );
+    noteClaudeHostFrame(asks, initializeRequest('init-1'));
     await forward(new ClaudePermissionFrameTap(asks), [
-      `${JSON.stringify({
-        type: 'control_response',
-        response: {
-          subtype: 'success',
-          request_id: 'init-1',
-          response: { commands: [], models: [] },
-          pending_permission_requests: [
-            replayed('req-replay-1', 'rule'),
-            replayed('req-replay-2', 'subcommandResults'),
-          ],
-          pending_user_dialog_requests: [],
-        },
-      })}\n`,
+      responseWithReplay('init-1', ['req-replay-1', 'req-replay-2']),
     ]);
     expect(asks.take('req-replay-1')).toEqual({ decisionReasonType: 'rule' });
-    expect(asks.take('req-replay-2')).toEqual({
-      decisionReasonType: 'subcommandResults',
-    });
+    expect(asks.take('req-replay-2')).toEqual({ decisionReasonType: 'rule' });
+  });
+
+  test('ignores a replay on any response that does not answer initialize, and reads one initialize response once', async () => {
+    const asks = new ClaudePermissionAsks();
+    // Another request the host sent, and a host frame that only names it.
+    noteClaudeHostFrame(
+      asks,
+      `${JSON.stringify({
+        request_id: 'set-mode-1',
+        type: 'control_request',
+        request: { subtype: 'set_permission_mode', mode: 'initialize' },
+      })}\n`,
+    );
+    noteClaudeHostFrame(asks, 'not json "initialize"');
+    noteClaudeHostFrame(asks, Buffer.from(initializeRequest('init-1')));
+    await forward(new ClaudePermissionFrameTap(asks), [
+      responseWithReplay('set-mode-1', ['req-a']),
+      responseWithReplay('unknown-request', ['req-b']),
+      responseWithReplay('init-1', ['req-c']),
+      // The same response id again is no longer awaited.
+      responseWithReplay('init-1', ['req-d']),
+    ]);
+    expect(asks.take('req-a')).toBeUndefined();
+    expect(asks.take('req-b')).toBeUndefined();
+    expect(asks.take('req-c')).toEqual({ decisionReasonType: 'rule' });
+    expect(asks.take('req-d')).toBeUndefined();
   });
 
   test('ignores other control requests, other frames and unknown field shapes', async () => {
@@ -249,11 +282,58 @@ describe('ClaudePermissionAsks', () => {
     expect(asks.take(undefined)).toBeUndefined();
   });
 
-  test('re-recording a request id replaces its ask without growing', () => {
+  test('the same ask recorded twice for a request id is kept once', () => {
     const asks = new ClaudePermissionAsks(2);
-    asks.record('a', { decisionReasonType: 'rule' });
-    asks.record('a', { decisionReasonType: 'safetyCheck' });
+    expect(asks.record('a', { decisionReasonType: 'rule' })).toBe(true);
+    expect(asks.record('a', { decisionReasonType: 'rule' })).toBe(true);
     expect(asks.size).toBe(1);
-    expect(asks.take('a')).toEqual({ decisionReasonType: 'safetyCheck' });
+    expect(asks.take('a')).toEqual({ decisionReasonType: 'rule' });
+  });
+
+  test('a different ask for a recorded request id is a conflict: the id reads as missing', () => {
+    for (const [first, second] of [
+      [{ decisionReasonType: 'safetyCheck' }, { decisionReasonType: 'other' }],
+      [{ decisionReasonType: 'other' }, {}],
+      [
+        { decisionReasonType: 'other', classifierApprovable: false },
+        { decisionReasonType: 'other' },
+      ],
+      [{ requiresUserInteraction: true as const }, {}],
+      [{ decisionReasonCode: 'memory_paused' }, {}],
+    ]) {
+      const asks = new ClaudePermissionAsks();
+      expect(asks.record('a', first)).toBe(true);
+      expect(asks.record('a', second)).toBe(false);
+      // Recording the benign shape again does not win either.
+      expect(asks.record('a', second)).toBe(false);
+      expect(asks.size).toBe(1);
+      expect(asks.take('a'), JSON.stringify([first, second])).toBeUndefined();
+      expect(asks.size).toBe(0);
+    }
+  });
+
+  test('a live frame and a conflicting later frame for one request id leave it missing', async () => {
+    const asks = new ClaudePermissionAsks();
+    await forward(new ClaudePermissionFrameTap(asks), [
+      safetyCheckFrame,
+      claudeCanUseToolFrame('req-safety', {
+        tool_name: 'Bash',
+        input: { command: 'sleep 5 &' },
+        decision_reason: 'This command requires approval',
+        decision_reason_type: 'other',
+      }),
+    ]);
+    expect(asks.take('req-safety')).toBeUndefined();
+  });
+
+  test('awaited initialize responses are bounded', () => {
+    const asks = new ClaudePermissionAsks();
+    for (let index = 0; index < 20; index += 1)
+      asks.awaitInitializeResponse(`init-${index}`);
+    expect(asks.takeInitializeResponse('init-0')).toBe(false);
+    expect(asks.takeInitializeResponse('init-19')).toBe(true);
+    expect(asks.takeInitializeResponse('init-19')).toBe(false);
+    asks.awaitInitializeResponse('');
+    expect(asks.takeInitializeResponse('')).toBe(false);
   });
 });

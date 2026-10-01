@@ -179,9 +179,9 @@ Claude Code these always reach a person:
   it raises prompts);
 - a call a `permissions.ask` rule forced to ask, whether or not the engine
   names the rule, including a WebFetch domain rule (#2932);
-- a compound shell command (`a && b`, a pipeline) and every PowerShell
-  command: the engine does not say why their parts ask, so Station cannot
-  rule out a safety check or an ask rule inside one (#2932);
+- a compound shell command (`a && b`, a pipeline) when the engine shows a
+  safety check or a prefix ask rule on one of its parts, or a path outside
+  the working directories (#2932);
 - a sandbox network-host ask (each new host prompts), a call that disables
   the sandbox, a tool whose approval is the user's own interaction, and an
   MCP tool the organization requires approval for (#2932);
@@ -192,9 +192,11 @@ always prompts, and answering it "for this session" allows that one exit
 only. ACP reports no other escalation signal. Codex and Muse do not
 honour `autoApprove`. Station reads why Claude Code asks from the engine's
 own request, and a request it cannot read counts as an escalation, so a
-pattern never answers one. A pattern such as `Bash` therefore covers single
-commands only; a run with nobody to answer waits on, or is denied, a compound
-command ([delivery boundary](../conformance/tool-policy-delivery.md)).
+pattern never answers one. A pattern such as `Bash` covers compound commands
+too, and the engine does not report everything their parts raise: an ask rule
+that matches one part exactly, and some writes outside the working
+directories, are not visible there
+([delivery boundary](../conformance/tool-policy-delivery.md)).
 
 ### Unattended runs
 

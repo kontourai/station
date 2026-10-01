@@ -84,6 +84,51 @@ describe('createClaudeEngineProcess', () => {
     expect(received.subarray(-line.length).equals(line)).toBe(true);
   });
 
+  test("stdin stays the child's own and receives the host's writes unchanged, while an initialize request arms the replay", async () => {
+    const { engine, spawned, child } = start();
+    expect(spawned.stdin).toBe(child.stdin);
+    const written: Buffer[] = [];
+    child.stdin.on('data', (chunk: Buffer) => written.push(chunk));
+    const initialize = `${JSON.stringify({
+      request_id: 'init-1',
+      type: 'control_request',
+      request: { subtype: 'initialize' },
+    })}\n`;
+    const user = `${JSON.stringify({ type: 'user', text: 'héllo 🙂' })}\n`;
+    expect(spawned.stdin.write(initialize)).toBe(true);
+    const flushed = new Promise<void>((resolve) =>
+      spawned.stdin.write(user, 'utf8', () => resolve()),
+    );
+    await flushed;
+    await vi.waitFor(() =>
+      expect(Buffer.concat(written).toString('utf8')).toBe(initialize + user),
+    );
+
+    const replay = JSON.parse(
+      claudeCanUseToolFrame('req-replay', {
+        tool_name: 'Bash',
+        input: { command: 'git push' },
+        decision_reason_type: 'rule',
+      }),
+    );
+    const read = readAll(spawned.stdout);
+    child.stdout.end(
+      `${JSON.stringify({
+        type: 'control_response',
+        response: {
+          subtype: 'success',
+          request_id: 'init-1',
+          response: {},
+          pending_permission_requests: [replay],
+        },
+      })}\n`,
+    );
+    await read;
+    expect(engine.asks.take('req-replay')).toEqual({
+      decisionReasonType: 'rule',
+    });
+  });
+
   test('an stdout error reaches the reader', async () => {
     const { spawned, child } = start();
     const read = readAll(spawned.stdout);

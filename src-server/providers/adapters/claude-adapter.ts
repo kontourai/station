@@ -2854,8 +2854,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // check) or a plan exit: those always reach a person, even for `*`.
         // #2932 adds a sandbox override, a sandbox network-host ask, the
         // engine's literal escalation reasons, its ask flags and its
-        // structured reason: a Bash safety check, an ask rule, a compound
-        // command, or an ask whose frame was not read.
+        // structured reason: a Bash safety check, an ask rule (in a
+        // compound command too, where the engine shows them), or an ask
+        // whose frame was not read.
         if (
           !questionnaire &&
           toolRequestIsPlainCall(request) &&
