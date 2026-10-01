@@ -12,9 +12,7 @@
   "document": {"digest":"2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"3739f46c85f8c1cf64e0ff9fbadbb7f79b041969167391d2d6f0892ce965e462","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
-
-    {"path":"docs/learn/media/connections-models.png","digest":"708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
     {"path":"scripts/station-agent-smoke.mjs","digest":"b3632d2947ae62ea4d1a14912a2de70e3935ee7d3acbca9c02d68ca49cbd01b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
@@ -26,9 +24,9 @@
 
     {"path":"src-server/services/orchestration/connection-smoke.ts","digest":"2f6a3b7b282139b711a6b1aa82614ca2dc97f9536727343eb7485fc3ab5dc383","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"5685b2ffdec3e6ca482cc06b89b340af3fe0d922455e152f855748470ba70469","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
     {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
@@ -36,7 +34,7 @@
 
     {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"63486f4ca811d0b37f40377e11dc16d5388660c7c64248607b73c662e7c9763f","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
 
     {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
@@ -48,7 +46,9 @@
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"}
   ],
 
   "checks": [

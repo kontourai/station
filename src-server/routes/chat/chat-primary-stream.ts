@@ -633,6 +633,12 @@ export function streamPrimaryAgentChat({
       );
       for await (const chunk of pipeline.run(wrappedStream)) {
         requireCurrentRuntimeConfiguration(ctx, configurationLease);
+        // A model error after output has started arrives as an error PART,
+        // not a throw. Fail the turn through the same catch as a thrown
+        // error: the outward frame, the reload-safe marker, and a turn the
+        // dedup store never records as a success.
+        const errorPartCause = StreamOrchestrator.streamErrorPartCause(chunk);
+        if (errorPartCause !== undefined) throw errorPartCause;
         await StreamOrchestrator.writeSSEChunk(streamWriter, chunk);
       }
 
@@ -673,7 +679,9 @@ export function streamPrimaryAgentChat({
         agentName: slug,
         error,
       });
-      turnFailureText = errorMessage(error);
+      // Persisted and served as the reload-safe failure marker
+      // (`chat-lifecycle.ts`), so never the provider's own text.
+      turnFailureText = StreamOrchestrator.outwardTurnFailureText(error);
       await StreamOrchestrator.writeSSEError(streamWriter, error);
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {

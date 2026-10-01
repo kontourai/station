@@ -1,6 +1,7 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
+import { outwardModelProviderErrorText } from '../../providers/model-provider-failure.js';
 import {
   captureRuntimeConfigurationLease,
   type RuntimeConfigurationLease,
@@ -215,7 +216,7 @@ export async function resolveChatAgentModelOverride({
       return {
         agent,
         status: 500,
-        error: `Failed to switch to model ${modelOverride}: ${errorMessage(modelError)}`,
+        error: `Failed to switch to model ${modelOverride}: ${outwardModelProviderErrorText(modelError) ?? errorMessage(modelError)}`,
       };
     }
   })();
