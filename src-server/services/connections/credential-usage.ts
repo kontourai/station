@@ -46,7 +46,7 @@ import type {
 } from '@kontourai/station-contracts/engine-accounts';
 import { projectUsageMetadata } from './credential-usage-metadata.js';
 
-export type { CredentialUsage, CredentialUsageWindow };
+export type { CredentialUsage };
 
 export interface UsageFetchDeps {
   fetch: typeof globalThis.fetch;
