@@ -25,6 +25,41 @@
   color: var(--text-primary);
 }
 
+/* Beside an `ActionRow`'s buttons the trigger takes THEIR height — 32px by a
+   small button, 44px by a touch-sized one — and stays square, so no host has
+   to size it. */
+.action-row > .action-overflow__trigger {
+  width: auto;
+  height: auto;
+  min-height: 32px;
+  align-self: stretch;
+  aspect-ratio: 1;
+}
+
+/* Standing alone, the trigger carries a word: see `triggerText`. */
+.action-overflow__trigger.action-overflow__trigger--labelled {
+  width: auto;
+  gap: var(--space-3);
+  padding: 0 var(--space-5);
+  aspect-ratio: auto;
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+/* A menu opened from inside a dialog belongs ABOVE that dialog. The base
+   layer (`--layer-navigation`, index.css) is below `--layer-dialog`, so the
+   menu opened behind the surface holding its trigger. Same remedy, one step
+   up, that NewProjectModal's in-dialog browser uses; the backdrop stays one
+   below its own menu, as it does at the base layer. Two classes, so this
+   beats `.chat-dock__more-menu`/`-backdrop` on specificity, not order. */
+.chat-dock__more-backdrop.action-overflow--above-dialog {
+  z-index: calc(var(--layer-dialog) + 1);
+}
+
+.chat-dock__more-menu.action-overflow--above-dialog {
+  z-index: calc(var(--layer-dialog) + 2);
+}
+
 /* The hit area, ALWAYS ON rather than behind a coarse-pointer query: a 32px
    control is drawn, a 44px one is pressed. A pseudo-element instead of a
    bigger box so the row's height and the trigger's alignment with its
@@ -66,7 +101,17 @@
   color: var(--text-muted);
 }
 
-/* A disabled row that says why: label over reason, in the label's column. */
+/* A row that is refused but says why. `aria-disabled`, not `disabled`, so it
+   can be focused and read; drawn like a disabled row, with a default cursor
+   and no hover fill promising an action. */
+.menu-row.action-overflow__row--explained,
+.menu-row.action-overflow__row--explained:hover {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Label over reason, in the label's column. */
 .action-overflow__row-text {
   display: flex;
   min-width: 0;

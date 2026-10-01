@@ -26,6 +26,7 @@ export function ActionRow({
   overflowLabel,
   label,
   className,
+  aloneText = 'Manage',
 }: {
   /** The action this row exists for. One element. */
   primary?: ReactNode;
@@ -42,6 +43,13 @@ export function ActionRow({
   /** Names the row as a group for assistive technology, when it needs one. */
   label?: string;
   className?: string;
+  /**
+   * The word shown beside `⋯` when the row has NO labelled action of its own
+   * (a card in a state that recommends nothing). A lone glyph does not say
+   * there is anything behind it; this makes the menu the row's one labelled
+   * action. `overflowLabel` should contain this word.
+   */
+  aloneText?: string;
 }) {
   if (!primary && !secondary && overflow.length === 0) return null;
   return (
@@ -51,7 +59,11 @@ export function ActionRow({
     >
       {secondary}
       {primary}
-      <ActionOverflowMenu actions={overflow} label={overflowLabel} />
+      <ActionOverflowMenu
+        actions={overflow}
+        label={overflowLabel}
+        {...(!primary && !secondary ? { triggerText: aloneText } : {})}
+      />
     </div>
   );
 }

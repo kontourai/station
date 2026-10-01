@@ -3,6 +3,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -32,7 +33,14 @@ export interface OverflowAction {
   checked?: boolean;
   /** For a row that opens a surface of its own. */
   haspopup?: 'dialog';
+  /**
+   * For a row that shows or hides something that stays on the page — a
+   * surface (`haspopup`) or a disclosed section ("Share devices…"). Emitted
+   * as `aria-expanded` whenever it is given, with or without `haspopup`.
+   */
   expanded?: boolean;
+  /** Drawn in the row's 16px glyph slot. */
+  glyph?: React.ReactNode;
   /**
    * A row whose command cannot be carried out yet — the session inventory
    * before its lazily loaded host has registered. Refusing is the point: a row
@@ -44,8 +52,14 @@ export interface OverflowAction {
   /**
    * Why a disabled row cannot be used, shown under its label. A greyed-out row
    * with no explanation sends the reader looking for a cause the menu already
-   * knows. It is the row's DESCRIPTION, not part of its accessible name:
-   * callers and tests address a row by its label.
+   * knows. It is the row's DESCRIPTION (`aria-describedby`), not part of its
+   * accessible name: callers and tests address a row by its label.
+   *
+   * A row with a reason is `aria-disabled`, NOT `disabled`: it stays in the
+   * arrow-key order so a keyboard or screen-reader user can land on it and
+   * hear why, and it refuses activation. A disabled row with NO reason has
+   * nothing to say, so it keeps the native attribute and roving focus skips
+   * it — the dock's rows rely on that.
    */
   disabledReason?: string;
   /**
@@ -61,18 +75,23 @@ export interface OverflowAction {
 const MENU_GAP_PX = 6;
 /** The closest the menu may sit to a viewport edge. */
 const VIEWPORT_GUTTER_PX = 8;
-/** `.menu-row`'s height, which every row in this menu takes. */
+/** `.menu-row`'s fine-pointer height: the estimate used before layout. */
 const MENU_ROW_PX = 32;
 /** `.menu-surface`'s `padding: var(--space-3)`, top and bottom. */
 const MENU_PADDING_PX = 12;
 /**
- * Room needed to open downward — derived from the rows this menu is actually
- * about to render, not from a constant that pins a row count some later change
- * would quietly outgrow. It does not have to equal the rendered height (which
- * is unknown before layout); it has to be right about which side has space.
+ * Room the menu is GUESSED to need, for the first paint only — the menu has
+ * not been laid out when the trigger is pressed. `placeMenu` replaces the
+ * guess with the measured height before that paint is shown, which is what
+ * makes rows of other heights (a 44px touch row, a two-line reason row) land
+ * on the correct side.
  */
 const roomNeededPx = (rowCount: number) =>
   rowCount * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
+
+/** A dialog the trigger sits inside, if any. */
+const DIALOG_SELECTOR =
+  '[aria-modal="true"], [role="dialog"], [role="alertdialog"]';
 
 /**
  * A `⋯` trigger and the menu of commands folded behind it.
@@ -97,6 +116,8 @@ export function ActionOverflowMenu({
   label,
   inlineSingle = false,
   triggerClassName = 'action-overflow__trigger',
+  triggerText,
+  reserveGlyphColumn = false,
 }: {
   actions: readonly OverflowAction[];
   /**
@@ -130,9 +151,28 @@ export function ActionOverflowMenu({
   inlineSingle?: boolean;
   /** The `⋯` trigger's class. The dock passes its own 28px bar control. */
   triggerClassName?: string;
+  /**
+   * A visible word beside the `⋯`, for a trigger that stands ALONE. A bare
+   * glyph with nothing next to it does not say there is anything to manage;
+   * `ActionRow` passes this when it has no labelled action of its own. It is
+   * then the row's one labelled action. The accessible name must contain it
+   * (WCAG 2.5.3), so when `label` does not, the name becomes
+   * `<triggerText>: <label>`.
+   */
+  triggerText?: string;
+  /**
+   * Keep the 16px glyph slot on every row even when no row has a glyph. The
+   * dock passes this: its menu sits beside the header's menus, and the slot
+   * is what puts their labels on one x (#1552 D4). Elsewhere an always-empty
+   * slot is just an unexplained left indent, so the default reserves it only
+   * when some row has a glyph.
+   */
+  reserveGlyphColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<React.CSSProperties>({});
+  const [aboveDialog, setAboveDialog] = useState(false);
+  const reasonIdPrefix = useId();
   const ownRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
 
@@ -157,28 +197,70 @@ export function ActionOverflowMenu({
   }, [open]);
 
   /**
-   * Keep the menu on screen when its trigger is near the LEFT edge.
+   * Put the menu where it fits, from MEASURED geometry.
    *
-   * The click handler right-aligns the menu to its trigger, which is right for
-   * the dock and for a detail header, whose triggers sit at the right. A row
-   * that starts at the left of a card or a phone screen (#3045 put this menu
-   * in those) has less room to the trigger's right edge than the menu is wide,
-   * and the menu's first letters went off-screen. Measured after layout rather
-   * than estimated before it, because the width depends on the longest label.
-   * Before paint, so the clipped position is never shown.
+   * Vertical: below the trigger when its full height fits there, otherwise on
+   * whichever side has more room. Either way the menu's height is capped to
+   * that side's room and it scrolls inside, so its top edge can never leave
+   * the viewport — a seven-row menu flipped above a trigger 150px down used
+   * to run off the top.
+   *
+   * Horizontal: right edge on the trigger's right edge, which suits the dock
+   * and a detail header. A row that starts at the left of a card or a phone
+   * screen has less room there than the menu is wide; then it is anchored to
+   * the trigger's left edge, and pulled back in if that overruns the right.
+   *
+   * Run before paint on open, and again on scroll and resize while open: the
+   * menu is `position: fixed`, so without that it stays put while the row it
+   * belongs to scrolls away underneath it.
    */
-  useLayoutEffect(() => {
-    if (!open) return;
+  const placeMenu = useCallback(() => {
     const menu = menuRef.current;
     const trigger = ownRef.current;
     if (!menu || !trigger) return;
-    const rect = menu.getBoundingClientRect();
-    if (rect.width === 0 || rect.left >= VIEWPORT_GUTTER_PX) return;
-    setPosition(({ right: _right, ...vertical }) => ({
-      ...vertical,
-      left: `${Math.max(VIEWPORT_GUTTER_PX, trigger.getBoundingClientRect().left)}px`,
-    }));
-  }, [open, menuRef]);
+    const anchor = trigger.getBoundingClientRect();
+    const box = menu.getBoundingClientRect();
+    // jsdom lays nothing out; keep the press-time position rather than
+    // "correcting" it from a 0x0 box.
+    if (box.width === 0 && box.height === 0) return;
+    // `scrollHeight` is the content's height even while `max-height` clips it.
+    const natural = menu.scrollHeight + (box.height - menu.clientHeight);
+    const roomBelow =
+      window.innerHeight - anchor.bottom - MENU_GAP_PX - VIEWPORT_GUTTER_PX;
+    const roomAbove = anchor.top - MENU_GAP_PX - VIEWPORT_GUTTER_PX;
+    const openUp = natural > roomBelow && roomAbove > roomBelow;
+    const next: React.CSSProperties = openUp
+      ? {
+          bottom: `${window.innerHeight - anchor.top + MENU_GAP_PX}px`,
+          maxHeight: `${Math.max(roomAbove, MENU_ROW_PX)}px`,
+        }
+      : {
+          top: `${anchor.bottom + MENU_GAP_PX}px`,
+          maxHeight: `${Math.max(roomBelow, MENU_ROW_PX)}px`,
+        };
+    const maxLeft = window.innerWidth - VIEWPORT_GUTTER_PX - box.width;
+    if (anchor.right - box.width >= VIEWPORT_GUTTER_PX) {
+      next.right = `${window.innerWidth - anchor.right}px`;
+    } else {
+      next.left = `${Math.max(VIEWPORT_GUTTER_PX, Math.min(anchor.left, maxLeft))}px`;
+    }
+    setPosition((current) =>
+      JSON.stringify(current) === JSON.stringify(next) ? current : next,
+    );
+  }, [menuRef]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    placeMenu();
+    window.addEventListener('resize', placeMenu);
+    // Capture: the scroller is usually an ancestor pane, not the window, and
+    // scroll does not bubble.
+    window.addEventListener('scroll', placeMenu, true);
+    return () => {
+      window.removeEventListener('resize', placeMenu);
+      window.removeEventListener('scroll', placeMenu, true);
+    };
+  }, [open, placeMenu]);
 
   /**
    * Close whenever the row count changes the branch that OWNS the menu.
@@ -261,15 +343,22 @@ export function ActionOverflowMenu({
     ...safe,
     ...actions.filter((action) => action.tone === 'danger'),
   ];
+  const hasGlyphColumn =
+    reserveGlyphColumn || actions.some((action) => action.glyph);
+  const namedLabel =
+    triggerText && !label.toLowerCase().includes(triggerText.toLowerCase())
+      ? `${triggerText}: ${label}`
+      : label;
   const triggerName =
-    badgeCount > 0 && badgeLabel ? `${label} — ${badgeLabel}` : label;
+    badgeCount > 0 && badgeLabel ? `${namedLabel} — ${badgeLabel}` : namedLabel;
+  const layerClass = aboveDialog ? ' action-overflow--above-dialog' : '';
 
   return (
     <>
       <button
         ref={setTrigger}
         type="button"
-        className={`${triggerClassName}${open ? ' is-active' : ''}`}
+        className={`${triggerClassName}${triggerText ? ' action-overflow__trigger--labelled' : ''}${open ? ' is-active' : ''}`}
         // The count is part of the NAME, not only a painted badge: the badge is
         // `aria-hidden` (it is a glyph for the same fact), so without this a
         // screen reader would hear no difference between an idle dock and one
@@ -293,9 +382,14 @@ export function ActionOverflowMenu({
                   right: `${window.innerWidth - rect.right}px`,
                 },
           );
+          // A menu belongs above the surface that hosts its trigger. Portalled
+          // to the body at the navigation layer it would open BEHIND a dialog
+          // (`--layer-dialog` is higher), invisible and unclickable.
+          setAboveDialog(event.currentTarget.closest(DIALOG_SELECTOR) !== null);
           setOpen((wasOpen) => !wasOpen);
         }}
       >
+        {triggerText}
         <span aria-hidden="true">⋯</span>
         {badgeCount > 0 && (
           <span className="chat-dock__more-badge" aria-hidden="true">
@@ -315,7 +409,7 @@ export function ActionOverflowMenu({
               <button
                 type="button"
                 tabIndex={-1}
-                className="header-menu__dismiss-backdrop chat-dock__more-backdrop"
+                className={`header-menu__dismiss-backdrop chat-dock__more-backdrop${layerClass}`}
                 aria-label={`Close ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
                 // Stopped for the same reason every row stops it: the portal
                 // leaves the DOM subtree but not the React tree, so without
@@ -331,70 +425,83 @@ export function ActionOverflowMenu({
                   `menu-primitive.cascade.test.tsx` measures these selectors. */}
               <div
                 ref={menuRef}
-                className="menu-surface dock-placement-menu chat-dock__more-menu"
+                className={`menu-surface dock-placement-menu chat-dock__more-menu${layerClass}`}
                 role="menu"
                 aria-label={label}
                 tabIndex={-1}
-                style={{ position: 'fixed', ...position }}
+                style={{ position: 'fixed', overflowY: 'auto', ...position }}
               >
-                {ordered.map((action, index) => (
-                  <Fragment key={action.key}>
-                    {action.tone === 'danger' &&
-                      index === safe.length &&
-                      safe.length > 0 && (
-                        <hr className="action-overflow__separator" />
-                      )}
-                    <button
-                      type="button"
-                      className={
-                        action.tone === 'danger'
-                          ? 'menu-row action-overflow__row--danger'
-                          : 'menu-row'
-                      }
-                      disabled={action.disabled}
-                      {...(action.checked === undefined
-                        ? { role: 'menuitem' as const }
-                        : {
-                            role: 'menuitemcheckbox' as const,
-                            'aria-checked': action.checked,
-                          })}
-                      {...(action.haspopup
-                        ? {
-                            'aria-haspopup': action.haspopup,
-                            'aria-expanded': Boolean(action.expanded),
-                          }
-                        : {})}
-                      {...(action.disabled && action.disabledReason
-                        ? {
-                            'aria-label': action.label,
-                            'aria-description': action.disabledReason,
-                          }
-                        : {})}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        const trigger = ownRef.current;
-                        setOpen(false);
-                        if (trigger) action.onSelect(trigger);
-                      }}
-                    >
-                      {/* The glyph slot every `.menu-row` reserves. These rows
-                          carry no glyph today, and reserving it anyway is what
-                          keeps their labels on the same x as the rows of the
-                          header's own menus (#1552 D4). */}
-                      <span className="menu-row__glyph" aria-hidden="true" />
-                      {action.disabled && action.disabledReason ? (
-                        <span className="action-overflow__row-text">
-                          {action.label}
-                          <span className="action-overflow__reason">
-                            {action.disabledReason}
+                {ordered.map((action, index) => {
+                  // See `OverflowAction.disabledReason`: a row that explains
+                  // itself stays reachable; one that cannot does not.
+                  const explained = Boolean(
+                    action.disabled && action.disabledReason,
+                  );
+                  const reasonId = `${reasonIdPrefix}${action.key}-reason`;
+                  return (
+                    <Fragment key={action.key}>
+                      {action.tone === 'danger' &&
+                        index === safe.length &&
+                        safe.length > 0 && (
+                          <hr className="action-overflow__separator" />
+                        )}
+                      <button
+                        type="button"
+                        className={`menu-row${action.tone === 'danger' ? ' action-overflow__row--danger' : ''}${explained ? ' action-overflow__row--explained' : ''}`}
+                        disabled={action.disabled && !explained}
+                        {...(explained
+                          ? {
+                              'aria-disabled': true,
+                              // The name is the label alone; the reason is
+                              // the description, not a suffix of the name.
+                              'aria-label': action.label,
+                              'aria-describedby': reasonId,
+                            }
+                          : {})}
+                        {...(action.checked === undefined
+                          ? { role: 'menuitem' as const }
+                          : {
+                              role: 'menuitemcheckbox' as const,
+                              'aria-checked': action.checked,
+                            })}
+                        {...(action.haspopup
+                          ? { 'aria-haspopup': action.haspopup }
+                          : {})}
+                        {...(action.expanded === undefined && !action.haspopup
+                          ? {}
+                          : { 'aria-expanded': Boolean(action.expanded) })}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          // Refused, and the menu stays open on the row that
+                          // says why.
+                          if (explained) return;
+                          const trigger = ownRef.current;
+                          setOpen(false);
+                          if (trigger) action.onSelect(trigger);
+                        }}
+                      >
+                        {hasGlyphColumn && (
+                          <span className="menu-row__glyph" aria-hidden="true">
+                            {action.glyph}
                           </span>
-                        </span>
-                      ) : (
-                        action.label
-                      )}
-                    </button>
-                  </Fragment>
-                ))}
+                        )}
+                        {explained ? (
+                          <span className="action-overflow__row-text">
+                            <span>{action.label}</span>
+                            <span
+                              id={reasonId}
+                              className="action-overflow__reason"
+                            >
+                              {action.disabledReason}
+                            </span>
+                          </span>
+                        ) : (
+                          action.label
+                        )}
+                      </button>
+                    </Fragment>
+                  );
+                })}
               </div>
             </>,
             document.body,

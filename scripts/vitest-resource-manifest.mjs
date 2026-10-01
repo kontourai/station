@@ -1098,6 +1098,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium to prove the rendered action count rejects a row of three and
   // follows the cascade rather than the markup.
   'src-ui/src/__tests__/visible-action-count.rendered.test.tsx',
+  // #3045 review M2: same shape — hit-tests an overflow menu opened from
+  // inside the shared Dialog in one Chromium; a z-index declaration cannot say
+  // whether the menu's rows are clickable over the dialog.
+  'src-ui/src/__tests__/ActionOverflowMenu.dialog-layering.test.tsx',
   // #2112: same shape again — launches a real Chromium to hit-test each header
   // and dock menu's dismiss backdrop against the chrome control that opens it.
   // jsdom returns nothing useful from `elementFromPoint`, and a computed-style
