@@ -76,8 +76,7 @@ function session(
     eventCount: 2,
     displayTitle: 'Migrate sessions table',
     projectSlug: 'station',
-    ...(FOLD_FIXTURES.runningTool
-      .summary as Partial<OrchestrationSessionSummary>),
+    ...FOLD_FIXTURES.runningTool.summary,
     // One minute before NOW, so the row's time slot reads "1m".
     updatedAt: '2026-09-30T10:00:15.000Z',
     ...over,
@@ -177,21 +176,26 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Named overrides on the running summary, each reaching another rung. */
+const STATES: ReadonlyArray<
+  [name: string, over: Partial<OrchestrationSessionSummary>]
+> = [
+  ['running a tool', {}],
+  [
+    'approval while the turn is open',
+    {
+      lifecycleState: 'review_pending',
+      transitionReason: 'review_requested',
+      pendingReview: true,
+    },
+  ],
+  ['failed with a reason', FAILED],
+  ['idle', { hasActiveTurn: false, conversationActivity: undefined }],
+];
+
 describe('the row says exactly what the ladder says', () => {
-  it.each([
-    ['running a tool', {}],
-    [
-      'approval while the turn is open',
-      {
-        lifecycleState: 'review_pending',
-        transitionReason: 'review_requested',
-        pendingReview: true,
-      },
-    ],
-    ['failed with a reason', FAILED],
-    ['idle', { hasActiveTurn: false, conversationActivity: undefined }],
-  ] as const)('%s', (_name, over) => {
-    const row = rowFor(over as Partial<OrchestrationSessionSummary>);
+  it.each(STATES)('%s', (_name, over) => {
+    const row = rowFor(over);
     renderRow(row);
     const status = workStatus(row.item, NOW, row.facts);
     expect(statusText()).toBe(status.line);
@@ -222,12 +226,13 @@ describe('the row says exactly what the ladder says', () => {
   });
 
   it('status is never colour-only: every rung renders an icon beside its word', () => {
-    for (const over of [
+    const rungs: Partial<OrchestrationSessionSummary>[] = [
       {},
       { lifecycleState: 'needs_input', transitionReason: 'input_requested' },
       { lifecycleState: 'failed', hasActiveTurn: false },
       { lifecycleState: 'idle', hasActiveTurn: false },
-    ] as Partial<OrchestrationSessionSummary>[]) {
+    ];
+    for (const over of rungs) {
       renderRow(rowFor(over));
       const status = screen.getByTestId('inbox-row-status');
       expect(
@@ -357,7 +362,7 @@ describe('a reason is readable in full on every surface', () => {
         qualification: 'past_resume',
         observedBy: 'station-a',
         observedAt: '2026-09-30T10:00:10.000Z',
-      } as OrchestrationSessionSummary['answerability'],
+      },
     });
     renderRow(row);
     expect(row.item.unanswerableNotice).toMatch(/observed by station-a/);

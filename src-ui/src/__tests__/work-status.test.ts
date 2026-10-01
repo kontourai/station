@@ -72,7 +72,7 @@ function folded(
     isLoaded: true,
     isPersisted: true,
     eventCount: FOLD_FIXTURES[name].events.length,
-    ...(FOLD_FIXTURES[name].summary as Partial<OrchestrationSessionSummary>),
+    ...FOLD_FIXTURES[name].summary,
     ...over,
   };
 }
