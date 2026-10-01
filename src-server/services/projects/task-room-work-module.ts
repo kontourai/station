@@ -30,7 +30,7 @@ export type TaskRoomInvocationAdmission = ReceiverExecutionEffectAdmission & {
   readonly roomBinding: { readonly projectId: string; readonly taskId: string };
 };
 type Scope = TaskRoomWorkScope;
-export class TaskRoomWorkUnavailableError extends Error {}
+class TaskRoomWorkUnavailableError extends Error {}
 export class TaskRoomWorkAuthorityChangedError extends Error {}
 
 function validText(value: unknown, limit: number): value is string {
