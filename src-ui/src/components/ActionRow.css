@@ -1,5 +1,8 @@
-/* A row of at most two labelled actions and one overflow menu (#3045). */
-.action-row {
+/* A row of at most two labelled actions and one overflow menu (#3045).
+   `:where()` so this layout has no specificity: a host that passes its own
+   class (`.device-hosts__actions`, `.detail-header__actions`' child) keeps its
+   gap, alignment and wrap whatever order the bundler emits the two sheets. */
+:where(.action-row) {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;

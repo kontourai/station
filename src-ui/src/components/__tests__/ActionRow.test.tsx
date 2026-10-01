@@ -136,6 +136,72 @@ describe('ActionRow', () => {
     expect(onHostClick).not.toHaveBeenCalled();
   });
 
+  test('a menu that would open off the left edge is anchored to its trigger instead', () => {
+    const rect = (left: number, width: number) =>
+      ({
+        left,
+        right: left + width,
+        top: 100,
+        bottom: 132,
+        width,
+        height: 32,
+      }) as DOMRect;
+    // A trigger 20px from the left edge: right-aligning a 180px menu to it
+    // puts the menu's left edge at -128px.
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute('role') === 'menu'
+          ? rect(-128, 180)
+          : rect(20, 32);
+      });
+    try {
+      render(
+        <ActionRow
+          overflowLabel="More actions"
+          overflow={[item('a', 'Disable'), item('b', 'Remove')]}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      const menu = screen.getByRole('menu');
+      expect(menu.style.left).toBe('20px');
+      expect(menu.style.right).toBe('');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a menu with room keeps its right edge on its trigger', () => {
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const left = this.getAttribute('role') === 'menu' ? 600 : 748;
+        const width = this.getAttribute('role') === 'menu' ? 180 : 32;
+        return {
+          left,
+          right: left + width,
+          top: 100,
+          bottom: 132,
+          width,
+          height: 32,
+        } as DOMRect;
+      });
+    try {
+      render(
+        <ActionRow
+          overflowLabel="More actions"
+          overflow={[item('a', 'Disable'), item('b', 'Remove')]}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+      const menu = screen.getByRole('menu');
+      expect(menu.style.left).toBe('');
+      expect(menu.style.right).toBe(`${window.innerWidth - 780}px`);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('renders nothing when it has no actions at all', () => {
     const { container } = render(<ActionRow overflowLabel="More actions" />);
     expect(container.firstChild).toBeNull();

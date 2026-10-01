@@ -1,5 +1,12 @@
 import type React from 'react';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../hooks/useMenuFocus';
 // The dismiss backdrop's button reset lives with the header's portalled menus,
@@ -52,6 +59,8 @@ export interface OverflowAction {
 }
 
 const MENU_GAP_PX = 6;
+/** The closest the menu may sit to a viewport edge. */
+const VIEWPORT_GUTTER_PX = 8;
 /** `.menu-row`'s height, which every row in this menu takes. */
 const MENU_ROW_PX = 32;
 /** `.menu-surface`'s `padding: var(--space-3)`, top and bottom. */
@@ -146,6 +155,30 @@ export function ActionOverflowMenu({
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [open]);
+
+  /**
+   * Keep the menu on screen when its trigger is near the LEFT edge.
+   *
+   * The click handler right-aligns the menu to its trigger, which is right for
+   * the dock and for a detail header, whose triggers sit at the right. A row
+   * that starts at the left of a card or a phone screen (#3045 put this menu
+   * in those) has less room to the trigger's right edge than the menu is wide,
+   * and the menu's first letters went off-screen. Measured after layout rather
+   * than estimated before it, because the width depends on the longest label.
+   * Before paint, so the clipped position is never shown.
+   */
+  useLayoutEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    const trigger = ownRef.current;
+    if (!menu || !trigger) return;
+    const rect = menu.getBoundingClientRect();
+    if (rect.width === 0 || rect.left >= VIEWPORT_GUTTER_PX) return;
+    setPosition(({ right: _right, ...vertical }) => ({
+      ...vertical,
+      left: `${Math.max(VIEWPORT_GUTTER_PX, trigger.getBoundingClientRect().left)}px`,
+    }));
+  }, [open, menuRef]);
 
   /**
    * Close whenever the row count changes the branch that OWNS the menu.
