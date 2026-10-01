@@ -2,7 +2,6 @@ import type {
   DeviceSettings,
   RegionArrangementRecord,
 } from '@kontourai/station-contracts/device-settings';
-import { SURFACE_DEEP_LINK_QUERY_KEYS } from '@kontourai/station-contracts/surface-deep-link';
 import {
   createContext,
   type ReactNode,
@@ -65,7 +64,10 @@ import {
 import { mainPageOf, stampMainPage } from './main-page-history';
 import { useNavigation } from './NavigationContext';
 import { navigationEntryIndex, navigationStore } from './navigation-store';
-import { clearSurfaceDeepLinkParams } from './surface-deep-link';
+import {
+  clearSurfaceDeepLinkParams,
+  parseSurfaceDeepLink,
+} from './surface-deep-link';
 
 export interface SurfaceIntent {
   session?: string;
@@ -371,9 +373,8 @@ function enterMainOutlet(previous: string, next: string) {
   // adoption clears the command from the LIVE entry afterwards, so a pushed
   // entry would leave the command on the one beneath, and Back onto that
   // would run it again.
-  const adoptingLink = new URLSearchParams(window.location.search).has(
-    SURFACE_DEEP_LINK_QUERY_KEYS.surface,
-  );
+  const adoptingLink =
+    parseSurfaceDeepLink(new URLSearchParams(window.location.search)) !== null;
   if (window.location.pathname === '/' && previous !== next && !adoptingLink) {
     stampMainPage(previous);
     navigationStore.navigate('/');

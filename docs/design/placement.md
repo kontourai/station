@@ -144,8 +144,9 @@ every other route. These rules make it a region rather than a special case
     `main` showed on it, and a swap made at `/` pushes a same-URL entry for
     the new page. A traversal that lands on a stamped entry puts that page
     back, so Back from Activity returns to Home, Forward re-opens Activity,
-    and the stamp is still there after a reload (where the stored
-    arrangement is what is shown, and the live entry is stamped to match). From another route the
+    and the stamps are in `history.state`, so they outlive a reload. After
+    one, the stored arrangement is what is shown and the live entry is
+    stamped to match it. From another route the
     navigation to `/` is still one entry and Back returns to that route. On a
     phone with Chat full screen, the entry being left keeps `maximize` in its
     URL, so Back returns to the full-screen Chat the page was opened over
