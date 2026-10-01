@@ -1961,6 +1961,11 @@ that exits non-zero is left stopped until the next logon or `service start`.
 `service status` (and `station upgrade`) read the same six values on a
 `scheduling` line: a task registered by an earlier version reports `stale`
 with the reinstall command, and `healthy` is false until it is reinstalled.
+So on an existing Windows install `service status` exits 1 after this change
+until `station service install` is run again; the service itself keeps
+running, and `station upgrade` only prints the advisory. A task whose settings
+were changed by hand is reported `stale` the same way, and a reinstall
+overwrites them.
 
 On Linux, installation requires a working systemd user manager and verified
 linger. Station runs `loginctl enable-linger <uid>` when needed and fails the

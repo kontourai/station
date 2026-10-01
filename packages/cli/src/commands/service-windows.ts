@@ -43,7 +43,7 @@ export const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
 //
 // The restart settings are the most Task Scheduler offers (its shortest
 // interval is one minute and the count is an unsigned byte), but they do NOT
-// relaunch a service that exits: a wrapper that exited 3 ran once in 150 s and
+// relaunch a service that exits: a wrapper that exited 3 ran once in 100 s and
 // the task went back to Ready. They cover a task the scheduler could not
 // start. Relaunching an exited service is not provided by these settings.
 export const WINDOWS_TASK_EXECUTION_TIME_LIMIT = 'PT0S';
