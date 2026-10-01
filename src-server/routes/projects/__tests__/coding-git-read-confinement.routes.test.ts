@@ -429,6 +429,27 @@ describe.skipIf(process.platform === 'win32')(
       );
     });
 
+    test("a .git planted at the Project's root does not make an outside repository's checkout a readable worktree", async () => {
+      const outside = outsideRepository();
+      const outsideHead = git(outside, ['rev-parse', 'HEAD']);
+      mkdirSync(project);
+      writeFileSync(
+        join(project, '.git'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      // Live: from the Project's folder, git lists the outside checkout as
+      // a worktree of "its" repository.
+      expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
+        `worktree ${outside}`,
+      );
+
+      for (const route of READ_ROUTES) {
+        const response = await read(route, outside);
+        expectRefused(route, response);
+        expectNothingFromOutside(response.text, outsideHead);
+      }
+    });
+
     test('a planted .git inside a registered session worktree is not read', async () => {
       const outside = outsideRepository();
       const outsideHead = git(outside, ['rev-parse', 'HEAD']);
