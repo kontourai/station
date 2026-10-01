@@ -17,9 +17,10 @@ import {
 } from '../nativeAccountSessionBridge';
 
 const opaque = (value: number) => Buffer.alloc(32, value).toString('base64url');
-async function fixture() {
+async function fixture(contextLifetimeMs = 120000, serverLifetimeMs = 300000) {
   const key = await createApplicationSessionKey();
   const signal = new AbortController();
+  const preparedAt = Date.now();
   let current = true;
   const target = {
     kind: 'station-native' as const,
@@ -90,7 +91,12 @@ async function fixture() {
           },
         });
       if (url.endsWith('/native/exchange'))
-        return Response.json({ data: continuation });
+        return Response.json({
+          data: {
+            ...continuation,
+            expiresAt: new Date(Date.now() + serverLifetimeMs).toISOString(),
+          },
+        });
       if (url.endsWith('/native/revoke')) return Response.json(logoutResponse);
       if (url.endsWith('/accept-invitation'))
         return hangAcceptance
@@ -105,6 +111,7 @@ async function fixture() {
         return {
           version: 'station-native-account-operation/v1',
           accountContextHandle: context,
+          contextExpiresAtMs: preparedAt + contextLifetimeMs,
           publicKey: key.publicKey,
           target,
           deviceId,
@@ -180,6 +187,7 @@ async function fixture() {
   });
   return {
     bridge,
+    preparedAt,
     membership,
     setLogout: (result: unknown) => {
       logoutResponse = result;
@@ -291,4 +299,24 @@ test('remote native logout refuses an unconfirmed success response while still r
   h.setLogout({ data: { revoked: false } });
   await expect(h.bridge.logout()).rejects.toThrow();
   expect(h.bridge.current()).toBeNull();
+});
+
+test('account sign-in delay never publishes server continuation beyond the actual captured host preparation deadline', async () => {
+  const h = await fixture(900000, 900000);
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(h.preparedAt + 60000);
+  try {
+    const account = await h.bridge.login({
+      username: 'zach',
+      password: 'password',
+    });
+    expect(Date.parse(account.expiresAt)).toBe(h.preparedAt + 900000);
+    clock.mockReturnValue(Date.parse(account.expiresAt));
+    expect(h.bridge.current()).toBeNull();
+    await expect(
+      h.bridge.requestHeaders({ method: 'GET', path: '/api/projects' }),
+    ).rejects.toThrow();
+    await expect(h.bridge.logout()).rejects.toThrow();
+  } finally {
+    clock.mockRestore();
+  }
 });

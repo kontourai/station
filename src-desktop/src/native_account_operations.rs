@@ -134,6 +134,7 @@ pub(crate) struct NativeAccountChallengeBody {
 pub(crate) struct NativeAccountPrepared {
     version: &'static str,
     account_context_handle: String,
+    context_expires_at_ms: u64,
     public_key: P256PublicJwk,
     target: NativeAccountTarget,
     device_id: String,
@@ -266,9 +267,13 @@ impl NativeAccountOperations {
             audience: capture.station_origin.clone(),
             surface: capture.candidate.surface.clone(),
         };
+        let expires_at_ms = now
+            .saturating_add(CONTEXT_LIFETIME_MS)
+            .min(capture.grant_expires_at);
         let result = NativeAccountPrepared {
             version: OPERATION_VERSION,
             account_context_handle: handle.clone(),
+            context_expires_at_ms: expires_at_ms,
             public_key: public.jwk().clone(),
             target,
             device_id: capture.candidate.device_id.clone(),
@@ -277,9 +282,6 @@ impl NativeAccountOperations {
                 public_key: public.jwk().clone(),
             },
         };
-        let expires_at_ms = now
-            .saturating_add(CONTEXT_LIFETIME_MS)
-            .min(capture.grant_expires_at);
         state.contexts.insert(
             handle,
             AccountContext {
@@ -981,6 +983,57 @@ mod tests {
         // Incoming order is intentionally opposite the emitted typed struct.
         serde_json::from_str(r#"{"password":"🔒 café\u2028λ","username":"operator"}"#).unwrap()
     }
+    #[test]
+    fn delayed_exchange_never_extends_the_public_host_preparation_deadline() {
+        let now = 1_800_000_000_000;
+        let mut capture = capture(now);
+        capture.grant_expires_at = now + 2 * CONTEXT_LIFETIME_MS;
+        let state = NativeAccountOperations::default();
+        let keys = MemoryNativeAccountProofKeyVault::new();
+        let prepared = state.prepare(capture.clone(), now, &keys).unwrap();
+        assert_eq!(prepared.context_expires_at_ms, now + CONTEXT_LIFETIME_MS);
+        let delayed = now + 60_000;
+        state
+            .exchange(
+                capture.clone(),
+                &prepared.account_context_handle,
+                challenge(delayed),
+                credentials(),
+                delayed,
+                &keys,
+            )
+            .unwrap();
+        let continuation = || NativeAccountContinuation {
+            credential: URL_SAFE_NO_PAD.encode([3u8; 32]),
+            nonce: URL_SAFE_NO_PAD.encode([4u8; 32]),
+            expires_at_ms: delayed + CONTEXT_LIFETIME_MS,
+        };
+        let request = || NativeAccountReadTarget {
+            method: "GET".into(),
+            path: "/api/projects".into(),
+        };
+        assert!(state
+            .headers(
+                capture.clone(),
+                &prepared.account_context_handle,
+                continuation(),
+                request(),
+                prepared.context_expires_at_ms - 1,
+                &keys
+            )
+            .is_ok());
+        assert!(state
+            .headers(
+                capture,
+                &prepared.account_context_handle,
+                continuation(),
+                request(),
+                prepared.context_expires_at_ms,
+                &keys
+            )
+            .is_err());
+    }
+
     #[test]
     fn fixed_invitation_preparation_signs_only_token_leaf_and_keeps_read_operation_closed() {
         let now = 1_800_000_000_000;
