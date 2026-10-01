@@ -1,7 +1,7 @@
 import {
   CODING_PANELS_SESSION_BOUND,
-  type CodingPanelsRecord,
   type CodingSessionPanels,
+  type CodingSessionPanelsRecord,
 } from '@kontourai/station-contracts/device-settings';
 
 /**
@@ -68,9 +68,9 @@ function parseSessionPanels(value: unknown): CodingSessionPanels | null {
  * still the reader's memory); a record that is not `{version: 1, sessions}`
  * is refused whole. More entries than the bound keep the newest.
  */
-export function parseCodingPanelsRecord(
+export function parseCodingSessionPanelsRecord(
   value: unknown,
-): CodingPanelsRecord | null {
+): CodingSessionPanelsRecord | null {
   if (!isPlainObject(value) || value.version !== 1) return null;
   if (!isPlainObject(value.sessions)) return null;
   const sessions: Record<string, CodingSessionPanels> = {};
@@ -84,7 +84,7 @@ export function parseCodingPanelsRecord(
 
 /** The session's panels, or the closed default when it has none. */
 export function readCodingSessionPanels(
-  record: CodingPanelsRecord,
+  record: CodingSessionPanelsRecord,
   sessionKey: string,
 ): CodingSessionPanels {
   return Object.hasOwn(record.sessions, sessionKey)
@@ -98,11 +98,11 @@ export function readCodingSessionPanels(
  * patch changes nothing, so a write-through caller can skip the store.
  */
 export function writeCodingSessionPanels(
-  record: CodingPanelsRecord,
+  record: CodingSessionPanelsRecord,
   sessionKey: string,
   patch: Partial<Omit<CodingSessionPanels, 'at'>>,
   now: number,
-): CodingPanelsRecord {
+): CodingSessionPanelsRecord {
   const current = readCodingSessionPanels(record, sessionKey);
   const next: CodingSessionPanels = { ...current, ...patch, at: now };
   const unchanged = (
@@ -120,8 +120,8 @@ export function writeCodingSessionPanels(
  * touched longest ago (`at`, then insertion order for ties) go.
  */
 function evictCodingSessionPanels(
-  record: CodingPanelsRecord,
-): CodingPanelsRecord {
+  record: CodingSessionPanelsRecord,
+): CodingSessionPanelsRecord {
   const entries = Object.entries(record.sessions);
   if (entries.length <= CODING_PANELS_SESSION_BOUND) return record;
   const kept = entries

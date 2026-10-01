@@ -355,12 +355,12 @@ export interface DeviceSettings {
    * how tall — remembered for each conversation and restored on return, so
    * a review in one session does not reshape another. Bounded to
    * `CODING_PANELS_SESSION_BOUND` sessions, the entry touched longest ago
-   * evicted. A session with no entry starts closed. Read and validated by
-   * `src-ui/src/components/coding-layout/codingPanels.ts`, whose parser is
-   * also the import validation; a malformed value is dropped, never a crash.
+   * evicted. A session with no entry starts closed. Read through the UI's
+   * `coding-panels-record.ts`, whose parser is also the import validation;
+   * a malformed value is dropped, never a crash.
    * Never had a prior key: the stack had no side panel before it.
    */
-  codingPanels: CodingPanelsRecord;
+  codingPanels: CodingSessionPanelsRecord;
 }
 
 /**
@@ -377,7 +377,7 @@ export interface CodingSessionPanels {
   at: number;
 }
 
-export interface CodingPanelsRecord {
+export interface CodingSessionPanelsRecord {
   version: 1;
   sessions: Record<string, CodingSessionPanels>;
 }
@@ -390,7 +390,7 @@ export interface CodingPanelsRecord {
  */
 export const CODING_PANELS_SESSION_BOUND = 32;
 
-export const DEFAULT_CODING_PANELS_RECORD: CodingPanelsRecord = {
+export const DEFAULT_CODING_PANELS_RECORD: CodingSessionPanelsRecord = {
   version: 1,
   sessions: {},
 };
@@ -985,7 +985,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Coding panels',
     help: 'Each conversation reopens with the tool beside Chat, the Terminal, and their sizes as you left them.',
     description:
-      'Per-session Coding layout panels: the tool open beside Chat and its width, the Terminal’s open state and height.',
+      'Per session in the Coding layout: the tool open beside Chat and its width, the Terminal’s open state and height.',
     // #3051: new device setting; nothing remembered panels before it.
     defaultValue: DEFAULT_CODING_PANELS_RECORD,
   }),

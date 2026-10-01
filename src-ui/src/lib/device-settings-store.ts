@@ -39,7 +39,7 @@ import {
   parseRegionArrangementRecord,
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
-import { parseCodingPanelsRecord } from './coding-panels-record';
+import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -377,7 +377,7 @@ const COMPOSITE_RECORD_PARSERS: {
   [K in keyof DeviceSettings]?: (
     candidate: unknown,
   ) => DeviceSettings[K] | null;
-} = { codingPanels: parseCodingPanelsRecord };
+} = { codingPanels: parseCodingSessionPanelsRecord };
 
 function validateImportedValue<K extends keyof DeviceSettings>(
   definition: DeviceSettingDefinition<K>,

@@ -438,13 +438,15 @@
 }
 
 .coding-workbench__separator:hover::before,
-.coding-workbench__separator:focus-visible::before,
 .coding-workbench__separator:active::before {
   background: var(--accent-primary);
 }
 
+/* The focus ring is the strip itself, drawn inside it so it reads as the
+   edge it moves rather than a box beside it. */
 .coding-workbench__separator:focus-visible {
-  outline: none;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -3px;
 }
 
 /* Hidden, not unmounted and not `display: none`: the page keeps its box, so a

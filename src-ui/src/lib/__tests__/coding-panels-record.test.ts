@@ -5,7 +5,7 @@ import {
 import { describe, expect, test } from 'vitest';
 import {
   CLOSED_CODING_SESSION_PANELS,
-  parseCodingPanelsRecord,
+  parseCodingSessionPanelsRecord,
   readCodingSessionPanels,
   writeCodingSessionPanels,
 } from '../coding-panels-record';
@@ -106,12 +106,16 @@ describe('coding-panels-record (#3051)', () => {
   });
 
   test('the parser is the import validation: a malformed record is refused, a malformed entry dropped, an overflow trimmed', () => {
-    expect(parseCodingPanelsRecord(null)).toBeNull();
-    expect(parseCodingPanelsRecord('not a record')).toBeNull();
-    expect(parseCodingPanelsRecord({ version: 2, sessions: {} })).toBeNull();
-    expect(parseCodingPanelsRecord({ version: 1, sessions: [] })).toBeNull();
+    expect(parseCodingSessionPanelsRecord(null)).toBeNull();
+    expect(parseCodingSessionPanelsRecord('not a record')).toBeNull();
+    expect(
+      parseCodingSessionPanelsRecord({ version: 2, sessions: {} }),
+    ).toBeNull();
+    expect(
+      parseCodingSessionPanelsRecord({ version: 1, sessions: [] }),
+    ).toBeNull();
 
-    const parsed = parseCodingPanelsRecord({
+    const parsed = parseCodingSessionPanelsRecord({
       version: 1,
       sessions: {
         good: { side: 'diff', sideWidth: 400, terminalOpen: true, at: 5 },
@@ -140,7 +144,7 @@ describe('coding-panels-record (#3051)', () => {
     const sessions: Record<string, unknown> = {};
     for (let index = 0; index <= CODING_PANELS_SESSION_BOUND; index += 1)
       sessions[`conv-${index}`] = { side: 'diff', at: index };
-    const trimmed = parseCodingPanelsRecord({ version: 1, sessions });
+    const trimmed = parseCodingSessionPanelsRecord({ version: 1, sessions });
     expect(Object.keys(trimmed?.sessions ?? {})).toHaveLength(
       CODING_PANELS_SESSION_BOUND,
     );

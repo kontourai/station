@@ -1,6 +1,6 @@
 import type {
-  CodingPanelsRecord,
   CodingSessionPanels,
+  CodingSessionPanelsRecord,
 } from '@kontourai/station-contracts/device-settings';
 import { useCallback, useEffect, useState } from 'react';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
@@ -144,7 +144,7 @@ export function useCodingSessionPanels(sessionKey: string): {
   panels: CodingSessionPanels;
   update(patch: Partial<Omit<CodingSessionPanels, 'at'>>): void;
 } {
-  const record: CodingPanelsRecord = useDeviceSettings().codingPanels;
+  const record: CodingSessionPanelsRecord = useDeviceSettings().codingPanels;
   const panels = sessionKey
     ? readCodingSessionPanels(record, sessionKey)
     : CLOSED_CODING_SESSION_PANELS;
