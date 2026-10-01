@@ -202,5 +202,6 @@ principal/provider fixtures, not hosted or live-model acceptance.
 
 Still required: final mutation controls and independent UI/SDK review;
 runtime-composition authorization and browser proof; durable draft recovery;
-explicit brief/context binding; observed contributions and results; multiple human principals, workspace conflict handling, remote
+actual-provider consumption of the selected brief and broader thread/reference context;
+result artifacts and acceptance; multiple human principals, workspace conflict handling, remote
 execution, public publication and actual provider/device acceptance.
