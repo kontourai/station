@@ -36,9 +36,10 @@ reach an agent app that owns its own loop. The tabs separate those responsibilit
 This screenshot uses **sample API responses**. Its Ready label shows how that
 state is presented; it is not a successful test against a live model service.
 The detail pane exposes the endpoint, chosen model, last check and test action.
-The screenshot shows the resting selection. Hovering that selection currently
-reduces its text contrast; [#2843](https://github.com/kontourai/station/issues/2843)
-tracks the shared style fix.
+These captures retain their original revision and sample data. Their connection
+headings and test explanation predate the shorter current wording. Current
+selected rows use an accent tint and retain their text colors on hover; the
+contrast checks cover both themes and all shipped channel accents.
 
 ![The Models page with an example local connection selected.](media/connections-models.png)
 
