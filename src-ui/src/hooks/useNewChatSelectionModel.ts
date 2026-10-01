@@ -184,7 +184,7 @@ export function useNewChatSelectionModel({
   const agentCatalog = useAgentsQuery();
   useReconcilingCatalogRefresh(
     agentCatalog.catalogState,
-    agentCatalog.data,
+    agentCatalog.dataUpdatedAt,
     agentCatalog.refetch,
   );
   const projectCatalog = useScopedProjectsQuery();

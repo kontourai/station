@@ -24,6 +24,7 @@ type RefetchCatalogResult = Pick<
 const inputs = vi.hoisted(() => ({
   agents: [] as EnrichedAgentProjection[],
   reconciling: false,
+  readRevision: 0,
   authority: {
     apiBase: 'https://station-a.example',
     authorityKey: 'a',
@@ -42,6 +43,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: false,
     isFetching: false,
     catalogState: inputs.reconciling ? 'reconciling' : undefined,
+    dataUpdatedAt: inputs.readRevision,
     refetch: inputs.refetch,
   }),
 }));
@@ -80,6 +82,7 @@ const broken = {
 beforeEach(() => {
   inputs.agents = [ready];
   inputs.reconciling = false;
+  inputs.readRevision = 0;
   inputs.authority = {
     apiBase: 'https://station-a.example',
     authorityKey: 'a',
@@ -95,6 +98,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   const request = schedulerJobDialogStore.getSnapshot();
   if (request) schedulerJobDialogStore.close(request);
   for (const banner of bannerStore.getSnapshot())
@@ -190,7 +194,7 @@ test('editing broken A stays in repair while ready B exists, then restores A and
   });
 });
 
-test('a reconciling final read keeps a new job unsaved until a current catalog arrives', async () => {
+test('a reconciling final read refreshes unchanged snapshots until a current catalog arrives', async () => {
   inputs.agents = [broken];
   schedulerJobDialogStore.open({
     authority: inputs.authority,
@@ -203,13 +207,15 @@ test('a reconciling final read keeps a new job unsaved until a current catalog a
   await waitFor(() =>
     expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
   );
+  vi.useFakeTimers();
   inputs.refetch.mockImplementationOnce(async () => {
     inputs.reconciling = true;
+    inputs.readRevision++;
     return { data: { agents: inputs.agents, catalogState: 'reconciling' } };
   });
   inputs.agents = [{ ...broken, available: true }];
   view.rerender(<SchedulerJobDialogHost />);
-  await screen.findByRole('button', { name: 'Add Job' });
+  await act(async () => {});
   expect(screen.getByRole('alert').textContent).toContain(
     'current agent setup',
   );
@@ -222,11 +228,36 @@ test('a reconciling final read keeps a new job unsaved until a current catalog a
     'retained instructions',
   );
   expect(inputs.add).not.toHaveBeenCalled();
-  inputs.reconciling = false;
-  view.rerender(<SchedulerJobDialogHost />);
-  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  inputs.refetch.mockImplementationOnce(async () => {
+    inputs.readRevision++;
+    view.rerender(<SchedulerJobDialogHost />);
+    return { data: { agents: inputs.agents, catalogState: 'reconciling' } };
+  });
+  await act(async () => {
+    vi.advanceTimersByTime(1000);
+  });
+  expect(inputs.refetch).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  inputs.refetch.mockImplementationOnce(async () => {
+    inputs.reconciling = false;
+    inputs.readRevision++;
+    view.rerender(<SchedulerJobDialogHost />);
+    return { data: { agents: inputs.agents } };
+  });
+  await act(async () => {
+    vi.advanceTimersByTime(1000);
+  });
+  expect(inputs.refetch).toHaveBeenCalledTimes(3);
+  expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
     'disabled',
     false,
   );
+  await act(async () => {
+    vi.advanceTimersByTime(60_000);
+  });
+  expect(inputs.refetch).toHaveBeenCalledTimes(3);
 });

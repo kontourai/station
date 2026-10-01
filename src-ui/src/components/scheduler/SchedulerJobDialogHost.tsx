@@ -5,6 +5,7 @@ import {
   type SchedulerJobDialogRequest,
   schedulerJobDialogStore,
 } from '../../contexts/scheduler-job-dialog-store';
+import { useReconcilingCatalogRefresh } from '../../hooks/useNewChatSelectionModel';
 import { useSchedulerProviders } from '../../hooks/useScheduler';
 import { useNewChatSetupReturn } from '../modals/useNewChatSetupReturn';
 import { JobFormModal } from './JobFormModal';
@@ -17,6 +18,12 @@ function SchedulerJobDialog({
 }) {
   const { data: providers = [] } = useSchedulerProviders();
   const agents = useAgentsQuery();
+  // Unchanged retained rows may share identity across successful reads.
+  useReconcilingCatalogRefresh(
+    agents.catalogState,
+    agents.dataUpdatedAt,
+    agents.refetch,
+  );
   const [ready, setReady] = useState(false);
   const [setupError, setSetupError] = useState<unknown>();
   const checkingSetup =
