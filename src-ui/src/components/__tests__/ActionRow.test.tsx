@@ -163,7 +163,10 @@ describe('ActionRow', () => {
       />,
     );
     const trigger = screen.getByRole('button', { name: 'More actions' });
-    trigger.focus();
+    // NOT focused first: a pointer press does not focus a button in every
+    // browser, and then the menu's generic focus return has nothing recorded
+    // to go back to. Escape must put focus on the trigger itself.
+    expect(document.activeElement).toBe(document.body);
     fireEvent.click(trigger);
     expect(document.activeElement).toBe(
       screen.getByRole('menuitem', { name: 'One' }),
