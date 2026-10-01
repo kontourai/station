@@ -12,7 +12,7 @@
   "document": {"digest":"c8b462fb433ac353548ffcd0c201086d1a34476787fc3b27a81fbb4ab900b17c","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
   "sources": [
-    {"path":"packages/contracts/src/device-settings.ts","digest":"ffe893afc9438cc0ae812a539c36a6ac7a6af1632dac09a224d546f5f684b941","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"411c2cab089819bc0792d6c38c28e43ce9eb25ae78b3fb9d7e50df2adceac052","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"6fc849fb2b178eddaa34ae34e8df1cd55d345a840915df6958b4a1cbc2215f59","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"35154d1a280a19606705efe1591f6fc4cd5127ba5f688aac54665ba87b483b74","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
 
     {"path":"src-ui/src/regions/__tests__/region-arrangement-record.test.ts","digest":"ae69b3a3f2ca0fe2eb0be804af9f5a0e0fee85b74623a383738d06a7215a342d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

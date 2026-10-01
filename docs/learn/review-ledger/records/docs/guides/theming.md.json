@@ -74,7 +74,7 @@
 
     {"path":"src-ui/src/lib/branding-theme.ts","digest":"6b0a440ba723e5af74ff8230c50b2f268a87a85aa3dadce7f12a1de13257cd9d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"6fc849fb2b178eddaa34ae34e8df1cd55d345a840915df6958b4a1cbc2215f59","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"35154d1a280a19606705efe1591f6fc4cd5127ba5f688aac54665ba87b483b74","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
 
     {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
