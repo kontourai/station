@@ -9,7 +9,8 @@
  * dock panel and the real mobile sheet, puts that markup into Chromium with
  * the cascade-resolved stylesheets, and measures: every row before and while
  * the pointer is over it, the invisible hit area of each revealed action,
- * and the always-visible touch actions at a phone viewport.
+ * which rows animate (with and without reduced motion), and the
+ * always-visible touch actions at a phone viewport.
  */
 
 import { resolve } from 'node:path';
@@ -280,6 +281,55 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     } finally {
       await pg.close();
     }
+  });
+
+  test('only a waiting-on-you icon moves, and reduced motion stills it', async () => {
+    const markup = panelMarkup();
+    const animations = async (reducedMotion: 'reduce' | 'no-preference') => {
+      const pg = await browser.newPage({
+        viewport: { width: 1280, height: 900 },
+        reducedMotion,
+      });
+      try {
+        await pg.setContent(page(markup));
+        return await pg.evaluate(() =>
+          Object.fromEntries(
+            [...document.querySelectorAll('[data-testid="inbox-row"]')].map(
+              (row) => {
+                const moving = [row, ...row.querySelectorAll('*')]
+                  .map((element) => getComputedStyle(element))
+                  .filter(
+                    (style) =>
+                      style.animationName !== 'none' &&
+                      style.animationIterationCount === 'infinite',
+                  )
+                  .map((style) => style.animationName);
+                return [row.getAttribute('data-row-key'), moving];
+              },
+            ),
+          ),
+        );
+      } finally {
+        await pg.close();
+      }
+    };
+    expect(await animations('no-preference')).toEqual({
+      approval: ['inbox-row-attention-pulse'],
+      running: [],
+      idle: [],
+      failed: [],
+      snoozed: [],
+      earlier: [],
+    });
+    // The global reset caps every animation at one near-instant iteration.
+    expect(await animations('reduce')).toEqual({
+      approval: [],
+      running: [],
+      idle: [],
+      failed: [],
+      snoozed: [],
+      earlier: [],
+    });
   });
 
   test('touch chrome shows every action at the 44px floor with nothing to hover', async () => {
