@@ -260,9 +260,12 @@ export function activityRunningDetail(
   const duration = minutesSince(activity?.openTurn?.startedAt);
   const runningTool = activity?.runningTools?.at(-1)?.name;
   if (runningTool) return { duration, activity: `using ${runningTool}` };
-  const progress = minutesSince(
-    activeTurnProgress(session)?.lastProgressEventAt,
-  );
+  const turnProgress = activeTurnProgress(session);
+  // A progress-silence observation already says how long nothing has been
+  // heard; "last progress Nm ago" beside it repeats the fact on a row that
+  // has two lines.
+  if (turnProgress?.progressSilence) return { duration, activity: null };
+  const progress = minutesSince(turnProgress?.lastProgressEventAt);
   return {
     duration,
     activity: progress ? `last progress ${progress} ago` : null,

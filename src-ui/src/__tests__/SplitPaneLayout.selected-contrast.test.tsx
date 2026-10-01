@@ -310,11 +310,18 @@ describe.skipIf(!chromiumAvailable)(
             );
           return {
             violations: describe(run.violations),
-            // A StatusGlyph is a symbol (●, ✓) with an aria-label; axe files
-            // symbol-only text as "incomplete" because 1.4.3 does not apply
-            // to it. Anything else it could not decide is a failure here.
+            // A StatusGlyph is a symbol (●, ✓, ×) with an aria-label; axe
+            // files symbol-only text as "incomplete" because 1.4.3 does not
+            // apply to it — under either wording, and the one-character
+            // wording only for a status glyph. Anything else it could not
+            // decide is a failure here.
             incomplete: describe(run.incomplete).filter(
-              (entry) => !/contains only non-text characters/.test(entry),
+              (entry) =>
+                !/contains only non-text characters/.test(entry) &&
+                !(
+                  /\.status-glyph/.test(entry) &&
+                  /content is too short to determine/.test(entry)
+                ),
             ),
             passed: run.passes.reduce(
               (total, group) => total + group.nodes.length,

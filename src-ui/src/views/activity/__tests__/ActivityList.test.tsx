@@ -260,6 +260,28 @@ describe('Activity list', () => {
     vi.unstubAllGlobals();
   });
 
+  test('a failure whose session is still loaded shows its reason before the server attributes it', () => {
+    // The shape the read model returns for a fresh failure: the session is
+    // still loaded (`status: 'error'`), so no `terminalAttribution` yet; the
+    // reason is in the fields the detail's failure text already folds.
+    sessions = [
+      session('Fresh failure', {
+        status: 'error',
+        lifecycleState: 'failed',
+        updatedAt: minutesAgo(1),
+        lastRuntimeErrorMessage:
+          'The model provider returned an error (HTTP 500).',
+        blockedReason: 'The model provider returned an error (HTTP 500).',
+      }),
+    ];
+    renderView();
+    const row = screen.getByRole('button', { name: /^Fresh failure/ });
+    expect(
+      row.querySelector('[data-testid="session-member-terminal-attribution"]')
+        ?.textContent,
+    ).toBe('The model provider returned an error (HTTP 500).');
+  });
+
   test('renders the state lane headings, live lanes first, and splits the history lane into dated sub-sections', () => {
     sessions = [
       session('Answer my question', { lifecycleState: 'needs_input' }),

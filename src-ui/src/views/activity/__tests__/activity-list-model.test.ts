@@ -125,6 +125,36 @@ describe('activityRunningDetail', () => {
     });
   });
 
+  test('says when progress was last heard, unless a silence notice already does', () => {
+    const lastProgress = new Date(NOW - 4 * 60_000).toISOString();
+    const heard = {
+      ...running(6),
+      turnProgress: { lastProgressEventAt: lastProgress },
+    };
+    expect(activityRunningDetail(heard, NOW)).toEqual({
+      duration: '6m',
+      activity: 'last progress 4m ago',
+    });
+    // The silence observation renders its own "No progress events for Nm";
+    // repeating the age beside it pushed the row past its two lines.
+    const silent = {
+      ...running(6),
+      turnProgress: {
+        lastProgressEventAt: lastProgress,
+        progressSilence: {
+          detectedAt: new Date(NOW).toISOString(),
+          windowMs: 180_000,
+          silentSinceEventAt: lastProgress,
+          provider: 'station',
+        },
+      },
+    };
+    expect(activityRunningDetail(silent, NOW)).toEqual({
+      duration: '6m',
+      activity: null,
+    });
+  });
+
   test('a summary with no active turn claims no running detail', () => {
     expect(
       activityRunningDetail(

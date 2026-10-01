@@ -183,6 +183,17 @@ function ActivityRowMeta({
     .filter(Boolean)
     .join(' · ');
   const turnProgress = activeTurnProgress(session);
+  // The server attaches `terminalAttribution` only once a failed session has
+  // closed; while it is still loaded the reason lives in the same two fields
+  // the detail's failure text folds (`sessionFailureText`), so a fresh
+  // failure reads the same in the row and in the detail.
+  const terminalDetail =
+    state === 'Failed' || state === 'Stopped'
+      ? (session.terminalAttribution?.detail ??
+        (state === 'Failed'
+          ? (session.lastRuntimeErrorMessage ?? session.blockedReason)
+          : undefined))
+      : undefined;
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
   const project = sessionProjectLabel(session);
@@ -226,18 +237,17 @@ function ActivityRowMeta({
           />
         </>
       )}
-      {(state === 'Failed' || state === 'Stopped') &&
-        session.terminalAttribution?.detail && (
-          <>
-            {' · '}
-            <span
-              className="activity-row-meta__detail"
-              data-testid="session-member-terminal-attribution"
-            >
-              {session.terminalAttribution.detail}
-            </span>
-          </>
-        )}
+      {terminalDetail && (
+        <>
+          {' · '}
+          <span
+            className="activity-row-meta__detail"
+            data-testid="session-member-terminal-attribution"
+          >
+            {terminalDetail}
+          </span>
+        </>
+      )}
       {segments.map((segment) => (
         <Fragment key={segment.key}>
           {' · '}
