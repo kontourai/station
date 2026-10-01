@@ -5836,6 +5836,125 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    test('#3071: a request names its turn only when the turn itself is waiting on it', async () => {
+      const threadId = 'thread-request-turn-identity';
+      const { adapter, iterator, turn, canUseTool, opened } =
+        await openedBashRequest(threadId, new AbortController().signal);
+      // The main thread's request is the turn's own.
+      expect(opened.turnId).toBe(turn.turnId);
+      // A subagent's can outlive the turn, so it names none.
+      void canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'toolu-sub',
+          agentID: 'agent-bg',
+          suggestions: [],
+        },
+      );
+      const subagentOpened = (await iterator.next()).value;
+      expect(subagentOpened).toMatchObject({ method: 'request.opened' });
+      expect(subagentOpened.turnId).toBeUndefined();
+      await adapter.stopSession(threadId);
+    });
+
+    test('#3071: requests raised while the interrupt is in flight are settled before turn.aborted, a subagent’s included', async () => {
+      const threadId = 'thread-stop-gap';
+      const controlled = createControlledMockQuery();
+      let finishInterrupt!: () => void;
+      controlled.interrupt.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishInterrupt = resolve;
+          }),
+      );
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const until = async (predicate: (event: any) => boolean) => {
+        for (let seen = 0; seen < 30; seen++) {
+          const event = (await iterator.next()).value;
+          if (predicate(event)) return event;
+        }
+        throw new Error('expected event never arrived');
+      };
+      await adapter.startSession({ provider: 'claude', threadId });
+      const turn = await adapter.sendTurn({ threadId, input: 'research it' });
+      await until((event) => event.method === 'turn.started');
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const signal = new AbortController().signal;
+
+      const interrupting = adapter.interruptTurn(threadId, turn.turnId);
+      await vi.waitFor(() => expect(controlled.interrupt).toHaveBeenCalled());
+      // The gap: the stop has been asked, its abort is not yet published.
+      const subagentPermission = canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal,
+          toolUseID: 'toolu-sub',
+          agentID: 'agent-bg',
+          suggestions: [],
+        },
+      );
+      const subagentOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+      const mainPermission = canUseTool(
+        'Write',
+        { file_path: 'a.ts' },
+        { signal, toolUseID: 'toolu-main', suggestions: [] },
+      );
+      const mainOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+      finishInterrupt();
+      await expect(interrupting).resolves.toMatchObject({
+        outcome: 'cancelled',
+      });
+
+      // Asserted, not awaited: a request left pending would otherwise show
+      // up only as this test timing out.
+      const settledNow = (permission: Promise<unknown>) =>
+        Promise.race([
+          permission.then(() => 'settled'),
+          new Promise((resolve) => setTimeout(() => resolve('pending'), 50)),
+        ]);
+      expect(await settledNow(mainPermission)).toBe('settled');
+      expect(await settledNow(subagentPermission)).toBe('settled');
+      await expect(mainPermission).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(subagentPermission).resolves.toMatchObject({
+        behavior: 'deny',
+      });
+      // Both are resolved BEFORE the abort, so nothing is open when every
+      // transcript reader retires the turn's approvals on it.
+      const afterGap = [
+        (await iterator.next()).value,
+        (await iterator.next()).value,
+        (await iterator.next()).value,
+      ];
+      expect(afterGap.map((event) => event.method)).toEqual([
+        'request.resolved',
+        'request.resolved',
+        'turn.aborted',
+      ]);
+      expect(
+        afterGap
+          .slice(0, 2)
+          .map((event) => event.requestId)
+          .sort(),
+      ).toEqual([mainOpened.requestId, subagentOpened.requestId].sort());
+      expect(afterGap[2]).toMatchObject({ turnId: turn.turnId });
+      // The subagent's request named no turn; the adapter, not the abort,
+      // is what closed it.
+      expect(subagentOpened.turnId).toBeUndefined();
+      await expect(
+        adapter.respondToRequest(threadId, subagentOpened.requestId, 'accept'),
+      ).rejects.toThrow('Unknown Claude permission request');
+      await adapter.stopSession(threadId);
+    });
+
     test('when a subagent task ends, its leftover requests are settled; the main thread’s are not', async () => {
       const threadId = 'thread-task-ended-approval';
       const controlled = createControlledMockQuery();

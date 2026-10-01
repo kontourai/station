@@ -94,8 +94,8 @@ describe('pane-host composition guardrail', () => {
       'project host delegation',
       'projectLayoutRenderer',
       `const Pane =
-            descriptor &&
-            getBuiltinWorkspacePaneRenderer(`,
+              descriptor &&
+              getBuiltinWorkspacePaneRenderer(`,
       'ProjectLayoutRenderer must delegate builtin renderer selection to the pane registry.',
     ],
   ] as const)(

@@ -59,6 +59,7 @@
     "./source-watch": "./src/source-watch.ts",
     "./conversation-message": "./src/conversation-message.ts",
     "./runtime-event-projection": "./src/runtime-event-projection.ts",
+    "./request-settlement": "./src/request-settlement.ts",
     "./usage-fold": "./src/usage-fold.ts",
     "./usage-measurement": "./src/usage-measurement.ts",
     "./usage-rollup": "./src/usage-rollup.ts",

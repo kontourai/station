@@ -670,6 +670,13 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   policyDenied?: true;
 }
 
+/**
+ * `turnId`, when present, names the turn that is itself waiting on this
+ * request. An adapter stamps it only when it knows that: a request raised by
+ * work that can outlive the turn (a background subagent) carries none. A
+ * request that names a turn is settled, with no `request.resolved`, when
+ * that turn is aborted (`@kontourai/station-shared/request-settlement`).
+ */
 export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   method: 'request.opened';
   requestId: string;
@@ -684,8 +691,10 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
 
 /**
  * #2880: what an adapter can report about a decision after Station records
- * it. `request.resolved` always means "decision recorded"; this says whether
- * any later `request.delivery` can follow.
+ * it. A `request.resolved` that carries this records a decision; this says
+ * whether any later `request.delivery` can follow. A `request.resolved`
+ * without it can also be a request closed with no decision at all — see
+ * {@link RequestResolvedEvent}.
  *
  * - `engine`: the engine closes the request on its own wire after Station's
  *   reply (Codex `serverRequest/resolved`, Muse `approval/resolved`). That is
@@ -698,6 +707,13 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
  */
 export type ApprovalAcknowledgement = 'engine' | 'in-process' | 'none';
 
+/**
+ * The request is closed. `approved` and `denied` record a decision.
+ * `cancelled` and `expired` record that it closed with none: the session or
+ * turn was stopped mid-request, the engine withdrew it, it timed out, or
+ * (`expired`, `response.reason: 'turn-interrupted'`) Station restarted while
+ * the turn that asked was running.
+ */
 export interface RequestResolvedEvent extends CanonicalRuntimeEventBase {
   method: 'request.resolved';
   requestId: string;
