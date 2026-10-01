@@ -42,7 +42,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"c2221be7d14a06e971db54808f2210f94bec84ffb03da82f6e8e9e6e888cb6b6","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e70cb4f95f716a3c0dd8b797468f900a59f36dadabe17f34e8cce3fbb4f504c8","revision":"dc9cc92e6c6fc958ca431904ae18c3f71253cb78"},
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"4f66110a1392b0188cb64660f42c5c80bf28676060aa46e9e21e7ba29edfba93","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 

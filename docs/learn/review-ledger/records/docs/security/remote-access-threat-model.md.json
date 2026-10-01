@@ -48,7 +48,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"c2221be7d14a06e971db54808f2210f94bec84ffb03da82f6e8e9e6e888cb6b6","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e70cb4f95f716a3c0dd8b797468f900a59f36dadabe17f34e8cce3fbb4f504c8","revision":"dc9cc92e6c6fc958ca431904ae18c3f71253cb78"},
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

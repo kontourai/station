@@ -26,7 +26,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"c2221be7d14a06e971db54808f2210f94bec84ffb03da82f6e8e9e6e888cb6b6","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e70cb4f95f716a3c0dd8b797468f900a59f36dadabe17f34e8cce3fbb4f504c8","revision":"dc9cc92e6c6fc958ca431904ae18c3f71253cb78"},
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],

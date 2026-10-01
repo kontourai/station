@@ -52,7 +52,7 @@
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"c2221be7d14a06e971db54808f2210f94bec84ffb03da82f6e8e9e6e888cb6b6","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e70cb4f95f716a3c0dd8b797468f900a59f36dadabe17f34e8cce3fbb4f504c8","revision":"dc9cc92e6c6fc958ca431904ae18c3f71253cb78"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
