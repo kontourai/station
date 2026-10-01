@@ -12,8 +12,6 @@
   "document": {"digest":"2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
-
     {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
     {"path":"scripts/station-agent-smoke.mjs","digest":"b3632d2947ae62ea4d1a14912a2de70e3935ee7d3acbca9c02d68ca49cbd01b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
@@ -36,7 +34,7 @@
 
     {"path":"src-ui/src/index.css","digest":"ad2e708fcb650ea156d50cbf5fb564705e1aeffda5dcc37ca01d5744b15777a5","revision":"4ce4b63ea7c1eb235990079a5eb2b5b62470185a"},
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"63486f4ca811d0b37f40377e11dc16d5388660c7c64248607b73c662e7c9763f","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
 
     {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
@@ -48,7 +46,9 @@
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"}
   ],
 
   "checks": [

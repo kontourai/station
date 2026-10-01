@@ -1,8 +1,12 @@
+import type {
+  EngineLoginProfile,
+  EngineLoginProfiles,
+} from '@kontourai/station-contracts/connection-recovery';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ApiRequestScope, getJson, mutateJson } from './client/http';
 import type { DeviceCodeLogin } from './query-domains/workspaceConnections';
 
-export type { DeviceCodeLogin };
+export type { DeviceCodeLogin, EngineLoginProfiles };
 
 export interface DeviceCodeLoginTarget {
   connectionId: string;
@@ -158,5 +162,69 @@ export function useCancelDeviceCodeLoginMutation() {
     onSuccess: (login, target) => client.setQueryData(loginKey(target), login),
     onSettled: (_login, _error, target) =>
       client.invalidateQueries({ queryKey: loginKey(target) }),
+  });
+}
+
+export function useEngineLoginProfilesQuery(
+  connectionId: string,
+  requestScope: ApiRequestScope,
+) {
+  return useQuery({
+    queryKey: [
+      'engine-login-profiles',
+      requestScope.apiBase,
+      requestScope.authorityKey,
+      connectionId,
+    ],
+    queryFn: async ({ signal }): Promise<EngineLoginProfiles> => {
+      const response = await getJson(
+        `${requestScope.apiBase}/api/connections/agent/${encodeURIComponent(connectionId)}/device-code-profiles`,
+        { requestScope, signal },
+      );
+      const body: unknown = await response.json();
+      if (
+        !response.ok ||
+        !record(body) ||
+        body.success !== true ||
+        !record(body.data) ||
+        !Array.isArray(body.data.profiles)
+      )
+        throw new Error('Sign-in profiles could not be loaded.');
+      const profiles = body.data.profiles.map((profile): EngineLoginProfile => {
+        if (
+          !record(profile) ||
+          typeof profile.ref !== 'string' ||
+          (profile.label !== undefined && typeof profile.label !== 'string') ||
+          !Array.isArray(profile.mechanisms) ||
+          profile.mechanisms.some((value) => value !== 'device-code')
+        )
+          throw new Error(
+            'This Station returned incompatible sign-in profiles.',
+          );
+        const authState = profile.authState;
+        if (
+          authState !== 'authenticated' &&
+          authState !== 'unauthenticated' &&
+          authState !== 'unknown'
+        )
+          throw new Error(
+            'This Station returned an incompatible sign-in state.',
+          );
+        return {
+          ref: profile.ref,
+          ...(typeof profile.label === 'string'
+            ? { label: profile.label }
+            : {}),
+          authState,
+          mechanisms: profile.mechanisms.map(() => 'device-code' as const),
+        };
+      });
+      return { profiles };
+    },
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 }

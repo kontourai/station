@@ -12,9 +12,7 @@
   "document": {"digest":"dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
-
-    {"path":"docs/learn/media/shared-task-document.png","digest":"7f6b0ad776d4c9488f991df92236cb2e8b209e3dc3b58d3335fc434e158baadc","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"docs/learn/media/shared-task-document.png","digest":"8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
 
@@ -30,9 +28,9 @@
 
     {"path":"src-ui/src/index.css","digest":"ad2e708fcb650ea156d50cbf5fb564705e1aeffda5dcc37ca01d5744b15777a5","revision":"4ce4b63ea7c1eb235990079a5eb2b5b62470185a"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"840e1c5e9fe66275729aa508628e29deeeaf42ab63af5789052038d159c46b59","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"9a74da9763fba9b8b9ff8cab14a8192141e5a2c1aafe699cd8ac22b566e56e25","revision":"fbb464a6f50ad701f4c11b95cd8badaf73d3b391"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
@@ -44,7 +42,9 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"tests/project-task-room-collaboration.spec.ts","digest":"c4da422624b198fb8461865d538cd30356cf85183ecd469c20c34e05c3d01b29","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+    {"path":"tests/project-task-room-collaboration.spec.ts","digest":"c4da422624b198fb8461865d538cd30356cf85183ecd469c20c34e05c3d01b29","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media.json#/captures/1","digest":"fdeee7f06bef156ab77d5fcb5ab515098f5585e03e530aaca6a08fc828cd89ff","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"}
   ],
 
   "checks": [
