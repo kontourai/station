@@ -1508,6 +1508,17 @@ const continuation = await accounts.exchange({ username, password });
 const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
 ```
 
+The host proof provider may implement `prepareInvitationAcceptance({continuation, token})`.
+`NativeApplicationSessionClient.prepareInvitationAcceptance(continuation, token)`
+validates the exact token-only body and host account signature, rejects reused
+JTIs or changed targets, and returns frozen body/headers for **only**
+`POST /api/account-auth/accept-invitation`. It does not broaden the existing
+GET/HEAD `requestHeaders` operation or accept generic signing bytes. Send this
+body through the current native application transport: the separate Device
+proof authenticates its exact bytes, and the server independently rechecks the
+real account, Device binding and invitation/membership owner. No browser Origin
+or cookie conversion is part of this request.
+
 ### Fresh relay enrollment proof helpers
 
 `@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,

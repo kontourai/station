@@ -274,6 +274,19 @@ fn validate_request(method: &str, path: &str, body: &[u8]) -> Result<()> {
             }
         }
         "POST" => {
+            if path == "/api/account-auth/accept-invitation" {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Invitation {
+                    token: String,
+                }
+                let accepted: Invitation =
+                    serde_json::from_slice(body).map_err(|_| REFUSED.to_owned())?;
+                if url.query().is_some() || !valid_handle(&accepted.token) {
+                    return refused();
+                }
+                return Ok(());
+            }
             if url.query().is_some()
                 || !matches!(
                     path,
