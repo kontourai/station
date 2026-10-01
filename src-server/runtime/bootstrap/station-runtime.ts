@@ -798,14 +798,14 @@ export class StationRuntime {
             'claude',
             profileRef,
           );
-          return claudeAppHomeEnv(dir);
+          return { env: claudeAppHomeEnv(dir), profileRef };
         }
         const useAppHome = appHomeActive(
           appConfig.agentConnections?.claude?.config,
         );
-        if (!useAppHome) return undefined;
+        if (!useAppHome) return { profileRef: null };
         const { dir } = await ensureAppHomeProfile('claude');
-        return claudeAppHomeEnv(dir);
+        return { env: claudeAppHomeEnv(dir), profileRef: null };
       } catch (error) {
         if (selectedProfileRef) {
           throw new Error(
@@ -904,14 +904,14 @@ export class StationRuntime {
             'codex',
             profileRef,
           );
-          return codexAppHomeEnv(dir);
+          return { env: codexAppHomeEnv(dir), profileRef };
         }
         const useAppHome = appHomeActive(
           appConfig.agentConnections?.codex?.config,
         );
-        if (!useAppHome) return undefined;
+        if (!useAppHome) return { profileRef: null };
         const { dir } = await ensureAppHomeProfile('codex');
-        return codexAppHomeEnv(dir);
+        return { env: codexAppHomeEnv(dir), profileRef: null };
       } catch (error) {
         if (selectedProfileRef) {
           throw new Error(

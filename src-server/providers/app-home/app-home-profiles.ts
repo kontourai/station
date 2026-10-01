@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * App-home profiles (archive#896, `docs/design/agent-engine-unification.md` §6.1's
  * overlay model, channel 2): a Station-owned, per-engine config home
@@ -50,6 +51,20 @@ import { resolveHomeDir } from '../../utils/paths.js';
 
 /** Matches the `any`-typed logger convention used across `providers/adapters`. */
 type AppHomeLogger = any;
+
+export function usageCredentialAccountKey(
+  engine: string,
+  profileRef: string | null,
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify([engine, profileRef]))
+    .digest('hex');
+}
+
+export interface ResolvedAppHome {
+  env?: Record<string, string>;
+  profileRef: string | null;
+}
 
 const APP_HOMES_DIRNAME = 'app-homes';
 const PROFILE_MARKER_FILENAME = 'profile.json';

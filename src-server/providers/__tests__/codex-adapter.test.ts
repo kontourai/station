@@ -513,7 +513,9 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory,
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     const respond = async (process: FakeCodexProcess, usedPercent: number) => {
@@ -591,7 +593,7 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory,
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: '/profile' } : undefined,
+        ref ? { env: { CODEX_HOME: '/profile' }, profileRef: ref } : undefined,
       ),
       quotaCacheTtlMs: 0,
     });
@@ -717,7 +719,9 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory: vi.fn(() => processes.shift()!),
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     const read = adapter.readQuotaSnapshot({
@@ -834,7 +838,10 @@ describe('CodexAdapter', () => {
     const processes = [retired, replacement];
     const adapter = new CodexAdapter({
       processFactory: () => processes.shift()!,
-      getAppHomeEnv: vi.fn(async () => ({ CODEX_HOME: '/profiles/canary' })),
+      getAppHomeEnv: vi.fn(async () => ({
+        env: { CODEX_HOME: '/profiles/canary' },
+        profileRef: null,
+      })),
     });
     await startQuotaSession({
       adapter,
@@ -950,7 +957,9 @@ describe('CodexAdapter', () => {
       now: () => new Date('2026-08-10T12:00:00.000Z'),
       processFactory: vi.fn(() => processes.shift()!),
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
@@ -1058,7 +1067,9 @@ describe('CodexAdapter', () => {
       now: () => new Date('2026-08-10T12:00:00.000Z'),
       processFactory: () => processes.shift()!,
       getAppHomeEnv: vi.fn(async (ref) =>
-        ref ? { CODEX_HOME: `/profiles/${ref}` } : undefined,
+        ref
+          ? { env: { CODEX_HOME: `/profiles/${ref}` }, profileRef: ref }
+          : undefined,
       ),
     });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
@@ -5171,7 +5182,10 @@ describe('CodexAdapter', () => {
       processHandle = new FakeCodexProcess();
       const getAppHomeEnv = vi.fn(async (ref?: string) => {
         expect(ref).toBe('canary-profile-ref');
-        return { CODEX_HOME: '/private/station/canary-profile-home' };
+        return {
+          env: { CODEX_HOME: '/private/station/canary-profile-home' },
+          profileRef: ref ?? null,
+        };
       });
       const adapter = new CodexAdapter({
         processFactory: () => processHandle!,
@@ -5247,7 +5261,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
       } as any);
 
@@ -5292,7 +5307,10 @@ describe('CodexAdapter', () => {
         processFactory,
         getAppHomeEnv: async (requestedRef?: string) => {
           expect(requestedRef).toBe(profileRef);
-          return { CODEX_HOME: profileHome };
+          return {
+            env: { CODEX_HOME: profileHome },
+            profileRef: requestedRef ?? null,
+          };
         },
         mintStationControlMcpAuth: () =>
           `http://127.0.0.1:3141/mcp/station-control?token=${token}`,
@@ -5348,7 +5366,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory: () => processHandle!,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
       } as any);
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -5473,7 +5492,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
       } as any);
 
@@ -5538,7 +5558,8 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex',
+          env: { CODEX_HOME: '/station/app-homes/codex' },
+          profileRef: null,
         }),
         getConnectionEnv: async () => ({
           CODEX_HOME: '/Users/me/.codex_vibe',
@@ -5620,7 +5641,10 @@ describe('CodexAdapter', () => {
       const processFactory = vi.fn(() => processHandle!);
       const adapter = new CodexAdapter({
         processFactory,
-        getAppHomeEnv: async () => ({ CODEX_HOME: '/profiles/a' }),
+        getAppHomeEnv: async () => ({
+          env: { CODEX_HOME: '/profiles/a' },
+          profileRef: null,
+        }),
         getConnectionEnv: async () => ({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
           CODEX_HOME: '/Users/me/.codex_vibe',
@@ -5966,7 +5990,10 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
 test('external adoption forks the native thread and records its distinct child before returning', async () => {
   const process = new FakeCodexProcess();
-  const getAppHomeEnv = vi.fn(async () => ({ CODEX_HOME: '/wrong-profile' }));
+  const getAppHomeEnv = vi.fn(async () => ({
+    env: { CODEX_HOME: '/wrong-profile' },
+    profileRef: null,
+  }));
   const adapter = new CodexAdapter({
     processFactory: () => process,
     getAppHomeEnv,

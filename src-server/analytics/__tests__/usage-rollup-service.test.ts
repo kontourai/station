@@ -1,5 +1,6 @@
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { usageCredentialAccountKey } from '../../providers/app-home/app-home-profiles.js';
 import type { UsageReceiptSource } from '../usage-rollup-service.js';
 import {
   RemoteStationUsageReceiptSource,
@@ -55,6 +56,49 @@ describe('UsageRollupService (station#4135)', () => {
     expect(result.rows[0].inputTokens).toBe(10);
     expect(result.rows[0].reportedCost?.amount).toBe(2);
   });
+
+  test.each([null, 'work'])(
+    'account filter %s keeps only attributed receipts and matching aggregates',
+    async (credentialProfileRef) => {
+      const receipts = [undefined, null, 'work', 'personal'].map(
+        (ref, index) => ({
+          id: `account-${index}`,
+          provider: 'codex',
+          stationId: 'local',
+          observedAt: '2026-08-10T00:00:00Z',
+          inputTokens: 10 + index,
+          ...(ref !== undefined
+            ? { accountKey: usageCredentialAccountKey('codex', ref) }
+            : {}),
+          reportedCost: { amount: index + 1, currency: 'USD' },
+          pricing: { status: 'unpriced' as const },
+        }),
+      );
+      const source: UsageReceiptSource = {
+        stationId: 'local',
+        read: async () => ({
+          receipts,
+          aggregateReceipts: receipts,
+          coverage: { stationId: 'local', state: 'complete', window: request },
+        }),
+      };
+      const result = await new UsageRollupService([source]).read(
+        { ...request, provider: 'codex', credentialProfileRef },
+        authority,
+      );
+      expect(result.receipts).toHaveLength(1);
+      expect(result.receipts[0]?.accountKey).toBe(
+        usageCredentialAccountKey('codex', credentialProfileRef),
+      );
+      expect(result.rows[0]?.reportedCost?.amount).toBe(
+        credentialProfileRef === null ? 2 : 3,
+      );
+      expect(result.coverage[0]?.state).toBe('partial');
+      expect(result.coverage[0]?.reason).toContain(
+        'without recorded credential-profile attribution',
+      );
+    },
+  );
 
   test('converts a peer read failure into offline coverage while retaining local receipts', async () => {
     const local: UsageReceiptSource = {
