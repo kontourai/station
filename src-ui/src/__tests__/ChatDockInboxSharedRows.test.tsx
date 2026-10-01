@@ -5,9 +5,9 @@
  * `ChatDockInboxRows.tsx` must render identically rich rows inside BOTH
  * hosts: the desktop dock panel (`ChatDockInboxPanel`) and the mobile
  * portaled sheet (`MobileTaskSwitcher`). This suite renders the same item
- * through each host and asserts the shared anatomy — project chip, meta
- * line, lifecycle chip, snooze + snooze-duration + close actions — instead
- * of trusting that two files that look alike stay alike.
+ * through each host and asserts the shared anatomy — meta line, title, the
+ * one status line, snooze + snooze-duration + close actions — instead of
+ * trusting that two files that look alike stay alike.
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -90,20 +90,14 @@ function renderSheetHost(
 function expectSharedRowAnatomy(root: ParentNode) {
   // One shared row implementation: the class family is the contract.
   expect(root.querySelector('.chat-dock-inbox__row')).not.toBeNull();
-  expect(root.querySelector('.chat-dock-inbox__project')?.textContent).toBe(
-    'Shared project',
+  expect(root.querySelector('.inbox-row__meta-text')?.textContent).toBe(
+    'Claude Code · Shared project',
   );
-  expect(root.querySelector('.chat-dock-inbox__meta')?.textContent).toBe(
-    'Claude Code · Sonnet',
-  );
-  // Lifecycle chip, not the raw wire enum — AND the recency beside it: a
-  // chip row used to drop its time entirely, leaving "how long has it sat
-  // like this?" unanswerable from the inbox (chat-surface honesty pass).
-  const state = root.querySelector('.chat-dock-inbox__state');
-  expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Running');
-  expect(state?.querySelector('.chat-dock-inbox__since')?.textContent).toBe(
-    '1m',
-  );
+  // The ladder's word, not the raw wire enum — AND the recency in the meta
+  // line's slot: a status row used to drop its time entirely, leaving "how
+  // long has it sat like this?" unanswerable from the inbox.
+  expect(root.querySelector('.inbox-row__word')?.textContent).toBe('Running');
+  expect(root.querySelector('.inbox-row__time')?.textContent).toBe('1m');
 }
 
 describe('shared inbox rows render in both hosts (station#3312)', () => {
@@ -142,7 +136,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   // Rendered through the shared row directly: a 3h-old terminal row lives in
   // the collapsed "Earlier" section in the panel host, and what these two pin
   // is the ROW anatomy, not the section chrome.
-  it('a terminal row keeps its recency beside the lifecycle chip', () => {
+  it('a terminal row keeps its recency beside its status', () => {
     const { container } = render(
       <InboxRow
         item={workItem({
@@ -156,14 +150,13 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onActivate={vi.fn()}
       />,
     );
-    const state = container.querySelector('.chat-dock-inbox__state');
-    expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Failed');
-    expect(state?.querySelector('.chat-dock-inbox__since')?.textContent).toBe(
-      '3h',
+    expect(container.querySelector('.inbox-row__word')?.textContent).toBe(
+      'Failed',
     );
+    expect(container.querySelector('.inbox-row__time')?.textContent).toBe('3h');
   });
 
-  it('a chip row with no real timestamp renders the chip alone, never a fabricated duration', () => {
+  it('a row with no real timestamp renders its status alone, never a fabricated duration', () => {
     const { container } = render(
       <InboxRow
         item={workItem({ lifecycleLabel: 'Failed', updatedAt: 0 })}
@@ -174,9 +167,10 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onActivate={vi.fn()}
       />,
     );
-    const state = container.querySelector('.chat-dock-inbox__state');
-    expect(state?.querySelector('.lifecycle-chip')?.textContent).toBe('Failed');
-    expect(state?.querySelector('.chat-dock-inbox__since')).toBeNull();
+    expect(container.querySelector('.inbox-row__word')?.textContent).toBe(
+      'Failed',
+    );
+    expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
   it('sheet host rows gained the desktop row actions: snooze menu and close', () => {
@@ -292,7 +286,6 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     );
     const row = screen.getByTestId('inbox-row');
     expect(row.textContent).toContain('Claude Code');
-    expect(row.textContent).toContain('Opus 5');
     expect(row.textContent).not.toContain('Codex');
   });
   beforeEach(() => {
@@ -352,17 +345,15 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     expect(container.querySelector('.brand-icon')).toBeNull();
   });
 
-  it('adds the avatar-column modifier for an unresolved row with a catalog', () => {
-    // jsdom cannot derive grid geometry; this test only proves the modifier
-    // that the CSS uses to reserve the column is present.
+  it('an unresolved row keeps its whole meta line, in words', () => {
     const { container } = renderPanelHost(
       sessionItem({ agentSlug: 'agent-that-is-gone' }),
       vi.fn(),
       AGENTS,
     );
-    expect(
-      container.querySelector('.chat-dock-inbox__item--avatars'),
-    ).not.toBeNull();
+    expect(container.querySelector('.inbox-row__meta-text')?.textContent).toBe(
+      'Codex · Shared project',
+    );
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
@@ -370,9 +361,6 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     // its layout must be untouched by this feature.
     const { container } = renderPanelHost(sessionItem({ agentSlug: 'codex' }));
     expect(avatarOf(container)).toBeNull();
-    expect(
-      container.querySelector('.chat-dock-inbox__item--avatars'),
-    ).toBeNull();
     expect(container.querySelector('.chat-dock-inbox__item')).not.toBeNull();
   });
 

@@ -1334,7 +1334,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
       taskRight: document
-        .querySelector('.home-view__task-copy')
+        .querySelector('.home-view__recent [data-testid="inbox-row"]')
         ?.getBoundingClientRect().right,
     }));
     expect(bounds.documentWidth).toBeLessThanOrEqual(bounds.innerWidth);

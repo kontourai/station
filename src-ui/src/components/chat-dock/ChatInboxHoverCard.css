@@ -61,6 +61,26 @@
   flex-wrap: wrap;
 }
 
+/* The row's status word (`workStatus`), with its icon: never colour-only. */
+.chat-dock-inbox-hover-card__status-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 650;
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="attention"] {
+  color: var(--warning-text);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="active"] {
+  color: var(--accent-primary);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="broken"] {
+  color: var(--status-error);
+}
+
 .chat-dock-inbox-hover-card__notice {
   margin: 8px 0 0;
   color: var(--text-secondary);

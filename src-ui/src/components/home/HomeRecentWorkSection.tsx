@@ -118,7 +118,7 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
   // A row whose lane changes (or whose lane empties) remounts elsewhere;
   // keep a keyboard user's focus on it. `tabIndex={-1}` is the last-resort
   // fallback target when the row itself is gone.
-  useRowFocusPreservation(sectionRef, '.home-view__task-open');
+  useRowFocusPreservation(sectionRef, '.chat-dock-inbox__item');
   return (
     <section
       ref={sectionRef}
@@ -583,7 +583,13 @@ function HomeSettledTail({
           <h4 className="home-view__bucket-label">{bucket.label}</h4>
           <ul className="home-view__task-list">
             {bucket.items.map((task) =>
-              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+              renderHomeWorkRow({
+                task,
+                isWoken: false,
+                agents,
+                onOpen,
+                size: 'slim',
+              }),
             )}
           </ul>
         </div>

@@ -1,29 +1,13 @@
-import { relativeTimeAgo } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import {
-  draftDiscardThreadId,
-  draftSessionIds,
-} from '../../views/home/draft-lane';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
-import { homeRowIconAgent } from '../../views/home/home-row-icon';
-import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
-import { AgentIcon } from '../icons/AgentIcon';
-import { TimeGlyph } from '../icons/Glyph';
-import { LazyBoundary } from '../LazyBoundary';
-import { hasLifecycleChip, LifecycleStatusChip } from './LifecycleStatusChip';
-
-// Module-level so LazyBoundary's useMemo sees a stable `load` identity across
-// renders (a fresh arrow per render would re-create the lazy component).
-const loadProgressSilenceObservation = () =>
-  import('./ProgressSilenceObservation');
+import { InboxRow } from '../chat-dock/ChatDockInboxRows';
 
 interface HomeWorkRowProps {
   task: HomeLaneItem;
   isWoken: boolean;
   /**
-   * The agent catalog, used only to resolve this row's icon. Passing the
-   * catalog rather than a pre-resolved icon keeps the "no icon for an agent
-   * this Station does not have" rule in one place (`homeRowIconAgent`).
+   * The agent catalog, used only to resolve this row's icon. An agent this
+   * Station does not have renders no icon (`inboxRowIconAgent`).
    */
   agents: readonly SessionIconAgent[];
   onOpen: (task: HomeLaneItem) => void;
@@ -33,9 +17,20 @@ interface HomeWorkRowProps {
    * the server can name. Set by the Drafts section only.
    */
   discardDraft?: boolean;
+  /** `slim` for the settled tail; every other lane renders the full card. */
+  size?: 'card' | 'slim';
 }
 
-/** Shared Home work-row renderer for active, terminal, and settled lanes. */
+/** The discard itself is the button's own server command; Home has no tab
+ *  bookkeeping or focus move to add after it. */
+const afterDraftDiscarded = () => {};
+
+/**
+ * Home's work row is the shared inbox row (#3043), in the always-visible
+ * `touch` chrome: Home is used on phones, where there is no hover to reveal
+ * a snooze control with. It mounts no hover card; Home has no session
+ * records to resolve one's git section from.
+ */
 export function renderHomeWorkRow({
   task,
   isWoken,
@@ -43,137 +38,28 @@ export function renderHomeWorkRow({
   onOpen,
   onSnooze,
   discardDraft = false,
+  size = 'card',
 }: HomeWorkRowProps) {
-  const discardThreadId = discardDraft ? draftDiscardThreadId(task) : null;
-  // The catalog entry itself, never a synthesised object: `AgentIcon` takes
-  // `agent` by identity, and MessageBubble's archive#1424 N4 note records
-  // what allocating a fresh one per render costs. `null` means this Station
-  // has no agent under this row's slug — see `homeRowIconAgent` for why that
-  // renders nothing rather than a guessed engine mark.
-  const iconAgent = homeRowIconAgent(task, agents);
-  const now = Date.now();
-  const lastProgressAt = task.turnProgress?.lastProgressEventAt;
-  const progressSilence = task.turnProgress?.progressSilence;
   return (
-    <li key={task.stableId} data-row-key={task.stableId}>
-      <div className="home-view__row">
-        <button
-          type="button"
-          className="home-view__task-open"
-          onClick={() => onOpen(task)}
-        >
-          <span className="home-view__task-lead">
-            {/* Decorative: the row already states the agent in
-                `home-view__identity`, so the icon must not repeat it into the
-                accessible name. */}
-            {iconAgent && (
-              <span className="home-view__task-icon" aria-hidden="true">
-                <AgentIcon agent={iconAgent} size={20} />
-              </span>
-            )}
-            <span className="home-view__task-copy">
-              <strong>{task.title}</strong>
-              <small>
-                {task.kindLabel} · {task.projectLabel}
-                {task.cwdLabel ? ` · ${task.cwdLabel}` : ''}
-                {task.updatedAt > 0 &&
-                  ` · ${relativeTimeAgo(task.updatedAt, now)}`}
-              </small>
-              {lastProgressAt && (
-                <small>
-                  Last progress{' '}
-                  {relativeTimeAgo(Date.parse(lastProgressAt), now)}
-                </small>
-              )}
-              {progressSilence && (
-                <LazyBoundary
-                  load={loadProgressSilenceObservation}
-                  pending={null}
-                  componentProps={{ observation: progressSilence }}
-                  // A quiet-turn observation is auxiliary chrome: if its chunk
-                  // rejects, losing the indicator honestly beats an inline
-                  // error taking over a Home row.
-                  unavailable={() => null}
-                />
-              )}
-              {/* archive#1783: the basis for the Unanswerable chip. The chip
-                  alone would be a label; this is what computed it. */}
-              {task.unanswerableNotice && (
-                <small
-                  className="home-view__unanswerable"
-                  data-testid="home-row-answerability"
-                >
-                  {task.unanswerableNotice}
-                </small>
-              )}
-              {task.lifecycleLabel === 'Running' &&
-                task.activeReason === 'background' && (
-                  <small className="home-view__unanswerable">
-                    Background work running
-                  </small>
-                )}
-              {/* The compact terminal-attribution detail is the basis for a
-                  Failed/Stopped chip. It is server-derived and already
-                  bounded; omitting it here would leave Home with a label but
-                  no visible account of what ended the work. */}
-              {(task.lifecycleLabel === 'Failed' ||
-                task.lifecycleLabel === 'Stopped') &&
-                task.failureNotice && (
-                  <small
-                    className="home-view__unanswerable"
-                    data-testid="home-row-terminal-attribution"
-                  >
-                    {task.failureNotice}
-                  </small>
-                )}
-            </span>
-          </span>
-          <span className="home-view__identity">
-            {task.agentLabel} · {task.modelLabel}
-          </span>
-          {(hasLifecycleChip(task.lifecycleLabel) ||
-            isWoken ||
-            task.environmentLabel) && (
-            <span className="home-view__row-status">
-              {task.environmentLabel && (
-                <span className="home-view__environment-badge">
-                  {task.environmentLabel}
-                </span>
-              )}
-              {task.controlMode !== 'read-only-attached' &&
-                hasLifecycleChip(task.lifecycleLabel) && (
-                  <LifecycleStatusChip lifecycle={task.lifecycleLabel} />
-                )}
-              {isWoken && (
-                <span className="home-view__woke-pill">Woke from snooze</span>
-              )}
-            </span>
-          )}
-        </button>
-        {(onSnooze || discardThreadId) && (
-          <div className="home-view__row-actions">
-            {onSnooze && (
-              <button
-                type="button"
-                className="home-view__row-action"
-                aria-label={`Snooze ${task.title}`}
-                aria-haspopup="menu"
-                onClick={(event) => onSnooze(task, event.currentTarget)}
-              >
-                <TimeGlyph />
-              </button>
-            )}
-            {discardThreadId && (
-              <DiscardDraftButton
-                threadId={discardThreadId}
-                title={task.title}
-                className="home-view__row-action"
-                closeSessionIds={draftSessionIds(task)}
-              />
-            )}
-          </div>
-        )}
-      </div>
+    <li key={task.stableId}>
+      <InboxRow
+        item={task}
+        rowKey={task.stableId}
+        isCurrent={false}
+        isSnoozed={false}
+        isOpenChat={false}
+        now={Date.now()}
+        size={size}
+        chrome="touch"
+        hoverCard={false}
+        agents={agents}
+        isWoken={isWoken}
+        onActivate={() => onOpen(task)}
+        onSnoozeMenu={
+          onSnooze ? (_item, trigger) => onSnooze(task, trigger) : undefined
+        }
+        onDraftDiscarded={discardDraft ? afterDraftDiscarded : undefined}
+      />
     </li>
   );
 }

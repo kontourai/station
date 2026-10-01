@@ -106,7 +106,7 @@ describe('HomeSurface live-lane focus', () => {
     const open = (title: string) =>
       screen
         .getByText(title)
-        .closest<HTMLElement>('.home-view__task-open') as HTMLElement;
+        .closest<HTMLElement>('.chat-dock-inbox__item') as HTMLElement;
     open('Wire the delegate verbs').focus();
     expect(document.activeElement).toBe(open('Wire the delegate verbs'));
 
@@ -542,7 +542,7 @@ describe('HomeSurface: agent icons', () => {
         }),
       ],
     });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(1);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(1);
   });
 
   /**
@@ -560,13 +560,13 @@ describe('HomeSurface: agent icons', () => {
         }),
       ],
     });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(0);
     // …and the row still says who it was attributed to, in text.
     expect(screen.getAllByText(/Codex/).length).toBeGreaterThan(0);
   });
 
   test('a row naming no agent at all draws no icon', () => {
     renderHome({ workItems: [item('a', 'Work', 'Station', 3, 'Running')] });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(0);
   });
 });

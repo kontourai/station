@@ -9,10 +9,8 @@ import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
-import {
-  hasLifecycleChip,
-  LifecycleStatusChip,
-} from '../home/LifecycleStatusChip';
+import { workStatus } from '../../views/home/work-status';
+import { InboxRowStatusGlyph } from '../inbox-row/InboxRowStatus';
 import './ChatInboxHoverCard.css';
 
 /** Hover-card geometry: fixed width, clamped into the viewport beside the row. */
@@ -98,6 +96,7 @@ export function ChatInboxHoverCard({
   id: string;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const status = workStatus(item, now);
   const cardRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<React.CSSProperties>({
     visibility: 'hidden',
@@ -367,9 +366,14 @@ export function ChatInboxHoverCard({
         <div>
           <dt>Status</dt>
           <dd className="chat-dock-inbox-hover-card__status">
-            {hasLifecycleChip(item.lifecycleLabel) ? (
-              <LifecycleStatusChip lifecycle={item.lifecycleLabel} />
-            ) : null}
+            {/* The row's own status word, from the same ladder call. */}
+            <span
+              className="chat-dock-inbox-hover-card__status-word"
+              data-tone={status.tone}
+            >
+              <InboxRowStatusGlyph rung={status.rung} />
+              {status.word}
+            </span>
             {item.updatedAt > 0 && (
               <span>{relativeTime(item.updatedAt, now)}</span>
             )}

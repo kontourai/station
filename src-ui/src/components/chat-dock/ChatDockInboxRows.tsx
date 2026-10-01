@@ -17,13 +17,21 @@ import {
   splitDraftsByAge,
 } from '../../views/home/draft-lane';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import { workStatus } from '../../views/home/work-status';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
-import {
-  hasLifecycleChip,
-  LifecycleStatusChip,
-} from '../home/LifecycleStatusChip';
 import { AgentIcon } from '../icons/AgentIcon';
-import { ArrowDownGlyph, ReturnGlyph, TimeGlyph } from '../icons/Glyph';
+import {
+  ArrowDownGlyph,
+  ArrowRightGlyph,
+  ReturnGlyph,
+  TimeGlyph,
+} from '../icons/Glyph';
+import {
+  InboxRowChips,
+  InboxRowStatusGlyph,
+  InboxRowStatusLine,
+} from '../inbox-row/InboxRowStatus';
+import { inboxRowChips } from '../inbox-row/inbox-row-chips';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
@@ -36,23 +44,32 @@ import {
   snoozeWakeAt,
 } from './mobile-activity-groups';
 import './ChatDockInboxPanel.css';
+import '../inbox-row/InboxRow.css';
 
 /**
  * kontourai/station#3312 — the one inbox, two chromes split.
  *
- * Row and group anatomy (project chip, title, meta, answerability, lifecycle
- * state, snooze/close actions) is defined here once and consumed by both
- * inbox surfaces: the desktop dock panel (`ChatDockInboxPanel`) and the
- * mobile portaled sheet (`MobileTaskSwitcher`). Only the chrome stays
- * host-owned — panel scroll/footer vs sheet portal, focus trap, sticky
- * header, and visual-viewport sizing (the #1051 fixes live in the sheet).
+ * Row and group anatomy is defined here once and consumed by every inbox
+ * surface: the desktop dock panel (`ChatDockInboxPanel`), the mobile
+ * portaled sheet (`MobileTaskSwitcher`), Home's work lanes (`HomeWorkRow`)
+ * and the project sidebar's open chats. Only the chrome stays host-owned —
+ * panel scroll/footer vs sheet portal, focus trap, sticky header, and
+ * visual-viewport sizing (the #1051 fixes live in the sheet).
+ *
+ * THE ROW (#3043) has a fixed line budget: a meta line (agent mark, agent
+ * and project, time), the title, ONE status line chosen by the status ladder
+ * (`workStatus`), and a chip line that exists only when a chip does. Time
+ * and the hover/focus actions share one slot at the end of the meta line;
+ * the actions are positioned over it rather than laid out beside it, so a
+ * row's height and its text never move on hover. Settled and snoozed rows
+ * use the one-line `slim` size.
  *
  * The row's metadata hover card (`ChatInboxHoverCard`) is part of the shared
  * anatomy: hover/focus opens it on either host, touch pointers never do.
  *
- * The `chat-dock-inbox__*` class family is the single styling source; the
- * sheet host wraps the list in `.chat-dock-inbox--touch`, which converts the
- * hover-revealed desktop row actions into always-visible ≥44px touch targets.
+ * `chrome="touch"` (the sheet, and Home, which is used on phones) lays the
+ * actions out as an always-visible ≥44px column instead: there is no hover
+ * to reveal them with.
  */
 
 /** Moves focus off a row that is about to be removed (#1054). */
@@ -213,7 +230,8 @@ function SnoozeActions({
         <button
           ref={triggerRef}
           type="button"
-          className="chat-dock-inbox__row-action"
+          className="chat-dock-inbox__row-action inbox-row__action"
+          title="Snooze"
           aria-label={`Snooze ${item.title}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -224,7 +242,8 @@ function SnoozeActions({
       ) : (
         <button
           type="button"
-          className="chat-dock-inbox__row-action"
+          className="chat-dock-inbox__row-action inbox-row__action"
+          title={isSnoozed ? 'Unsnooze' : 'Snooze for 30 minutes'}
           aria-label={
             isSnoozed ? `Unsnooze ${item.title}` : `Snooze ${item.title}`
           }
@@ -242,7 +261,8 @@ function SnoozeActions({
         <button
           ref={triggerRef}
           type="button"
-          className="chat-dock-inbox__row-action chat-dock-inbox__snooze-menu-trigger"
+          className="chat-dock-inbox__row-action inbox-row__action chat-dock-inbox__snooze-menu-trigger"
+          title="Choose snooze duration"
           aria-label={`Choose snooze duration for ${item.title}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -337,6 +357,25 @@ interface InboxRowProps {
    * action cost the title a third of a phone's row width.
    */
   snoozeMenuOnly?: boolean;
+  /**
+   * `card` (the default) is the full row for work that needs you, is
+   * running or is idle. `slim` is the one-line row for snoozed and settled
+   * work: status icon, title, status word, time.
+   */
+  size?: 'card' | 'slim';
+  /**
+   * `hover` reveals the actions over the time slot on hover or keyboard
+   * focus. `touch` shows them always, as ≥44px targets beside the row.
+   */
+  chrome?: 'hover' | 'touch';
+  /** Home: opens the host's own snooze menu instead of the inbox presets. */
+  onSnoozeMenu?: (item: HomeWorkItem, trigger: HTMLButtonElement) => void;
+  /** Home: the row's snooze lapsed recently. */
+  isWoken?: boolean;
+  /** False for a host with no room or data for the metadata hover card. */
+  hoverCard?: boolean;
+  /** The focus-preservation key; defaults to the item id. */
+  rowKey?: string;
 }
 
 /**
@@ -374,126 +413,167 @@ export function InboxRow({
   agents,
   gitLocation,
   snoozeMenuOnly = false,
+  size = 'card',
+  chrome = 'hover',
+  onSnoozeMenu,
+  isWoken = false,
+  hoverCard = true,
+  rowKey,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
   const hover = useInboxRowHoverCard();
   const hoverCardId = useId();
-  // The icon COLUMN is reserved for the whole list, not per row: a host that
-  // supplies a catalog is a host that shows agent icons, and rows whose
-  // agent does not resolve must still line their text up with the rows whose
-  // agent does. The alternative — collapsing the column per row — ragged the
-  // left edge of a mixed list, which reads as broken rather than as absent
-  // information.
-  const showsIcons = Boolean(agents?.length);
+  const statusId = useId();
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
+  // The ONE status read (#3042): the line here and the lane this row was
+  // filed under come from the same function.
+  const status = workStatus(item, now);
+  // The chat on screen is being read; marking it unread would be false.
+  const showUnread = status.unread && !isCurrent;
+  const chips = inboxRowChips(item, { hasUnsentDraft, isWoken });
+  const agentText =
+    item.controlMode === 'read-only-attached'
+      ? `Started in ${item.agentLabel}`
+      : item.agentLabel;
+  const hasTime = item.updatedAt > 0;
+  const closable = Boolean(onCloseChat && isOpenChat && item.chatSessionId);
+  // A host that offers nothing else (the sidebar's open chats) gets no slot
+  // and no extra tab stop: the row is already its own open control.
+  const hasActions = Boolean(
+    onSnoozeWake || onSnoozeMenu || discardThreadId || closable,
+  );
+  const describedBy =
+    hoverCard && hover.anchor ? `${statusId} ${hoverCardId}` : statusId;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus host for the metadata card; the keyboard paths are the row button (focus opens the card) and Escape (the card closes itself).
     <div
-      className={`chat-dock-inbox__row${isCurrent ? ' is-current' : ''}`}
+      className={[
+        'chat-dock-inbox__row',
+        'inbox-row',
+        `inbox-row--${size}`,
+        `inbox-row--${chrome}`,
+        hasActions ? 'inbox-row--has-actions' : '',
+        isCurrent ? 'is-current' : '',
+        showUnread ? 'is-unread' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-testid="inbox-row"
-      data-row-key={item.id}
-      onPointerEnter={hover.onPointerEnter}
-      onPointerLeave={hover.onPointerLeave}
-      onFocus={hover.onFocus}
-      onBlur={hover.onBlur}
+      data-row-key={rowKey ?? item.id}
+      data-status-rung={status.rung}
+      data-lane={status.lane}
+      onPointerEnter={hoverCard ? hover.onPointerEnter : undefined}
+      onPointerLeave={hoverCard ? hover.onPointerLeave : undefined}
+      onFocus={hoverCard ? hover.onFocus : undefined}
+      onBlur={hoverCard ? hover.onBlur : undefined}
     >
       <button
         type="button"
-        className={`chat-dock-inbox__item${showsIcons ? ' chat-dock-inbox__item--avatars' : ''}`}
+        className="chat-dock-inbox__item inbox-row__open"
         aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
-        aria-describedby={hover.anchor ? hoverCardId : undefined}
+        // The accessible name is the explicit label above, so the status line
+        // is offered as the description; otherwise a screen reader would
+        // never hear what state the row is in.
+        aria-describedby={describedBy}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
       >
-        {/* Decorative, deliberately: the agent is already stated in words on
-            the meta line below, and this icon sits INSIDE a button that
-            carries an explicit `aria-label` — an accessible name a child's
-            label could not contribute to anyway. Passing no
-            `accessibleLabel` is what makes `BrandIcon` render `aria-hidden`
-            rather than `role="img"`, so the row gains a picture and not a
-            second announcement or a tab stop. */}
-        {iconAgent && (
-          <AgentIcon
-            agent={iconAgent}
-            size={20}
-            className="chat-dock-inbox__avatar"
-          />
-        )}
-        <span className="chat-dock-inbox__project">{item.projectLabel}</span>
-        <strong className="chat-dock-inbox__title" title={item.title}>
-          {item.title}
-        </strong>
-        <span className="chat-dock-inbox__meta">
-          {item.controlMode === 'read-only-attached'
-            ? `Started in ${item.agentLabel}`
-            : `${item.agentLabel} · ${item.modelLabel}`}
-        </span>
-        {/* station#1783: the chip is a pointer; this is what computed it.
-            `LIFECYCLE_CHIP_LABELS` is shared, so adding `'Unanswerable'` to
-            it reached this surface — and a chip with no basis two components
-            over is the same label-not-derivation defect the Home row
-            avoids. */}
-        {item.unanswerableNotice && (
-          <span
-            className="chat-dock-inbox__answerability"
-            data-testid="inbox-row-answerability"
-          >
-            {item.unanswerableNotice}
-          </span>
-        )}
-        {item.lifecycleLabel === 'Running' &&
-          item.activeReason === 'background' && (
-            <span className="chat-dock-inbox__answerability">
-              Background work running
+        {size === 'slim' ? (
+          <>
+            <span className="inbox-row__slim-status" data-tone={status.tone}>
+              <InboxRowStatusGlyph rung={status.rung} />
             </span>
-          )}
-        {/* station#3688: the observation behind a red Failed chip, same
-            contract as the answerability notice above — the chip is a
-            pointer; this is what computed it. Absent when no reason was
-            recorded: the bare chip is honest, invented prose is not. */}
-        {item.failureNotice && (
-          <span
-            className="chat-dock-inbox__answerability"
-            data-testid="inbox-row-failure-reason"
-            title={item.failureNotice}
-          >
-            {item.failureNotice}
-          </span>
-        )}
-        <span className="chat-dock-inbox__state">
-          {/* Quiet on purpose: a local reminder, in the same neutral chip
-              treatment as Draft / "Can't answer here" beside it. */}
-          {hasUnsentDraft && (
-            <span className="lifecycle-chip lifecycle-chip--idle">
-              Unsent draft
+            <strong
+              className="chat-dock-inbox__title inbox-row__title"
+              title={item.title}
+            >
+              {item.title}
+            </strong>
+            {/* Provenance survives the one-line size: a remote row must
+                never read as local work. */}
+            {item.environmentLabel && (
+              <span className="inbox-row__slim-remote">
+                <bdi>{item.environmentLabel}</bdi>
+              </span>
+            )}
+            <span
+              id={statusId}
+              className="inbox-row__slim-word"
+              data-testid="inbox-row-status"
+              title={status.line}
+            >
+              {status.word}
             </span>
-          )}
-          {item.controlMode !== 'read-only-attached' &&
-          hasLifecycleChip(item.lifecycleLabel) ? (
-            <>
-              <LifecycleStatusChip lifecycle={item.lifecycleLabel} />
-              {/* Chip AND recency, not either/or: a `Failed`/`Completed` row
-                  used to lose its time entirely, so "how long has it sat
-                  like this?" was unanswerable from the inbox while Home's
-                  own row shows both (HomeWorkRow). `updatedAt` is the last
-                  observed activity — the closest derivation to "since" this
-                  item carries. */}
-              {item.updatedAt > 0 && (
-                <span className="chat-dock-inbox__since">
+            {hasTime && (
+              <span className="inbox-row__time">
+                {relativeTime(item.updatedAt, now)}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="inbox-row__meta">
+              {/* Decorative, deliberately: the agent is stated in words
+                  beside it, and this icon sits INSIDE a button that carries
+                  an explicit `aria-label`. Passing no `accessibleLabel` is
+                  what makes `BrandIcon` render `aria-hidden` rather than
+                  `role="img"`, so the row gains a picture and not a second
+                  announcement or a tab stop. An unresolved agent renders no
+                  icon at all, never a stand-in. */}
+              {iconAgent && (
+                <AgentIcon
+                  agent={iconAgent}
+                  size={16}
+                  className="chat-dock-inbox__avatar"
+                />
+              )}
+              <span className="inbox-row__meta-text">
+                <span className="inbox-row__agent">{agentText}</span>
+                {' · '}
+                <span className="inbox-row__project">{item.projectLabel}</span>
+              </span>
+              {/* Never a fabricated duration: an item with no real
+                  timestamp shows no time. */}
+              {hasTime && (
+                <span className="inbox-row__time">
                   {relativeTime(item.updatedAt, now)}
                 </span>
               )}
-            </>
-          ) : (
-            relativeTime(item.updatedAt, now)
-          )}
-        </span>
+            </span>
+            <strong
+              className="chat-dock-inbox__title inbox-row__title"
+              title={item.title}
+            >
+              {item.title}
+            </strong>
+            <InboxRowStatusLine
+              id={statusId}
+              status={status}
+              now={now}
+              showUnread={showUnread}
+            />
+            <InboxRowChips chips={chips} />
+          </>
+        )}
       </button>
-      {(onSnoozeWake ||
-        discardThreadId ||
-        (onCloseChat && isOpenChat && item.chatSessionId)) && (
-        <div className="chat-dock-inbox__row-actions">
+      {hasActions && (
+        <div className="chat-dock-inbox__row-actions inbox-row__actions">
+          {/* The row itself is the open target; on a hover chrome the
+              explicit control is there for the pointer that is already over
+              the actions. A touch chrome omits it: a second 44px column for
+              the row's own action costs the title its width. */}
+          {chrome === 'hover' && (
+            <button
+              type="button"
+              className="chat-dock-inbox__row-action inbox-row__action inbox-row__action--open"
+              title="Open"
+              aria-label={`Open ${item.title}`}
+              onClick={() => onActivate(item)}
+            >
+              <ArrowRightGlyph />
+            </button>
+          )}
           {onSnoozeWake && (
             <SnoozeActions
               item={item}
@@ -503,13 +583,26 @@ export function InboxRow({
               menuOnly={snoozeMenuOnly}
             />
           )}
-          {onCloseChat && isOpenChat && item.chatSessionId && (
+          {onSnoozeMenu && (
             <button
               type="button"
-              className="chat-dock-inbox__row-action"
+              className="chat-dock-inbox__row-action inbox-row__action"
+              title="Snooze"
+              aria-label={`Snooze ${item.title}`}
+              aria-haspopup="menu"
+              onClick={(event) => onSnoozeMenu(item, event.currentTarget)}
+            >
+              <TimeGlyph />
+            </button>
+          )}
+          {closable && (
+            <button
+              type="button"
+              className="chat-dock-inbox__row-action inbox-row__action"
+              title="Close chat"
               aria-label={`Close ${item.title}`}
               onClick={(event) =>
-                onCloseChat(item.chatSessionId!, event.currentTarget)
+                onCloseChat?.(item.chatSessionId!, event.currentTarget)
               }
             >
               <span aria-hidden="true">×</span>
@@ -519,14 +612,14 @@ export function InboxRow({
             <DiscardDraftButton
               threadId={discardThreadId}
               title={item.title}
-              className="chat-dock-inbox__row-action"
+              className="chat-dock-inbox__row-action inbox-row__action"
               closeSessionIds={draftSessionIds(item)}
               onDiscarded={(action) => onDraftDiscarded(item, action)}
             />
           )}
         </div>
       )}
-      {hover.anchor && (
+      {hoverCard && hover.anchor && (
         <LazyBoundary
           load={loadChatInboxHoverCard}
           pending={null}
@@ -579,7 +672,15 @@ export interface InboxGroupListProps {
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
   /** Touch chrome: see `InboxRowProps.snoozeMenuOnly`. */
   snoozeMenuOnly?: boolean;
+  /** See `InboxRowProps.chrome`. */
+  chrome?: InboxRowProps['chrome'];
 }
+
+/** Snoozed and settled ("Earlier") work renders as the slim one-line row. */
+const SLIM_GROUPS: ReadonlySet<MobileActivityGroup['id']> = new Set([
+  'snoozed',
+  'earlier',
+]);
 
 export function InboxGroupList({
   groups,
@@ -596,6 +697,7 @@ export function InboxGroupList({
   agents,
   gitLocationByThreadId,
   snoozeMenuOnly,
+  chrome,
 }: InboxGroupListProps) {
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
@@ -617,6 +719,8 @@ export function InboxGroupList({
       onDraftDiscarded={onDraftDiscarded}
       agents={agents}
       snoozeMenuOnly={snoozeMenuOnly}
+      chrome={chrome}
+      size={SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
       gitLocation={
         gitLocationByThreadId?.get(
           item.orchestrationThreadId ?? item.chatSessionId ?? '',

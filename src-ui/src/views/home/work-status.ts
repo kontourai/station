@@ -60,8 +60,10 @@ export type WorkStatusRung =
   | 'idle';
 
 /**
- * The colour discipline `LifecycleStatusChip` documents, restated as data:
- * act-now, in-motion and broken are the only three coloured meanings.
+ * The colour discipline for Home/inbox surfaces (archive#1099): colour is
+ * reserved for exactly three meanings — act-now, in-motion and broken.
+ * Every other state is `neutral`, an unlabelled resting state and not a
+ * fourth colour meaning.
  */
 export type WorkStatusTone = 'attention' | 'active' | 'broken' | 'neutral';
 

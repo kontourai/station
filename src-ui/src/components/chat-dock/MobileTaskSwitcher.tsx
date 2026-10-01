@@ -286,6 +286,7 @@ export function MobileTaskSwitcher({
             agents={agents}
             showGroupCounts
             snoozeMenuOnly
+            chrome="touch"
             onActivate={(task) => {
               // station#3687: acknowledge only after the click did something,
               // and say so when it could not (same contract as the desktop
