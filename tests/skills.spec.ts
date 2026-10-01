@@ -457,7 +457,7 @@ test.describe('Command skills', () => {
   ]) {
     test(`the skill detail header shows at most two labelled actions at ${viewport.width}px`, async ({
       page,
-    }, testInfo) => {
+    }) => {
       await page.setViewportSize(viewport);
       await seedCommandSkillRoutes(page);
       await page.goto('/guidance/release-check?tab=skills');
@@ -482,10 +482,6 @@ test.describe('Command skills', () => {
       ).toBeVisible();
       // Opening the menu adds no labelled button to the row.
       expect(await actionRowsOverCap(page, { selector })).toEqual([]);
-      await page.screenshot({
-        path: testInfo.outputPath(`skill-header-menu-${viewport.width}.png`),
-        animations: 'disabled',
-      });
     });
   }
 
