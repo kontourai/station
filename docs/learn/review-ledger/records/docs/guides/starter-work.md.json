@@ -9,18 +9,16 @@
 
   "limits": "Source/caller review of the stated contract, not exhaustive testing of every Scheduler or engine branch. No new tests, live engine completion, browser/device journey, external SDK compatibility, hosted execution or release qualification. Existing 175-test tranche and captures remain their original evidence.",
 
-  "document": {"digest":"2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+  "document": {"digest":"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
-
     {"path":"docs/learn/media/inspect-request.png","digest":"389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
     {"path":"docs/learn/media/inspect-request.webm","digest":"68ed6d502d61927620ae4a11318850468067d16adc236e8e7a4e7105c9b97147","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
     {"path":"docs/learn/media/project-with-task.png","digest":"c169e2cb89311c0edbd78e567b3c8b7c41e070e3d08222eda904f99ae93ed7ba","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"docs/learn/media/shared-task-document.png","digest":"7f6b0ad776d4c9488f991df92236cb2e8b209e3dc3b58d3335fc434e158baadc","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"docs/learn/media/shared-task-document.png","digest":"8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
 
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -66,9 +64,13 @@
 
     {"path":"src-server/services/starter-work/starter-work-module.ts","digest":"c522e7213724f7c058c6b22ddf4fd206533a34997afad3de6be1b4edc96932d6","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/__tests__/ProjectTasksSection.test.tsx","digest":"365439fac606a0aa0113fb021c7e3f503cdd14bf3f72138cce245d89a332740e","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/__tests__/ProjectTasksSection.test.tsx","digest":"aa9dca1b90c14f512a60e721a74cb06fa0d5421382e4d27f032643948484596a","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+
+    {"path":"src-ui/src/components/ProjectTaskBoard.tsx","digest":"f44e595e00051a0b9a39bb0ea86c0024182e9d4502c5716df78797a4c1c79fa4","revision":"62306ed51dd5dafdf744d3b779a251030f0e8bcb"},
+
+    {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/components/attention/RequestInspectionDialog.css","digest":"a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -100,13 +102,13 @@
 
     {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"840e1c5e9fe66275729aa508628e29deeeaf42ab63af5789052038d159c46b59","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"9a74da9763fba9b8b9ff8cab14a8192141e5a2c1aafe699cd8ac22b566e56e25","revision":"fbb464a6f50ad701f4c11b95cd8badaf73d3b391"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/views/project-page/ProjectTasksSection.tsx","digest":"fe4b9143f967f2413b1dbfec41da806f420e2c218577beae62c84bb82af91b60","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/project-page/ProjectTasksSection.tsx","digest":"0523b601d4e3b3eb054b4d2778cc3487e0f65c975ad77419c5487c6858430ce5","revision":"404008de59f4664e8d5c4822bddfb0d3e39ef9a2"},
 
     {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"37939136798ca53c7328477bcb6b1e3a7fb8550c79effd535a8cec5cb5650152","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -116,7 +118,15 @@
 
     {"path":"tests/helpers/exact-request-backend.ts","digest":"ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"}
+    {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+
+    {"path":"docs/learn/media.json#/captures/0","digest":"1d9e84ec3e04ca70b00f9f6c19301264c638e901b32e5e70ccacc858d402ca9d","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
+    {"path":"docs/learn/media.json#/captures/1","digest":"fdeee7f06bef156ab77d5fcb5ab515098f5585e03e530aaca6a08fc828cd89ff","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"},
+
+    {"path":"docs/learn/media.json#/captures/3","digest":"75f3273ae5d8cb21aa6612ef17f80d01155cf729dd5267763b888f5a2ca8c55a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
+    {"path":"docs/learn/media.json#/captures/4","digest":"dfc26872dbfdc817f3357443a00abacdc81b64eed43326ecb0e5b7569a0ec62a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
   ],
 
   "checks": [
