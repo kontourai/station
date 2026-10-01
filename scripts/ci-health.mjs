@@ -188,15 +188,13 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
       reentries[classification]++;
     }
   }
-  const regression = jobs.filter(
-    (j) =>
-      j.name === 'Merge-queue regression' &&
-      executed(j) &&
-      runs.some(
-        (r) =>
-          r.event === 'merge_group' &&
-          j.health_run_key === `${r.id}:${r.run_attempt ?? 1}`,
-      ),
+  const regression = runs.filter(
+    (r) =>
+      r.event === 'merge_group' &&
+      r.name === 'Merge-queue regression' &&
+      r.conclusion != null &&
+      r.run_started_at &&
+      r.updated_at,
   );
   return {
     groupsBuilt: groups.length,
@@ -213,7 +211,12 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
     prsWithFailedGroup: prs.size,
     botRemovals,
     reentries,
-    regressionMinutes: distribution(regression.map(duration)),
+    regressionMinutes: distribution(
+      regression.map(
+        (r) =>
+          Math.max(0, time(r.updated_at) - time(r.run_started_at)) / minute,
+      ),
+    ),
   };
 }
 export function capacityMetrics(jobs) {
@@ -261,7 +264,9 @@ export function setupMetrics(jobs) {
       .filter(
         (s) =>
           /test|corpus|regression|focused|ci:fast|shard/i.test(s.name) &&
-          !/install|setup|set up|plan|download|upload/i.test(s.name),
+          !/install|setup|set up|plan|resolve|prepare|download|upload/i.test(
+            s.name,
+          ),
       )
       .reduce((sum, s) => sum + duration(s), 0);
     const setupMinutes = Math.max(0, duration(job) - testMinutes);
@@ -313,9 +318,16 @@ export function windowDecision(total, since, until) {
       capped: true,
       reason: `Actions listing cap (1000) at ${since}..${until}`,
     };
-  const middle = new Date(
+  const pivot = Math.max(
     Math.floor((start + end) / 2000) * 1000,
-  ).toISOString();
+    Math.floor(start / 1000) * 1000 + 1000,
+  );
+  if (pivot >= end)
+    return {
+      capped: true,
+      reason: `Actions listing cap (1000) at ${since}..${until}`,
+    };
+  const middle = new Date(pivot).toISOString();
   return {
     capped: true,
     windows: [
@@ -439,7 +451,9 @@ export async function collectHealth(
     const unique = [...new Map(runs.map((r) => [r.id, r])).values()];
     runs.length = 0;
     const pushPRs = new Map();
-    for (const run of unique) {
+    const collectRun = async (run) => {
+      const collectedRuns = [];
+      const collectedJobs = [];
       for (let attempt = 1; attempt <= (run.run_attempt ?? 1); attempt++) {
         const detail =
           attempt === (run.run_attempt ?? 1)
@@ -455,13 +469,27 @@ export async function collectHealth(
         const key = `${run.id}:${attempt}`;
         // The API returns steps with jobs; retain at most 20 per family.
         for (const job of attemptJobs)
-          jobs.push({ ...job, health_run_key: key });
-        runs.push({
+          collectedJobs.push({ ...job, health_run_key: key });
+        collectedRuns.push({
           ...detail,
           run_attempt: attempt,
           pull_requests: [...(detail.pull_requests ?? [])],
         });
       }
+      return { runs: collectedRuns, jobs: collectedJobs };
+    };
+    // Four requests at a time bound API pressure; fold results in listing order.
+    for (let offset = 0; offset < unique.length; offset += 4) {
+      const batch = await Promise.allSettled(
+        unique.slice(offset, offset + 4).map(collectRun),
+      );
+      for (const result of batch)
+        if (result.status === 'fulfilled') {
+          runs.push(...result.value.runs);
+          jobs.push(...result.value.jobs);
+        }
+      const rejected = batch.find((result) => result.status === 'rejected');
+      if (rejected) throw rejected.reason;
     }
     for (const run of runs.filter(
       (r) =>
@@ -544,7 +572,15 @@ export async function collectHealth(
     if (!family || count >= 20) delete job.steps;
     else if (executed(job)) samples.set(family, count + 1);
   }
-  return { runs, jobs, timelines, ledger, reasons, capHits };
+  return {
+    runs,
+    jobs,
+    timelines,
+    ledger,
+    reasons,
+    capHits,
+    collectedAt: new Date().toISOString(),
+  };
 }
 export function buildSnapshot(data, options) {
   return {
@@ -552,7 +588,7 @@ export function buildSnapshot(data, options) {
     repo: options.repo,
     since: options.since,
     until: options.until,
-    collectedAt: new Date().toISOString(),
+    collectedAt: data.collectedAt ?? options.until,
     incomplete: data.reasons.length > 0,
     reasons: data.reasons,
     listingCapHits: data.capHits,

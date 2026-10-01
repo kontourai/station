@@ -12,7 +12,7 @@
   "document": {"digest":"9bc36ed47b801917c149dc5875ac9191276e9eb1d450114eefd37ff1fd3ca804","revision":"2c5b089d9b6afeeaf43d9f9145be15571310e78b"},
 
   "sources": [
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    {"path":"package.json","digest":"e6257a1bb0b3348ec3cda81436f2c50ac09e005e41475a06a09d92c7cc36fcdc","revision":"126d8e7c2b173763ec865a7f152fa73c13b9601a"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 

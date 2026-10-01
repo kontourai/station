@@ -12,7 +12,7 @@
   "document": {"digest":"85cc721ee00fca17ff7a5a6b19e83155f59ac5f256cf95123adcd30b638002aa","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
   "sources": [
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    {"path":"package.json","digest":"e6257a1bb0b3348ec3cda81436f2c50ac09e005e41475a06a09d92c7cc36fcdc","revision":"126d8e7c2b173763ec865a7f152fa73c13b9601a"},
 
     {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 

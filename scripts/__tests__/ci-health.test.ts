@@ -183,6 +183,9 @@ describe('CI health metrics', () => {
     const runs = [
       run(1, {
         event: 'merge_group',
+        name: 'Merge-queue regression',
+        run_started_at: at(0),
+        updated_at: at(32),
         conclusion: 'failure',
         head_branch: 'q1',
       }),
@@ -204,7 +207,7 @@ describe('CI health metrics', () => {
       prsWithFailedGroup: 1,
       botRemovals: 1,
       reentries: { passedUnchanged: 1, neededNewCommits: 0 },
-      regressionMinutes: { count: 1, median: 10, p90: 10 },
+      regressionMinutes: { count: 1, median: 32, p90: 32 },
     });
   });
   it('separates setup overhead from named test steps for sampled shard families', () => {
@@ -264,6 +267,12 @@ describe('CI health metrics', () => {
 describe('CI health collection bounds and command interface', () => {
   it('detects the 1000 listing cap, splits windows, and rejects an unsplittable cap', async () => {
     expect(windowDecision(999, at(0), at(60))).toEqual({ capped: false });
+    const fractionalEnd = new Date(Date.parse(at(0)) + 1001).toISOString();
+    expect(windowDecision(1000, at(0), fractionalEnd).windows).toEqual([
+      [at(0), new Date(Date.parse(at(0)) + 1000).toISOString()],
+      [new Date(Date.parse(at(0)) + 1000).toISOString(), fractionalEnd],
+    ]);
+
     expect(windowDecision(1000, at(0), at(60)).windows).toEqual([
       [at(0), at(30)],
       [at(30), at(60)],
@@ -353,8 +362,8 @@ describe('CI health collection bounds and command interface', () => {
       parseOptions([
         '--record',
         '--issue=3101',
-        '--since=' + at(0),
-        '--until=' + at(60),
+        `--since=${at(0)}`,
+        `--until=${at(60)}`,
       ]),
     ).toMatchObject({ record: true, issue: '3101' });
     for (const args of [
@@ -362,7 +371,7 @@ describe('CI health collection bounds and command interface', () => {
       ['--history'],
       ['--hours=0'],
       ['--since=bad'],
-      ['--since=' + at(0), '--hours=1'],
+      [`--since=${at(0)}`, '--hours=1'],
       ['--repo=../x'],
       ['--issue=0'],
       ['--record', '--history', '--issue=3101'],

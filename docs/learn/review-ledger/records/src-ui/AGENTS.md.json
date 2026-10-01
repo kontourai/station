@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
-    {"path":"docs/guides/testing.md","digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"docs/guides/testing.md","digest":"b22b19a97202e625825a98b24d0d652ed0e84f1af3e8b2662dbf324a48778ade","revision":"126d8e7c2b173763ec865a7f152fa73c13b9601a"},
 
     {"path":"src-ui/src/components/Button.tsx","digest":"b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
 
