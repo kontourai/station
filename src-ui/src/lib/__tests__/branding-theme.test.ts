@@ -2,6 +2,8 @@
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { contrastRatio, SHIPPED_THEMES } from '@kontourai/ui/contrast';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -517,7 +519,8 @@ describe('the bundled example provider', () => {
     const module = { exports: undefined as unknown };
     runInNewContext(
       readFileSync(
-        createRequire(import.meta.url).resolve(
+        join(
+          dirname(fileURLToPath(import.meta.url)),
           '../../../../examples/custom-branding/providers/branding.js',
         ),
         'utf8',
