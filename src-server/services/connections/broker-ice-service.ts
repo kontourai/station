@@ -40,7 +40,10 @@ const DEFAULT_POLICY: Readonly<BrokerIcePolicy> = Object.freeze({
 });
 const APPLICATION_ID = 0x53544943;
 
-function privateLedger(path: string): DatabaseSync {
+function privateLedger(path: string): {
+  db: DatabaseSync;
+  assertCurrent(): void;
+} {
   if (!isAbsolute(path) || process.getuid === undefined)
     throw new Error('ice_custody_refused');
   const parent = lstatSync(dirname(path));
@@ -56,6 +59,7 @@ function privateLedger(path: string): DatabaseSync {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
   }
+  const pinnedFile = lstatSync(path);
   for (const candidate of [
     path,
     `${path}-journal`,
@@ -80,8 +84,29 @@ function privateLedger(path: string): DatabaseSync {
         throw error;
     }
   }
+  const assertCurrent = () => {
+    const current = lstatSync(path);
+    const directory = lstatSync(dirname(path));
+    if (
+      !current.isFile() ||
+      current.isSymbolicLink() ||
+      current.nlink !== 1 ||
+      current.uid !== process.getuid!() ||
+      (current.mode & 0o077) !== 0 ||
+      current.dev !== pinnedFile.dev ||
+      current.ino !== pinnedFile.ino ||
+      !directory.isDirectory() ||
+      directory.isSymbolicLink() ||
+      directory.uid !== process.getuid!() ||
+      (directory.mode & 0o077) !== 0 ||
+      directory.dev !== parent.dev ||
+      directory.ino !== parent.ino
+    )
+      throw new Error('ice_custody_refused');
+  };
   const db = new DatabaseSync(path, { timeout: 5000 });
   try {
+    assertCurrent();
     const application = (
       db.prepare('PRAGMA application_id').get() as { application_id: number }
     ).application_id;
@@ -106,7 +131,7 @@ function privateLedger(path: string): DatabaseSync {
     db.exec(`CREATE TABLE IF NOT EXISTS ice_attempts(at INTEGER NOT NULL, subject TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS ice_attempt_subject ON ice_attempts(subject, at);
       PRAGMA application_id=${APPLICATION_ID}; PRAGMA user_version=1;`);
-    return db;
+    return { db, assertCurrent };
   } catch (error) {
     db.close();
     throw error;
@@ -116,6 +141,7 @@ function privateLedger(path: string): DatabaseSync {
 /** Durable issuance limits are not a provider bandwidth or spending cap. */
 export class BrokerIceService {
   readonly #db: DatabaseSync;
+  readonly #assertLedgerCurrent: () => void;
   readonly #policy: Readonly<BrokerIcePolicy>;
   readonly #abort = new AbortController();
   readonly #cache = new Map<string, RelayIceConfigurationV1>();
@@ -144,9 +170,12 @@ export class BrokerIceService {
     )
       throw new Error('ice_policy_invalid');
     this.#policy = Object.freeze(merged);
-    this.#db = privateLedger(ledgerPath);
+    const ledger = privateLedger(ledgerPath);
+    this.#db = ledger.db;
+    this.#assertLedgerCurrent = ledger.assertCurrent;
   }
   #reserve(subject: string, now: number) {
+    this.#assertLedgerCurrent();
     this.#db.exec('BEGIN IMMEDIATE');
     try {
       this.#db
@@ -179,6 +208,7 @@ export class BrokerIceService {
     callerSignal: AbortSignal,
   ): Promise<RelayIceConfigurationV1> {
     if (this.#closed) throw new Error('ice_unavailable');
+    this.#assertLedgerCurrent();
     callerSignal.throwIfAborted();
     authority.assertCurrent();
     const issuedAt = this.now();
@@ -207,7 +237,10 @@ export class BrokerIceService {
         cached.expiresAt <= authority.grantExpiresAt)
     ) {
       authority.assertCurrent();
-      return parseRelayIceConfiguration(cached, authority, this.now());
+      const verifiedAt = this.now();
+      if (cached.expiresAt >= verifiedAt + 120_000)
+        return parseRelayIceConfiguration(cached, authority, verifiedAt);
+      this.#cache.delete(usageKey);
     }
     if (this.#active >= this.#policy.maxConcurrent)
       throw new Error('ice_issuance_limit');
@@ -254,6 +287,7 @@ export class BrokerIceService {
       );
       signal.throwIfAborted();
       authority.assertCurrent();
+      this.#assertLedgerCurrent();
       const receipt = parseRelayIceConfiguration(
         {
           version: RELAY_ICE_CONFIGURATION_VERSION,

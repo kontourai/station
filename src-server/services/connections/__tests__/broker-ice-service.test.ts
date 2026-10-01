@@ -1,4 +1,12 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
@@ -203,6 +211,31 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
         service.issue({ ...authority(), grantExpiresAt: 120999 }, signal()),
       ).rejects.toThrow('ice_authority_expiring');
       expect(provider.issue).toHaveBeenCalledOnce();
+    } finally {
+      service.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('ledger replacement fences cached credentials and symlinks cannot select another database', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-ice-ledger-pin-'));
+    const path = join(root, 'budget.sqlite');
+    const provider: BrokerTurnProvider = { issue: vi.fn(async () => servers) };
+    const service = new BrokerIceService(path, provider, {}, () => 1000);
+    try {
+      await service.issue(authority(), signal());
+      renameSync(path, join(root, 'retained.sqlite'));
+      writeFileSync(path, 'foreign-file-unchanged', { mode: 0o600 });
+      await expect(service.issue(authority(), signal())).rejects.toThrow(
+        'ice_custody_refused',
+      );
+      expect(provider.issue).toHaveBeenCalledOnce();
+      expect(readFileSync(path, 'utf8')).toBe('foreign-file-unchanged');
+      const link = join(root, 'link.sqlite');
+      symlinkSync(path, link);
+      expect(() => new BrokerIceService(link, provider)).toThrow(
+        'ice_custody_refused',
+      );
+      expect(readFileSync(path, 'utf8')).toBe('foreign-file-unchanged');
     } finally {
       service.close();
       rmSync(root, { recursive: true, force: true });
