@@ -384,11 +384,6 @@ function remember(dir: string, listing: Listing, stats: BigIntStats): void {
   listings.set(dir, listing);
 }
 
-/** For tests: forget every remembered listing. */
-export function forgetGitDirectoryListings(): void {
-  listings.clear();
-}
-
 /**
  * True when `gitDir` borrows another repository's storage (#2363 review
  * rounds 2 and 3). Git never creates a symbolic link in a repository it
