@@ -14,10 +14,17 @@ import {
   connectionDescriptionDigest,
   createStationConnectionProofVerifier,
 } from '@kontourai/station-shared/connection-proof';
-import { createNativeV2PionApplicationAdapter } from '../../services/connections/native-v2-pion-application-adapter.js';
+import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import {
+  createNativeV2PionApplicationAdapter,
+  createResolvedNativeV2PionApplicationAdapter,
+} from '../../services/connections/native-v2-pion-application-adapter.js';
 import { startPionApplicationAdapter } from '../../services/connections/pion-application-adapter.js';
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
-import type { BrokerNativeOfferAdapter } from '../../services/connections/self-hosted-broker-connector.js';
+import type {
+  BrokerNativeOfferAdapter,
+  BrokerNativeOfferResolver,
+} from '../../services/connections/self-hosted-broker-connector.js';
 import { SelfHostedBrokerConnector } from '../../services/connections/self-hosted-broker-connector.js';
 import type { BrokerCredential } from '../../services/connections/self-hosted-broker-service.js';
 import type {
@@ -80,7 +87,8 @@ export interface SelfHostedBrokerPionRuntimeInput {
   /** Explicit opt-in native application lane; absent means never composed,
    * never polled, and no native offers are ever answered. */
   native?: {
-    surface: SelfHostedBrokerNativeClientSurfaceV2;
+    surface?: SelfHostedBrokerNativeClientSurfaceV2;
+    registry?: NativeSurfaceRegistry;
     /** Live owned native peer ceiling; default 4, hard-capped at 32. */
     maxPeers?: number;
   };
@@ -314,9 +322,10 @@ export function createSelfHostedBrokerPionRuntime(
   // once against the SAME VirtualApplication, trust owner, and issuer as the
   // browser path; there is no separate authority and no fabricated Origin.
   const nativeConfig = input.native;
-  let nativeOwned: ReturnType<
-    typeof createNativeV2PionApplicationAdapter
-  > | null = null;
+  let nativeOwned:
+    | ReturnType<typeof createNativeV2PionApplicationAdapter>
+    | ReturnType<typeof createResolvedNativeV2PionApplicationAdapter>
+    | null = null;
   let nativeMaxPeers = 0;
   let nativeClaims = 0;
   let closeNative: (() => Promise<void>) | undefined;
@@ -330,8 +339,7 @@ export function createSelfHostedBrokerPionRuntime(
       throw new Error('broker_runtime_native_peer_limit_invalid');
     const createNativeAdapter =
       dependencies.createNativeAdapter ?? createNativeV2PionApplicationAdapter;
-    nativeOwned = createNativeAdapter({
-      surface: nativeConfig.surface,
+    const adapterInput = {
       applicationOrigin,
       application,
       executable,
@@ -340,28 +348,79 @@ export function createSelfHostedBrokerPionRuntime(
       turn,
       trust: trustOwner,
       issuer: issuerOwner,
-    });
-    closeNative = () => nativeOwned!.close();
+    };
+    if (nativeConfig.registry) {
+      nativeOwned = createResolvedNativeV2PionApplicationAdapter(
+        { ...adapterInput, registry: nativeConfig.registry },
+        {
+          startAdapter: dependencies.startAdapter,
+          serve: serveApplicationChannel,
+        },
+      );
+    } else {
+      if (!nativeConfig.surface)
+        throw new Error('broker_runtime_native_surface_missing');
+      nativeOwned = createNativeAdapter({
+        ...adapterInput,
+        surface: nativeConfig.surface,
+      });
+    }
+    closeNative = async () => {
+      await nativeOwned!.close();
+      nativeConfig.registry?.close();
+    };
   }
   // Capacity-wrapped native adapter: a live owned native peer (plus in-flight
   // admissions) counts against the explicit ceiling; at capacity the runtime
   // simply does not poll the native lane, so offers are left queued for a
   // later tick instead of failing the whole broker lifecycle.
-  const nativeAdapter: BrokerNativeOfferAdapter | undefined = nativeOwned
-    ? {
-        surface: nativeOwned.adapter.surface,
-        answer: async (offer, approved, signal) => {
-          if (nativeOwned!.activePeerCount + nativeClaims >= nativeMaxPeers)
-            throw new Error('broker_runtime_native_peer_capacity');
-          nativeClaims += 1;
+  let nativeAdapter:
+    | BrokerNativeOfferAdapter
+    | BrokerNativeOfferResolver
+    | undefined;
+  if (nativeOwned) {
+    const ownedAdapter = nativeOwned.adapter;
+    const capacity = () => {
+      if (nativeOwned!.activePeerCount + nativeClaims >= nativeMaxPeers)
+        throw new Error('broker_runtime_native_peer_capacity');
+    };
+    if ('approvedSurfaces' in ownedAdapter) {
+      nativeAdapter = {
+        approvedSurfaces: () => ownedAdapter.approvedSurfaces(),
+        answer: async (offer, approved, signal, admission) => {
+          capacity();
+          nativeClaims++;
           try {
-            return await nativeOwned!.adapter.answer(offer, approved, signal);
+            return await ownedAdapter.answer(
+              offer,
+              approved,
+              signal,
+              admission,
+            );
           } finally {
-            nativeClaims -= 1;
+            nativeClaims--;
           }
         },
-      }
-    : undefined;
+      };
+    } else {
+      nativeAdapter = {
+        surface: ownedAdapter.surface,
+        answer: async (
+          offer: Parameters<BrokerNativeOfferAdapter['answer']>[0],
+          approved: ApprovedStationConnectionTrust,
+          signal: AbortSignal,
+        ) => {
+          capacity();
+          nativeClaims++;
+          try {
+            return await ownedAdapter.answer(offer, approved, signal);
+          } finally {
+            nativeClaims--;
+          }
+        },
+      };
+    }
+  }
 
   const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
   const connector = new SelfHostedBrokerConnector(
