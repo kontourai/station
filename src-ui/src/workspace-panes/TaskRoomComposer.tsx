@@ -10,6 +10,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useId, useRef, useState } from 'react';
 import { Button } from '../components/Button';
+import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import './TaskRoomComposer.css';
@@ -298,12 +299,35 @@ export function TaskRoomComposer({
       </p>
       {picker ? (
         <div id={`${id}-agents`} role="listbox" aria-label="Choose an agent">
-          {options.isLoading ? <p>Finding agents…</p> : null}
+          {options.isLoading ? (
+            <SkeletonList count={3} label="Finding agents" />
+          ) : null}
           {options.isError ? (
             <p role="alert">Agent choices are unavailable.</p>
           ) : null}
           {!options.isLoading && !options.isError && !candidates.length ? (
-            <p>No matching agents.</p>
+            mention.query ? (
+              <FilteredEmpty
+                query={mention.query}
+                noun="agents"
+                onClear={() => {
+                  setDraft(
+                    draft.slice(0, mention.start) +
+                      '@' +
+                      draft.slice(mention.end),
+                  );
+                  setMention({
+                    start: mention.start,
+                    end: mention.start + 1,
+                    query: '',
+                  });
+                  setActive(0);
+                  textarea.current?.focus();
+                }}
+              />
+            ) : (
+              <Empty variant="compact" />
+            )
           ) : null}
           {candidates.map((agent, index) => (
             <div key={agent.id}>

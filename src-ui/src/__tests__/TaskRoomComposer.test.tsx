@@ -171,3 +171,15 @@ test('changing the connection cannot send the existing draft to the new Station'
   ).toBe(true);
   expect(mocks.message).not.toHaveBeenCalled();
 });
+
+test('a filtered empty picker clears its lookup without deleting the surrounding message', () => {
+  render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  fireEvent.change(textbox, {
+    target: { value: 'Please @zzzz investigate', selectionStart: 12 },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+  expect(screen.getAllByRole('option')).toHaveLength(3);
+  expect(screen.getByDisplayValue('Please @ investigate')).toBe(textbox);
+  expect(mocks.agent).not.toHaveBeenCalled();
+});
