@@ -252,7 +252,7 @@
 
     {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"0a1a3797a6b1e3f5979d7add3b363b614cf6dc93cd2b656f77c722ee575fea3c","revision":"f23e56a8542924fc7269d9ef14645a82c9065f0c"},
 
-    {"path":"src-server/services/connections/browser-code-login.ts","digest":"12d79b1b4d412be8ab19cccfeed4eadfb872a7bbc5b03febd487a11df662b9d6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"src-server/services/connections/browser-code-login.ts","digest":"ed975062b5c25d966b1da0cb9ab654b9c861b8d33b647075b3a7a8d2b5208a3a","revision":"4750f0dd4c17a766da91628dca97b2c7627ca0ed"},
 
     {"path":"src-server/services/connections/credential-usage.ts","digest":"c945d4f4608383de1d716388deeba82423b46d8859cea14b0d9f4ed8dba6427c","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
