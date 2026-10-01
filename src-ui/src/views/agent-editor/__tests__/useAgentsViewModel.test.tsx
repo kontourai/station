@@ -923,6 +923,55 @@ describe('persisted detail remains authoritative while the collection reconciles
     expect(result.current.isCreating).toBe(false);
   });
 
+  test('a save that settles after the reader moved on leaves the new record clean', async () => {
+    // The hook outlives a selection (#2992), so the awaited half of a save
+    // can land on a different record: its snapshot made that record read
+    // dirty against a form it never had.
+    state.selectedId = 'agent-a';
+    state.detail = agent({ slug: 'agent-a', name: 'Agent A', prompt: 'Answer.' });
+    let settle: (value: { data: object }) => void = () => {};
+    updateAgent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const { result, rerender } = render();
+    act(() => {
+      result.current.setForm((current) => ({ ...current, name: 'Edited A' }));
+    });
+    act(() => {
+      void result.current.handleSave();
+    });
+    expect(updateAgent).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      state.selectedId = 'agent-b';
+      state.detail = undefined;
+      state.detailLoading = true;
+      rerender();
+    });
+    act(() => {
+      state.detail = agent({
+        slug: 'agent-b',
+        name: 'Agent B',
+        prompt: 'Answer.',
+      });
+      state.detailDataUpdatedAt = 10;
+      state.detailLoading = false;
+      rerender();
+    });
+    expect(result.current.form.name).toBe('Agent B');
+    expect(result.current.dirty).toBe(false);
+
+    await act(async () => {
+      settle({ data: {} });
+    });
+    expect(result.current.form.name).toBe('Agent B');
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.isSaving).toBe(false);
+  });
+
   test('a successful mismatched detail revokes established authority', () => {
     state.selectedId = 'writer';
     state.detail = agent({ slug: 'writer', name: 'Writer' });

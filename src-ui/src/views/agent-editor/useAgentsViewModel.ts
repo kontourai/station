@@ -173,6 +173,11 @@ export function useAgentsViewModel({
     Record<string, string>
   >({});
   const previousUrlSlugRef = useRef(urlSlug);
+  // The route as of this render, for work that awaits: a save that settles
+  // after the reader moved to another record must not write into that
+  // record's state (the hook outlives a selection since #2992).
+  const liveUrlSlugRef = useRef(urlSlug);
+  liveUrlSlugRef.current = urlSlug;
   const createNavigationRef = useRef(false);
 
   const { data: availableTools = [] } = useIntegrationsQuery() as {
@@ -404,6 +409,8 @@ export function useAgentsViewModel({
       // guard armed for a form nobody can see.
       const blank = createEmptyAgentForm(defaultManagedRuntimeId);
       setIsCreating(false);
+      setStartingPointChosen(false);
+      setCopyPicking(false);
       setEngineKindOverride(null);
       setForm(blank);
       setSavedForm(blank);
@@ -428,6 +435,7 @@ export function useAgentsViewModel({
     setSavedForm(base);
     setActionError(null);
     setValidationErrors({});
+    setEnableError(null);
   }, [defaultManagedRuntimeId, urlSlug]);
 
   useEffect(() => {
@@ -637,6 +645,8 @@ export function useAgentsViewModel({
 
   function handleDeselect() {
     urlDeselect();
+    // As in `handleSelect`: a dirty form's exit is the route guard's decision.
+    if (dirty) return;
     setIsCreating(false);
     setEngineKindOverride(null);
     setActionError(null);
@@ -651,6 +661,8 @@ export function useAgentsViewModel({
     // connection just because another connection happens to be ready.
     if (isCreating && !createEngineReady) return;
     if (!validate()) return;
+    const savedFromSlug = urlSlug;
+    const stillOnSavedRecord = () => liveUrlSlugRef.current === savedFromSlug;
     try {
       setIsSaving(true);
       setActionError(null);
@@ -663,6 +675,9 @@ export function useAgentsViewModel({
         // gains the row and this selects it, with no reload.
         const { data } = await createAgent(payload as any);
         const createdSlug = (data as { slug?: string })?.slug ?? form.slug;
+        // The write landed and the list gains the row either way; only a
+        // reader still on the create form is taken to the new Agent.
+        if (!stillOnSavedRecord()) return;
         setSavedForm(savedSnapshot);
         setIsCreating(false);
         // §4: the editor opens on the new agent with one line saying so.
@@ -680,10 +695,13 @@ export function useAgentsViewModel({
         setPendingCreatedSlug(createdSlug);
       } else {
         await updateAgent(selectedSlug!, payload);
+        // A snapshot of the record just left would make the one now on
+        // screen read dirty against a form it never had.
+        if (!stillOnSavedRecord()) return;
         setSavedForm(savedSnapshot);
       }
     } catch (err: unknown) {
-      setActionError(agentSaveErrorMessage(err));
+      if (stillOnSavedRecord()) setActionError(agentSaveErrorMessage(err));
     } finally {
       setIsSaving(false);
     }
@@ -748,7 +766,9 @@ export function useAgentsViewModel({
   const [loadRetrySeq, bumpLoadRetry] = useReducer((n: number) => n + 1, 0);
   const detailReadState = useDegradedQueryState({
     isPending: editorIsLoading,
-    resetKey: loadRetrySeq,
+    // A new selection gets a fresh loading window as well as a retry does;
+    // the pending flag alone stays true straight across A -> B.
+    resetKey: `${loadRetrySeq}:${detailRoute.generation}`,
   });
   const detailReadStalled = detailReadState === 'degraded';
   const error = actionError ?? visibleRefreshError;
