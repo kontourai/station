@@ -74,8 +74,9 @@ describe('partitionSessionLanes (station#3027)', () => {
     expect(laneOf(sessions, 'needs-input')).toBe('needsYou');
     expect(laneOf(sessions, 'review')).toBe('needsYou');
     expect(laneOf(sessions, 'blocked')).toBe('needsYou');
-    expect(laneOf(sessions, 'running')).toBe('activeNow');
-    expect(laneOf(sessions, 'queued')).toBe('activeNow');
+    expect(laneOf(sessions, 'running')).toBe('running');
+    // Queued is idle, not active: no turn is in flight.
+    expect(laneOf(sessions, 'queued')).toBe('idle');
     expect(laneOf(sessions, 'just-done')).toBe('recentlyFinished');
     expect(laneOf(sessions, 'just-failed')).toBe('recentlyFinished');
     expect(laneOf(sessions, 'long-done')).toBe('earlier');
@@ -122,7 +123,7 @@ describe('partitionSessionLanes (station#3027)', () => {
 
     expect(lanes.map((lane) => lane.heading)).toEqual([
       'Needs you · 2',
-      'Active now · 1',
+      'Running · 1',
     ]);
   });
 
@@ -173,7 +174,7 @@ describe('partitionSessionLanes (station#3027)', () => {
       }),
     ];
 
-    expect(laneOf(sessions, 'stranded')).toBe('activeNow');
+    expect(laneOf(sessions, 'stranded')).toBe('idle');
   });
 
   test('every session lands in exactly one lane', () => {

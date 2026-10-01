@@ -15,6 +15,10 @@ The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
 `canUseTool` also honors that Agent's matching `tools.autoApprove` patterns.
+Known `AskUserQuestion` callbacks are handled before those grants: answering
+a question requires an exact structured batch and never creates a session
+tool grant. This is a question interaction boundary, not a new consent floor
+for every tool or proof that the engine invokes every callback.
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands

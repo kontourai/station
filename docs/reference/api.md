@@ -165,7 +165,10 @@ as stream outcomes.
 
 `start-step` and `finish-step` frames carry only their type. Provider request
 and response bodies, headers, metadata and nested errors are not sent in these
-frames. Text and tool frames keep their existing contracts.
+frames. Text and successful tool frames retain their contracts. Failed VoltAgent
+tool-result frames omit the raw `output`, including error messages, stack traces
+and other error properties. Their `error` carries a safe Station-composed denial
+reason or the fixed `Tool call failed.` message; policy-denial badges remain.
 
 The framework compatibility route `POST /agents/:slug/chat` remains behind
 Station authentication. Its HTTP 5xx responses contain fixed failure text and
@@ -2520,6 +2523,92 @@ admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
 ---
+
+## Opt-in native Device proof binding management
+
+```http
+GET /api/pairing/native-device-bindings/:bindingId
+POST /api/pairing/native-device-bindings/:bindingId/approve
+```
+
+The native proof pilot mounts these routes only when its supported provider and
+native connector are configured. Both require a current operator credential and
+the `access:manage` tier; Device credentials, native proofs, account membership
+and home possession cannot approve a binding.
+
+POST accepts `{operation: "create" | "revoke", candidate}` with the exact
+`NativeDeviceBindingCandidateV1` tuple and matching path ID. GET projects public
+historical binding data plus `currentDeviceBinding`, which says nothing about
+account or Project authority. Responses use `Cache-Control: no-store`. Missing
+readback does not establish cancellation of an ambiguous approval request.
+See [deployment authentication](../guides/deployment-authentication.md)
+for the pilot's scope and remaining native-client limitations.
+
+The same opt-in composition mounts a separate
+[protected Device self-read](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts):
+
+```http
+GET /api/auth/native-device-bindings/:bindingId/receipt
+HEAD /api/auth/native-device-bindings/:bindingId/receipt
+```
+
+It requires the owning, currently paired ordinary Device's bearer and
+`orchestration:read`; an account-bound Device can read before account sign-in.
+Operator credentials, cookies, delegation grants and native request proofs do
+not substitute for that bearer. The `NativeDeviceProofSelfReceiptV1` response
+contains only the public binding tuple, historical approval/revocation state
+and current Device-binding status. A missing ID and another Device's ID both
+return `404 not_found`; corrupt storage returns `503 unavailable`. Responses
+are not cached. Revoking the Device bearer removes self-read access, while
+binding revocation or replacement remains observable by its active owner.
+This read grants no account, Project or runtime authority and does not activate
+a native client or authorize provisional-key deletion after an unknown outcome.
+Endpoint errors include `error.version =
+station-native-device-proof-self-receipt-error/v1`. Only this versioned
+`not_found` response establishes a binding lookup absence; an unrelated route
+or proxy error is an unavailable observation.
+
+The Desktop [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+also registers the main-window `station_native_device_binding_self_receipt`
+command. Its inputs are only a saved profile name and expected revision; it
+reads the fixed endpoint using the current host-authorized Device bearer and
+compares the complete candidate tuple. Results distinguish fresh Station
+receipts from cached observations; cached positive history is
+`previously-confirmed-current` with its original observation timestamp.
+The command preserves the key on missing or unknown outcomes. The host peer and
+account owners require its positive current-owner observation, while ordinary
+route selection does not invoke it automatically. Source registration is not an
+executed native IPC or packaged acceptance receipt.
+
+The [peer owner](../../src-desktop/src/native_application_peer.rs) registers
+prepare/open/read/sign/close commands. The host mints the nonce and handle,
+verifies the exact Station-signed transcript and permits one bounded Device
+request proof. The renderer supplies no identity claims, hashes, signing input
+or connected assertion. Browser RTC remains renderer-owned.
+
+The separate [account owner](../../src-desktop/src/native_account_operations.rs)
+registers challenge/key preparation, complete local username/password exchange
+body preparation, and canonical GET/HEAD Project account headers. It constructs
+account claims using independent key custody and current host owners, with
+bounded one-exchange handles, replay/expiry and post-sign key fencing. These
+structured commands do not mint a principal or replace the server's current
+provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
+for the typed provider and account-body-before-Device-signing ordering.
+---
+
+## Decide a pending paired-device request
+
+A current operator, qualifying local-grant credential, or Device explicitly
+promoted with `access:approve` can use these exact routes:
+
+- `GET /api/pairing/requests`
+- `POST /api/pairing/requests/:requestId/confirm`
+- `DELETE /api/pairing/requests/:requestId`
+
+The promotion satisfies the pending-request route scope without granting
+`access:manage`. Authority is rechecked before publishing a decision. It does
+not admit other Device-management routes or verified-person/account binding.
+Ordinary Device presets do not include the promotion.
 
 ## Bind a paired device to its verified person
 

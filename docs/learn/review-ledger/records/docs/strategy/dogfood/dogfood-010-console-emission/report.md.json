@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/dogfood/dogfood-010-console-emission/report.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+
+  "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+
+  "document": {"digest":"1d7ae1b9f7d46da221ca14569840bba9e0facbd964f4f696e9fb4bb5d78b0fca","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

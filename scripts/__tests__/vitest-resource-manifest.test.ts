@@ -67,23 +67,17 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-// One repository discovery for the whole file. Every no-argument
-// `discoverVitestResourceGroups()` shells out to `vitest list --filesOnly`
-// and then re-proves the compact ordinary selection with a second `vitest
-// list`; twelve cases each paid both (6-13s apiece inside the two-worker
-// process-heavy pool), and the answer cannot differ between them because
-// none of these cases mutates the tree. Cases that discover a synthetic
-// root still call the functions directly with their own options.
+// Reuse one discovery snapshot; other test files may create or remove fixtures.
 let repositoryDiscovery: {
   readonly files: readonly string[];
   readonly groups: ReturnType<typeof discoverVitestResourceGroups>;
 };
 
 beforeAll(() => {
-  repositoryDiscovery = Object.freeze({
-    files: discoverVitestFiles(),
-    groups: discoverVitestResourceGroups(),
-  });
+  const files = discoverVitestFiles();
+  const groups = buildVitestResourceGroups(files);
+  assertOrdinaryVitestSelection(groups);
+  repositoryDiscovery = Object.freeze({ files, groups });
 }, 70_000);
 
 describe('Vitest resource manifest', () => {

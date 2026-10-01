@@ -256,6 +256,9 @@ export function createNativeV2PionApplicationAdapter(
       )
         throw new Error('native_pion_application_trust_unavailable');
 
+      // Scalar is copied from the authenticated offer before any await; the
+      // offer object itself is never retained for later reads.
+      const peerNonce = offer.nonce;
       const clientFingerprint = fingerprint(offer.offerSdp);
       const routingGeneration = offer.scope.routingGeneration;
       const controller = new AbortController();
@@ -382,6 +385,7 @@ export function createNativeV2PionApplicationAdapter(
             verifiedNativeRequests.set(
               request,
               Object.freeze({
+                peerNonce,
                 stationId: captured.stationId,
                 connectionEnrollmentId: captured.enrollmentId,
                 routingGeneration,

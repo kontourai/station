@@ -372,6 +372,17 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  answers: z
+    .record(
+      z.string().min(1).max(256),
+      z
+        .object({
+          optionIds: z.array(z.string().max(256)).max(32),
+          custom: z.string().max(12000).optional(),
+        })
+        .strict(),
+    )
+    .optional(),
 });
 
 const stopSessionCommandSchema = z.object({

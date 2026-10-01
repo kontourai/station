@@ -495,6 +495,9 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
       env: { STATION_BROKER_CONFIG_FILE: withNative.configPath },
     });
     expect(factory).not.toBeNull();
+    expect(
+      factory!.selfHostedBrokerConnector.nativeApplication?.surface,
+    ).toEqual(surface);
     // The composed runtime must still be the ordinary broker runtime; the
     // native surface is validated here and re-bound against live trust by
     // the runtime composition (covered by the pion runtime native tests).

@@ -47,6 +47,7 @@ import {
   readEnvironmentSecurityRecord,
   readExistingEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
+import { isPairingApprovalLeaf } from '../../security/pairing-route-scopes.js';
 
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
 
@@ -164,46 +165,6 @@ function parseLockRecord(value: unknown): EnvironmentSecurityLockRecord {
     );
   }
   return lock as unknown as EnvironmentSecurityLockRecord;
-}
-
-/**
- * The exact `/api/pairing` leaves a promoted device may act on
- * (archive#1887): read the pending-request list, and confirm or deny ONE
- * pending request.
- *
- * Matched positively and exactly — no prefix, no wildcard. `/api/pairing` is
- * where the authority to mint further authority lives, so a route added under
- * it later must be denied to promoted devices by default and admitted only by
- * someone editing this list on purpose. The id segment is bounded to the
- * shapes the routes actually accept so a traversal-ish path cannot widen the
- * match.
- */
-const PAIRING_APPROVAL_LEAVES: readonly {
-  method: string;
-  pattern: RegExp;
-}[] = [
-  { method: 'GET', pattern: /^\/api\/pairing\/requests$/ },
-  {
-    method: 'POST',
-    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}\/confirm$/,
-  },
-  {
-    method: 'DELETE',
-    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}$/,
-  },
-];
-
-function isPairingApprovalLeaf(request: {
-  method: string;
-  path: string;
-}): boolean {
-  const method = request.method.toUpperCase();
-  // Compare against the path only; a query string must never participate in
-  // an authorization match.
-  const path = request.path.split('?')[0] ?? request.path;
-  return PAIRING_APPROVAL_LEAVES.some(
-    (leaf) => leaf.method === method && leaf.pattern.test(path),
-  );
 }
 
 /**

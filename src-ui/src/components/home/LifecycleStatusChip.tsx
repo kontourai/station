@@ -21,9 +21,13 @@ export function LifecycleStatusChip({
 }: {
   lifecycle: HomeLifecycleLabel;
 }) {
+  // "Running", the lane's own word — never "Active". The owner's report was
+  // "'Active' feels incorrect when there's no activity"; the chip under the
+  // Running lane must say what that lane computes, not a looser synonym.
+  // (`--active` is the in-motion colour class, not copy.)
   if (lifecycle === 'Running') {
     return (
-      <span className="lifecycle-chip lifecycle-chip--active">Active</span>
+      <span className="lifecycle-chip lifecycle-chip--active">Running</span>
     );
   }
   if (lifecycle === 'Needs attention') {

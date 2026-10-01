@@ -459,6 +459,7 @@ export class CodexAdapterTransport {
       method: string;
       result: unknown;
       status: ApprovalStatus;
+      blocking?: boolean;
     },
   ): void {
     const refusal = refuseCodexApprovalReply(input.method, input.result);
@@ -474,6 +475,7 @@ export class CodexAdapterTransport {
       requestId: input.requestId,
       method: 'request.resolved',
       status: input.status,
+      ...(input.blocking === false ? { blocking: false } : {}),
       acknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
     });
     if (refusal !== undefined) {
@@ -606,6 +608,7 @@ export class CodexAdapterTransport {
           requestId,
           method: 'request.resolved',
           status: 'cancelled',
+          ...(pending.blocking === false ? { blocking: false } : {}),
           response: { reason: 'closed-by-engine' },
         });
         return;
@@ -755,7 +758,7 @@ export class CodexAdapterTransport {
     // claude-adapter/acp-adapter, archive#164/#148). We do not attempt to write an
     // RPC response back to the Codex process here since it is being killed
     // immediately after.
-    for (const requestId of record.pendingApprovals.keys()) {
+    for (const [requestId, pending] of record.pendingApprovals) {
       this.publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -764,6 +767,7 @@ export class CodexAdapterTransport {
         requestId,
         method: 'request.resolved',
         status: mapApprovalResolutionStatus('cancel'),
+        ...(pending.blocking === false ? { blocking: false } : {}),
       });
     }
     record.pendingApprovals.clear();
@@ -903,6 +907,8 @@ export class CodexAdapterTransport {
     }
 
     record.pendingApprovals.set(canonicalRequestId, {
+      openedEventId: event.eventId,
+      ...(event.blocking === false ? { blocking: false } : {}),
       rpcRequestId: requestId,
       method: request.method,
       title: event.title,

@@ -12,13 +12,19 @@ import {
   formatDocumentationImpact,
   readDocumentationImpact,
 } from '../documentation-impact.mjs';
+import {
+  listReviewLedgerFiles,
+  REVIEW_LEDGER_INDEX,
+  recordFile,
+} from '../lib/review-ledger-store.mjs';
 import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
+import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
 const makeTempDir = trackTempDirs();
 // Impact and catch-up must not depend on the freshness mode (#2934).
 forbidAmbientFreshnessMode();
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
-const ledger = (records: unknown[]) => ({ version: 1, records });
+const ledger = (records: unknown[]) => ({ version: 2, records });
 const record = (path: string, sources: string[]) => ({
   path,
   kind: 'current',
@@ -28,6 +34,14 @@ const record = (path: string, sources: string[]) => ({
   checks: ['Fixture evidence.'],
   sources: sources.map((path) => ({ path })),
 });
+/** Every ledger file's bytes, so a test can prove the report edited none. */
+const ledgerFiles = (root: string) =>
+  Object.fromEntries(
+    listReviewLedgerFiles(root).map((file: string) => [
+      file,
+      readFileSync(join(root, file), 'utf8'),
+    ]),
+  );
 const cleanEnv = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
 );
@@ -99,15 +113,12 @@ function fixture() {
   const records = [
     {
       ...record('guide.md', ['code.ts']),
-      sourceRevision: base,
+      documentRevision: base,
       documentDigest: hash('# Guide\n'),
       sources: [{ path: 'code.ts', digest: hash('export const value = 1;\n') }],
     },
   ];
-  write(
-    'docs/learn/review-ledger.json',
-    JSON.stringify({ ...ledger(records), coverageBaseline: base }),
-  );
+  writeReviewLedger(root, records, { coverageBaseline: base });
   git(root, ['add', '.']);
   git(root, [
     '-c',
@@ -137,20 +148,16 @@ function generatedFixture() {
   const generated = {
     ...record(markdownPath, []),
     kind: 'generated',
-    sourceRevision: f.base,
+    documentRevision: f.base,
     documentDigest: hash(markdown),
     sources: [dataPath, ...owners].map((path) => ({
       path,
       digest: hash(readFileSync(join(f.root, path), 'utf8')),
     })),
   };
-  f.write(
-    'docs/learn/review-ledger.json',
-    JSON.stringify({
-      ...ledger([...f.records, generated]),
-      coverageBaseline: f.base,
-    }),
-  );
+  writeReviewLedger(f.root, [...f.records, generated], {
+    coverageBaseline: f.base,
+  });
   git(f.root, ['add', '.']);
   git(f.root, [
     '-c',
@@ -236,7 +243,7 @@ describe('documentation impact', () => {
     expect(() =>
       documentationImpact({
         changedPaths: ['x'],
-        ledgers: [{ version: 1, records: [{}] }],
+        ledgers: [{ version: 2, records: [{}] }],
         topics: [],
       }),
     ).toThrow('Invalid documentation impact');
@@ -253,7 +260,7 @@ describe('documentation impact', () => {
         'renamed.ts',
         'guide.md',
         'new.ts',
-        'docs/learn/review-ledger.json',
+        recordFile('guide.md'),
       ]),
     );
     expect(() => collectDocumentationChanges(root, 'missing-base')).toThrow();
@@ -267,8 +274,8 @@ describe('documentation impact', () => {
     expect(changed.catchUp.staleReviews).toEqual([
       {
         path: 'guide.md',
-        reviewSourceRevision: base,
-        reviewRevisionAvailable: true,
+        reviewedRevisions: { 'code.ts': base },
+        unavailableRevisions: [],
         lastCommittedEdit: base,
         changedInputs: ['code.ts'],
       },
@@ -286,7 +293,7 @@ describe('documentation impact', () => {
       (await documentationCatchUp({ root })).catchUp.staleReviews[0]
         .changedInputs,
     ).toEqual(['code.ts']);
-    writeFileSync(join(root, 'docs/learn/review-ledger.json'), '{broken');
+    writeFileSync(join(root, REVIEW_LEDGER_INDEX), '{broken');
     const run = spawnSync(
       process.execPath,
       [resolve('scripts/documentation-impact.mjs'), '--catch-up', '--json'],
@@ -298,12 +305,10 @@ describe('documentation impact', () => {
   });
   it('reports removed committed review links even when the original audit baseline had no ledger', async () => {
     const { root, records, base, write } = fixture();
-    write(
-      'docs/learn/review-ledger.json',
-      JSON.stringify({
-        ...ledger([{ ...records[0], state: 'classified', sources: [] }]),
-        coverageBaseline: base,
-      }),
+    writeReviewLedger(
+      root,
+      [{ ...records[0], state: 'classified', sources: [] }],
+      { coverageBaseline: base },
     );
     write('code.ts', 'changed');
     const report = await documentationCatchUp({ root });
@@ -314,12 +319,10 @@ describe('documentation impact', () => {
   it('keeps a dependency added then removed in committed ledger history visible through the real CLI', () => {
     const { root, records, base, write } = fixture();
     write('code.ts', 'changed after review');
-    write(
-      'docs/learn/review-ledger.json',
-      JSON.stringify({
-        ...ledger([{ ...records[0], state: 'classified', sources: [] }]),
-        coverageBaseline: base,
-      }),
+    writeReviewLedger(
+      root,
+      [{ ...records[0], state: 'classified', sources: [] }],
+      { coverageBaseline: base },
     );
     git(root, ['add', '.']);
     git(root, [
@@ -362,10 +365,7 @@ describe('documentation impact', () => {
   });
   it('runs the real CLI catch-up against changed code without editing evidence', () => {
     const { root, write } = fixture();
-    const before = readFileSync(
-      join(root, 'docs/learn/review-ledger.json'),
-      'utf8',
-    );
+    const before = ledgerFiles(root);
     write('code.ts', 'changed');
     const run = spawnSync(
       process.execPath,
@@ -376,17 +376,12 @@ describe('documentation impact', () => {
     expect(
       JSON.parse(run.stdout).catchUp.staleReviews[0].changedInputs,
     ).toEqual(['code.ts']);
-    expect(
-      readFileSync(join(root, 'docs/learn/review-ledger.json'), 'utf8'),
-    ).toBe(before);
+    expect(ledgerFiles(root)).toEqual(before);
   });
 
   it('reports shared generated validation separately while keeping ordinary drift, unknown paths and baseline through the CLI', async () => {
     const f = generatedFixture();
-    const before = readFileSync(
-      join(f.root, 'docs/learn/review-ledger.json'),
-      'utf8',
-    );
+    const before = ledgerFiles(f.root);
     f.update();
     f.write('code.ts', 'changed ordinary source');
     f.write('unknown.ts', 'unmapped');
@@ -418,9 +413,7 @@ describe('documentation impact', () => {
       'Generated validation:',
     );
     expect(formatDocumentationImpact(emitted)).toContain('not human-reviewed');
-    expect(
-      readFileSync(join(f.root, 'docs/learn/review-ledger.json'), 'utf8'),
-    ).toBe(before);
+    expect(ledgerFiles(f.root)).toEqual(before);
   });
 
   it.each(['data', 'projection'] as const)(
@@ -478,17 +471,13 @@ describe('documentation impact', () => {
       kind: 'release-note',
       state: 'classified',
       checks: [],
-      sourceRevision: f.base,
+      documentRevision: f.base,
       documentDigest: hash(text),
       sources: [],
     };
-    f.write(
-      'docs/learn/review-ledger.json',
-      JSON.stringify({
-        ...ledger([...f.records, historical]),
-        coverageBaseline: f.base,
-      }),
-    );
+    writeReviewLedger(f.root, [...f.records, historical], {
+      coverageBaseline: f.base,
+    });
     git(f.root, ['add', '.']);
     git(f.root, [
       '-c',
@@ -527,23 +516,21 @@ describe('documentation impact', () => {
     const f = fixture();
     const readme = '.changeset/README.md';
     f.write(readme, '# Release instructions\n');
-    f.write(
-      'docs/learn/review-ledger.json',
-      JSON.stringify({
-        ...ledger([
-          { ...f.records[0], kind: 'generated' },
-          {
-            ...record(readme, []),
-            kind: 'release-note',
-            state: 'classified',
-            checks: [],
-            sources: [],
-            sourceRevision: f.base,
-            documentDigest: hash('# Release instructions\n'),
-          },
-        ]),
-        coverageBaseline: f.base,
-      }),
+    writeReviewLedger(
+      f.root,
+      [
+        { ...f.records[0], kind: 'generated' },
+        {
+          ...record(readme, []),
+          kind: 'release-note',
+          state: 'classified',
+          checks: [],
+          sources: [],
+          documentRevision: f.base,
+          documentDigest: hash('# Release instructions\n'),
+        },
+      ],
+      { coverageBaseline: f.base },
     );
     git(f.root, ['add', '.']);
     git(f.root, [
@@ -558,9 +545,10 @@ describe('documentation impact', () => {
     const report = await documentationCatchUp({ root: f.root });
     expect(report.catchUp.absentHistorical).toEqual([]);
     expect(report.catchUp.generatedValidated).toEqual([]);
+    // Records compile in path order (#2936).
     expect(report.catchUp.staleReviews.map((review) => review.path)).toEqual([
-      'guide.md',
       readme,
+      'guide.md',
     ]);
   });
 });

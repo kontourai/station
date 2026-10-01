@@ -2,6 +2,8 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { AgentSummary } from '../../types';
 import { splitDraftsByAge } from '../home/draft-lane';
 import {
+  LIVE_LANE_LABELS,
+  type LiveLaneId,
   partitionHomeWorkItems,
   terminalSinceFromRecency,
   withStableIds,
@@ -22,31 +24,34 @@ import {
  * `partitionHomeWorkItems`. Deriving a parallel answer here from
  * `lifecycleState` is how two surfaces come to disagree about one session —
  * so the sessions are converted to `HomeWorkItem`s by Home's own adapter
- * (`buildOrchestrationItems`) and handed to Home's own partition. Everything
- * lane-specific to this surface is the split of `active` into "Needs you" vs
- * "Active now" and the lane ORDER, both of which are presentation.
+ * (`buildOrchestrationItems`) and handed to Home's own partition, including
+ * its live split into Needs you / Running / Idle (`liveLaneFor`). Everything
+ * lane-specific to this surface is the lane ORDER and labels, which are
+ * presentation.
  */
 export type SessionLaneId =
   | 'external'
-  | 'needsYou'
-  | 'activeNow'
+  | LiveLaneId
   | 'recentlyFinished'
   | 'drafts'
   | 'earlier';
 
-/** Reading order: what is blocked on you, then what is moving, then history. */
+/**
+ * Reading order: what is blocked on you, what is moving, what is idle, what
+ * never started, then history — the same order as the chat dock inbox.
+ */
 export const SESSION_LANE_ORDER: readonly SessionLaneId[] = [
   'needsYou',
-  'activeNow',
-  'recentlyFinished',
+  'running',
+  'idle',
   'drafts',
+  'recentlyFinished',
   'earlier',
   'external',
 ];
 
 export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
-  needsYou: 'Needs you',
-  activeNow: 'Active now',
+  ...LIVE_LANE_LABELS,
   recentlyFinished: 'Recently finished',
   drafts: 'Drafts',
   earlier: 'Earlier',
@@ -84,24 +89,13 @@ const NO_SNOOZE: ReadonlyMap<string, number> = new Map();
 // the mobile activity groups adopted the same pattern (archive#3227 A6), so
 // the two store-less surfaces share one seeding rule instead of two copies.
 
-/**
- * "Needs you" is `lifecycleLabel === 'Needs attention'` — the fold
- * `orchestrationLifecycleLabel` already computes from
- * `pendingReview`/`needs_input`/`review_pending`/`blocked`, gated on
- * `answerability` so a session nothing can answer is NOT claimed as yours to
- * act on (it stays in Active now as `'Unanswerable'`, carrying its basis).
- *
- * Deliberately not "delegated sessions that are waiting", which was the
- * shape the ticket sketched: a NON-delegated session sitting on `needs_input`
- * is blocked on the user just as hard, and filing it under "Active now"
- * would be the list telling the reader nothing is waiting when something is.
- * The delegated case is a subset, so the ticket's motivation still lands —
- * `DelegatedTaskCoordinator` renders `tasks[0]` only, so the second waiting
- * delegated session had nowhere to appear before this lane existed.
- */
-function needsYou(item: HomeWorkItem): boolean {
-  return item.lifecycleLabel === 'Needs attention';
-}
+// "Needs you" is `liveLaneFor`'s `Needs attention` lane — the fold
+// `orchestrationLifecycleLabel` already computes from `pendingReview`/
+// `needs_input`/`review_pending`/`blocked`, gated on `answerability` so a
+// session nothing can answer is NOT claimed as yours to act on (it is Idle,
+// as `'Unanswerable'`, carrying its basis). A NON-delegated session sitting
+// on `needs_input` is blocked on the user just as hard as a delegated one,
+// so the lane is not restricted to delegation.
 
 /**
  * Lanes in reading order, each internally newest-first, empty lanes omitted.
@@ -141,10 +135,11 @@ export function partitionSessionLanes({
 
   const membership: Record<SessionLaneId, OrchestrationSessionSummary[]> = {
     external: resolve(partition.external ?? []),
-    needsYou: resolve(partition.active.filter(needsYou)),
-    activeNow: resolve(partition.active.filter((item) => !needsYou(item))),
+    needsYou: resolve(partition.needsYou),
+    running: resolve(partition.running),
+    idle: resolve(partition.idle),
     recentlyFinished: resolve(partition.recentlyFinished),
-    // #2310: never-prompted sessions, out of "Active now" but still listed.
+    // #2310: never-prompted sessions, out of the live lanes but still listed.
     drafts: resolve(partition.drafts ?? []),
     // The snoozed bucket is folded in rather than dropped: this surface has no
     // snooze store today (see NO_SNOOZE), and a bucket that is silently
