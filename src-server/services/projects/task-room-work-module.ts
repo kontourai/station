@@ -26,6 +26,7 @@ export type TaskRoomWorkScope = {
 };
 type Scope = TaskRoomWorkScope;
 export class TaskRoomWorkUnavailableError extends Error {}
+export class TaskRoomWorkAuthorityChangedError extends Error {}
 
 function validText(value: unknown, limit: number): value is string {
   return (
@@ -245,7 +246,7 @@ export class TaskRoomWorkModule {
           effectScope.taskCreatedAt !== scope.taskCreatedAt ||
           effectScope.requesterId !== scope.requesterId
         )
-          throw new TaskRoomWorkUnavailableError(
+          throw new TaskRoomWorkAuthorityChangedError(
             'Task authority changed before agent invocation.',
           );
       });

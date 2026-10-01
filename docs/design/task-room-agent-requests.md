@@ -72,7 +72,11 @@ replay and absence of account IDs in the response. A second HTTP test uses real
 delegation and OrchestrationService with SQLite and a session-tracking controlled
 provider: its positive control starts a session and sends a turn, then revocation
 during target resolution blocks another start and revocation after start blocks
-the initial turn. It does not run a live model.
+the initial turn. Revocation after the durable turn enters invocation also
+blocks the provider, retires that turn boundary and permits an explicit
+continuation once authority returns. Only a known authority change uses the
+clean-refusal classification; storage failures retain their uncertainty.
+It does not run a live model.
 
 Still required: final scoped typecheck, mutation controls and independent review;
 runtime-composition authorization proof; SDK transport parsing and caching;

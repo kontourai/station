@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { TaskRoomWorkOutcome } from '@kontourai/station-contracts/task-room-work';
@@ -108,7 +109,7 @@ test('the delegation route records one channel request and refuses a target outs
   }
 });
 
-test('real delegation checks Task authority at provider start after target resolution awaits', async () => {
+test('real delegation refuses revoked Task authority at provider effects and leaves a clean turn boundary', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'task-room-effect-'));
   const eventStore = new EventStore(join(directory, 'events.sqlite'));
   const eventBus = new EventBus();
@@ -151,6 +152,11 @@ test('real delegation checks Task authority at provider start after target resol
   });
   const principal = humanPrincipal('test', 'alice', 'Alice');
   const module = new TaskRoomWorkModule(join(directory, 'work.json'));
+  const inspector = new DatabaseSync(join(directory, 'events.sqlite'), {
+    readOnly: true,
+  });
+  let revokedThread: string | undefined;
+  let revokeDuringTurn = false;
   let allowed = true;
   const failures: unknown[] = [];
   let revokeDuringProjectRead = false;
@@ -214,15 +220,27 @@ test('real delegation checks Task authority at provider start after target resol
     },
     taskRoomWork: {
       module,
-      authorize: async () =>
-        allowed
+      authorize: async () => {
+        if (revokeDuringTurn) {
+          const row = inspector
+            .prepare(
+              "SELECT thread_id FROM orchestration_turn_boundaries WHERE purpose = 'turn' AND state = 'invoking'",
+            )
+            .get();
+          if (row && typeof row.thread_id === 'string') {
+            revokedThread = row.thread_id;
+            allowed = false;
+          }
+        }
+        return allowed
           ? {
               projectId: 'project',
               projectSlug: 'demo',
               taskCreatedAt: '2026-09-30T12:00:00.000Z',
               requesterId: principal.id,
             }
-          : undefined,
+          : undefined;
+      },
     },
   });
   const send = (operationId: string) =>
@@ -266,7 +284,31 @@ test('real delegation checks Task authority at provider start after target resol
     expect(turnRefused.status).toBe(403);
     expect(started).toHaveBeenCalledTimes(2);
     expect(turned).toHaveBeenCalledOnce();
+    allowed = true;
+    revokeDuringTurn = true;
+    const innerRefused = await send('revoked-inside-turn');
+    expect(innerRefused.status).toBe(403);
+    expect(revokedThread).toBeDefined();
+    expect(started).toHaveBeenCalledTimes(3);
+    expect(turned).toHaveBeenCalledOnce();
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(revokedThread!),
+    ).toEqual({ kind: 'available', active: false });
+    allowed = true;
+    revokeDuringTurn = false;
+    const continuation = await service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: { threadId: revokedThread!, input: 'Continue explicitly' },
+      },
+      { userId: principal.id, principal },
+    );
+    expect(continuation.receipt.status).toBe('accepted');
+    expect(turned).toHaveBeenCalledTimes(2);
   } finally {
+    inspector.close();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     await service.shutdown();

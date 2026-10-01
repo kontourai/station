@@ -131,9 +131,10 @@ import {
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
-import type {
-  TaskRoomWorkModule,
-  TaskRoomWorkScope,
+import {
+  TaskRoomWorkAuthorityChangedError,
+  type TaskRoomWorkModule,
+  type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import {
@@ -2397,7 +2398,24 @@ export function createOrchestrationRoutes(
           ...(sessionId
             ? { sessionId, parentTaskId: roomRequest?.taskId }
             : {}),
-          ...(recheck ? { taskRoomInvocationAdmission: { recheck } } : {}),
+          ...(recheck
+            ? {
+                taskRoomInvocationAdmission: {
+                  recheck: async () => {
+                    try {
+                      await recheck();
+                    } catch (error) {
+                      if (error instanceof TaskRoomWorkAuthorityChangedError)
+                        throw new ReceiverExecutionRefusal(
+                          'receiver_execution_authority_changed',
+                          error.message,
+                        );
+                      throw error;
+                    }
+                  },
+                },
+              }
+            : {}),
           ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
           // The tool keys claims by `deviceId`: project the verified grant's
           // id explicitly — passing the `{ id }` grant object through would
