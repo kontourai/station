@@ -69,7 +69,7 @@
   overflow: hidden;
 }
 
-.project-page__task-grid--board {
+.project-page__task-grid.project-page__task-grid--board {
   grid-template-columns: minmax(0, 1fr);
 }
 
