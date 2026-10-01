@@ -382,7 +382,7 @@ external-engine approval are separate; see the [Agent guide](../guides/agents.md
 |---|---|---|
 | `mcpServers` | string[] | IDs of MCP server integrations to connect (defined in `<STATION_HOME>/integrations/<id>/integration.json`) |
 | `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names; external-engine approval is separate |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agents.md#what-autoapprove-never-covers)) |
 | `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agents.md#unattended-runs) |
 
 ### guardrails

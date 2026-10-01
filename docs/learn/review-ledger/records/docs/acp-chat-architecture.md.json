@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/guides/acp.md","digest":"a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"}
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"}
   ],
 
   "checks": [
