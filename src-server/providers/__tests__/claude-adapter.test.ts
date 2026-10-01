@@ -2922,6 +2922,37 @@ describe('ClaudeAdapter', () => {
             },
             {},
           ],
+          // #2932: the engine's sandbox network-host ask and its sandbox
+          // override are escalations too, so the `*` pattern does not
+          // answer them and the child is denied rather than prompted.
+          [
+            'SandboxNetworkAccess',
+            { host: 'api.example.com' },
+            {
+              description: 'Allow network connection to api.example.com?',
+              suggestions: [
+                {
+                  type: 'addRules',
+                  rules: [
+                    {
+                      toolName: 'WebFetch',
+                      ruleContent: 'domain:api.example.com',
+                    },
+                  ],
+                  behavior: 'allow',
+                  destination: 'localSettings',
+                },
+              ],
+            },
+          ],
+          [
+            'Bash',
+            {
+              command: 'curl https://example.com',
+              dangerouslyDisableSandbox: true,
+            },
+            { decisionReason: 'dangerouslyDisableSandbox' },
+          ],
         ] as const) {
           // `allowed` here means the call settled without a request.opened.
           const outcome = await ask(toolName, toolInput, extra);
@@ -3148,6 +3179,41 @@ describe('ClaudeAdapter', () => {
         );
         await prose.answer('decline');
         await adapter.stopSession('thread-reason-text');
+      });
+
+      test("a question card keeps its own title over the engine's title", async () => {
+        const { adapter, ask } = await grantHarness('thread-question-title');
+        // Positive control: any other request shows the engine's title.
+        const bash = await ask(
+          'Bash',
+          { command: 'git status' },
+          { title: 'Claude wants to run git status' },
+        );
+        if (bash.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(bash.event.title).toBe('Claude wants to run git status');
+        await bash.answer('decline');
+
+        const question = await ask(
+          'AskUserQuestion',
+          {
+            questions: [
+              {
+                question: 'Where should we deploy?',
+                header: 'Target',
+                multiSelect: false,
+                options: [
+                  { label: 'Staging', description: 'Try first' },
+                  { label: 'Production', description: 'Release' },
+                ],
+              },
+            ],
+          },
+          { title: 'Claude wants to ask a question' },
+        );
+        if (question.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(question.event.title).toBe('The agent has questions for you');
+        // Left unanswered: stopping the session settles it.
+        await adapter.stopSession('thread-question-title');
       });
 
       test('a sandbox override prompts under a Bash session grant, which still answers a plain Bash call (positive control)', async () => {
