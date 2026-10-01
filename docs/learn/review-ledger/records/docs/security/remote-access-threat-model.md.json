@@ -14,7 +14,7 @@
   "sources": [
     {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
     {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
