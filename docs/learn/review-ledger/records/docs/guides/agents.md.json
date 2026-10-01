@@ -88,7 +88,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-startup.ts","digest":"80cf34735ed30ab3bf64a9be2f23b724189266d74e5eb5073c3ebf60af1a0a4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"754e48394b02f670894b419807274752fd9676d4"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -122,7 +122,7 @@
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"8b0f0788f8dd275d4d14344f6a8a51e535744fc859958b06ef11bbda29253faa","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
     {"path":"src-server/tools/station-control-catalog-tools.ts","digest":"bdbc3859eb839956ce824fea173bb4d1d366bb9adf068d294327a67c7a7a55a2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
