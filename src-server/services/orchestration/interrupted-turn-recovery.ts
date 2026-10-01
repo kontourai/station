@@ -11,7 +11,16 @@ import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-even
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
+import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
+import { foldRequestTurnOwnership } from './session-lifecycle-service.js';
 import { isProviderTurnBoundary } from './session-turn-boundary.js';
+
+/**
+ * `request.resolved.response.reason` on the resolution recovery writes for a
+ * request its dead turn left open (#3071), so a reader of the log can tell
+ * it from a person's or an engine's decision.
+ */
+const INTERRUPTED_TURN_REQUEST_REASON = 'turn-interrupted';
 
 /** Narrow structural logger: this module warns, never debugs. */
 type InterruptedTurnRecoveryLogger = {
@@ -22,11 +31,12 @@ interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here
-   * deliberately — the five operations this module needs
+   * deliberately — the six operations this module needs
    * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
-   * `listEventsForTurn`, `hasEventId`, `resolveInterruptedTurnBoundary`) are
+   * `listEventsForTurn`, `listSessionProjectionEvents`, `hasEventId`,
+   * `resolveInterruptedTurnBoundary`) are
    * one transactional unit over the boundary table and event log, and
-   * fanning them into five unrelated arrows would hide that. No Map crosses (T13).
+   * fanning them into six unrelated arrows would hide that. No Map crosses (T13).
    */
   eventStore: () => EventStore | undefined;
   /**
@@ -214,6 +224,12 @@ export class InterruptedTurnRecovery {
    * reads closed AND the session reads needs_input. Skipped (banner only)
    * when the boundary never accepted a turn and names none.
    *
+   * #3071: nor does the abort settle what the turn was WAITING ON. A request
+   * the dead turn opened has no adapter left to resolve it, so consume()
+   * publishes its `request.resolved` (`expired`,
+   * `turn-interrupted-request:<boundaryId>:<requestId>`) before the abort.
+   * Requests opened outside that turn are left alone.
+   *
    * IDEMPOTENCE (review round 1, H1): the write→delete gap between a
    * banner landing and `resolveInterruptedTurnBoundary` closing its row is
    * a real crash window — a process that dies in it leaves the row for a
@@ -372,6 +388,69 @@ export class InterruptedTurnRecovery {
         // turn (`record.providerTurnId` absent): there is no turn to close.
         const providerTurnId = record.providerTurnId;
         if (providerTurnId !== undefined) {
+          // #3071: settle what the dead turn was waiting on, BEFORE the
+          // abort. Every live abort path has an adapter holding the pending
+          // request, and that adapter publishes its `request.resolved`;
+          // here the process that held it is gone, so nothing else ever
+          // will. Left open, the request re-stamped the session
+          // `review_pending` over the banner below and every surface
+          // offered an approval nothing could take. `expired`: nobody
+          // decided anything. Before the abort because a blocking
+          // `request.resolved` folds to `running`, which is only true while
+          // the turn is still the open one; the abort and banner then have
+          // the last word. Ownership is the shared rule the read folds use
+          // (`foldRequestTurnOwnership`); a request opened between turns is
+          // not this turn's and stays open. No `hasEventId` check is
+          // needed: once resolved, a request is no longer in the open set a
+          // retry reads.
+          const projection = eventStore
+            .listSessionProjectionEvents(record.threadId)
+            .map((event) => event.payload);
+          const { ownerTurnIdByOpenRequestId } =
+            foldRequestTurnOwnership(projection);
+          const nonBlockingRequestIds = new Set(
+            projection.flatMap((event) =>
+              event.method === 'request.opened' && event.blocking === false
+                ? [event.requestId]
+                : [],
+            ),
+          );
+          let requestSettlementDeclined = false;
+          for (const [requestId, owner] of ownerTurnIdByOpenRequestId) {
+            if (owner !== providerTurnId) continue;
+            const published = this.deps.publishEvent({
+              eventId: `turn-interrupted-request:${record.boundaryId}:${requestId}`,
+              provider: provider ?? 'unknown',
+              threadId: record.threadId,
+              turnId: providerTurnId,
+              createdAt: now,
+              method: 'request.resolved',
+              requestId,
+              // An asynchronous question never paused the turn, and its
+              // resolution must not read as resuming one.
+              ...(nonBlockingRequestIds.has(requestId)
+                ? { blocking: false }
+                : {}),
+              status: TURN_ABORT_SETTLED_REQUEST_STATUS,
+              response: { reason: INTERRUPTED_TURN_REQUEST_REASON },
+            });
+            if (!published) {
+              requestSettlementDeclined = true;
+              break;
+            }
+          }
+          if (requestSettlementDeclined) {
+            // M4 parity with the abort and banner below.
+            this.deps.logger.warn(
+              'Interrupted-turn request settlement was declined; leaving the boundary row for the next boot',
+              {
+                threadId: record.threadId,
+                boundaryId: record.boundaryId,
+                reason: 'projectAndPublishEvent returned false',
+              },
+            );
+            continue;
+          }
           const abortEventId = `turn-interrupted-abort:${record.boundaryId}`;
           if (!eventStore.hasEventId(abortEventId)) {
             const published = this.deps.publishEvent({

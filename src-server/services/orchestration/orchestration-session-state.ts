@@ -56,6 +56,7 @@ import {
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
+  foldRequestTurnOwnership,
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
@@ -575,6 +576,13 @@ export function buildOrchestrationSessionSummary(options: {
         }
       : undefined;
 
+  // #3071: the store's unresolved set counts a request its turn's abort left
+  // behind, when the log predates recovery resolving it. The summary's
+  // `pendingReview` already excludes it (same fold); the id lists must agree.
+  const { settledRequestIds } = foldRequestTurnOwnership(events);
+  const openRequestIds = options.openRequestIds?.filter(
+    (id) => !settledRequestIds.has(id),
+  );
   const summary: OrchestrationSessionSummary = {
     provider: base.provider,
     threadId: base.threadId,
@@ -641,10 +649,10 @@ export function buildOrchestrationSessionSummary(options: {
     ...(options.currentSessionId
       ? { currentSessionId: options.currentSessionId }
       : {}),
-    ...(options.openRequestIds
+    ...(openRequestIds
       ? {
-          openRequestIds: [...options.openRequestIds],
-          blockingOpenRequestIds: options.openRequestIds.filter(
+          openRequestIds: [...openRequestIds],
+          blockingOpenRequestIds: openRequestIds.filter(
             (id) =>
               !options.events?.some(
                 (event) =>
@@ -1275,12 +1283,15 @@ export function buildAgentRunSummary(options: {
       .filter((event) => event.method === 'request.resolved')
       .map((event) => event.requestId),
   );
+  // #3071: same rule as the session summary's `pendingReview`.
+  const { settledRequestIds } = foldRequestTurnOwnership(events);
   const hasOpenRequest = events.some(
     (event) =>
       event.method === 'request.opened' &&
       event.blocking !== false &&
       event.requestId &&
-      !lastResolvedRequestIds.has(event.requestId),
+      !lastResolvedRequestIds.has(event.requestId) &&
+      !settledRequestIds.has(event.requestId),
   );
 
   const status = deriveAgentRunStatus({

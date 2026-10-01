@@ -15,10 +15,11 @@
  * `request.resolved` at boot — see that function's own doc for why it is now
  * projected on read.
  *
- * It lives in its own leaf module rather than in `orchestration-service.ts`
+ * It lives in its own module rather than in `orchestration-service.ts`
  * because `attention-projection.ts` already depends on that module (it takes
  * an `OrchestrationService` in its constructor), so importing back would be
- * circular.
+ * circular. Its one local import is `session-lifecycle-service.ts`, which
+ * owns the turn folds and imports nothing from here.
  *
  * SCOPE, STATED EXPLICITLY SO NO CALL SITE HAS TO GUESS: these functions
  * consider EVERY `request.opened` regardless of `requestType`. The lifecycle
@@ -38,10 +39,14 @@ import {
   foldedSessionLifecycleState,
   type SessionLifecycleState,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { foldRequestTurnOwnership } from './session-lifecycle-service.js';
 
 /**
- * Every still-open `request.opened` event (no matching `request.resolved`),
- * keyed by `requestId`, in the order they were opened.
+ * Every still-open `request.opened` event, keyed by `requestId`, in the
+ * order they were opened. Open means no matching `request.resolved` AND not
+ * settled by its own turn's abort (#3071, `foldRequestTurnOwnership`): a
+ * request the dead turn left behind is nobody's to answer, so no surface
+ * built on this map presents it.
  */
 export function collectOpenRequests(
   events: CanonicalRuntimeEvent[],
@@ -51,8 +56,18 @@ export function collectOpenRequests(
     if (event.method === 'request.opened') open.set(event.requestId, event);
     else if (event.method === 'request.resolved') open.delete(event.requestId);
   }
+  for (const requestId of foldRequestTurnOwnership(events).settledRequestIds)
+    open.delete(requestId);
   return open;
 }
+
+/**
+ * The status a request settled by its turn's abort reads as. `expired`
+ * (nobody acted) rather than `cancelled`: no one decided anything, and the
+ * approval inbox maps the two differently for that reason.
+ */
+export const TURN_ABORT_SETTLED_REQUEST_STATUS =
+  'expired' satisfies ApprovalStatus;
 
 /**
  * How much this process knows about whether it is holding the session's

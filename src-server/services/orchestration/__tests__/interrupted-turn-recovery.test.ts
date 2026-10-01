@@ -181,6 +181,10 @@ function bootAfterCrash(options: {
   agentSlug?: string;
   userId?: string;
   boundaryState: 'invoking' | 'accepted';
+  /** #3071: events the dying process wrote before `turn-1` started. */
+  beforeTurnStarted?: CanonicalRuntimeEvent[];
+  /** #3071: events the dying process wrote while `turn-1` was running. */
+  duringTurn?: CanonicalRuntimeEvent[];
 }): EventStore {
   const dying = new EventStore(options.path);
   dying.appendEvent(
@@ -191,6 +195,7 @@ function bootAfterCrash(options: {
       userId: options.userId,
     }),
   );
+  for (const event of options.beforeTurnStarted ?? []) dying.appendEvent(event);
   dying.appendEvent({
     eventId: `turn-started:${options.threadId}`,
     provider: options.provider,
@@ -200,6 +205,7 @@ function bootAfterCrash(options: {
     method: 'turn.started',
     prompt: 'do the thing',
   } as CanonicalRuntimeEvent);
+  for (const event of options.duringTurn ?? []) dying.appendEvent(event);
   const claimed = dying
     .sessionTurnBoundaryAuthority()
     .claim(options.threadId, '2026-08-16T00:00:01.500Z');
@@ -1717,5 +1723,406 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       .listEvents('thread-abort-once')
       .filter((e) => e.payload.method === 'turn.aborted');
     expect(aborts).toHaveLength(1);
+  });
+});
+
+/**
+ * #3071 — recovery settles what the dead turn was waiting on.
+ *
+ * `turn.started → request.opened(approval) → restart`. Recovery aborted the
+ * turn and bannered `needs_input`, and left the request open: the fold then
+ * re-stamped the session `review_pending` over the banner and every surface
+ * offered an approval no process could take.
+ */
+describe('#3071: a request the interrupted turn opened is settled', () => {
+  const roots: string[] = [];
+  const stores: EventStore[] = [];
+
+  afterEach(() => {
+    for (const store of stores.splice(0)) {
+      try {
+        store.close();
+      } catch {
+        // Already closed by the test.
+      }
+    }
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  function databasePath() {
+    const root = mkdtempSync(join(tmpdir(), 'interrupted-turn-requests-'));
+    roots.push(root);
+    return join(root, 'orchestration.sqlite');
+  }
+
+  function approval(
+    threadId: string,
+    requestId: string,
+    overrides: Record<string, unknown> = {},
+  ): CanonicalRuntimeEvent {
+    return {
+      eventId: `request-opened:${threadId}:${requestId}`,
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-08-16T00:00:01.200Z',
+      method: 'request.opened',
+      requestId,
+      requestType: 'approval',
+      title: 'Allow bash',
+      payload: { toolName: 'bash', toolInput: { command: 'ls' } },
+      ...overrides,
+    } as CanonicalRuntimeEvent;
+  }
+
+  function serviceFor(
+    eventStore: EventStore,
+    adapters: ProviderAdapterShape[] = [],
+  ) {
+    return new OrchestrationService({
+      adapterRegistry: {
+        register() {},
+        get: (provider) =>
+          adapters.find((adapter) => adapter.provider === provider),
+        list: () => adapters,
+      },
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map(),
+    });
+  }
+
+  function upsertRunning(eventStore: EventStore, threadId: string) {
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId,
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+  }
+
+  test('the dead turn’s approval is resolved expired before the abort, and the recovery stamp stands', async () => {
+    const threadId = 'thread-approval-crash';
+    const eventStore = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'acp',
+      boundaryState: 'accepted',
+      duringTurn: [approval(threadId, 'req-dead')],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const service = serviceFor(eventStore);
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    const resolved = events.filter(
+      (event) => event.payload.method === 'request.resolved',
+    );
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]!.payload).toMatchObject({
+      method: 'request.resolved',
+      requestId: 'req-dead',
+      turnId: 'turn-1',
+      status: 'expired',
+      response: { reason: 'turn-interrupted' },
+    });
+    expect(resolved[0]!.payload.eventId).toMatch(
+      /^turn-interrupted-request:.+:req-dead$/,
+    );
+    const abort = events.find(
+      (event) => event.payload.method === 'turn.aborted',
+    );
+    const banner = events.find(
+      (event) => event.payload.method === 'session.state-changed',
+    );
+    // Order is the contract: a blocking resolution folds to `running`, so it
+    // has to land while the turn is still the open one.
+    expect(resolved[0]!.sequence).toBeLessThan(abort!.sequence);
+    expect(abort!.sequence).toBeLessThan(banner!.sequence);
+
+    // Every reader of the request state agrees it is closed.
+    expect(eventStore.listUnresolvedRequestEvents(threadId)).toEqual([]);
+    expect(eventStore.listOpenRequestIdsByThreads([threadId])).toEqual(
+      new Map([[threadId, []]]),
+    );
+    expect(service.readRequestOutcome(threadId, 'req-dead')).toEqual({
+      state: 'resolved',
+      status: 'expired',
+    });
+
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session).toMatchObject({
+      lifecycleState: 'needs_input',
+      previousLifecycleState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+      pendingReview: false,
+      hasActiveTurn: false,
+      lastEventMethod: 'session.state-changed',
+    });
+    const listed = (
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+    ).find((session) => session.threadId === threadId);
+    expect(listed).toMatchObject({
+      lifecycleState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      pendingReview: false,
+      openRequestIds: [],
+      blockingOpenRequestIds: [],
+    });
+  });
+
+  test('a second consume, and a fresh boot, write no second resolution', async () => {
+    const threadId = 'thread-approval-twice';
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'acp',
+      boundaryState: 'accepted',
+      duringTurn: [approval(threadId, 'req-dead')],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const service = serviceFor(eventStore);
+    await (service as any).interruptedTurns.consume();
+    await (service as any).interruptedTurns.consume();
+    eventStore.close();
+
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    await (serviceFor(rebooted) as any).interruptedTurns.consume();
+    expect(
+      rebooted
+        .listEvents(threadId)
+        .filter((event) => event.payload.method === 'request.resolved'),
+    ).toHaveLength(1);
+  });
+
+  test('a request opened before the dead turn started is not that turn’s and stays open', async () => {
+    const threadId = 'thread-between-turns';
+    const eventStore = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'acp',
+      boundaryState: 'accepted',
+      beforeTurnStarted: [
+        approval(threadId, 'req-between', {
+          createdAt: '2026-08-16T00:00:00.500Z',
+        }),
+      ],
+      duringTurn: [approval(threadId, 'req-dead')],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const service = serviceFor(eventStore);
+
+    await (service as any).interruptedTurns.consume();
+
+    expect(
+      eventStore
+        .listUnresolvedRequestEvents(threadId)
+        .map((event) => event.payload.requestId),
+    ).toEqual(['req-between']);
+    expect(service.readRequestOutcome(threadId, 'req-between')).toMatchObject({
+      state: 'open',
+    });
+    expect(service.readRequestOutcome(threadId, 'req-dead')).toEqual({
+      state: 'resolved',
+      status: 'expired',
+    });
+  });
+
+  test('an asynchronous question the dead turn asked is resolved as non-blocking', async () => {
+    const threadId = 'thread-async-question';
+    const eventStore = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'acp',
+      boundaryState: 'accepted',
+      duringTurn: [approval(threadId, 'req-async', { blocking: false })],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+
+    await (serviceFor(eventStore) as any).interruptedTurns.consume();
+
+    const resolved = eventStore
+      .listEvents(threadId)
+      .find((event) => event.payload.method === 'request.resolved');
+    expect(resolved?.payload).toMatchObject({
+      requestId: 'req-async',
+      status: 'expired',
+      blocking: false,
+    });
+  });
+
+  test('a declined resolution (quarantined thread) writes nothing and retains the boundary row', async () => {
+    const threadId = 'thread-approval-quarantined';
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'acp',
+      boundaryState: 'accepted',
+      duringTurn: [approval(threadId, 'req-dead')],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const service = serviceFor(eventStore);
+    (service as any).quarantinedThreads.add(threadId);
+
+    await (service as any).interruptedTurns.consume();
+
+    const methods = eventStore
+      .listEvents(threadId)
+      .map((event) => event.payload.method);
+    expect(methods).not.toContain('request.resolved');
+    expect(methods).not.toContain('turn.aborted');
+    expect(methods).not.toContain('session.state-changed');
+    eventStore.close();
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    expect(rebooted.takeInterruptedTurnBoundaries()).not.toEqual([]);
+  });
+
+  test('a late approval for the settled request is refused before any adapter sees it', async () => {
+    const threadId = 'thread-approval-late';
+    const eventStore = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'acp',
+      boundaryState: 'accepted',
+      duringTurn: [approval(threadId, 'req-dead')],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    // The restarted process holds the thread again, with an engine that has
+    // never heard of the dead turn's request.
+    const respondToRequest = vi.fn(async () => {});
+    const adapter = {
+      provider: 'acp',
+      metadata: { provider: 'acp', capabilities: [] },
+      hasSession: async (id: string) => id === threadId,
+      listSessions: async () => [],
+      streamEvents: async function* () {},
+      respondToRequest,
+    } as unknown as ProviderAdapterShape;
+    const service = serviceFor(eventStore, [adapter]);
+
+    await (service as any).interruptedTurns.consume();
+
+    const reference = {
+      threadId,
+      requestId: 'req-dead',
+      requestEventId: `request-opened:${threadId}:req-dead`,
+    };
+    expect(
+      service.inspectAttentionRequest(reference, INTERNAL_SESSION_READ_SCOPE),
+    ).toMatchObject({ state: 'resolved' });
+    await expect(
+      service.dispatch({
+        type: 'respondToRequest',
+        threadId,
+        requestId: 'req-dead',
+        expectedRequestEventId: reference.requestEventId,
+        decision: 'accept',
+      }),
+    ).rejects.toMatchObject({ code: 'request_event_changed' });
+    expect(respondToRequest).not.toHaveBeenCalled();
+    expect(
+      eventStore
+        .listEvents(threadId)
+        .filter((event) => event.payload.method === 'request.resolved')
+        .map((event) => (event.payload as { status?: string }).status),
+    ).toEqual(['expired']);
+  });
+
+  test('a log from before the fix (abort and banner, request never resolved) reads settled without a write', async () => {
+    const threadId = 'thread-approval-history';
+    const eventStore = new EventStore(databasePath());
+    stores.push(eventStore);
+    eventStore.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+    eventStore.appendEvent({
+      eventId: `turn-started:${threadId}`,
+      provider: 'acp',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:00:01.000Z',
+      method: 'turn.started',
+      prompt: 'do the thing',
+    } as CanonicalRuntimeEvent);
+    eventStore.appendEvent(approval(threadId, 'req-orphan'));
+    // Exactly what pre-#3071 recovery left behind.
+    eventStore.appendEvent({
+      eventId: 'turn-interrupted-abort:boundary-old',
+      provider: 'acp',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:01:00.000Z',
+      method: 'turn.aborted',
+      reason:
+        'Turn interrupted — the process restarted while this turn was in progress.',
+      recoveryTerminal: true,
+    } as CanonicalRuntimeEvent);
+    eventStore.appendEvent({
+      eventId: 'turn-interrupted:boundary-old',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-08-16T00:01:00.000Z',
+      method: 'session.state-changed',
+      sessionId: threadId,
+      from: 'running',
+      to: 'awaiting-approval',
+      reason:
+        'Turn interrupted — the process restarted while this turn was in progress.',
+      sessionState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+    } as CanonicalRuntimeEvent);
+    upsertRunning(eventStore, threadId);
+    const before = eventStore.listEvents(threadId).length;
+    const service = serviceFor(eventStore);
+
+    // The store's own request table still says open: nothing was written.
+    expect(eventStore.listOpenRequestIdsByThreads([threadId])).toEqual(
+      new Map([[threadId, ['req-orphan']]]),
+    );
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session).toMatchObject({
+      lifecycleState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+      pendingReview: false,
+      hasActiveTurn: false,
+    });
+    const listed = (
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+    ).find((session) => session.threadId === threadId);
+    expect(listed).toMatchObject({
+      lifecycleState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      pendingReview: false,
+      openRequestIds: [],
+      blockingOpenRequestIds: [],
+    });
+    // What the approval inbox's convergence sweep reads to expire the
+    // notification that still offers Allow/Deny.
+    expect(service.readRequestOutcome(threadId, 'req-orphan')).toEqual({
+      state: 'resolved',
+      status: 'expired',
+    });
+    expect(eventStore.listEvents(threadId)).toHaveLength(before);
   });
 });
