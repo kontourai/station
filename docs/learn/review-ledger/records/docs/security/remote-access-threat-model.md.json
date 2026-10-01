@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"e25263a7e34256344f697794e63dc924527c18ec53a6dd190716ea8e964a26b1","revision":"09b6047098252a25e8fd7f531f59c920ede4464f"},
+  "document": {"digest":"8a45950b2ca3d37c0f2a75457a607dd3020cf2210748597842b5aa10fc336bca","revision":"63055062f4e1fef01fc321be8dc8c16a108961b6"},
 
   "sources": [
     {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},

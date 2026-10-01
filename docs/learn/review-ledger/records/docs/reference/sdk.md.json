@@ -298,7 +298,7 @@
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/projects/coding.ts","digest":"a7cda0de6b284aac074ddeab7d340847058be797d4f222a6a1a26c7d435fbb8a","revision":"841509ddd903096c3d994b5b2fdfe008b36ec0eb"},
+    {"path":"src-server/routes/projects/coding.ts","digest":"64446ff8071d40a7337e13c1ac80f6a1a74283d07302a84777648d6f6196dcce","revision":"5ca36d18429a22e4914f120d294359d4bc8e3b40"},
 
     {"path":"src-server/routes/projects/project-identity-routes.ts","digest":"6abd1b5f996e52b18192683a5450eca3ecf287b3716ac16a73d8c3613103dcb5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
