@@ -10,7 +10,12 @@
  * read schedules nothing, and unmount cancels the pending timer.
  */
 
-import { renderHook } from '@testing-library/react';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useReconcilingCatalogRefresh } from '../useNewChatSelectionModel';
 
@@ -19,6 +24,52 @@ afterEach(() => {
 });
 
 describe('useReconcilingCatalogRefresh', () => {
+  test('joins an active catalog read instead of starting overlapping transport work', async () => {
+    vi.useFakeTimers();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const snapshot = { catalogState: 'reconciling', agents: [] };
+    const key = ['reconciling-catalog-overlap'];
+    client.setQueryData(key, snapshot);
+    let complete!: (value: typeof snapshot) => void;
+    // The agents SDK read does not consume Query's abort signal. A cancelled
+    // query operation would leave this transport work running underneath it.
+    const read = vi.fn(
+      () =>
+        new Promise<typeof snapshot>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const view = renderHook(
+      () => {
+        const catalog = useQuery({ queryKey: key, queryFn: read });
+        useReconcilingCatalogRefresh(
+          catalog.data?.catalogState,
+          catalog.dataUpdatedAt,
+          catalog.refetch,
+        );
+      },
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    );
+    await act(async () => {
+      void client.refetchQueries({ queryKey: key });
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await act(async () => {
+      complete(snapshot);
+    });
+    client.clear();
+  });
   test('a reconciling read schedules exactly one refetch after the delay', () => {
     vi.useFakeTimers();
     const refetch = vi.fn();
