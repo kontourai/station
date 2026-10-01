@@ -6,6 +6,7 @@ import { crc32 } from 'node:zlib';
 import { TASK_DECLARED_OUTPUT_KEEP_V1 } from '@kontourai/station-contracts/task-graph';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { SessionOutputsModule } from '../../../services/orchestration/session-outputs-module.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import {
@@ -15,6 +16,7 @@ import {
 import { createTaskOutputRoutes } from '../task-outputs.js';
 
 const paths: string[] = [];
+const makeTempDir = trackTempDirs();
 
 function app() {
   const home = mkdtempSync(join(tmpdir(), 'station-task-output-route-home-'));
@@ -105,11 +107,8 @@ describe('Task Output routes', () => {
   test.each([false, true])(
     'declared-file keep fences Task recreation=%s before durable publication',
     async (recreated) => {
-      const home = mkdtempSync(join(tmpdir(), 'station-output-keep-route-'));
-      const workspace = mkdtempSync(
-        join(tmpdir(), 'station-output-keep-source-'),
-      );
-      paths.push(home, workspace);
+      const home = makeTempDir('station-output-keep-route-');
+      const workspace = makeTempDir('station-output-keep-source-');
       const bytes = 'declared route bytes';
       writeFileSync(join(workspace, 'report.txt'), bytes);
       const graph = new TaskGraphService(home, {
