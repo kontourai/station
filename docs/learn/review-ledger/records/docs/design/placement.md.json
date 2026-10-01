@@ -9,10 +9,10 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"218b4053f0dae1f9701e51b7ffc613bf64755ceb0a7dafd2d500ee00f97c48f7","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+  "document": {"digest":"c8b462fb433ac353548ffcd0c201086d1a34476787fc3b27a81fbb4ab900b17c","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
   "sources": [
-    {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"ffe893afc9438cc0ae812a539c36a6ac7a6af1632dac09a224d546f5f684b941","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
+    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"579e41e2ce05f75fdb253da1538b34a56b0bf3d1ede1bc5fdd3add1d74ff7f6d","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
     {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"1ef7d183b06ac39f704660542495e0fddd62bdaffb1d2d1ea38847d3b06af8e3","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"6fc849fb2b178eddaa34ae34e8df1cd55d345a840915df6958b4a1cbc2215f59","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
     {"path":"src-ui/src/regions/__tests__/region-arrangement-record.test.ts","digest":"ae69b3a3f2ca0fe2eb0be804af9f5a0e0fee85b74623a383738d06a7215a342d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -816,7 +816,7 @@
 
     {"path":"src-ui/src/hooks/useOutboundQueueFlush.ts","digest":"4d1c55ae87eafc2fc46ff96fc8d3a8c6b3f9816e38423239e629991efaa86dc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"6fc849fb2b178eddaa34ae34e8df1cd55d345a840915df6958b4a1cbc2215f59","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
     {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

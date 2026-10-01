@@ -32,7 +32,7 @@
 
     {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"6fc849fb2b178eddaa34ae34e8df1cd55d345a840915df6958b4a1cbc2215f59","revision":"2fb58e17deb6d5b85ed927005168c0493939c33f"},
 
     {"path":"src-ui/src/views/SettingsView.tsx","digest":"4324cbcd6cca335a2beaed8df7d1abe24f497ab8325a51ae0542197a3f5ca988","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
