@@ -13,7 +13,5 @@
 
   "sources": [],
 
-  "checks": [
-    "Changesets planner passed with 72 retained notes."
-  ]
+  "checks": []
 }

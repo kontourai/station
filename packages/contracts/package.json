@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-contracts",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "sideEffects": false,
   "description": "Runtime, provider, and orchestration contracts for Station",
   "type": "module",
@@ -31,6 +31,7 @@
     "./device-toolchain": "./src/device-toolchain.ts",
     "./device-tools": "./src/device-tools.ts",
     "./native-push": "./src/native-push.ts",
+    "./native-device-proof": "./src/native-device-proof.ts",
     "./presence": "./src/presence.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",

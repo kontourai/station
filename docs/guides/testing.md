@@ -109,6 +109,17 @@ own distinct risk, such as a transport or lifecycle failure the owner cannot
 reach. Prefer extending a table-driven case or shared fixture over adding a
 near-duplicate test.
 
+The manual [native protected Project pilot](native-shell-verification.md#native-protected-project-pilot)
+uses real macOS WebView/IPC/Keychain boundaries and an isolated StationRuntime
+with the real local account provider, broker, TURN and Pion. Its helper accepts
+the Project invitation through the account API and verifies active Viewer
+membership before native pairing; registration alone is not membership. Keep
+bootstrap HTTP, protected DataChannel traffic and cleanup observations separate.
+A development run with uncommitted harness inputs is preliminary evidence;
+record a final source/binary-bound result only after freezing those inputs.
+This manual lane is separate from the default sweep and does not qualify fresh
+relay-only enrollment or ordinary native UI activation.
+
 The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
 `stored` is a localStorage observation and there is no alternative assertion.
 It is a syntax check, not a general assertion-strength proof. Seed legacy values

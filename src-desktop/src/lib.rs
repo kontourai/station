@@ -19,10 +19,23 @@ mod login_shell;
 mod notification_feed;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
-// Host account proof-key custody. Separate keyring namespace from the relay
-// routing proof key; no Tauri IPC is registered for it yet.
+// Host account proof-key custody, distinct from routing and Device keys.
+#[cfg(not(mobile))]
+mod native_account_operations;
 #[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
+#[cfg(not(mobile))]
+mod native_application_peer;
+// Desktop-only Device identity custody metadata (station#2893): the versioned
+// keyring companion for paired credentials and the current-identity resolver.
+#[cfg(not(mobile))]
+pub(crate) mod native_device_binding_candidate;
+#[cfg(not(mobile))]
+pub(crate) mod native_device_custody;
+#[cfg(not(mobile))]
+pub(crate) mod native_device_proof_key;
+#[cfg(not(mobile))]
+pub(crate) mod native_proof_key_core;
 #[cfg(not(mobile))]
 mod native_relay_key_approval;
 #[cfg(not(mobile))]
@@ -484,7 +497,7 @@ impl From<NativeCommandError> for String {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
-struct CredentialProfileStore {
+pub(crate) struct CredentialProfileStore {
     schema_version: u8,
     revision: u64,
     default_profile: Option<String>,
@@ -598,6 +611,12 @@ struct PendingPairingCredential {
     exact_origin: String,
     environment_id: String,
     client_instance_id: String,
+    /// Device id/kind captured from the AUTHENTICATED pairing response while
+    /// the bearer was still host-held (station#2893). The renderer-visible
+    /// device projection is never an authority for these values, and they are
+    /// never re-read from renderer state at commit time.
+    device_id: String,
+    device_kind: String,
     expires_at: SystemTime,
     phase: NativePairingPhase,
 }
@@ -717,9 +736,165 @@ enum NativeHttpMessage {
     },
 }
 
+#[derive(Debug)]
 struct NativeHttpBrokerFailure {
     code: &'static str,
     detail: Option<String>,
+}
+
+/// One owner-bound native HTTP exchange can feed either the renderer's
+/// existing Tauri channel or a private host collector. Keeping the protocol
+/// engine behind this sink preserves its admission, custody and cancellation
+/// checks for both callers.
+trait NativeHttpMessageSink {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure>;
+}
+
+impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
+        Channel::send(self, message).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
+    }
+}
+
+struct NativeHttpDeadlineGuard {
+    stop: std::sync::mpsc::SyncSender<()>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl NativeHttpDeadlineGuard {
+    fn start(
+        deadline: Instant,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        cancellations: NativeHttpCancellation,
+    ) -> Self {
+        let (stop, stopped) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            if stopped
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .is_err()
+            {
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                let (state, changed) = &*cancellations.0;
+                if let Ok(_state) = state.lock() {
+                    changed.notify_all();
+                }
+            }
+        });
+        Self {
+            stop,
+            worker: Some(worker),
+        }
+    }
+}
+
+impl Drop for NativeHttpDeadlineGuard {
+    fn drop(&mut self) {
+        let _ = self.stop.try_send(());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+const NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT: usize = 4 * 1024;
+const NATIVE_DEVICE_SELF_RECEIPT_BODY_DEADLINE: Duration = Duration::from_secs(45);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NativeReceiptCollectorPhase {
+    Body,
+    Ended,
+    Failed,
+}
+
+/// Validates the exact response/chunk/end stream produced by the shared
+/// native HTTP owner. No transport error detail is retained for IPC output.
+#[derive(Default)]
+struct NativeReceiptMessageCollector {
+    phase: Option<NativeReceiptCollectorPhase>,
+    status: Option<u16>,
+    declared_body_length: Option<u64>,
+    body: Vec<u8>,
+    error_code: Option<&'static str>,
+    oversized: bool,
+}
+
+impl NativeReceiptMessageCollector {
+    fn finish(self) -> Result<(u16, Vec<u8>), &'static str> {
+        if self.oversized {
+            return Err("response_too_large");
+        }
+        if let Some(code) = self.error_code {
+            return Err(code);
+        }
+        if self.phase != Some(NativeReceiptCollectorPhase::Ended) {
+            return Err("response_incomplete");
+        }
+        let Some(status) = self.status else {
+            return Err("response_incomplete");
+        };
+        if self
+            .declared_body_length
+            .is_some_and(|length| length != self.body.len() as u64)
+        {
+            return Err("response_truncated");
+        }
+        Ok((status, self.body))
+    }
+}
+
+impl NativeHttpMessageSink for NativeReceiptMessageCollector {
+    fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
+        match message {
+            NativeHttpMessage::Response {
+                status,
+                body_length,
+                ..
+            } if self.phase.is_none() => {
+                if body_length
+                    .is_some_and(|length| length > NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT as u64)
+                {
+                    self.oversized = true;
+                    self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                    return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                }
+                self.status = Some(status);
+                self.declared_body_length = body_length;
+                self.phase = Some(NativeReceiptCollectorPhase::Body);
+                Ok(())
+            }
+            NativeHttpMessage::Chunk { bytes }
+                if self.phase == Some(NativeReceiptCollectorPhase::Body) =>
+            {
+                if self.body.len().saturating_add(bytes.len())
+                    > NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT
+                {
+                    self.oversized = true;
+                    self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                    return Err(NativeHttpBrokerFailure::coded("response_too_large"));
+                }
+                self.body.extend_from_slice(&bytes);
+                Ok(())
+            }
+            NativeHttpMessage::End if self.phase == Some(NativeReceiptCollectorPhase::Body) => {
+                self.phase = Some(NativeReceiptCollectorPhase::Ended);
+                Ok(())
+            }
+            NativeHttpMessage::Error { code, .. }
+                if self.phase != Some(NativeReceiptCollectorPhase::Ended) =>
+            {
+                if self.error_code.is_none() {
+                    self.error_code = Some(code);
+                }
+                self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                Ok(())
+            }
+            _ => {
+                self.error_code = Some("invalid_response_sequence");
+                self.phase = Some(NativeReceiptCollectorPhase::Failed);
+                Err(NativeHttpBrokerFailure::coded("invalid_response_sequence"))
+            }
+        }
+    }
 }
 
 struct NativeHttpTransportDetail {
@@ -1143,6 +1318,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     }
 }
 
+#[cfg(any(mobile, test))]
 fn invalidate_active_profile_receipt_after_credential_delete(
     authority: &mut NativeProfileAuthorityState,
     reference: &NativeCredentialReference,
@@ -1334,31 +1510,35 @@ fn credential_vault_delete_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<(), String> {
-    let reference = authorized_credential_reference(app, authority)?;
-    match credential_entry(&reference)?.delete_credential() {
-        Ok(()) => {
-            let mut state = authority
-                .0
-                .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
-            invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-            Ok(())
+    #[cfg(not(mobile))]
+    {
+        credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
+    }
+    #[cfg(mobile)]
+    {
+        let reference = authorized_credential_reference(app, authority)?;
+        match credential_entry(&reference)?.delete_credential() {
+            Ok(()) => {
+                let mut state = authority
+                    .0
+                    .lock()
+                    .map_err(|_| "Station native authority is unavailable".to_string())?;
+                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
+                Ok(())
+            }
+            Err(error) if is_missing_credential(&error) => {
+                let mut state = authority
+                    .0
+                    .lock()
+                    .map_err(|_| "Station native authority is unavailable".to_string())?;
+                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
+                Ok(())
+            }
+            Err(error) => Err(format!("delete OS credential: {error}")),
         }
-        Err(error) if is_missing_credential(&error) => {
-            let mut state = authority
-                .0
-                .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
-            invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-            Ok(())
-        }
-        Err(error) => Err(format!("delete OS credential: {error}")),
     }
 }
 
-/// A retired reference may be supplied only after the host proves no profile
-/// still owns it. This supports key rotation without reopening arbitrary
-/// read/write/delete access to every keyring account.
 #[tauri::command]
 async fn credential_vault_delete_unreferenced(
     app: AppHandle,
@@ -1374,22 +1554,85 @@ fn credential_vault_delete_unreferenced_blocking(
     app: &AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
-    credential_reference_key(&reference)?;
-    let contents = read_station_profile_contents(app)?;
-    let store = parse_station_profile_store(&contents)?;
-    if store.profiles.iter().any(|profile| {
-        profile
-            .credential_ref
-            .as_ref()
-            .is_some_and(|owned| owned.kind == reference.kind && owned.id == reference.id)
-    }) {
-        return Err("refusing to delete a credential still owned by a saved Station".to_string());
+    #[cfg(not(mobile))]
+    {
+        credential_vault_delete_with_host(
+            &AppProfileWriteHost::new(app)?,
+            &NativeProfileAuthority::default(),
+            Some(&reference),
+        )
     }
-    match credential_entry(&reference)?.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(error) if is_missing_credential(&error) => Ok(()),
-        Err(error) => Err(format!("delete OS credential: {error}")),
+    #[cfg(mobile)]
+    {
+        credential_reference_key(&reference)?;
+        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+        if store
+            .profiles
+            .iter()
+            .any(|profile| profile.credential_ref.as_ref() == Some(&reference))
+        {
+            return Err("refusing to delete a credential still owned by a saved Station".into());
+        }
+        match credential_entry(&reference)?.delete_credential() {
+            Ok(()) => Ok(()),
+            Err(error) if is_missing_credential(&error) => Ok(()),
+            Err(error) => Err(format!("delete OS credential: {error}")),
+        }
     }
+}
+
+#[cfg(not(mobile))]
+fn credential_vault_delete_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    unreferenced: Option<&NativeCredentialReference>,
+) -> Result<(), String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    if let Some(reference) = unreferenced {
+        credential_reference_key(reference)?;
+        if store
+            .profiles
+            .iter()
+            .any(|profile| profile.credential_ref.as_ref() == Some(reference))
+        {
+            return Err("refusing to delete a credential still owned by a saved Station".into());
+        }
+        // New callers can retire legacy unreferenced credentials; published CAS
+        // removals already carry a durable intent, so cold recovery needs no renderer reference.
+        native_device_custody::stage_unreferenced_retirement(host.custody(), &path, reference)?;
+    } else if state.active.is_some() {
+        native_device_custody::stage_active_retirement(host.custody(), &path, &store, &state)?;
+        state.active = None;
+    } else if !native_device_custody::has_pending_retirements(host.custody(), &path)? {
+        return Err("Station has no active credential or pending retirement".into());
+    }
+    native_device_custody::retry_retirements(host.custody(), &path, &store, &state, unreferenced)
+}
+
+#[cfg(not(mobile))]
+fn retry_device_custody_retirements_for_app(app: &AppHandle) -> Result<(), String> {
+    let host = AppProfileWriteHost::new(app)?;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    native_device_custody::retry_retirements(host.custody(), &path, &store, &state, None)
 }
 
 /// The native host records the selected Station/reference after validating the full
@@ -1405,13 +1648,21 @@ fn station_profile_authorize_active_internal(
     authority: &NativeProfileAuthority,
     profile_name: &str,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let mut state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
-    let receipt = authorize_active_profile_in_state(&mut state, &store, profile_name)?;
-    drop(state);
+    #[cfg(not(mobile))]
+    let receipt = station_profile_authorize_with_host(
+        &AppProfileWriteHost::new(app)?,
+        authority,
+        profile_name,
+    )?;
+    #[cfg(mobile)]
+    let receipt = {
+        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+        let mut state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable".to_string())?;
+        authorize_active_profile_in_state(&mut state, &store, profile_name)?
+    };
     // The renderer may have attempted its bounded readiness proof before the
     // active credential was available. Reuse its mounted retry subscription
     // once the host has committed the selected profile.
@@ -1420,6 +1671,31 @@ fn station_profile_authorize_active_internal(
     #[cfg(mobile)]
     let _ = app.emit("station://startup-readiness-retry", ());
     Ok(receipt)
+}
+
+#[cfg(not(mobile))]
+fn station_profile_authorize_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    profile_name: &str,
+) -> Result<NativeProfileAuthorizationReceipt, String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    let profile = selected_profile_from_store(&store, profile_name)?;
+    if profile.credential_ref.as_ref().is_some_and(|reference| {
+        native_device_custody::has_active_retirement(host.custody(), &path, reference)
+            .unwrap_or(true)
+    }) {
+        return Err("Station credential retirement is pending".into());
+    }
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable")?;
+    authorize_active_profile_in_state(&mut state, &store, profile_name)
 }
 
 fn authorize_active_profile_in_state(
@@ -2185,28 +2461,33 @@ fn replace_station_profile_store(
         .map_err(|error| format!("replace saved Station metadata: {error}"))
 }
 
-fn authorized_credential_reference(
-    app: &AppHandle,
-    authority: &NativeProfileAuthority,
-) -> Result<NativeCredentialReference, NativeCommandError> {
-    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
-    // read takes `profiles.json.lock`, and the writer holds that lock while it
-    // takes this mutex; taking them in the other order here would let a
-    // concurrent write and this read stall each other until the lock wait
-    // expires (the commands run off the main thread since #2469).
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
+/// The full host-authorized active-Station custody context, extracted from
+/// `authorized_credential_reference` so the Device identity resolver
+/// (station#2893) revalidates the exact same profile-lock/authorization
+/// discipline instead of a parallel weaker one. `client_instance_id` stays
+/// optional: CLI-written profiles legitimately lack it, and ordinary bearer
+/// use must not depend on custody metadata.
+struct AuthorizedProfileContext {
+    reference: NativeCredentialReference,
+    exact_origin: String,
+    environment_id: String,
+    client_instance_id: Option<String>,
+    binding_id: String,
+    profile_revision: u64,
+}
+
+fn authorized_profile_context_in_store(
+    state: &NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+) -> Result<AuthorizedProfileContext, NativeCommandError> {
     let selected = state.active.clone().ok_or_else(|| {
         NativeCommandError::new(
             "no_active_profile",
             "Station has no host-authorized active Station",
         )
     })?;
-    profile_bindings_are_authorized(&state, &store)?;
-    let profile = selected_profile_from_store(&store, &selected.name)?;
+    profile_bindings_are_authorized(state, store)?;
+    let profile = selected_profile_from_store(store, &selected.name)?;
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
         return Err(NativeCommandError::new(
             "credential_binding_changed",
@@ -2250,7 +2531,32 @@ fn authorized_credential_reference(
             "the active Station origin or Environment binding changed",
         ));
     }
-    Ok(selected.reference)
+    Ok(AuthorizedProfileContext {
+        exact_origin: binding.exact_origin.clone(),
+        environment_id: binding.environment_id.clone(),
+        reference: selected.reference,
+        client_instance_id: profile.client_instance_id.clone(),
+        binding_id: selected.binding_id,
+        profile_revision: store.revision,
+    })
+}
+
+#[cfg(mobile)]
+fn authorized_credential_reference(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+) -> Result<NativeCredentialReference, NativeCommandError> {
+    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
+    // read takes `profiles.json.lock`, and the writer holds that lock while it
+    // takes this mutex; taking them in the other order here would let a
+    // concurrent write and this read stall each other until the lock wait
+    // expires (the commands run off the main thread since #2469).
+    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable".to_string())?;
+    Ok(authorized_profile_context_in_store(&state, &store)?.reference)
 }
 
 /// The host-authorized active Station's exact origin, when there is one.
@@ -2283,6 +2589,180 @@ pub(crate) fn native_credential_for_origin(
     credential_entry(&reference)?
         .get_password()
         .map_err(|error| format!("read OS credential store: {error}"))
+}
+
+/// Rust-internal current Device identity resolution for the host-authorized
+/// active Station (station#2893). It never exposes identity through IPC. A
+/// legacy credential with a missing or malformed companion yields the
+/// specific `MetadataMissing`/`MetadataMalformed` refusal while ordinary
+/// HTTP credential use above keeps reading the bare bearer. The standalone
+/// resolver uses the same store-read-before-mutex order as bearer reads;
+/// candidate creation uses the already-locked variant below.
+#[cfg(not(mobile))]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn resolve_current_device_identity_for_active_station(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+    expected_revision: u64,
+    expected_epoch: &str,
+) -> Result<native_device_custody::CurrentDeviceIdentity, native_device_custody::DeviceCustodyError>
+{
+    resolve_current_device_identity_with_host(
+        &AppProfileWriteHost::new(app)
+            .map_err(native_device_custody::DeviceCustodyError::NotAuthorized)?,
+        authority,
+        expected_revision,
+        expected_epoch,
+    )
+}
+
+/// Active host-authorized Device identity while a caller already owns the
+/// saved-profile file lock. The callback runs with the authority mutex held;
+/// callers must preserve the profile-file -> authority lock order. This lets
+/// a compound native operation reuse one parsed profile snapshot instead of
+/// recursively taking `profiles.json`'s lock.
+#[cfg(not(mobile))]
+pub(crate) fn with_active_device_identity_in_locked_profile<T>(
+    app: &AppHandle,
+    store: &CredentialProfileStore,
+    operation: impl FnOnce(
+        &native_device_custody::CurrentDeviceIdentity,
+        &str,
+        &str,
+        &str,
+        &str,
+    ) -> Result<T, String>,
+) -> Result<T, String> {
+    use native_device_custody::DeviceCustodyError;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| "Station native authority is unavailable".to_owned())?;
+    let host = AppProfileWriteHost::new(app)
+        .map_err(|_| DeviceCustodyError::NotAuthorized("profile_unavailable".into()).to_string())?;
+    let context = authorized_profile_context_in_store(&state, store)
+        .map_err(|error| DeviceCustodyError::NotAuthorized(error.code.to_owned()).to_string())?;
+    if native_device_custody::has_active_retirement(
+        host.custody(),
+        &host.path().map_err(|error| error.to_string())?,
+        &context.reference,
+    )
+    .map_err(|_| DeviceCustodyError::MetadataStore.to_string())?
+    {
+        return Err(DeviceCustodyError::NotAuthorized("credential_retiring".into()).to_string());
+    }
+    struct Reader<'a>(&'a dyn native_device_custody::PairingCustodyWriter);
+    impl native_device_custody::CustodyMetadataStore for Reader<'_> {
+        fn read(&self, account: &str) -> Result<Option<String>, String> {
+            self.0.read_metadata(account)
+        }
+    }
+    let identity = native_device_custody::resolve_current_device_identity(
+        host.custody().owner(),
+        &state,
+        store,
+        |reference| {
+            host.custody()
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(host.custody()),
+    )
+    .map_err(|error| error.to_string())?;
+    let active_name = state
+        .active
+        .as_ref()
+        .map(|active| active.name.as_str())
+        .ok_or_else(|| "Station native authority is unavailable".to_owned())?;
+    let client_instance_id = context
+        .client_instance_id
+        .as_deref()
+        .ok_or_else(|| "Station native client instance is unavailable".to_owned())?;
+    let result = operation(
+        &identity,
+        active_name,
+        client_instance_id,
+        &context.exact_origin,
+        &context.environment_id,
+    )?;
+    let current = native_device_custody::resolve_current_device_identity(
+        host.custody().owner(),
+        &state,
+        store,
+        |reference| {
+            host.custody()
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(host.custody()),
+    )
+    .map_err(|error| error.to_string())?;
+    if current != identity {
+        return Err("Station Device identity changed during candidate creation".into());
+    }
+    Ok(result)
+}
+
+#[cfg(not(mobile))]
+fn resolve_current_device_identity_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    expected_revision: u64,
+    expected_epoch: &str,
+) -> Result<native_device_custody::CurrentDeviceIdentity, native_device_custody::DeviceCustodyError>
+{
+    use native_device_custody::DeviceCustodyError;
+    let denied = |_| DeviceCustodyError::NotAuthorized("profile_stale".into());
+    let path = host.path().map_err(denied)?;
+    let _lock = host.lock(&path).map_err(denied)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path)
+            .map_err(|_| DeviceCustodyError::NotAuthorized("profile_unavailable".into()))?,
+    )
+    .map_err(denied)?;
+    let state = authority
+        .0
+        .lock()
+        .map_err(|_| DeviceCustodyError::NotAuthorized("authority_unavailable".into()))?;
+    if store.revision != expected_revision
+        || state
+            .active
+            .as_ref()
+            .map(|active| active.binding_id.as_str())
+            != Some(expected_epoch)
+    {
+        return Err(DeviceCustodyError::NotAuthorized("profile_stale".into()));
+    }
+    let custody = host.custody();
+    let context = authorized_profile_context_in_store(&state, &store)
+        .map_err(|_| DeviceCustodyError::NotAuthorized("profile_stale".into()))?;
+    if native_device_custody::has_active_retirement(custody, &path, &context.reference)
+        .map_err(|_| DeviceCustodyError::MetadataStore)?
+    {
+        return Err(DeviceCustodyError::NotAuthorized(
+            "credential_retiring".into(),
+        ));
+    }
+    struct Reader<'a>(&'a dyn native_device_custody::PairingCustodyWriter);
+    impl native_device_custody::CustodyMetadataStore for Reader<'_> {
+        fn read(&self, account: &str) -> Result<Option<String>, String> {
+            self.0.read_metadata(account)
+        }
+    }
+    native_device_custody::resolve_current_device_identity(
+        custody.owner(),
+        &state,
+        &store,
+        |reference| {
+            custody
+                .read_bearer(reference)?
+                .ok_or_else(|| "Station bearer is unavailable".into())
+        },
+        &Reader(custody),
+    )
 }
 
 /// Decodes `%XX` escapes in one pass so the refusal below sees what the
@@ -3113,6 +3593,8 @@ fn native_http_request_with_budgets(
     min_rate: u64,
     response_budget: Duration,
     foreground_response_budget: Duration,
+    global_budget: Option<Duration>,
+    response_body_budget: Option<Duration>,
 ) -> ureq::http::Request<Vec<u8>> {
     let budget = native_http_send_body_budget(request.body().len(), floor, min_rate);
     let path = request.uri().path();
@@ -3135,6 +3617,8 @@ fn native_http_request_with_budgets(
         .configure_request(request)
         .timeout_send_body(Some(budget))
         .timeout_recv_response(Some(response_budget))
+        .timeout_global(global_budget)
+        .timeout_recv_body(response_body_budget)
         .build()
 }
 const NATIVE_HTTP_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -3335,7 +3819,25 @@ fn station_native_http_request_blocking(
     authority: NativeProfileAuthority,
     cancellations: NativeHttpCancellation,
     request: NativeHttpRequest,
-    channel: Channel<NativeHttpMessage>,
+    mut channel: Channel<NativeHttpMessage>,
+) -> Result<(), NativeCommandError> {
+    station_native_http_request_to_sink_blocking(
+        app,
+        authority,
+        cancellations,
+        request,
+        &mut channel,
+        None,
+    )
+}
+
+fn station_native_http_request_to_sink_blocking(
+    app: AppHandle,
+    authority: NativeProfileAuthority,
+    cancellations: NativeHttpCancellation,
+    request: NativeHttpRequest,
+    sink: &mut (impl NativeHttpMessageSink + ?Sized),
+    body_deadline: Option<Instant>,
 ) -> Result<(), NativeCommandError> {
     use std::io::Read;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -3426,6 +3928,9 @@ fn station_native_http_request_blocking(
         validate_native_liveness_probe(&method, is_stream_request, &parsed_url)?;
     }
     let cancel = Arc::new(AtomicBool::new(false));
+    let _deadline_guard = body_deadline.map(|deadline| {
+        NativeHttpDeadlineGuard::start(deadline, Arc::clone(&cancel), cancellations.clone())
+    });
     // The slot guard owns the admission from here on: moved into the exchange
     // below and released exactly once on every path, including a panic
     // (station#2327).
@@ -3480,6 +3985,11 @@ fn station_native_http_request_blocking(
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let agent = native_http_agent();
+        let response_body_budget =
+            body_deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        if response_body_budget.is_some_and(|budget| budget.is_zero()) {
+            return Err(NativeHttpBrokerFailure::coded("response_timeout"));
+        }
         let request = native_http_request_with_budgets(
             &agent,
             request,
@@ -3487,6 +3997,8 @@ fn station_native_http_request_blocking(
             NATIVE_HTTP_SEND_BODY_MIN_RATE_BYTES_PER_SEC,
             NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
             NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            response_body_budget,
+            response_body_budget,
         );
         run_admitted_native_http_exchange(
             slot,
@@ -3506,23 +4018,25 @@ fn station_native_http_request_blocking(
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
                 let open_stream = native_response_is_open_stream(response.headers());
                 let status = response.status().as_u16();
-                channel
-                    .send(NativeHttpMessage::Response {
-                        status,
-                        headers: native_response_headers(response.headers()),
-                        // Chunked, close-delimited, and transparently decompressed
-                        // responses do not have an exact wire length. Preserve a
-                        // declared ordinary body length so the WebView can reject a
-                        // clean-looking EOF that actually truncated JSON (#2265).
-                        body_length: response.body().content_length(),
-                    })
-                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                sink.send(NativeHttpMessage::Response {
+                    status,
+                    headers: native_response_headers(response.headers()),
+                    // Chunked, close-delimited, and transparently decompressed
+                    // responses do not have an exact wire length. Preserve a
+                    // declared ordinary body length so the WebView can reject a
+                    // clean-looking EOF that actually truncated JSON (#2265).
+                    body_length: response.body().content_length(),
+                })
+                .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 let mut reader = response.body_mut().as_reader();
                 let mut buffer = [0_u8; 16 * 1024];
                 let mut total = 0_usize;
                 loop {
                     if cancel.load(Ordering::SeqCst) {
                         return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                    }
+                    if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                        return Err(NativeHttpBrokerFailure::coded("response_timeout"));
                     }
                     let read = match reader.read(&mut buffer) {
                         Ok(read) => read,
@@ -3534,7 +4048,10 @@ fn station_native_http_request_blocking(
                                 std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
                             ) =>
                         {
-                            continue
+                            if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                                return Err(NativeHttpBrokerFailure::coded("response_timeout"));
+                            }
+                            continue;
                         }
                         Err(error) => {
                             return Err(NativeHttpBrokerFailure::transport(
@@ -3557,11 +4074,10 @@ fn station_native_http_request_blocking(
                         &reference,
                     )
                     .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-                    channel
-                        .send(NativeHttpMessage::Chunk {
-                            bytes: buffer[..read].to_vec(),
-                        })
-                        .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
+                    sink.send(NativeHttpMessage::Chunk {
+                        bytes: buffer[..read].to_vec(),
+                    })
+                    .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 }
                 revalidate_native_http_profile(
                     &app,
@@ -3571,15 +4087,21 @@ fn station_native_http_request_blocking(
                     &reference,
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-                channel
-                    .send(NativeHttpMessage::End)
+                sink.send(NativeHttpMessage::End)
                     .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 Ok(())
             },
         )
     })();
     if let Err(failure) = result {
-        let _ = channel.send(NativeHttpMessage::Error {
+        let failure = if failure.code == "cancelled"
+            && body_deadline.is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            NativeHttpBrokerFailure::coded("response_timeout")
+        } else {
+            failure
+        };
+        let _ = sink.send(NativeHttpMessage::Error {
             code: failure.code,
             detail: failure.detail,
         });
@@ -4214,6 +4736,8 @@ fn station_native_pairing_exchange_blocking(
             exact_origin: origin,
             environment_id: response.environment_id.clone(),
             client_instance_id,
+            device_id: device.id.clone(),
+            device_kind: device.kind.clone(),
             expires_at: now + Duration::from_secs(120),
             phase: NativePairingPhase::AwaitingRequiresAuth,
         },
@@ -4392,7 +4916,90 @@ fn credential_vault_commit_pairing_internal(
     // The saved-Station read comes before the pending mutex for the same
     // lock-order reason as `authorized_credential_reference`: the writer holds
     // `profiles.json.lock` (mobile) while it takes this mutex.
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    #[cfg(not(mobile))]
+    {
+        credential_vault_commit_pairing_with_host(
+            &AppProfileWriteHost::new(app)?,
+            authority,
+            pending,
+            handle,
+        )
+    }
+    #[cfg(mobile)]
+    {
+        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+        let mut pending = pending
+            .0
+            .lock()
+            .map_err(|_| "native pairing credential state unavailable".to_string())?;
+        let entry = pending
+            .get_mut(handle)
+            .filter(|entry| entry.expires_at > SystemTime::now())
+            .ok_or_else(|| "native pairing credential handle is missing or expired".to_string())?;
+        let profile_name = match &entry.phase {
+            NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
+            _ => {
+                return Err("Station pairing handle is not awaiting keyring commitment".to_string())
+            }
+        };
+        pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
+        let reference_key = credential_reference_key(&entry.reference)?;
+        let state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable".to_string())?;
+        if !state.transitioning.contains(&reference_key)
+            || state.bindings.contains_key(&reference_key)
+        {
+            return Err("Station pairing authority is not transitioning".to_string());
+        }
+        drop(state);
+        entry.phase = NativePairingPhase::CredentialRemoved {
+            profile_name: profile_name.clone(),
+        };
+        if let Err(error) = write_credential_password(&entry.reference, &entry.credential) {
+            if entry.expires_at > SystemTime::now() {
+                entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
+            }
+            return Err(error);
+        }
+        entry.phase = NativePairingPhase::KeyringWritten { profile_name };
+        Ok(())
+    }
+}
+
+#[cfg(not(mobile))]
+fn credential_vault_commit_pairing_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    handle: &str,
+) -> Result<(), String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "saved Station storage is unavailable")?,
+    )?;
+    credential_vault_commit_pairing_with_custody(authority, pending, handle, &store, host.custody())
+}
+
+/// Desktop commit core (station#2893). The custody writer owns both the
+/// bearer write and the companion write; the phase may only advance to
+/// `KeyringWritten` — the gate that later authorizes the profile publication
+/// and with it any future proof eligibility — after BOTH succeeded. A
+/// companion failure leaves the entry at `RequiresAuthPersisted` and the
+/// authority still `transitioning`, so nothing publishes; a retry against the
+/// SAME pending handle revalidates the same host-held tuple and rewrites both
+/// records, repairing any partial state. A successfully committed credential
+/// is never cleaned up merely because its pending handle later expires.
+#[cfg(not(mobile))]
+fn credential_vault_commit_pairing_with_custody(
+    authority: &NativeProfileAuthority,
+    pending: &NativePendingPairingCredentials,
+    handle: &str,
+    store: &CredentialProfileStore,
+    custody: &dyn native_device_custody::PairingCustodyWriter,
+) -> Result<(), String> {
     let mut pending = pending
         .0
         .lock()
@@ -4405,7 +5012,7 @@ fn credential_vault_commit_pairing_internal(
         NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
         _ => return Err("Station pairing handle is not awaiting keyring commitment".to_string()),
     };
-    pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
+    pairing_profile_matches(store, &profile_name, entry, "requires-auth")?;
     let reference_key = credential_reference_key(&entry.reference)?;
     let state = authority
         .0
@@ -4419,7 +5026,38 @@ fn credential_vault_commit_pairing_internal(
     entry.phase = NativePairingPhase::CredentialRemoved {
         profile_name: profile_name.clone(),
     };
-    if let Err(error) = write_credential_password(&entry.reference, &entry.credential) {
+    // The custody tuple comes ONLY from this host-held pending entry, whose
+    // device id/kind were captured from the authenticated pairing exchange —
+    // never from the renderer-visible device projection.
+    let custody_metadata = native_device_custody::NativeDeviceCustodyMetadata::for_pairing(
+        custody.owner(),
+        &entry.reference,
+        &entry.credential,
+        &entry.exact_origin,
+        &entry.environment_id,
+        &entry.client_instance_id,
+        &entry.device_id,
+        &entry.device_kind,
+    );
+    let metadata = match custody_metadata {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            if entry.expires_at > SystemTime::now() {
+                entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
+            }
+            return Err(error);
+        }
+    };
+    if let Err(error) = custody.write_bearer(&entry.reference, &entry.credential) {
+        if entry.expires_at > SystemTime::now() {
+            entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
+        }
+        return Err(error);
+    }
+    if let Err(error) = custody.write_metadata(&metadata) {
+        // The bearer may already be in place; the retry below rewrites both.
+        // Until this phase reaches KeyringWritten nothing publishes, so the
+        // partial state cannot become proof-eligible.
         if entry.expires_at > SystemTime::now() {
             entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
         }
@@ -5336,26 +5974,58 @@ fn station_profile_store_read_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<String, String> {
-    let path = station_profiles_path(app)?;
-    validate_station_profile_store(&path)?;
+    #[cfg(not(mobile))]
+    {
+        station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
+    }
+    #[cfg(mobile)]
+    {
+        let path = station_profiles_path(app)?;
+        validate_station_profile_store(&path)?;
+        match read_station_profile_store(&path) {
+            Ok(contents) => {
+                let store = parse_station_profile_store(&contents)?;
+                let mut state = authority
+                    .0
+                    .lock()
+                    .map_err(|_| "Station native authority is unavailable".to_string())?;
+                profile_bindings_are_authorized(&state, &store)?;
+                // A read is the only trust-on-first-observation path. It accepts
+                // externally configured CLI profiles, but never promotes a
+                // crash-left `requires-auth` record into native authority.
+                observe_configured_profile_bindings(&mut state, &store)?;
+                Ok(contents)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(EMPTY_STATION_PROFILE_STORE.to_string())
+            }
+            Err(error) => Err(format!("read saved Station metadata: {error}")),
+        }
+    }
+}
+
+#[cfg(not(mobile))]
+fn station_profile_store_read_with_host(
+    host: &impl ProfileWriteHost,
+    authority: &NativeProfileAuthority,
+) -> Result<String, String> {
+    let path = host.path()?;
+    let _lock = host.lock(&path)?;
     match read_station_profile_store(&path) {
         Ok(contents) => {
             let store = parse_station_profile_store(&contents)?;
             let mut state = authority
                 .0
                 .lock()
-                .map_err(|_| "Station native authority is unavailable".to_string())?;
+                .map_err(|_| "Station native authority is unavailable")?;
             profile_bindings_are_authorized(&state, &store)?;
-            // A read is the only trust-on-first-observation path. It accepts
-            // externally configured CLI profiles, but never promotes a
-            // crash-left `requires-auth` record into native authority.
             observe_configured_profile_bindings(&mut state, &store)?;
             Ok(contents)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(EMPTY_STATION_PROFILE_STORE.to_string())
+            Ok(EMPTY_STATION_PROFILE_STORE.into())
         }
-        Err(error) => Err(format!("read saved Station metadata: {error}")),
+        Err(_) => Err("saved Station storage is unavailable".into()),
     }
 }
 
@@ -5376,7 +6046,7 @@ fn station_profile_store_write_internal(
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
     let result = station_profile_store_write_with_host(
-        &AppProfileWriteHost(app),
+        &AppProfileWriteHost::new(app)?,
         authority,
         pending,
         contents,
@@ -5387,6 +6057,9 @@ fn station_profile_store_write_internal(
     {
         let app = app.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
+            if retry_device_custody_retirements_for_app(&app).is_err() {
+                log::warn!("native credential retirement remains pending");
+            }
             if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
                 log::warn!(
                     "could not resume native relay grant cleanup after profile write: {error:?}"
@@ -5408,6 +6081,8 @@ trait ProfileWriteHost {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String>;
+    #[cfg(not(mobile))]
+    fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter;
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
     fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
         generated
@@ -5415,16 +6090,30 @@ trait ProfileWriteHost {
     fn notify(&self) {}
 }
 
-struct AppProfileWriteHost<'a>(&'a AppHandle);
+struct AppProfileWriteHost<'a> {
+    app: &'a AppHandle,
+    #[cfg(not(mobile))]
+    custody: native_device_custody::DesktopPairingCustody,
+}
+
+impl<'a> AppProfileWriteHost<'a> {
+    fn new(app: &'a AppHandle) -> Result<Self, String> {
+        Ok(Self {
+            app,
+            #[cfg(not(mobile))]
+            custody: native_device_custody::DesktopPairingCustody::for_app(app)?,
+        })
+    }
+}
 
 impl ProfileWriteHost for AppProfileWriteHost<'_> {
     fn path(&self) -> Result<std::path::PathBuf, String> {
-        station_profiles_path(self.0)
+        station_profiles_path(self.app)
     }
     fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            ensure_station_profile_store_genesis(self.0, root)
+            ensure_station_profile_store_genesis(self.app, root)
         }
         #[cfg(mobile)]
         {
@@ -5433,7 +6122,7 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
         }
     }
     fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
-        lock_station_profiles_for_app(self.0, path)
+        lock_station_profiles_for_app(self.app, path)
     }
     fn invalidate_removed_routes(
         &self,
@@ -5442,8 +6131,8 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
     ) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
-            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
+            relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
+            native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
         }
         #[cfg(mobile)]
         {
@@ -5451,12 +6140,16 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
             Ok(())
         }
     }
+    #[cfg(not(mobile))]
+    fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
+        &self.custody
+    }
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])
     }
     fn notify(&self) {
         #[cfg(not(mobile))]
-        notify_startup_readiness_if_waiting(self.0);
+        notify_startup_readiness_if_waiting(self.app);
     }
 }
 
@@ -5607,6 +6300,13 @@ fn station_profile_store_write_with_host(
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
         // later write must never revive a revoked grant.
+        #[cfg(not(mobile))]
+        native_device_custody::stage_removed_credentials(
+            host.custody(),
+            &path,
+            &current_store,
+            &next_store,
+        )?;
         host.invalidate_removed_routes(&current_store, &next_store)?;
         let generated_staged = path.with_extension(format!(
             "{}.{}.tmp",
@@ -6731,7 +7431,7 @@ fn station_local_self_provision_blocking(
         {
             return Err("invalid local self-provision response".to_string().into());
         }
-        native_pairing_device_response(exchange.device)?;
+        let device = native_pairing_device_response(exchange.device)?;
 
         let reference = NativeCredentialReference {
             kind: "station-bearer".to_string(),
@@ -6758,6 +7458,8 @@ fn station_local_self_provision_blocking(
                     exact_origin: origin.clone(),
                     environment_id: exchange.environment_id.clone(),
                     client_instance_id: client_instance_id.clone(),
+                    device_id: device.id,
+                    device_kind: device.kind,
                     expires_at: now + Duration::from_secs(120),
                     phase: NativePairingPhase::AwaitingRequiresAuth,
                 },
@@ -11013,6 +11715,8 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder
         .manage(NativeStartupBootstrap::default())
         .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
+        .manage(native_application_peer::NativeApplicationPeers::default())
+        .manage(native_account_operations::NativeAccountOperations::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11033,6 +11737,16 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_redemption::station_native_device_binding_candidate,
+        native_relay_redemption::station_native_device_binding_self_receipt,
+        native_application_peer::station_native_application_peer_prepare,
+        native_application_peer::station_native_application_peer_open,
+        native_application_peer::station_native_application_peer_read,
+        native_application_peer::station_native_application_peer_sign,
+        native_application_peer::station_native_application_peer_close,
+        native_account_operations::station_native_account_challenge_prepare,
+        native_account_operations::station_native_account_exchange_prepare,
+        native_account_operations::station_native_account_request_headers,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -11116,6 +11830,7 @@ If a stable instance is running, this launch will focus its window and exit.",
             {
                 let app = app.handle().clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if retry_device_custody_retirements_for_app(&app).is_err() { log::warn!("native credential retirement remains pending"); }
                     if let Err(error) =
                         native_relay_redemption::retry_pending_cleanup_for_app(&app)
                     {
@@ -11375,7 +12090,11 @@ mod tests {
     use super::*;
 
     #[cfg(not(mobile))]
+    use native_device_custody::PairingCustodyWriter as _;
+
+    #[cfg(not(mobile))]
     struct WriterTestHost {
+        custody: MemoryCustodyWriter,
         path: std::path::PathBuf,
         staged_path: Option<std::path::PathBuf>,
         fail_invalidation: bool,
@@ -11404,6 +12123,9 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+        fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
+            &self.custody
         }
         fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
             if self.fail_postpublication_trust {
@@ -11451,12 +12173,15 @@ mod tests {
                 exact_origin: "https://one.example".into(),
                 environment_id: "environment-one".into(),
                 client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+                device_id: "55555555-5555-4555-8555-555555555555".into(),
+                device_kind: "device".into(),
                 expires_at: SystemTime::now() + Duration::from_secs(120),
                 phase: NativePairingPhase::AwaitingRequiresAuth,
             },
         );
         let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
         let host = WriterTestHost {
+            custody: MemoryCustodyWriter::default(),
             path: path.clone(),
             staged_path: None,
             fail_invalidation: false,
@@ -11748,6 +12473,8 @@ mod tests {
                 exact_origin: exact_origin("http://127.0.0.1:3141").unwrap(),
                 environment_id: "environment-local".into(),
                 client_instance_id: client_instance_id.into(),
+                device_id: "66666666-6666-4666-8666-666666666666".into(),
+                device_kind: "device".into(),
                 expires_at: SystemTime::now() + Duration::from_secs(120),
                 phase: NativePairingPhase::AwaitingRequiresAuth,
             },
@@ -11848,6 +12575,660 @@ mod tests {
             pending.0.lock().unwrap().get(&handle).unwrap().phase,
             NativePairingPhase::RequiresAuthPersisted { .. }
         ));
+    }
+
+    // ---- Device identity custody metadata (station#2893) ----
+    #[cfg(not(mobile))]
+    struct MemoryCustodyWriter {
+        owner: native_device_custody::NativeDeviceCustodyOwner,
+        bearer: std::sync::Mutex<std::collections::HashMap<String, String>>,
+        metadata: native_device_custody::MemoryCustodyMetadataStore,
+        fail_metadata: bool,
+        fail_delete_metadata: bool,
+        fail_journal: bool,
+        unreadable_refs: std::collections::HashSet<String>,
+        delete_attempts: std::sync::atomic::AtomicUsize,
+    }
+
+    #[cfg(not(mobile))]
+    impl Default for MemoryCustodyWriter {
+        fn default() -> Self {
+            Self {
+                owner: native_device_custody::NativeDeviceCustodyOwner::fixture(),
+                bearer: Default::default(),
+                metadata: Default::default(),
+                fail_metadata: false,
+                fail_delete_metadata: false,
+                fail_journal: false,
+                unreadable_refs: Default::default(),
+                delete_attempts: Default::default(),
+            }
+        }
+    }
+
+    #[cfg(not(mobile))]
+    impl native_device_custody::PairingCustodyWriter for MemoryCustodyWriter {
+        fn owner(&self) -> &native_device_custody::NativeDeviceCustodyOwner {
+            &self.owner
+        }
+        fn read_bearer(
+            &self,
+            reference: &NativeCredentialReference,
+        ) -> Result<Option<String>, String> {
+            if self.unreadable_refs.contains(&reference.id) {
+                return Err("injected unreadable legacy credential".into());
+            }
+            Ok(self.bearer.lock().unwrap().get(&reference.id).cloned())
+        }
+        fn read_metadata(&self, account: &str) -> Result<Option<String>, String> {
+            Ok(self.metadata.lock().get(account).cloned())
+        }
+        fn write_journal(&self, account: &str, value: &str) -> Result<(), String> {
+            if self.fail_journal {
+                return Err("injected retirement journal failure".into());
+            }
+            self.metadata.lock().insert(account.into(), value.into());
+            Ok(())
+        }
+        fn write_bearer(
+            &self,
+            reference: &NativeCredentialReference,
+            password: &str,
+        ) -> Result<(), String> {
+            self.bearer
+                .lock()
+                .unwrap()
+                .insert(reference.id.clone(), password.into());
+            Ok(())
+        }
+        fn write_metadata(
+            &self,
+            metadata: &native_device_custody::NativeDeviceCustodyMetadata,
+        ) -> Result<(), String> {
+            if self.fail_metadata {
+                return Err("injected metadata failure".into());
+            }
+            let account =
+                native_device_custody::metadata_account(&self.owner, &metadata.reference)?;
+            self.metadata
+                .lock()
+                .insert(account, serde_json::to_string(metadata).unwrap());
+            Ok(())
+        }
+        fn delete_bearer(&self, reference: &NativeCredentialReference) -> Result<(), String> {
+            self.delete_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.bearer.lock().unwrap().remove(&reference.id);
+            Ok(())
+        }
+        fn delete_metadata(&self, reference: &NativeCredentialReference) -> Result<(), String> {
+            self.delete_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if self.fail_delete_metadata {
+                return Err("injected metadata deletion failure".into());
+            }
+            self.metadata
+                .lock()
+                .remove(&native_device_custody::metadata_account(
+                    &self.owner,
+                    reference,
+                )?);
+            Ok(())
+        }
+    }
+
+    #[cfg(not(mobile))]
+    const CUSTODY_DEVICE_ID: &str = "77777777-7777-4777-8777-777777777777";
+    #[cfg(not(mobile))]
+    const CUSTODY_STATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+    #[cfg(not(mobile))]
+    const CUSTODY_CLIENT_ID: &str = "33333333-3333-4333-8333-333333333333";
+    #[cfg(not(mobile))]
+    const CUSTODY_BEARER: &str = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+
+    #[cfg(not(mobile))]
+    fn custody_pairing_fixture() -> (
+        tempfile::TempDir,
+        WriterTestHost,
+        NativeProfileAuthority,
+        NativePendingPairingCredentials,
+        NativePairingExchangeSuccess,
+    ) {
+        use std::io::{Read, Write};
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        ensure_station_profile_store_root(root).unwrap();
+        std::fs::create_dir(root.join("config")).unwrap();
+        write_profile_store_genesis_marker(root).unwrap();
+        let path = root.join("config/profiles.json");
+        write_empty_station_profile_store(&path).unwrap();
+        let host = WriterTestHost {
+            path,
+            custody: Default::default(),
+            staged_path: None,
+            fail_invalidation: false,
+            fail_postpublication_trust: false,
+        };
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut bytes = [0; 2048];
+                let count = stream.read(&mut bytes).unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&bytes[..count]);
+                if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]);
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        let body: serde_json::Value =
+                            serde_json::from_slice(&request[end + 4..end + 4 + length]).unwrap();
+                        assert_eq!(body["clientInstanceId"], CUSTODY_CLIENT_ID);
+                        break;
+                    }
+                }
+            }
+            let body = serde_json::json!({ "environmentId": CUSTODY_STATION_ID, "credential": CUSTODY_BEARER, "device": { "id": CUSTODY_DEVICE_ID, "name": "Owner laptop", "scope": "orchestration:read", "kind": "device", "createdAt": 1.0, "lastUsedAt": null, "revokedAt": null }}).to_string();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        let pending = NativePendingPairingCredentials::default();
+        let request = NativePairingExchangeRequest {
+            endpoint: origin.clone(),
+            development_http_origin: None,
+            offer_id: "offer".into(),
+            proof: "proof".into(),
+            request_id: "request".into(),
+            client_instance_id: CUSTODY_CLIENT_ID.into(),
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            browser_session: false,
+        };
+        let origin = validate_native_pairing_exchange_request(&request).unwrap();
+        let result = station_native_pairing_exchange_blocking(
+            pending.clone(),
+            request,
+            origin,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap();
+        server.join().unwrap();
+        let NativePairingExchangeResult::Success(success) = result else {
+            panic!("pairing failed")
+        };
+        (
+            directory,
+            host,
+            NativeProfileAuthority::default(),
+            pending,
+            success,
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_first_cas(
+        host: &WriterTestHost,
+        authority: &NativeProfileAuthority,
+        pending: &NativePendingPairingCredentials,
+        success: &NativePairingExchangeSuccess,
+    ) -> CredentialProfileStore {
+        let origin = pending
+            .0
+            .lock()
+            .unwrap()
+            .get(&success.credential_handle)
+            .unwrap()
+            .exact_origin
+            .clone();
+        let current = parse_station_profile_store(
+            &station_profile_store_read_with_host(host, authority).unwrap(),
+        )
+        .unwrap();
+        let contents = serde_json::json!({ "schemaVersion": 1, "revision": current.revision + 1, "defaultProfile": null, "projectProfiles": {}, "profiles": [{ "schemaVersion": 1, "name": "paired", "endpoint": origin, "credentialRef": success.credential_ref, "environmentId": success.environment_id, "clientInstanceId": CUSTODY_CLIENT_ID, "setupSource": "paired", "configurationState": "requires-auth", "createdAt": 1, "updatedAt": 1 }] }).to_string();
+        station_profile_store_write_with_host(
+            host,
+            authority,
+            pending,
+            contents.clone(),
+            current.revision,
+            Some(success.credential_handle.clone()),
+        )
+        .unwrap();
+        parse_station_profile_store(&contents).unwrap()
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_second_cas(
+        host: &WriterTestHost,
+        authority: &NativeProfileAuthority,
+        pending: &NativePendingPairingCredentials,
+        success: &NativePairingExchangeSuccess,
+        mut store: CredentialProfileStore,
+    ) -> Result<(), String> {
+        let expected_revision = store.revision;
+        store.revision += 1;
+        store.profiles[0].configuration_state = "configured".into();
+        station_profile_store_write_with_host(
+            host,
+            authority,
+            pending,
+            serde_json::to_string(&store).unwrap(),
+            expected_revision,
+            Some(success.credential_handle.clone()),
+        )
+    }
+
+    #[cfg(not(mobile))]
+    fn custody_published_fixture() -> (
+        tempfile::TempDir,
+        WriterTestHost,
+        NativeProfileAuthority,
+        NativeCredentialReference,
+    ) {
+        let (directory, host, authority, pending, success) = custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        (directory, host, authority, success.credential_ref)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_exchange_commit_publication_and_cold_identity_are_owner_bound() {
+        let (_directory, host, authority, pending, success) = custody_pairing_fixture();
+        let mut projection = serde_json::to_value(&success).unwrap();
+        assert!(!projection.to_string().contains(CUSTODY_BEARER));
+        projection["device"]["id"] = serde_json::json!(uuid::Uuid::new_v4().to_string());
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        assert!(!pending
+            .0
+            .lock()
+            .unwrap()
+            .contains_key(&success.credential_handle));
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "paired").unwrap();
+        let identity =
+            resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id)
+                .unwrap();
+        assert_eq!(identity.device_id, CUSTODY_DEVICE_ID);
+        assert_ne!(
+            serde_json::json!(identity.device_id),
+            projection["device"]["id"]
+        );
+        assert!(
+            resolve_current_device_identity_with_host(&host, &cold, 1, &receipt.binding_id)
+                .is_err()
+        );
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &success.credential_ref)
+                .unwrap();
+        let mut record: serde_json::Value =
+            serde_json::from_str(host.custody.metadata.lock().get(&account).unwrap()).unwrap();
+        let original_record = record.clone();
+        for (field, value) in [
+            ("appIdentifier", "io.kontourai.station.other"),
+            ("channel", "stable"),
+        ] {
+            record = original_record.clone();
+            record["owner"][field] = serde_json::json!(value);
+            let other: native_device_custody::NativeDeviceCustodyOwner =
+                serde_json::from_value(record["owner"].clone()).unwrap();
+            assert_ne!(
+                native_device_custody::metadata_account(&other, &success.credential_ref).unwrap(),
+                account
+            );
+            host.custody
+                .metadata
+                .lock()
+                .insert(account.clone(), record.to_string());
+            assert!(matches!(
+                resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id),
+                Err(native_device_custody::DeviceCustodyError::MetadataMismatch(
+                    "native owner"
+                ))
+            ));
+        }
+        record = original_record;
+        record["deviceId"] = serde_json::json!("");
+        host.custody
+            .metadata
+            .lock()
+            .insert(account, record.to_string());
+        assert!(matches!(
+            resolve_current_device_identity_with_host(&host, &cold, 2, &receipt.binding_id),
+            Err(native_device_custody::DeviceCustodyError::MetadataMalformed)
+        ));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_partial_write_blocks_publication_and_same_handle_repairs_it() {
+        let (_directory, mut host, authority, pending, success) = custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        host.custody.fail_metadata = true;
+        assert!(credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle
+        )
+        .is_err());
+        assert!(custody_second_cas(&host, &authority, &pending, &success, store.clone()).is_err());
+        assert_eq!(stored_revision(&host.path), 1);
+        host.custody.fail_metadata = false;
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        host.fail_invalidation = true;
+        assert!(custody_second_cas(&host, &authority, &pending, &success, store.clone()).is_err());
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        assert!(station_profile_authorize_with_host(&host, &cold, "paired").is_err());
+        host.fail_invalidation = false;
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_active_delete_retries_after_failure_and_cold_reload_without_reauthorizing() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        host.custody.fail_delete_metadata = true;
+        assert!(credential_vault_delete_with_host(&host, &authority, None).is_err());
+        assert!(authority.0.lock().unwrap().active.is_none());
+        assert!(station_profile_authorize_with_host(&host, &authority, "paired").is_err());
+        host.custody.fail_delete_metadata = false;
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        credential_vault_delete_with_host(&host, &cold, None).unwrap();
+        assert!(cold.0.lock().unwrap().active.is_none());
+        assert!(host.custody.read_bearer(&reference).unwrap().is_none());
+        assert!(
+            !native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_removal_records_intent_before_ack_and_cold_cleanup_refuses_replacement() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        let store = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        let mut removed = store.clone();
+        removed.revision += 1;
+        removed.profiles.clear();
+        host.custody.fail_journal = true;
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None
+        )
+        .is_err());
+        assert_eq!(stored_revision(&host.path), 2);
+        host.custody.fail_journal = false;
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None,
+        )
+        .unwrap();
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), "replacement".into());
+        let cold = NativeProfileAuthority::default();
+        assert!(credential_vault_delete_with_host(&host, &cold, None).is_err());
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some("replacement")
+        );
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), CUSTODY_BEARER.into());
+        credential_vault_delete_with_host(&host, &cold, None).unwrap();
+        assert!(host.custody.read_bearer(&reference).unwrap().is_none());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_republished_active_reference_cannot_be_deleted_by_old_retirement() {
+        let (_directory, mut host, authority, reference) = custody_published_fixture();
+        station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        host.custody.fail_delete_metadata = true;
+        assert!(credential_vault_delete_with_host(&host, &authority, None).is_err());
+        host.custody.fail_delete_metadata = false;
+        let mut republished = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        republished.revision = 3;
+        republished.profiles[0].updated_at = 3.0;
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&republished).unwrap(),
+            2,
+            None,
+        )
+        .unwrap();
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        assert!(credential_vault_delete_with_host(&host, &cold, None).is_err());
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &reference).unwrap();
+        assert!(host.custody.metadata.lock().contains_key(&account));
+        republished.revision = 4;
+        republished.profiles.clear();
+        station_profile_store_write_with_host(
+            &host,
+            &cold,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&republished).unwrap(),
+            3,
+            None,
+        )
+        .unwrap();
+        credential_vault_delete_with_host(&host, &cold, Some(&reference)).unwrap();
+        assert!(!host.custody.metadata.lock().contains_key(&account));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_unreadable_legacy_replacement_is_published_with_manual_quarantine() {
+        let (_directory, mut host, authority, original) = custody_published_fixture();
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &original).unwrap();
+        host.custody.metadata.lock().remove(&account);
+        host.custody.unreadable_refs.insert(original.id.clone());
+        let (_other_directory, _other_host, _other_authority, pending, success) =
+            custody_pairing_fixture();
+        let store = custody_first_cas(&host, &authority, &pending, &success);
+        credential_vault_commit_pairing_with_host(
+            &host,
+            &authority,
+            &pending,
+            &success.credential_handle,
+        )
+        .unwrap();
+        custody_second_cas(&host, &authority, &pending, &success, store).unwrap();
+        assert_eq!(stored_revision(&host.path), 4);
+        let cold = NativeProfileAuthority::default();
+        station_profile_store_read_with_host(&host, &cold).unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "paired").unwrap();
+        assert_eq!(
+            resolve_current_device_identity_with_host(&host, &cold, 4, &receipt.binding_id)
+                .unwrap()
+                .device_id,
+            CUSTODY_DEVICE_ID
+        );
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert!(host
+            .custody
+            .bearer
+            .lock()
+            .unwrap()
+            .contains_key(&original.id));
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody.unreadable_refs.remove(&original.id);
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(original.id.clone(), "replacement".into());
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert_eq!(
+            host.custody.read_bearer(&original).unwrap().as_deref(),
+            Some("replacement")
+        );
+        host.custody.bearer.lock().unwrap().remove(&original.id);
+        host.custody.unreadable_refs.insert(original.id.clone());
+        assert!(credential_vault_delete_with_host(&host, &cold, Some(&original)).is_err());
+        assert!(
+            native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        host.custody.unreadable_refs.remove(&original.id);
+        let attempts = host
+            .custody
+            .delete_attempts
+            .load(std::sync::atomic::Ordering::SeqCst);
+        credential_vault_delete_with_host(&host, &cold, Some(&original)).unwrap();
+        assert_eq!(
+            host.custody
+                .delete_attempts
+                .load(std::sync::atomic::Ordering::SeqCst),
+            attempts
+        );
+        assert!(
+            !native_device_custody::has_pending_retirements(host.custody(), &host.path).unwrap()
+        );
+        assert!(host
+            .custody
+            .read_bearer(&success.credential_ref)
+            .unwrap()
+            .is_some());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_journal_windows_blob_floor_refuses_oversize_before_profile_publication() {
+        let (_directory, host, authority, _reference) = custody_published_fixture();
+        let mut current = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &authority).unwrap(),
+        )
+        .unwrap();
+        for number in 0..4 {
+            let mut legacy = current.profiles[0].clone();
+            legacy.name = format!("legacy-{number}");
+            let reference = NativeCredentialReference {
+                kind: "station-bearer".into(),
+                id: format!("legacy-{number}:{}", "x".repeat(500)),
+            };
+            host.custody
+                .bearer
+                .lock()
+                .unwrap()
+                .insert(reference.id.clone(), CUSTODY_BEARER.into());
+            legacy.credential_ref = Some(reference);
+            current.profiles.push(legacy);
+        }
+        // A real cold CLI-profile observation, followed by the public CAS owner.
+        std::fs::write(&host.path, serde_json::to_string(&current).unwrap()).unwrap();
+        station_profile_store_read_with_host(&host, &authority).unwrap();
+        let mut removed = current;
+        removed.revision = 3;
+        removed.profiles.clear();
+        let before = std::fs::read(&host.path).unwrap();
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &NativePendingPairingCredentials::default(),
+            serde_json::to_string(&removed).unwrap(),
+            2,
+            None
+        )
+        .unwrap_err()
+        .contains("journal is full"));
+        assert_eq!(std::fs::read(&host.path).unwrap(), before);
+        assert_eq!(host.custody.bearer.lock().unwrap().len(), 5);
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn custody_legacy_bearer_stays_available_while_missing_metadata_refuses_identity() {
+        let (_directory, host, authority, reference) = custody_published_fixture();
+        let receipt = station_profile_authorize_with_host(&host, &authority, "paired").unwrap();
+        let account =
+            native_device_custody::metadata_account(host.custody.owner(), &reference).unwrap();
+        host.custody.metadata.lock().remove(&account);
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some(CUSTODY_BEARER)
+        );
+        assert!(matches!(
+            resolve_current_device_identity_with_host(&host, &authority, 2, &receipt.binding_id),
+            Err(native_device_custody::DeviceCustodyError::MetadataMissing)
+        ));
+        host.custody
+            .bearer
+            .lock()
+            .unwrap()
+            .insert(reference.id.clone(), "replaced".into());
+        assert_eq!(
+            host.custody.read_bearer(&reference).unwrap().as_deref(),
+            Some("replaced")
+        );
     }
 
     #[cfg(not(mobile))]
@@ -14679,6 +16060,80 @@ mod tests {
     }
 
     #[test]
+    fn native_receipt_message_collector_requires_complete_bounded_response() {
+        let mut collector = NativeReceiptMessageCollector::default();
+        collector
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: Some(2),
+            })
+            .unwrap();
+        collector
+            .send(NativeHttpMessage::Chunk {
+                bytes: b"{}".to_vec(),
+            })
+            .unwrap();
+        collector.send(NativeHttpMessage::End).unwrap();
+        assert_eq!(collector.finish().unwrap(), (200, b"{}".to_vec()));
+
+        let mut truncated = NativeReceiptMessageCollector::default();
+        truncated
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: Some(3),
+            })
+            .unwrap();
+        truncated
+            .send(NativeHttpMessage::Chunk {
+                bytes: b"{}".to_vec(),
+            })
+            .unwrap();
+        truncated.send(NativeHttpMessage::End).unwrap();
+        assert_eq!(truncated.finish(), Err("response_truncated"));
+
+        let mut oversized = NativeReceiptMessageCollector::default();
+        oversized
+            .send(NativeHttpMessage::Response {
+                status: 200,
+                headers: std::collections::HashMap::new(),
+                body_length: None,
+            })
+            .unwrap();
+        assert_eq!(
+            oversized
+                .send(NativeHttpMessage::Chunk {
+                    bytes: vec![b'x'; NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT + 1],
+                })
+                .unwrap_err()
+                .code,
+            "response_too_large"
+        );
+        assert_eq!(oversized.finish(), Err("response_too_large"));
+
+        let mut reordered = NativeReceiptMessageCollector::default();
+        assert_eq!(
+            reordered.send(NativeHttpMessage::End).unwrap_err().code,
+            "invalid_response_sequence"
+        );
+        assert_eq!(reordered.finish(), Err("invalid_response_sequence"));
+    }
+
+    #[test]
+    fn native_http_deadline_guard_cancels_a_slow_header_exchange() {
+        let cancel = new_cancel_flag();
+        let guard = NativeHttpDeadlineGuard::start(
+            Instant::now() + Duration::from_millis(100),
+            std::sync::Arc::clone(&cancel),
+            NativeHttpCancellation::default(),
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(cancel.load(std::sync::atomic::Ordering::SeqCst));
+        drop(guard);
+    }
+
+    #[test]
     fn native_http_liveness_flag_is_refused_outside_the_identity_probe() {
         let identity = url::Url::parse("https://station.example.test/api/system/identity").unwrap();
         let other =
@@ -15484,6 +16939,8 @@ mod tests {
             min_rate,
             NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
             NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            None,
+            None,
         );
         let result = agent
             .run(request)
@@ -15518,6 +16975,62 @@ mod tests {
             matches!(error, ureq::Error::Timeout(ureq::Timeout::SendBody)),
             "expected a send-body timeout, got {error:?}"
         );
+    }
+
+    #[test]
+    fn native_http_receipt_body_budget_times_out_a_stalled_loopback_response() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let read = connection.read(&mut request).unwrap();
+            assert!(read > 0);
+            std::thread::sleep(Duration::from_millis(150));
+            connection
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nx")
+                .unwrap();
+            // Keep the declared body incomplete so only the bounded body
+            // reader can release the caller before the fixture closes.
+            std::thread::sleep(Duration::from_secs(1));
+        });
+        let agent = native_http_agent_with(native_http_agent_config().proxy(None).build());
+        let request = ureq::http::Request::builder()
+            .method("GET")
+            .uri(format!(
+                "{origin}/api/auth/native-device-bindings/receipt/receipt"
+            ))
+            .body(Vec::new())
+            .unwrap();
+        let request = native_http_request_with_budgets(
+            &agent,
+            request,
+            Duration::from_secs(1),
+            1024,
+            NATIVE_HTTP_RECV_RESPONSE_TIMEOUT,
+            NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT,
+            Some(Duration::from_millis(350)),
+            Some(Duration::from_millis(350)),
+        );
+        let started = Instant::now();
+        let mut response = agent
+            .run(request)
+            .expect("the fixture sends response headers");
+        let result = response
+            .body_mut()
+            .with_config()
+            .limit(NATIVE_DEVICE_SELF_RECEIPT_BODY_LIMIT as u64)
+            .read_to_vec();
+        assert!(result.is_err(), "a declared incomplete body must time out");
+        assert!(
+            started.elapsed() < Duration::from_millis(430),
+            "receipt body wait exceeded its per-request deadline: {:?}",
+            started.elapsed()
+        );
+        server.join().unwrap();
     }
 
     #[test]
@@ -15564,6 +17077,8 @@ mod tests {
                 1024,
                 Duration::from_millis(100),
                 Duration::from_secs(2),
+                None,
+                None,
             );
             let result = agent.run(request);
             server.join().unwrap();
@@ -16351,6 +17866,8 @@ mod tests {
             exact_origin: "https://one.example".to_string(),
             environment_id: "environment-one".to_string(),
             client_instance_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            device_id: "55555555-5555-4555-8555-555555555555".to_string(),
+            device_kind: "device".to_string(),
             expires_at: SystemTime::now() + Duration::from_secs(60),
             phase: NativePairingPhase::RequiresAuthPersisted {
                 profile_name: "pending".to_string(),
