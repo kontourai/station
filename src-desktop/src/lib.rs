@@ -18,36 +18,22 @@ mod local_access_watch;
 mod login_shell;
 #[cfg(not(mobile))]
 mod notification_feed;
-// Foundation only: this module owns native proof-key custody and signing but
-// is intentionally not registered as renderer IPC or wired to app traffic.
-// Host account proof-key custody, distinct from routing and Device keys.
-#[cfg(not(mobile))]
+// Proof keys remain host-only; bounded account and Device operations are IPC.
 mod native_account_operations;
-#[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
-#[cfg(not(mobile))]
 mod native_application_peer;
-// Desktop-only Device identity custody metadata (station#2893): the versioned
+// Device identity custody metadata (station#2893): the versioned
 // keyring companion for paired credentials and the current-identity resolver.
-#[cfg(not(mobile))]
 pub(crate) mod native_device_binding_candidate;
-#[cfg(not(mobile))]
 pub(crate) mod native_device_custody;
-#[cfg(not(mobile))]
 pub(crate) mod native_device_proof_key;
-#[cfg(not(mobile))]
 pub(crate) mod native_proof_key_core;
-#[cfg(not(mobile))]
 mod native_relay_key_approval;
-#[cfg(not(mobile))]
 pub(crate) mod native_relay_proof_key;
-#[cfg(not(mobile))]
 mod native_relay_redemption;
 mod native_secure_entry;
-#[cfg(not(mobile))]
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
-#[cfg(not(mobile))]
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -1320,7 +1306,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     }
 }
 
-#[cfg(any(mobile, test))]
+#[cfg(test)]
 fn invalidate_active_profile_receipt_after_credential_delete(
     authority: &mut NativeProfileAuthorityState,
     reference: &NativeCredentialReference,
@@ -1514,33 +1500,7 @@ fn credential_vault_delete_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<(), String> {
-    #[cfg(not(mobile))]
-    {
-        credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
-    }
-    #[cfg(mobile)]
-    {
-        let reference = authorized_credential_reference(app, authority)?;
-        match credential_entry(&reference)?.delete_credential() {
-            Ok(()) => {
-                let mut state = authority
-                    .0
-                    .lock()
-                    .map_err(|_| "Station native authority is unavailable".to_string())?;
-                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-                Ok(())
-            }
-            Err(error) if is_missing_credential(&error) => {
-                let mut state = authority
-                    .0
-                    .lock()
-                    .map_err(|_| "Station native authority is unavailable".to_string())?;
-                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-                Ok(())
-            }
-            Err(error) => Err(format!("delete OS credential: {error}")),
-        }
-    }
+    credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
 }
 
 #[tauri::command]
@@ -1558,34 +1518,13 @@ fn credential_vault_delete_unreferenced_blocking(
     app: &AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
-    #[cfg(not(mobile))]
-    {
-        credential_vault_delete_with_host(
-            &AppProfileWriteHost::new(app)?,
-            &NativeProfileAuthority::default(),
-            Some(&reference),
-        )
-    }
-    #[cfg(mobile)]
-    {
-        credential_reference_key(&reference)?;
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        if store
-            .profiles
-            .iter()
-            .any(|profile| profile.credential_ref.as_ref() == Some(&reference))
-        {
-            return Err("refusing to delete a credential still owned by a saved Station".into());
-        }
-        match credential_entry(&reference)?.delete_credential() {
-            Ok(()) => Ok(()),
-            Err(error) if is_missing_credential(&error) => Ok(()),
-            Err(error) => Err(format!("delete OS credential: {error}")),
-        }
-    }
+    credential_vault_delete_with_host(
+        &AppProfileWriteHost::new(app)?,
+        &NativeProfileAuthority::default(),
+        Some(&reference),
+    )
 }
 
-#[cfg(not(mobile))]
 fn credential_vault_delete_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -1621,7 +1560,6 @@ fn credential_vault_delete_with_host(
     native_device_custody::retry_retirements(host.custody(), &path, &store, &state, unreferenced)
 }
 
-#[cfg(not(mobile))]
 fn retry_device_custody_retirements_for_app(app: &AppHandle) -> Result<(), String> {
     let host = AppProfileWriteHost::new(app)?;
     let authority = app
@@ -1652,21 +1590,11 @@ fn station_profile_authorize_active_internal(
     authority: &NativeProfileAuthority,
     profile_name: &str,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    #[cfg(not(mobile))]
     let receipt = station_profile_authorize_with_host(
         &AppProfileWriteHost::new(app)?,
         authority,
         profile_name,
     )?;
-    #[cfg(mobile)]
-    let receipt = {
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        let mut state = authority
-            .0
-            .lock()
-            .map_err(|_| "Station native authority is unavailable".to_string())?;
-        authorize_active_profile_in_state(&mut state, &store, profile_name)?
-    };
     // The renderer may have attempted its bounded readiness proof before the
     // active credential was available. Reuse its mounted retry subscription
     // once the host has committed the selected profile.
@@ -1677,7 +1605,6 @@ fn station_profile_authorize_active_internal(
     Ok(receipt)
 }
 
-#[cfg(not(mobile))]
 fn station_profile_authorize_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -2545,28 +2472,9 @@ fn authorized_profile_context_in_store(
     })
 }
 
-#[cfg(mobile)]
-fn authorized_credential_reference(
-    app: &AppHandle,
-    authority: &NativeProfileAuthority,
-) -> Result<NativeCredentialReference, NativeCommandError> {
-    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
-    // read takes `profiles.json.lock`, and the writer holds that lock while it
-    // takes this mutex; taking them in the other order here would let a
-    // concurrent write and this read stall each other until the lock wait
-    // expires (the commands run off the main thread since #2469).
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
-    Ok(authorized_profile_context_in_store(&state, &store)?.reference)
-}
-
 /// The host-authorized active Station's exact origin, when there is one.
 /// Native consumers pair it with `native_credential_for_origin`, which
 /// re-validates the whole binding before any bearer is read.
-#[cfg(not(mobile))]
 pub(crate) fn native_active_station_origin(app: &AppHandle) -> Option<String> {
     let authority = app.try_state::<NativeProfileAuthority>()?;
     let state = authority.0.lock().ok()?;
@@ -2602,7 +2510,6 @@ pub(crate) fn native_credential_for_origin(
 /// HTTP credential use above keeps reading the bare bearer. The standalone
 /// resolver uses the same store-read-before-mutex order as bearer reads;
 /// candidate creation uses the already-locked variant below.
-#[cfg(not(mobile))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn resolve_current_device_identity_for_active_station(
     app: &AppHandle,
@@ -2624,11 +2531,12 @@ pub(crate) fn resolve_current_device_identity_for_active_station(
 /// saved-profile file lock. The callback runs with the authority mutex held;
 /// callers must preserve the profile-file -> authority lock order. This lets
 /// a compound native operation reuse one parsed profile snapshot instead of
-/// recursively taking `profiles.json`'s lock.
-#[cfg(not(mobile))]
+/// recursively taking `profiles.json`'s lock. Its path comes from that same
+/// locked snapshot: resolving the mobile path again would retake its genesis lock.
 pub(crate) fn with_active_device_identity_in_locked_profile<T>(
     app: &AppHandle,
     store: &CredentialProfileStore,
+    profile_path: &std::path::Path,
     operation: impl FnOnce(
         &native_device_custody::CurrentDeviceIdentity,
         &str,
@@ -2651,7 +2559,7 @@ pub(crate) fn with_active_device_identity_in_locked_profile<T>(
         .map_err(|error| DeviceCustodyError::NotAuthorized(error.code.to_owned()).to_string())?;
     if native_device_custody::has_active_retirement(
         host.custody(),
-        &host.path().map_err(|error| error.to_string())?,
+        profile_path,
         &context.reference,
     )
     .map_err(|_| DeviceCustodyError::MetadataStore.to_string())?
@@ -2710,7 +2618,6 @@ pub(crate) fn with_active_device_identity_in_locked_profile<T>(
     Ok(result)
 }
 
-#[cfg(not(mobile))]
 fn resolve_current_device_identity_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -4917,62 +4824,14 @@ fn credential_vault_commit_pairing_internal(
     pending: &NativePendingPairingCredentials,
     handle: &str,
 ) -> Result<(), String> {
-    // The saved-Station read comes before the pending mutex for the same
-    // lock-order reason as `authorized_credential_reference`: the writer holds
-    // `profiles.json.lock` (mobile) while it takes this mutex.
-    #[cfg(not(mobile))]
-    {
-        credential_vault_commit_pairing_with_host(
-            &AppProfileWriteHost::new(app)?,
-            authority,
-            pending,
-            handle,
-        )
-    }
-    #[cfg(mobile)]
-    {
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        let mut pending = pending
-            .0
-            .lock()
-            .map_err(|_| "native pairing credential state unavailable".to_string())?;
-        let entry = pending
-            .get_mut(handle)
-            .filter(|entry| entry.expires_at > SystemTime::now())
-            .ok_or_else(|| "native pairing credential handle is missing or expired".to_string())?;
-        let profile_name = match &entry.phase {
-            NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
-            _ => {
-                return Err("Station pairing handle is not awaiting keyring commitment".to_string())
-            }
-        };
-        pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
-        let reference_key = credential_reference_key(&entry.reference)?;
-        let state = authority
-            .0
-            .lock()
-            .map_err(|_| "Station native authority is unavailable".to_string())?;
-        if !state.transitioning.contains(&reference_key)
-            || state.bindings.contains_key(&reference_key)
-        {
-            return Err("Station pairing authority is not transitioning".to_string());
-        }
-        drop(state);
-        entry.phase = NativePairingPhase::CredentialRemoved {
-            profile_name: profile_name.clone(),
-        };
-        if let Err(error) = write_credential_password(&entry.reference, &entry.credential) {
-            if entry.expires_at > SystemTime::now() {
-                entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
-            }
-            return Err(error);
-        }
-        entry.phase = NativePairingPhase::KeyringWritten { profile_name };
-        Ok(())
-    }
+    credential_vault_commit_pairing_with_host(
+        &AppProfileWriteHost::new(app)?,
+        authority,
+        pending,
+        handle,
+    )
 }
 
-#[cfg(not(mobile))]
 fn credential_vault_commit_pairing_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -4996,7 +4855,6 @@ fn credential_vault_commit_pairing_with_host(
 /// SAME pending handle revalidates the same host-held tuple and rewrites both
 /// records, repairing any partial state. A successfully committed credential
 /// is never cleaned up merely because its pending handle later expires.
-#[cfg(not(mobile))]
 fn credential_vault_commit_pairing_with_custody(
     authority: &NativeProfileAuthority,
     pending: &NativePendingPairingCredentials,
@@ -5661,12 +5519,10 @@ fn lock_station_profiles_for_app(
 /// Reconstructs Station-key approval authority from the current native profile
 /// while holding the same interprocess lock used by profile writers. A broker
 /// offer or renderer-supplied route cannot supply this snapshot.
-#[cfg(not(mobile))]
 struct AppNativeTrustProfileProvider<'a> {
     app: &'a AppHandle,
 }
 
-#[cfg(not(mobile))]
 impl<'a> AppNativeTrustProfileProvider<'a> {
     pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
         Self { app }
@@ -5677,7 +5533,6 @@ impl<'a> AppNativeTrustProfileProvider<'a> {
     }
 }
 
-#[cfg(not(mobile))]
 impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
     fn with_current_profile<T, F>(
         &self,
@@ -5710,7 +5565,6 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
     }
 }
 
-#[cfg(not(mobile))]
 fn native_trust_profile_snapshot_in_store(
     store: &CredentialProfileStore,
     expected_binding: &native_station_key_custody::TrustProfileBinding,
@@ -5978,37 +5832,9 @@ fn station_profile_store_read_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<String, String> {
-    #[cfg(not(mobile))]
-    {
-        station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
-    }
-    #[cfg(mobile)]
-    {
-        let path = station_profiles_path(app)?;
-        validate_station_profile_store(&path)?;
-        match read_station_profile_store(&path) {
-            Ok(contents) => {
-                let store = parse_station_profile_store(&contents)?;
-                let mut state = authority
-                    .0
-                    .lock()
-                    .map_err(|_| "Station native authority is unavailable".to_string())?;
-                profile_bindings_are_authorized(&state, &store)?;
-                // A read is the only trust-on-first-observation path. It accepts
-                // externally configured CLI profiles, but never promotes a
-                // crash-left `requires-auth` record into native authority.
-                observe_configured_profile_bindings(&mut state, &store)?;
-                Ok(contents)
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(EMPTY_STATION_PROFILE_STORE.to_string())
-            }
-            Err(error) => Err(format!("read saved Station metadata: {error}")),
-        }
-    }
+    station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
 }
 
-#[cfg(not(mobile))]
 fn station_profile_store_read_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -6057,7 +5883,6 @@ fn station_profile_store_write_internal(
         expected_revision,
         pairing_handle,
     );
-    #[cfg(not(mobile))]
     {
         let app = app.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
@@ -6085,7 +5910,6 @@ trait ProfileWriteHost {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String>;
-    #[cfg(not(mobile))]
     fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter;
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
     fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
@@ -6096,7 +5920,6 @@ trait ProfileWriteHost {
 
 struct AppProfileWriteHost<'a> {
     app: &'a AppHandle,
-    #[cfg(not(mobile))]
     custody: native_device_custody::DesktopPairingCustody,
 }
 
@@ -6104,7 +5927,6 @@ impl<'a> AppProfileWriteHost<'a> {
     fn new(app: &'a AppHandle) -> Result<Self, String> {
         Ok(Self {
             app,
-            #[cfg(not(mobile))]
             custody: native_device_custody::DesktopPairingCustody::for_app(app)?,
         })
     }
@@ -6133,18 +5955,9 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String> {
-        #[cfg(not(mobile))]
-        {
-            relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
-            native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
-        }
-        #[cfg(mobile)]
-        {
-            let _ = (current, next);
-            Ok(())
-        }
+        relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
+        native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
     }
-    #[cfg(not(mobile))]
     fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
         &self.custody
     }
@@ -6304,7 +6117,6 @@ fn station_profile_store_write_with_host(
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
         // later write must never revive a revoked grant.
-        #[cfg(not(mobile))]
         native_device_custody::stage_removed_credentials(
             host.custody(),
             &path,
@@ -10404,7 +10216,6 @@ async fn commit_startup_readiness(
     result
 }
 
-#[cfg(not(mobile))]
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
@@ -11714,13 +11525,13 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
         .manage(NativeHttpCancellation::default())
-        .manage(NativePairingExchangeCancellation::default());
+        .manage(NativePairingExchangeCancellation::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
+        .manage(native_application_peer::NativeApplicationPeers::default())
+        .manage(native_account_operations::NativeAccountOperations::default());
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
-        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
-        .manage(native_application_peer::NativeApplicationPeers::default())
-        .manage(native_account_operations::NativeAccountOperations::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11813,6 +11624,35 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_redemption::station_native_device_binding_candidate,
+        native_relay_redemption::station_native_device_binding_self_receipt,
+        native_application_peer::station_native_application_peer_prepare,
+        native_application_peer::station_native_application_peer_open,
+        native_application_peer::station_native_application_peer_read,
+        native_application_peer::station_native_application_peer_sign,
+        native_application_peer::station_native_application_peer_close,
+        native_account_operations::station_native_account_challenge_prepare,
+        native_account_operations::station_native_account_exchange_prepare,
+        native_account_operations::station_native_account_request_headers,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_renew,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
+        native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_application_open,
+        native_relay_redemption::station_native_relay_application_read,
+        relay_grant_vault::relay_client_grant_store,
+        relay_grant_vault::relay_client_grant_revoke,
+        relay_grant_vault::relay_client_grant_metadata,
         open_external_link,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
@@ -11830,7 +11670,6 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     builder
         .setup(move |app| {
-            #[cfg(not(mobile))]
             {
                 let app = app.handle().clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
