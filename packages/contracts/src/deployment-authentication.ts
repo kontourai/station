@@ -152,6 +152,11 @@ export interface DeploymentAuthenticationProvider
         enrollmentId: string,
         request: Request,
       ): Promise<PendingEnrollmentSessionResult>;
+      /** Optional provider-supported, invitation-gated registration; returned sessions stay pending. */
+      register?(
+        enrollmentId: string,
+        request: Request,
+      ): Promise<PendingEnrollmentSessionResult>;
       /** Recheck this exact pending identity without granting ordinary session authority. */
       verify(
         enrollmentId: string,

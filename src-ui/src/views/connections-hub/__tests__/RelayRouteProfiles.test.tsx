@@ -1,5 +1,10 @@
 /** @vitest-environment jsdom */
 
+import { defaultStorage } from '@kontourai/station-connect';
+import {
+  emptyStationProfileStore,
+  type StationProfileStore,
+} from '@kontourai/station-contracts';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -9,10 +14,12 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { NativeStationProfileRepository } from '../../../platform/native/stationProfileStorage';
 
 const mocks = vi.hoisted(() => ({
   isDesktop: true,
   profiles: [] as readonly Record<string, unknown>[],
+  repository: null as NativeStationProfileRepository | null,
   listeners: new Set<() => void>(),
   remove: vi.fn(),
   save: vi.fn(),
@@ -25,19 +32,37 @@ const mocks = vi.hoisted(() => ({
   approveKey: vi.fn(),
   revokeKey: vi.fn(),
   keyStatus: vi.fn(),
+  grantInvoke: vi.fn(),
 }));
+
+vi.mock(
+  '../../../platform/native/nativeRelayGrantAdapter',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../platform/native/nativeRelayGrantAdapter')
+      >();
+    return {
+      ...actual,
+      nativeRelayGrantAdapter: actual.createNativeRelayGrantAdapter(
+        mocks.grantInvoke,
+      ),
+    };
+  },
+);
 
 vi.mock('../../../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isTauri: true, isDesktop: mocks.isDesktop }),
-  nativeProfileRepository: () => ({
-    getRelayRouteProfiles: () => mocks.profiles,
-    subscribeRelayRouteProfiles: (listener: () => void) => {
-      mocks.listeners.add(listener);
-      return () => mocks.listeners.delete(listener);
+  nativeProfileRepository: () =>
+    mocks.repository ?? {
+      getRelayRouteProfiles: () => mocks.profiles,
+      subscribeRelayRouteProfiles: (listener: () => void) => {
+        mocks.listeners.add(listener);
+        return () => mocks.listeners.delete(listener);
+      },
+      removeRelayRouteProfile: mocks.remove,
+      saveRelayRouteProfile: mocks.save,
     },
-    removeRelayRouteProfile: mocks.remove,
-    saveRelayRouteProfile: mocks.save,
-  }),
 }));
 
 vi.mock(
@@ -66,10 +91,32 @@ vi.mock('../../../platform/native/relayKeyApproval', () => ({
   },
 }));
 
+import { NativeStationProfileStorage } from '../../../platform/native/stationProfileStorage';
 import { RelayRouteProfiles } from '../RelayRouteProfiles';
 
 const stationId = '11111111-1111-4111-8111-111111111111';
 const enrollmentId = '22222222-2222-4222-8222-222222222222';
+
+function currentProfileStore(revision = 12, updatedAt = 2) {
+  const store = emptyStationProfileStore();
+  store.revision = revision;
+  store.profiles.push({
+    schemaVersion: 1,
+    name: 'Home Station',
+    endpoint: 'https://station.example',
+    setupSource: 'manual',
+    configurationState: 'unconfigured',
+    createdAt: 1,
+    updatedAt,
+    clientInstanceId: '33333333-3333-4333-8333-333333333333',
+    relayRoute: {
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+    },
+  });
+  return store;
+}
 
 function renderRoutes() {
   const queryClient = new QueryClient({
@@ -86,6 +133,7 @@ function renderRoutes() {
 describe('RelayRouteProfiles', () => {
   beforeEach(() => {
     mocks.isDesktop = true;
+    mocks.repository = null;
     mocks.listeners.clear();
     mocks.remove.mockReset();
     mocks.save.mockReset();
@@ -99,6 +147,7 @@ describe('RelayRouteProfiles', () => {
     mocks.approveKey.mockReset();
     mocks.revokeKey.mockReset();
     mocks.keyStatus.mockReset();
+    mocks.grantInvoke.mockReset();
     mocks.keyStatus.mockResolvedValue({
       status: 'untrusted',
       trustRevision: 0,
@@ -169,7 +218,275 @@ describe('RelayRouteProfiles', () => {
         2,
       ),
     );
-    expect(screen.queryByText('Saved broker routes')).toBeNull();
+    expect(
+      screen.getByText(
+        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Add broker route' }),
+    ).toBeTruthy();
+  });
+
+  test('redeems only from the explicit mounted route action and invalidates host grant status', async () => {
+    const invitation = {
+      version: 'station-broker-native-route-invitation/v2',
+      brokerOrigin: 'https://broker.example',
+      scope: { stationId, enrollmentId, routingGeneration: 4 },
+      stationSigningKeyId: 'sha256:station-signing-key',
+      stationSigningGeneration: 3,
+      surface: {
+        kind: 'station-native',
+        appIdentifier: 'io.kontourai.station',
+        channel: 'nightly',
+        clientInstanceId: '33333333-3333-4333-8333-333333333333',
+        keyThumbprint: 'sha256:install-proof',
+      },
+      invitationId: 'abcdefghijklmnopqrstuv',
+      invitationSecret: 'a'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    };
+    const grant = {
+      route: {
+        brokerOrigin: 'https://broker.example',
+        stationId,
+        enrollmentId,
+        routingGeneration: 4,
+        grantId: 'abcdefghijklmnopqrstuv',
+      },
+      stationSigningKeyId: 'sha256:station-signing-key',
+      stationSigningGeneration: 3,
+      expiresAt: Date.now() + 3_600_000,
+    };
+    let redeemed = false;
+    const liveProfileStore = currentProfileStore();
+    mocks.grantInvoke.mockImplementation(
+      async (command: string, args?: Record<string, unknown>) => {
+        if (command === 'station_profile_store_read') return liveProfileStore;
+        if (command === 'station_native_relay_grant_status') {
+          expect(args).toEqual({ profileName: 'Home Station' });
+          return {
+            profileName: 'Home Station',
+            profileRevision: 12,
+            stationId,
+            enrollmentId,
+            grants: redeemed ? [{ metadata: grant, expired: false }] : [],
+            cleanups: [],
+          };
+        }
+        if (command === 'station_native_relay_grant_redeem') {
+          expect(args).toEqual({
+            profileName: 'Home Station',
+            expectedProfileRevision: 12,
+            invitation,
+          });
+          redeemed = true;
+          return { status: 'redeemed', grant };
+        }
+        throw new Error(`Unexpected native grant command: ${command}`);
+      },
+    );
+    mocks.keyStatus.mockResolvedValue({
+      status: 'approved',
+      trustRevision: 4,
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: 3,
+      keyId: 'sha256:station-signing-key',
+    });
+    mocks.pendingKey.mockResolvedValue(null);
+
+    const { queryClient } = renderRoutes();
+    await screen.findByText(
+      'A routing grant has not been saved on this device.',
+    );
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(mocks.grantInvoke).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('One-time routing invitation'), {
+      target: { value: JSON.stringify(invitation) },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Redeem routing grant' }),
+    );
+
+    await screen.findByText(/Routing grant active · expires/);
+    expect(mocks.grantInvoke).toHaveBeenCalledWith(
+      'station_native_relay_grant_redeem',
+      expect.objectContaining({
+        profileName: 'Home Station',
+        expectedProfileRevision: 12,
+        invitation,
+      }),
+    );
+    expect(mocks.grantInvoke).toHaveBeenCalledTimes(5);
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(
+      screen.getByText(
+        /account access, device approval, and Project access remain separate/,
+      ),
+    ).toBeTruthy();
+    expect(
+      queryClient.getQueryData([
+        'native-relay-grant',
+        'home station',
+        2,
+        'https://broker.example',
+        stationId,
+        enrollmentId,
+      ]),
+    ).toMatchObject({ grants: [{ metadata: grant }] });
+  });
+
+  test('does not redeem from an old mounted row after the live public row is replaced', async () => {
+    const invitation = {
+      version: 'station-broker-native-route-invitation/v2',
+      brokerOrigin: 'https://broker.example',
+      scope: { stationId, enrollmentId, routingGeneration: 4 },
+      stationSigningKeyId: 'sha256:station-signing-key',
+      stationSigningGeneration: 3,
+      surface: {
+        kind: 'station-native',
+        appIdentifier: 'io.kontourai.station',
+        channel: 'nightly',
+        clientInstanceId: '33333333-3333-4333-8333-333333333333',
+        keyThumbprint: 'sha256:install-proof',
+      },
+      invitationId: 'abcdefghijklmnopqrstuv',
+      invitationSecret: 'a'.repeat(43),
+      expiresAt: Date.now() + 60_000,
+    };
+    const liveProfileStore = currentProfileStore(13, 3);
+    mocks.grantInvoke.mockImplementation(async (command: string) => {
+      if (command === 'station_profile_store_read') return liveProfileStore;
+      if (command === 'station_native_relay_grant_status')
+        return {
+          profileName: 'Home Station',
+          profileRevision: 12,
+          stationId,
+          enrollmentId,
+          grants: [],
+          cleanups: [],
+        };
+      throw new Error(`Unexpected native grant command: ${command}`);
+    });
+    mocks.keyStatus.mockResolvedValue({
+      status: 'approved',
+      trustRevision: 4,
+      profileName: 'Home Station',
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+      generation: 3,
+      keyId: 'sha256:station-signing-key',
+    });
+
+    renderRoutes();
+    await screen.findByText(
+      'A routing grant has not been saved on this device.',
+    );
+    fireEvent.change(screen.getByLabelText('One-time routing invitation'), {
+      target: { value: JSON.stringify(invitation) },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Redeem routing grant' }),
+    );
+
+    await screen.findByText(
+      'The saved route changed. Review it and try again.',
+    );
+    expect(mocks.grantInvoke).toHaveBeenCalledWith(
+      'station_profile_store_read',
+    );
+    expect(mocks.grantInvoke).not.toHaveBeenCalledWith(
+      'station_native_relay_grant_redeem',
+      expect.anything(),
+    );
+  });
+
+  test('creates a route from the empty state and persists it through the native repository', async () => {
+    window.localStorage.clear();
+    const persisted = { store: emptyStationProfileStore() };
+    const bridge = {
+      invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+        if (command === 'station_profile_store_read')
+          return structuredClone(persisted.store) as T;
+        if (command === 'station_profile_store_write') {
+          if (args?.expectedRevision !== persisted.store.revision)
+            throw new Error('profile store revision conflict');
+          persisted.store = JSON.parse(
+            String(args.contents),
+          ) as StationProfileStore;
+          return undefined as T;
+        }
+        throw new Error(`Unexpected native profile command: ${command}`);
+      },
+    };
+    const repository = new NativeStationProfileStorage(
+      bridge,
+      defaultStorage,
+      true,
+    );
+    await repository.hydrate();
+    mocks.repository = repository;
+
+    renderRoutes();
+    expect(
+      screen.getByText(
+        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add broker route' }));
+
+    fireEvent.change(screen.getByLabelText(/Station application address/), {
+      target: { value: 'https://station.example' },
+    });
+    fireEvent.change(screen.getByLabelText(/Broker address/), {
+      target: { value: 'https://broker.example' },
+    });
+    fireEvent.change(screen.getByLabelText('Station ID'), {
+      target: { value: stationId },
+    });
+    fireEvent.change(screen.getByLabelText('Enrollment ID'), {
+      target: { value: enrollmentId },
+    });
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: 'Zach Station' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save route' }));
+
+    await screen.findByText('Zach Station');
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(repository.getRelayRouteProfiles()).toHaveLength(1);
+    expect(persisted.store.profiles[0]).toMatchObject({
+      name: 'Zach Station',
+      endpoint: 'https://station.example',
+      relayRoute: {
+        brokerOrigin: 'https://broker.example',
+        stationId,
+        enrollmentId,
+      },
+    });
+    expect(persisted.store.profiles[0]).not.toHaveProperty('credentialRef');
+
+    const restoredRepository = new NativeStationProfileStorage(
+      bridge,
+      defaultStorage,
+      true,
+    );
+    await restoredRepository.hydrate();
+    expect(restoredRepository.getRelayRouteProfiles()).toMatchObject([
+      {
+        name: 'Zach Station',
+        relayRoute: {
+          brokerOrigin: 'https://broker.example',
+          stationId,
+          enrollmentId,
+        },
+      },
+    ]);
   });
 
   test('explains when the saved-route limit pauses automatic renewal', () => {

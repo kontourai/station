@@ -11,7 +11,7 @@ not grant any of those permissions.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
 `/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
-`/native-application`,
+`/native-application` and `/native-enrollment`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
@@ -58,6 +58,35 @@ enroll or activate a Device, authenticate an account, or grant Project access.
 The separate account-continuation proof is still required where applicable.
 Source and focused tests do not establish executed Tauri IPC, packaged-client,
 physical-device or complete authenticated Project-journey evidence.
+
+## Native enrollment exchange composition
+
+The `/native-application` entry also exports
+`createNativeVerifiedPeerTransport`. It shares the verified handshake without
+Device signing. Its explicit peer version distinguishes an enrollment peer
+from an authenticated application peer; verifying the Station transcript does
+not create Device, account or Project authority. The returned owner exposes
+its channel, captured public peer metadata, an asynchronous close, and an
+authoritative trust check that remains usable after the one-request channel
+closes. Preparing or sending another request still requires a live channel.
+
+`@kontourai/station-connect/native-enrollment` exports
+`createNativeEnrollmentExchange`. The host bridge supplies one freshly admitted
+peer and fixed prepared operation for each exchange. Connect copies the exact
+POST target, JSON body and headers, pins them to that peer, bounds the request
+at 16 KiB and JSON response at 64 KiB, and forwards the opaque request handle,
+response and HTTP status to host acceptance. It uses the encrypted application
+channel with no direct HTTP or cookie fallback. The exchange deadline is 45
+seconds, in addition to the peer deadline.
+
+The application-channel core closes at response EOF. Host acceptance therefore
+checks its retained operation capture and current owners, rather than requiring
+a live RTC channel. It must authenticate signed Station responses and perform
+credential custody or activation itself; this generic transport does neither.
+The host also owns cancellation of pending enrollment and reconciliation of an
+unknown activation outcome. Closing a network peer alone is not cancellation
+of a staged or committed enrollment. These library primitives do not establish
+a mounted native onboarding workflow or a released client.
 
 ## Optional self-hosted browser transport
 
