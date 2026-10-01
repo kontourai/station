@@ -563,6 +563,13 @@ export function createNativeVerifiedPeerTransport(
       completed = true;
       const applicationChannel: ApplicationChannel = {
         ...adopted,
+        async prepareRequest(request) {
+          assertBoundCurrent();
+          request.signal.throwIfAborted();
+          await assertCurrent(authority, 'checkpoint', request.signal);
+          assertBoundCurrent();
+          return [];
+        },
         send: (message: string) => {
           assertBoundCurrent();
           adopted.send(message);
@@ -629,8 +636,7 @@ export function createNativeApplicationTransport(
     return {
       ...opened.channel,
       async prepareRequest(request) {
-        request.signal.throwIfAborted();
-        await opened.assertCurrent(request.signal);
+        await opened.channel.prepareRequest!(request);
         if (
           request.headers.has('authorization') ||
           request.headers.has('cookie') ||
@@ -658,8 +664,7 @@ export function createNativeApplicationTransport(
           ),
           request.signal,
         );
-        request.signal.throwIfAborted();
-        await opened.assertCurrent(request.signal);
+        await opened.channel.prepareRequest!(request);
         return [[NATIVE_DEVICE_PROOF_HEADER, validateRequestProof(proof)]];
       },
     };
