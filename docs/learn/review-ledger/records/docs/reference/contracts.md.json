@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"010e22a512964efd5a525d23c61cb3b57060df8564a26fa18acf2d4476f1dce7","revision":"543ec6c18fac08d9cd88ed6dff81b940e7776f86"},
+  "document": {"digest":"d1f25105f82d21d7250b53635621eb35e68d10bfc837e38998a11cb6d3bde875","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -112,9 +112,9 @@
 
     {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"7440e21548b4b92568ae4e7929048b4bf6c4fd095b5de7373d8a339a0165f2ef","revision":"543ec6c18fac08d9cd88ed6dff81b940e7776f86"},
+    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"63211729227142a5260cc98ccc8f8492941f5d7b3e7f76568873cd20946c8865","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
 
-    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"1ae0f4204a6b29871d2f607cd7b07e18358e757e3528f63a0de498c66dfce6e3","revision":"543ec6c18fac08d9cd88ed6dff81b940e7776f86"},
+    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"1ec687c304021edd2d93cd2304e00a6d245b2b613a10c97e041d4fcce0ca2985","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
