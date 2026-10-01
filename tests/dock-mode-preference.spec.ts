@@ -289,9 +289,9 @@ test.describe('Dock Mode Preference', () => {
     // floor would crush the conversation surface, so the panel and its
     // toggle must not exist in this mode even for users whose persisted
     // preference has the chat list open (the default).
-    await page.goto(
-      '/projects/dev/layouts/code?dock=open&dockSlotPlacement=right',
-    );
+    // Home, not the Coding layout: on a wide screen the Coding layout's
+    // Chat is its centre rather than a dock (#928 coding stack).
+    await page.goto('/?dock=open&dockSlotPlacement=right');
     await settleDock(page);
     await dismissSetupLauncher(page);
 
@@ -310,9 +310,9 @@ test.describe('Dock Mode Preference', () => {
   test('left dock mirrors the side-panel geometry, resize edge, and compact inbox policy', async ({
     page,
   }) => {
-    await page.goto(
-      '/projects/dev/layouts/code?dock=open&dockSlotPlacement=left',
-    );
+    // Home, not the Coding layout: on a wide screen the Coding layout's
+    // Chat is its centre rather than a dock (#928 coding stack).
+    await page.goto('/?dock=open&dockSlotPlacement=left');
     await settleDock(page);
     await dismissSetupLauncher(page);
 
@@ -358,9 +358,9 @@ test.describe('Dock Mode Preference', () => {
     // sole full available main surface. The grid must collapse to one column
     // and main-content must not consume a column or paint through behind it.
     // A class-only assertion would miss the grid overlap; measure bounds.
-    await page.goto(
-      '/projects/dev/layouts/code?dock=open&dockSlotPlacement=right',
-    );
+    // Home, not the Coding layout: on a wide screen the Coding layout's
+    // Chat is its centre rather than a dock (#928 coding stack).
+    await page.goto('/?dock=open&dockSlotPlacement=right');
     await settleDock(page);
     await dismissSetupLauncher(page);
 
@@ -419,7 +419,9 @@ test.describe('Dock Mode Preference', () => {
         JSON.stringify({ version: 2, values: { dockSlotPlacement: 'right' } }),
       );
     });
-    await page.goto('/projects/dev/layouts/code?dockSlotPlacement=bottom');
+    // Home, not the Coding layout: on a wide screen the Coding layout's
+    // Chat is its centre rather than a dock (#928 coding stack).
+    await page.goto('/?dockSlotPlacement=bottom');
     await settleDock(page);
 
     const chatDock = page.locator('.chat-dock');

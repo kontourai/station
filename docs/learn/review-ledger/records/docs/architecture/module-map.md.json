@@ -562,7 +562,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -572,7 +572,7 @@
 
     {"path":"src-server/services/orchestration/native-invocation-runs.ts","digest":"f60bd1aa1d935d571749b4fe620a754360022df65dc3c10459ecf25ed4ac44eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -780,7 +780,7 @@
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"5f014ce497321c0bbbad91fd9463c9a5a8eb2613822929c30a5187d289ae9543","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"f63a554477e86361ac8977b153449a5be400cda1b0d53d3bb78067289041c196","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
 
     {"path":"src-ui/src/components/home/StarterWorkCard.tsx","digest":"e111892b72c350c7a95919ded04a229d5512a586259d6ff5d04d620b3b78b9a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -798,7 +798,7 @@
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7","revision":"20b0e59a495d45b5166b811d2d9e37a701bd26e9"},
 
     {"path":"src-ui/src/contexts/MonitoringContext.tsx","digest":"65fc125213795d0077de6bc5fa6c68a665c71d3527cd7baf519313c97bb93b3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -810,7 +810,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/observe.ts","digest":"edbe10fd612c9a33d91709961c6e86886950edacf14d51b2dfac760fdcb848a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"64d6bd975aad5c65afcb356fa9e0694e3cbbbf090e54b5a743d9bbcd5c760211","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"3916044ff0e68b07aad464f652c60ed73db0b3cc07a13b59b0fdff365096950e","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
