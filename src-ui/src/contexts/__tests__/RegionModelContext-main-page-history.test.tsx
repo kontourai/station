@@ -372,6 +372,30 @@ describe('entries the traversal must not obey', () => {
     await waitFor(() => expect(page()).toBe('home'));
   });
 
+  test('after Back between page entries, a guarded Back from a route still asks', async () => {
+    await mount();
+    await openActivityPage();
+    // A same-URL traversal: the store has to follow it, or the route pushed
+    // next is numbered from the entry left and the guarded Back below is
+    // travelled back by the wrong distance — past the end, so nobody asks.
+    await travel(-1);
+    expect(page()).toBe('home');
+    act(() => navigationStore.navigate('/settings'));
+    await waitFor(() => expect(window.location.pathname).toBe('/settings'));
+    let asked = false;
+    const release = navigationStore.registerNavigationGuard(
+      Symbol('dirty-form'),
+      () => {
+        asked = true;
+      },
+    );
+
+    act(() => window.history.back());
+    await waitFor(() => expect(asked).toBe(true));
+    expect(window.location.pathname).toBe('/settings');
+    release();
+  });
+
   test('closing a dialog does not undo a change made while it was open', async () => {
     await mount();
     act(() => current().showSurface('activity'));
