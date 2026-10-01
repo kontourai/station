@@ -303,9 +303,17 @@ interface ChatInputAreaProps {
  * The textarea's auto-height, clamped to the viewport, and the draft's floor:
  * two lines (or its whole content, when shorter). In a short dock the draft
  * may shrink to the floor and scroll, never below it.
+ *
+ * "Its whole content" is measured at one row: an empty textarea is two rows
+ * tall by default, and a floor taken from that would reserve two lines for a
+ * draft nobody has typed, at the transcript's expense.
  */
 function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
   textarea.style.height = 'auto';
+  const rows = textarea.rows;
+  textarea.rows = 1;
+  const contentHeight = textarea.scrollHeight;
+  textarea.rows = rows;
   const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
   const height = Math.min(textarea.scrollHeight, maxHeight);
   textarea.style.height = `${height}px`;
@@ -319,7 +327,7 @@ function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
     (Number.parseFloat(style.paddingBottom) || 0) +
     (Number.parseFloat(style.borderTopWidth) || 0) +
     (Number.parseFloat(style.borderBottomWidth) || 0);
-  const floor = Math.min(height, Math.ceil(2 * line + chrome));
+  const floor = Math.min(height, contentHeight, Math.ceil(2 * line + chrome));
   textarea.style.minHeight = `${floor}px`;
   return floor;
 }
