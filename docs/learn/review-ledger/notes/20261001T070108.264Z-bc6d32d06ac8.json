@@ -1,0 +1,7 @@
+{
+  "revision": "69084a9bc52c93cbb54e1abf3c1d09a0813474d4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Bounded re-read of the two passages whose sources changed: the review evidence 'Storage and cleanup' paragraph (GitReviewWorkspaceSource still serializes detached workspaces, default capacity and location checks unchanged; it now requires the Project folder's own repository before any git call, which the paragraph does not contradict) and the workspace-checkpoints 'Follow the evidence' paragraph (restore still excludes admitted turns by canonical working-tree root; restore now refuses a folder whose repository is not its own with workspace_changed). No prose change; the rest of the map was not re-reviewed."}
+  ]
+}

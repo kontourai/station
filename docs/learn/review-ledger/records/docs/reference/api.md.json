@@ -252,7 +252,7 @@
 
     {"path":"src-server/services/connections/launchable-model-inventory.ts","digest":"aa94b7954c67975d4cbc6f5eef27368140a4e19f9181418d415811e83b899db2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/evidence/git-review-workspace-source.ts","digest":"aa7391c138b438905150699d0309941754abd39049fdfe81033bc98d0ae9683e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/evidence/git-review-workspace-source.ts","digest":"d339dd1c57a354c5823bf525835a72d83c787428da425b78b010cbc57657acda","revision":"908121376b648ddfd8c27e89744b98c12fc57990"},
 
     {"path":"src-server/services/evidence/orchestration-review-executor.ts","digest":"fff6e2cc5bceadcbab8a0e068412758c8cb2dfe9fc33e2f5ea642d88aff6c08d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

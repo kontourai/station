@@ -298,7 +298,7 @@
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/projects/coding.ts","digest":"64446ff8071d40a7337e13c1ac80f6a1a74283d07302a84777648d6f6196dcce","revision":"5ca36d18429a22e4914f120d294359d4bc8e3b40"},
+    {"path":"src-server/routes/projects/coding.ts","digest":"f6b90ae4da0b9f4db0bee8252b8314757ff1280d5b829955ea54d8223870030c","revision":"908121376b648ddfd8c27e89744b98c12fc57990"},
 
     {"path":"src-server/routes/projects/project-identity-routes.ts","digest":"6abd1b5f996e52b18192683a5450eca3ecf287b3716ac16a73d8c3613103dcb5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -344,7 +344,7 @@
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"5e6204b5c16d3441882a8f59af83a59b4fdddea36a35cc14b857ccd13a2af5de","revision":"908121376b648ddfd8c27e89744b98c12fc57990"},
 
     {"path":"src-server/services/evidence/answer-assessment-module.ts","digest":"95d113224b308b1ce152239d30a8cf87b0727a4f211c80d2cdc6ead6b916d133","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -392,7 +392,7 @@
 
     {"path":"src-server/services/projects/project-membership-service.ts","digest":"1d35bde19ff70f213d3b0db162489980c2f7fd957481156c3ac1b2907dc58af5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/project-service.ts","digest":"7c2686a08d3d5b56be67eba734533db22717079638dbef7a42c724988b780d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/projects/project-service.ts","digest":"a66acdecd4df798289fe1d44312e2e4544bea994364aa6642b00756d7cf4f110","revision":"908121376b648ddfd8c27e89744b98c12fc57990"},
 
     {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"7c655627f32e3048e82228592a1b81542e86acd44167e8d4b625cd64ebc10af2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
