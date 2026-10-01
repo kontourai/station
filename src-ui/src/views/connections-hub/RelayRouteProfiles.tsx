@@ -1,10 +1,21 @@
+import { useConnections } from '@kontourai/station-connect';
 import type { StationProfile } from '@kontourai/station-contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageRow } from '../../components/PageRow';
 import { SkeletonBlock } from '../../components/state';
+import {
+  useHostRequestAuthorityScope,
+  useNativeRelayAccountSession,
+} from '../../contexts/ApiBaseContext';
 import {
   type NativeRelayGrantRedemptionFailureCode,
   type NativeRelayGrantState,
@@ -242,6 +253,7 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
           }}
         />
       ) : null}
+      <NativeRelayAccountSessionPanel profile={profile} />
       <label>
         One-time routing invitation
         <textarea
@@ -272,6 +284,251 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
       {redeem.isSuccess ? (
         <p role="status">Routing grant saved on this device.</p>
       ) : null}
+    </section>
+  );
+}
+
+export function NativeRelayAccountSessionPanel({
+  profile,
+}: {
+  readonly profile: StationProfile;
+}) {
+  const { captureCredentialEvidence, isCredentialEvidenceCurrent } =
+    useConnections();
+  const evidence = captureCredentialEvidence();
+  const selected = evidence?.nativeBrokerRoute;
+  const route = profile.relayRoute!;
+  const isSelected = Boolean(
+    selected &&
+      evidence &&
+      evidence.origin === profile.endpoint &&
+      selected.profileName.toLowerCase() === profile.name.toLowerCase() &&
+      selected.brokerOrigin === route.brokerOrigin &&
+      selected.stationId === route.stationId &&
+      selected.enrollmentId === route.enrollmentId &&
+      isCredentialEvidenceCurrent(evidence),
+  );
+  const selectedIdentity = isSelected
+    ? JSON.stringify([
+        evidence?.connectionId,
+        selected?.profileName,
+        selected?.profileRevision,
+        selected?.brokerOrigin,
+        selected?.stationId,
+        selected?.enrollmentId,
+      ])
+    : 'not-selected';
+  const requestScope = useHostRequestAuthorityScope();
+  const hasAccountSession = Boolean(
+    isSelected &&
+      requestScope?.requiresEnrolledCredential === true &&
+      requestScope.isCurrent(),
+  );
+  const account = useNativeRelayAccountSession();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [invitation, setInvitation] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const credentialsRef = useRef<{ username: string; password: string } | null>(
+    null,
+  );
+  const invitationRef = useRef<string | null>(null);
+  const selectedIdentityRef = useRef(selectedIdentity);
+  const accountScopeIdentity = hasAccountSession
+    ? requestScope?.authorityKey
+    : 'no-account-session';
+  const accountScopeIdentityRef = useRef(accountScopeIdentity);
+
+  useEffect(() => {
+    if (selectedIdentityRef.current === selectedIdentity) return;
+    selectedIdentityRef.current = selectedIdentity;
+    credentialsRef.current = null;
+    invitationRef.current = null;
+    setUsername('');
+    setPassword('');
+    setInvitation('');
+    setError(null);
+    setNotice(null);
+  }, [selectedIdentity]);
+
+  useEffect(() => {
+    if (accountScopeIdentityRef.current === accountScopeIdentity) return;
+    accountScopeIdentityRef.current = accountScopeIdentity;
+    credentialsRef.current = null;
+    invitationRef.current = null;
+    setUsername('');
+    setPassword('');
+    setInvitation('');
+  }, [accountScopeIdentity]);
+
+  useEffect(
+    () => () => {
+      credentialsRef.current = null;
+      invitationRef.current = null;
+    },
+    [],
+  );
+
+  const login = useMutation({
+    mutationFn: async () => {
+      if (!isCredentialEvidenceCurrent(evidence!))
+        throw new Error('native_relay_selection_changed');
+      const credentials = credentialsRef.current;
+      if (!credentials) throw new Error('native_account_credentials_missing');
+      return account.login(credentials);
+    },
+    onSuccess: () => {
+      setError(null);
+      setNotice(
+        'Station account session is active for this selected route. Device approval and Project access remain separate.',
+      );
+    },
+    onError: () => {
+      setError(
+        'Station could not sign in this account for the selected route.',
+      );
+    },
+    onSettled: () => {
+      credentialsRef.current = null;
+      setUsername('');
+      setPassword('');
+    },
+  });
+
+  const acceptInvitation = useMutation({
+    mutationFn: async () => {
+      if (!isCredentialEvidenceCurrent(evidence!))
+        throw new Error('native_relay_selection_changed');
+      const token = invitationRef.current;
+      if (!token) throw new Error('native_account_invitation_missing');
+      return account.acceptInvitation(token);
+    },
+    onSuccess: () => {
+      setError(null);
+      setNotice(
+        'Station returned an invitation response. Check shared Projects for any new access; this response alone does not confirm Project membership or Device approval.',
+      );
+    },
+    onError: () => {
+      setError('Station could not accept this account invitation.');
+    },
+    onSettled: () => {
+      invitationRef.current = null;
+      setInvitation('');
+    },
+  });
+
+  const retire = useMutation({
+    mutationFn: async () => {
+      if (!isCredentialEvidenceCurrent(evidence!))
+        throw new Error('native_relay_selection_changed');
+      account.retireAccount();
+    },
+    onSuccess: () => {
+      credentialsRef.current = null;
+      invitationRef.current = null;
+      setUsername('');
+      setPassword('');
+      setInvitation('');
+      setError(null);
+      setNotice(
+        'The account session was cleared from this device. The remote Station account was not signed out or revoked.',
+      );
+    },
+    onError: () => {
+      setError('Station could not clear the local account session.');
+    },
+  });
+
+  if (!isSelected) return null;
+
+  const busy =
+    login.isPending || acceptInvitation.isPending || retire.isPending;
+  return (
+    <section
+      className="connections-computers__note"
+      aria-label={`Station account for ${profile.name}`}
+    >
+      <h3>Station account session</h3>
+      <p>
+        Account sign-in uses the selected native relay. It does not authorize
+        Device approval or Project membership.
+      </p>
+      {hasAccountSession ? (
+        <>
+          <label className="editor-field">
+            <span className="editor-label">Account invitation token</span>
+            <input
+              className="editor-input"
+              autoComplete="off"
+              spellCheck={false}
+              value={invitation}
+              onChange={(event) => setInvitation(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <Button
+            disabled={!invitation.trim() || busy}
+            pending={acceptInvitation.isPending}
+            onClick={() => {
+              invitationRef.current = invitation;
+              setInvitation('');
+              acceptInvitation.mutate();
+            }}
+          >
+            Accept account invitation
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={busy}
+            pending={retire.isPending}
+            onClick={() => retire.mutate()}
+          >
+            Forget account session on this device
+          </Button>
+        </>
+      ) : (
+        <>
+          <label className="editor-field">
+            <span className="editor-label">Station account username</span>
+            <input
+              className="editor-input"
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="username"
+              spellCheck={false}
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <label className="editor-field">
+            <span className="editor-label">Station account password</span>
+            <input
+              className="editor-input"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <Button
+            variant="primary"
+            disabled={!username.trim() || !password || busy}
+            pending={login.isPending}
+            onClick={() => {
+              credentialsRef.current = { username, password };
+              login.mutate();
+            }}
+          >
+            Sign in to this Station account
+          </Button>
+        </>
+      )}
+      {notice ? <p role="status">{notice}</p> : null}
+      {error ? <p role="alert">{error}</p> : null}
     </section>
   );
 }

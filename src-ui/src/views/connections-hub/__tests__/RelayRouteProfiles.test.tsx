@@ -52,6 +52,46 @@ const mocks = vi.hoisted(() => ({
   finalizeResponses: [] as unknown[],
   recoveryAttempts: [] as unknown[],
   transitionCurrentFails: false,
+  credentialEvidence: null as null | {
+    connectionId: string;
+    origin: string;
+    nativeBrokerRoute: {
+      routeVersion: 1;
+      profileName: string;
+      profileRevision: number;
+      brokerOrigin: string;
+      stationId: string;
+      enrollmentId: string;
+    };
+  },
+  accountSessionActive: false,
+  accountLogin: vi.fn(),
+  accountAcceptInvitation: vi.fn(),
+  accountRetire: vi.fn(),
+}));
+
+vi.mock('@kontourai/station-connect', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-connect')>();
+  return {
+    ...actual,
+    useConnections: () => ({
+      captureCredentialEvidence: () => mocks.credentialEvidence,
+      isCredentialEvidenceCurrent: () => true,
+    }),
+  };
+});
+
+vi.mock('../../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () =>
+    mocks.accountSessionActive
+      ? { requiresEnrolledCredential: true, isCurrent: () => true }
+      : undefined,
+  useNativeRelayAccountSession: () => ({
+    login: mocks.accountLogin,
+    acceptInvitation: mocks.accountAcceptInvitation,
+    retireAccount: mocks.accountRetire,
+  }),
 }));
 
 vi.mock(
@@ -495,12 +535,32 @@ function renderRoutes() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const rendered = render(
+  const element = () => (
     <QueryClientProvider client={queryClient}>
       <RelayRouteProfiles />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { ...rendered, queryClient };
+  const rendered = render(element());
+  return {
+    ...rendered,
+    queryClient,
+    rerenderRoutes: () => rendered.rerender(element()),
+  };
+}
+
+function selectNativeRelayRoute(profileName = 'Home Station') {
+  mocks.credentialEvidence = {
+    connectionId: `station-profile:${profileName.toLowerCase()}`,
+    origin: 'https://station.example',
+    nativeBrokerRoute: {
+      routeVersion: 1,
+      profileName,
+      profileRevision: 12,
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+    },
+  };
 }
 
 describe('RelayRouteProfiles', () => {
@@ -528,6 +588,21 @@ describe('RelayRouteProfiles', () => {
     mocks.finalizeResponses.length = 0;
     mocks.recoveryAttempts.length = 0;
     mocks.transitionCurrentFails = false;
+    mocks.credentialEvidence = null;
+    mocks.accountSessionActive = false;
+    mocks.accountLogin.mockReset();
+    mocks.accountAcceptInvitation.mockReset();
+    mocks.accountRetire.mockReset();
+    mocks.accountLogin.mockImplementation(async () => {
+      mocks.accountSessionActive = true;
+      return { authorityKey: 'test-account-scope' };
+    });
+    mocks.accountAcceptInvitation.mockResolvedValue({
+      data: { grantsDeviceAccess: false },
+    });
+    mocks.accountRetire.mockImplementation(() => {
+      mocks.accountSessionActive = false;
+    });
     mocks.keyStatus.mockResolvedValue({
       status: 'untrusted',
       trustRevision: 0,
@@ -1039,6 +1114,96 @@ describe('RelayRouteProfiles', () => {
       'station_native_enrollment_activate_prepare',
       expect.anything(),
     );
+  });
+
+  test('mounts account sign-in only on the matching selected native route and keeps credentials transient', async () => {
+    configureEnrollmentReadyRoute();
+    selectNativeRelayRoute();
+    const { queryClient } = renderRoutes();
+    await screen.findByRole('region', {
+      name: 'Station account for Home Station',
+    });
+
+    fireEvent.change(screen.getByLabelText('Station account username'), {
+      target: { value: 'member@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Station account password'), {
+      target: { value: 'transient-password' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Sign in to this Station account' }),
+    );
+
+    await screen.findByLabelText('Account invitation token');
+    expect(mocks.accountLogin).toHaveBeenCalledWith({
+      username: 'member@example.test',
+      password: 'transient-password',
+    });
+    expect(screen.queryByLabelText('Station account password')).toBeNull();
+    expect(
+      queryClient
+        .getMutationCache()
+        .getAll()
+        .every((mutation) => mutation.state.variables === undefined),
+    ).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Account invitation token'), {
+      target: { value: 'one-time-account-invitation' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Accept account invitation' }),
+    );
+    await screen.findByText(/does not confirm Project membership/);
+    expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith(
+      'one-time-account-invitation',
+    );
+    expect(
+      (screen.getByLabelText('Account invitation token') as HTMLInputElement)
+        .value,
+    ).toBe('');
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Forget account session on this device',
+      }),
+    );
+    await screen.findByLabelText('Station account username');
+    expect(mocks.accountRetire).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText(/remote Station account was not signed out or revoked/),
+    ).toBeTruthy();
+  });
+
+  test('clears unsent account fields when the active native route changes', async () => {
+    configureEnrollmentReadyRoute();
+    selectNativeRelayRoute();
+    const rendered = renderRoutes();
+    await screen.findByLabelText('Station account username');
+    fireEvent.change(screen.getByLabelText('Station account username'), {
+      target: { value: 'member@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Station account password'), {
+      target: { value: 'transient-password' },
+    });
+
+    selectNativeRelayRoute('Other Station');
+    await act(async () => rendered.rerenderRoutes());
+    expect(
+      screen.queryByRole('region', {
+        name: 'Station account for Home Station',
+      }),
+    ).toBeNull();
+    selectNativeRelayRoute();
+    await act(async () => rendered.rerenderRoutes());
+    await screen.findByLabelText('Station account username');
+    expect(
+      (screen.getByLabelText('Station account username') as HTMLInputElement)
+        .value,
+    ).toBe('');
+    expect(
+      (screen.getByLabelText('Station account password') as HTMLInputElement)
+        .value,
+    ).toBe('');
   });
 
   test('aborts the owned attempt and network signal when the user cancels', async () => {
