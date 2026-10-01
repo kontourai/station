@@ -358,7 +358,7 @@ describe('central runtime HTTP security boundary', () => {
           Authorization: `Bearer ${CREDENTIAL}`,
           [INTERNAL_API_TOKEN_HEADER]: token,
           [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
-            JSON.stringify({ provider: 'tailscale-serve', login: 'brian' }),
+            JSON.stringify({ provider: 'tailscale-serve', login: 'casey' }),
           ).toString('base64url'),
         },
       },
