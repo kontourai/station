@@ -279,14 +279,31 @@ selection. Device candidate capture matched the pairing Device and completed in
 self-receipt returned `current`. No bearer was returned to the renderer.
 The stale profile revision refused, and local credential deletion completed.
 
-This is a paired-bootstrap and custody receipt using a synthetic local account
-and the real source runtime. It does not establish the complete encrypted
-Project read/reconnect/account-and-Device-revocation sequence, ordinary native
-onboarding, fresh relay-only enrollment, signed distribution, remote networking,
-or physical two-human use. A later revocation attempt reached an expired
-five-minute fixture process and remains unavailable evidence. The prepared full
-Project run then failed its startup prerequisite under host resource exhaustion;
-neither failure is counted as a passed application scenario.
+The first receipt qualifies paired bootstrap and custody using a synthetic local
+account and the real source runtime. A later revocation attempt reached an
+expired five-minute fixture process, and the prepared full Project run then
+failed its startup prerequisite under host resource exhaustion. Neither failure
+is counted as a passed application scenario.
+
+A separately recorded full run reused that same installed iOS simulator
+executable and the existing native account/RTC acceptance helper. Its isolated
+Linux Station/Pion/TURN runtime used clean source
+`f5eda517106a4547d1934e841f0fca25e4785655`; explicit SSH TCP forwards exposed
+only fixture-owned loopback endpoints to the simulator. Real Keychain/IPC and
+the account provider completed protected Project read (200), fresh-peer
+reconnect (200), account revocation (401), reauthentication (200) and Device
+revocation (403). Every read recorded a fresh host peer, a selected relay pair,
+relay candidates in the offer and zero direct Project HTTP attempts. Successful
+reads contained the expected Project; revoked reads contained no Project payload.
+Both account challenge/exchange pairs returned 200 and passed their closed
+version, target, Device and surface checks. Owned profile/grant cleanup returned
+an empty profile store; the runtime stopped, its TURN container disappeared,
+and the three owned SSH forwarders closed.
+
+This qualifies the development iOS simulator and that SSH fixture topology.
+It does not qualify ordinary native onboarding, fresh relay-only enrollment,
+signed or physical iOS Nightly, public TLS/TURN/NAT reachability, a hosted service,
+or physical two-human use. No timeout increase or CSP relaxation was used.
 
 Source tests and the macOS Keychain roundtrip do not establish
 packaged or physical-device Project access.
