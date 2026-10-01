@@ -332,7 +332,20 @@ describe.runIf(process.platform !== 'win32')(
         expect((await postConnector(issued.connector, noIssuer)).status).toBe(
           503,
         );
-        expect((await postConnector()).status).toBe(200);
+        const connectorClient = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          issued.connector,
+          async (input, init) => app.fetch(new Request(input, init)),
+          () => now,
+        );
+        const receiptFromCaller = await connectorClient.iceConfiguration(
+          new AbortController().signal,
+        );
+        expect(receiptFromCaller.scope).toEqual(nativeScope);
+        expect(receiptFromCaller.iceServers[0]?.username).toBe('end-user');
+        // Registration still needs the original exact Origin; only ICE omits it.
+        await connectorClient.register(new AbortController().signal);
         expect(provider.issue).toHaveBeenCalledTimes(2);
         service.withdraw(scope, issued.connector);
         expect((await postConnector()).status).toBe(401);
