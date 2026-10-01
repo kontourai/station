@@ -40,13 +40,21 @@
 
     {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"b2342efc85c9cae8d42bd588669176b09e589b34fdeaf28bcfe04a6f2bbdf67a","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"a02aac79249426008266ab6c6a748a33b9a5893b648796cb2e3a7348f1f8bf3a","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+    {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"ef631483bf5e2e1a9fa810388b8e21aab7bb00e6eb46953ff23dae396e7df176","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
 
-    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"89e43e97a9ad7439be174412fcbf9b75e7b7624e45370d59da792055f577b512","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"ee747fb90b796681735629e4b5b29b2c6cf7eae7c5921194e0339a11497e424b","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
 
     {"path":"packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","digest":"61262d2078428f6e2da4deeb8018e814a0f23b1c0d9b4b1c72f3422fc8ba8a59","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"49468807c4612ac6b6e6b57773262671759eab5bf9d485607b48a3838b83cf38","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"}
+    {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"49468807c4612ac6b6e6b57773262671759eab5bf9d485607b48a3838b83cf38","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/services/projects/__tests__/task-room-work-module.test.ts","digest":"6d780b7883c2fd04de9643ff8219e40005f4e5a118b74414b76e2e1426513778","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
+
+    {"path":"packages/sdk/src/__tests__/task-room-work.test.ts","digest":"3bedf82402323c846c1d29f7048a501afa13a35de6558256761188b88a309683","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"src-ui/src/__tests__/TaskWorkspaceView.test.tsx","digest":"f43c5517baac12f972788ef2e703e69131f5c181f1406b3de6d36af960225a9b","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"89ae5a79b61e17ed7994f6fe8d8015bd740297b0fb16744cc5f35686e80f637d","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"}
   ],
 
   "checks": [
