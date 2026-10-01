@@ -80,6 +80,7 @@ function grantSelection(profile: StationProfile) {
 }
 
 function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
+  const [enrollmentStarted, setEnrollmentStarted] = useState(false);
   const queryClient = useQueryClient();
   const [invitation, setInvitation] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -228,9 +229,11 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
           A previous grant cleanup is still pending on this device.
         </p>
       ) : null}
-      {canEnroll ? (
+      {canEnroll || enrollmentStarted ? (
         <NativeRelayEnrollmentWizard
           profile={profile}
+          onEnrollmentStart={() => setEnrollmentStarted(true)}
+          onEnrollmentCancel={() => setEnrollmentStarted(false)}
           refreshGrantStatus={async () => {
             const refreshed = await status.refetch();
             if (refreshed.isError || !refreshed.data)
@@ -378,7 +381,7 @@ export function RelayRouteProfiles() {
           }
         >
           <NativeRelayGrantControls
-            key={`grant:${profile.name}:${profile.updatedAt}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
+            key={`grant:${profile.name.toLowerCase()}:${profile.endpoint}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
             profile={profile}
           />
           <RelayRouteKeyApproval

@@ -883,6 +883,27 @@ describe('RelayRouteProfiles', () => {
     expect(screen.queryByText(/Device configured/)).toBeNull();
   });
 
+  test('disposes an unfinished enrollment on row unmount', async () => {
+    configureEnrollmentReadyRoute();
+    const rendered = renderRoutes();
+    await screen.findByRole('heading', { name: 'Device setup' });
+    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
+    await screen.findByRole('heading', {
+      name: 'Public Device candidate for the Station operator',
+    });
+    const ownedSignal = mocks.exchangeSignals.at(-1);
+
+    rendered.unmount();
+
+    expect(ownedSignal?.aborted).toBe(true);
+    await waitFor(() =>
+      expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+        'station_native_enrollment_abort',
+        { enrollmentHandle },
+      ),
+    );
+  });
+
   test('revalidates the captured public row epoch against live host profile storage before begin', async () => {
     const { liveStore } = configureEnrollmentReadyRoute();
     renderRoutes();

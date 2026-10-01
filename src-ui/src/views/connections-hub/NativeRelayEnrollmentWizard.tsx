@@ -16,10 +16,13 @@ type EnrollmentPhase =
   | 'challenge'
   | 'pending'
   | 'staged'
+  | 'verifying'
   | 'configured';
 
 interface NativeRelayEnrollmentWizardProps {
   readonly profile: StationProfile;
+  readonly onEnrollmentStart: () => void;
+  readonly onEnrollmentCancel: () => void;
   readonly refreshGrantStatus: () => Promise<NativeRelayGrantState>;
 }
 
@@ -48,8 +51,32 @@ function reportEnrollmentFailure(
   setError(enrollmentFailureCopy(cause));
 }
 
+function hasUnknownActivationPublication(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message === 'native_enrollment_transition_retired'
+  );
+}
+
+function retainUnknownActivation(
+  cause: unknown,
+  setPhase: (phase: EnrollmentPhase) => void,
+  setNotice: (notice: string) => void,
+  setError: (message: string | null) => void,
+): boolean {
+  if (!hasUnknownActivationPublication(cause)) return false;
+  setPhase('verifying');
+  setError(null);
+  setNotice(
+    'Station may have completed Device activation, but could not confirm the result. Keep setup open and check Device status again.',
+  );
+  return true;
+}
+
 export function NativeRelayEnrollmentWizard({
   profile,
+  onEnrollmentStart,
+  onEnrollmentCancel,
   refreshGrantStatus,
 }: NativeRelayEnrollmentWizardProps) {
   const queryClient = useQueryClient();
@@ -66,6 +93,7 @@ export function NativeRelayEnrollmentWizard({
   const controllerRef = useRef<AbortController | null>(null);
   const credentialsRef = useRef<LoginCredentials | null>(null);
   const terminalRef = useRef(false);
+  const attemptStartedRef = useRef(false);
   const route = profile.relayRoute!;
   const selection = {
     brokerOrigin: route.brokerOrigin,
@@ -85,8 +113,7 @@ export function NativeRelayEnrollmentWizard({
     () => () => {
       controllerRef.current?.abort();
       const client = clientRef.current;
-      if (client && !terminalRef.current)
-        void client.abort().catch(() => undefined);
+      if (client) void client.dispose().catch(() => undefined);
       credentialsRef.current = null;
     },
     [],
@@ -213,7 +240,10 @@ export function NativeRelayEnrollmentWizard({
         );
       }
     },
-    onError: (cause) => reportEnrollmentFailure(cause, setError),
+    onError: (cause) => {
+      if (!retainUnknownActivation(cause, setPhase, setNotice, setError))
+        reportEnrollmentFailure(cause, setError);
+    },
   });
 
   const finalize = useMutation({
@@ -253,7 +283,10 @@ export function NativeRelayEnrollmentWizard({
         setError('Station did not activate this Device.');
       }
     },
-    onError: (cause) => reportEnrollmentFailure(cause, setError),
+    onError: (cause) => {
+      if (!retainUnknownActivation(cause, setPhase, setNotice, setError))
+        reportEnrollmentFailure(cause, setError);
+    },
   });
 
   function requireClient(): EnrollmentClient {
@@ -280,6 +313,8 @@ export function NativeRelayEnrollmentWizard({
     clientRef.current = null;
     controllerRef.current = null;
     if (terminalRef.current) return;
+    attemptStartedRef.current = false;
+    onEnrollmentCancel();
     setChallenge(null);
     setPhase('idle');
     setUsername('');
@@ -328,7 +363,11 @@ export function NativeRelayEnrollmentWizard({
           variant="primary"
           pending={begin.isPending}
           pendingLabel="Preparing…"
-          onClick={() => begin.mutate()}
+          onClick={() => {
+            attemptStartedRef.current = true;
+            onEnrollmentStart();
+            begin.mutate();
+          }}
         >
           Begin Device setup
         </Button>
@@ -440,7 +479,6 @@ export function NativeRelayEnrollmentWizard({
           <Button
             disabled={busy}
             pending={checkStatus.isPending}
-            pendingLabel="Checking…"
             onClick={() => checkStatus.mutate()}
           >
             Check operator approval
@@ -448,7 +486,6 @@ export function NativeRelayEnrollmentWizard({
           <Button
             disabled={busy}
             pending={finalize.isPending}
-            pendingLabel="Checking delivery…"
             onClick={() => finalize.mutate()}
           >
             Check and stage Device delivery
@@ -473,6 +510,22 @@ export function NativeRelayEnrollmentWizard({
         </section>
       ) : null}
 
+      {phase === 'verifying' ? (
+        <section aria-label="Device activation status unknown">
+          <p>
+            Station may have completed Device activation, but the current status
+            has not been confirmed. Check again before starting another setup.
+          </p>
+          <Button
+            disabled={busy}
+            pending={checkStatus.isPending}
+            onClick={() => checkStatus.mutate()}
+          >
+            Check Device status
+          </Button>
+        </section>
+      ) : null}
+
       {phase === 'configured' ? (
         <p role="status">
           <strong>Device configured</strong>. Account sign-in and Project access
@@ -481,7 +534,10 @@ export function NativeRelayEnrollmentWizard({
       ) : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
-      {(phase !== 'idle' && phase !== 'configured') || begin.isPending ? (
+      {(attemptStartedRef.current &&
+        phase !== 'configured' &&
+        phase !== 'verifying') ||
+      begin.isPending ? (
         <Button variant="ghost" onClick={() => void cancelSetup()}>
           Cancel Device setup
         </Button>
