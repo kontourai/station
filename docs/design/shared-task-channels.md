@@ -40,6 +40,16 @@ does not grant model, tool, compute, or spending authority. Discuss, execute,
 and approve remain distinct permissions. An agent request needs a durable
 identity and must survive lost acknowledgements without replaying effects.
 
+Typing `@` opens an autocomplete picker scoped to this Project's authorized
+agents. Filter by name/role, show readiness and setup reasons, and support arrow
+keys, Enter, Escape, touch targets and input-method composition. Selection keeps
+the exact agent identity in a removable mention token. Text that merely looks
+like a mention is not an execution request. Multiple explicit mentions must
+show which work each agent is being asked to do; entering a channel or selecting
+a token never starts work. Revalidate Project access, agent identity/readiness
+and execution authority at send time. A stale or unavailable selection retains
+the draft with a useful recovery action rather than routing to another agent.
+
 Use a compact work card for each request: queued/active/needs-input/settled state,
 who requested it, agent, scope, and result. Detailed execution is expandable.
 Preserve uncertainty when completion or cancellation cannot be established.
