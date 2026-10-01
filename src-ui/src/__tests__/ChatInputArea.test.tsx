@@ -1619,6 +1619,12 @@ describe('ChatInputArea dock reservation', () => {
       expect(transcript?.isConnected).toBe(true);
       expect(getComputedStyle(transcript as Element).display).not.toBe('none');
 
+      // Let the measurement the mount itself scheduled run first, so that
+      // only the sibling's removal can explain a later one.
+      for (let frame = 0; frame < 3; frame += 1)
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(body?.hasAttribute('data-composer-priority')).toBe(true);
+
       view.container.querySelector('.skeleton-block')?.remove();
       await waitFor(() =>
         expect(body?.hasAttribute('data-composer-priority')).toBe(false),
