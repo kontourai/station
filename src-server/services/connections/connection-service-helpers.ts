@@ -1,4 +1,5 @@
 import type {
+  ACPConnectionConfig,
   ACPProviderInfo,
   ACPProviderRoutingStatus,
   ACPStatusValue,
@@ -800,6 +801,8 @@ function imageInputCapability(
  */
 export function acpRuntimeCatalogStatus(
   liveStatus: ACPConnectionStatus | undefined,
+  /** The connection's current configuration, to reject a stale per-model cache. */
+  config?: ACPConnectionConfig,
 ): RuntimeCatalogStatus {
   const modelOption = liveStatus?.configOptions?.find(
     (option) => option.category === 'model',
@@ -818,7 +821,7 @@ export function acpRuntimeCatalogStatus(
               // OpenCode's per-model image input, read from the cache the
               // post-handshake listing fills. Memory only; never spawns here.
               ...imageInputCapability(
-                openCodeModelImageInput(liveStatus?.id, entry.value),
+                openCodeModelImageInput(liveStatus?.id, entry.value, config),
               ),
             },
           ]

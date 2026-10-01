@@ -21,13 +21,14 @@
  * archive#1908 measured that spawn as leaking extracted files, so it is rate
  * limited rather than repeated on every probe.
  */
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
+import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 
 export const OPENCODE_LISTING_TIMEOUT_MS = 8_000;
 /** The real listing is ~550KB for ~460 models; this is generous headroom. */
@@ -158,11 +159,20 @@ export async function runOpenCodeModelListing(
     let bytes = 0;
     const chunks: Buffer[] = [];
     let child: ChildProcess | undefined;
+    let release: (() => void) | undefined;
     const finish = (result: OpenCodeListingResult) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (!result.ok) child?.kill('SIGKILL');
+      if (!result.ok && child) {
+        // The whole process group, so a wrapper's grandchild goes with it.
+        const doomed = child;
+        void forceKillProcess(doomed)
+          .catch(() => undefined)
+          .finally(() => release?.());
+      } else {
+        release?.();
+      }
       resolve(result);
     };
     const timer = setTimeout(
@@ -172,11 +182,15 @@ export async function runOpenCodeModelListing(
     try {
       // An argv array, no shell: nothing in the command or arguments is
       // interpreted. The command is the connection's own configured binary.
-      child = spawn(
+      // Registered as an owned child (archive#1863) so a Station that dies
+      // mid-listing has the engine reaped by the next startup sweep.
+      const owned = spawnOwnedChild(
         resolved,
         [...(options.argvPrefix ?? []), 'models', '--verbose'],
-        { env, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true },
+        { env, stdio: ['ignore', 'pipe', 'ignore'] },
       );
+      child = owned.proc;
+      release = owned.release;
     } catch {
       finish({ ok: false, reason: 'spawn-failed' });
       return;
@@ -229,9 +243,17 @@ export function resetOpenCodeModelCapabilities(): void {
 export function openCodeModelImageInput(
   connectionId: string | undefined,
   modelId: string,
+  /**
+   * The connection's CURRENT configuration. When given, an entry read with
+   * different launch settings (an edit without a reconnect) is unknown.
+   */
+  current?: ACPConnectionConfig,
 ): boolean | undefined {
   if (!connectionId) return undefined;
-  return cache.get(connectionId)?.models.get(modelId);
+  const entry = cache.get(connectionId);
+  if (!entry) return undefined;
+  if (current && entry.key !== cacheKey(current)) return undefined;
+  return entry.models.get(modelId);
 }
 
 /**
@@ -280,9 +302,15 @@ export function refreshOpenCodeModelCapabilities(
       failure = 'spawn-failed';
     }
     if ((generations.get(config.id) ?? 0) !== generation) return;
+    // A failed refresh keeps the last good answers for this same launch
+    // settings; only the retry cadence records the failure.
+    const previous = cache.get(config.id);
     cache.set(config.id, {
       key,
-      models,
+      models:
+        failure !== null && previous && previous.key === key
+          ? previous.models
+          : models,
       failed: failure !== null,
       at: (deps.now ?? Date.now)(),
     });

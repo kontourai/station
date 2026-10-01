@@ -149,6 +149,33 @@ process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(
       expect(Date.now() - startedAt).toBeLessThan(5000);
     });
 
+    // POSIX only: process groups are what the owned-child kill signals;
+    // Windows uses taskkill and is not exercised here.
+    test('a timeout kills the whole process group, including a grandchild', async () => {
+      const pidFile = join(dir, 'grandchild.pid');
+      const result = await runOpenCodeModelListing(
+        process.execPath,
+        options(
+          `const { spawn } = require('node:child_process');
+const g = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));
+setInterval(() => {}, 1000);`,
+          { timeoutMs: 1000 },
+        ),
+      );
+      expect(result).toEqual({ ok: false, reason: 'timeout' });
+      const grandchild = Number(readFileSync(pidFile, 'utf8'));
+      const alive = () => {
+        try {
+          process.kill(grandchild, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 5000 });
+    });
+
     test('a non-zero exit is a failure even when it printed a listing', async () => {
       const result = await runOpenCodeModelListing(
         process.execPath,
@@ -277,6 +304,63 @@ describe('refreshOpenCodeModelCapabilities', () => {
     expect(run).toHaveBeenCalledTimes(4);
   });
 
+  test('a failed refresh keeps the last good answers; a never-good connection stays unknown', async () => {
+    let clock = 0;
+    const deps = (run: () => Promise<OpenCodeListingResult>) => ({
+      run,
+      now: () => clock,
+    });
+    await refreshOpenCodeModelCapabilities(
+      OPENCODE,
+      deps(async () => okListing),
+    );
+    clock += 61 * 60_000;
+    const logger = { warn: vi.fn() };
+    await refreshOpenCodeModelCapabilities(OPENCODE, {
+      ...deps(async () => ({ ok: false, reason: 'timeout' })),
+      logger,
+    });
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(openCodeModelImageInput('opencode', 'opencode/big-pickle')).toBe(
+      false,
+    );
+    expect(
+      openCodeModelImageInput('opencode', 'opencode/fledge-alpha-free'),
+    ).toBe(true);
+
+    // The failure still sets the shorter retry cadence.
+    const run = vi.fn().mockResolvedValue(okListing);
+    clock += 16 * 60_000;
+    await refreshOpenCodeModelCapabilities(OPENCODE, deps(run));
+    expect(run).toHaveBeenCalledTimes(1);
+
+    resetOpenCodeModelCapabilities();
+    await refreshOpenCodeModelCapabilities(
+      OPENCODE,
+      deps(async () => ({ ok: false, reason: 'exit' })),
+    );
+    expect(openCodeModelImageInput('opencode', 'opencode/big-pickle')).toBe(
+      undefined,
+    );
+  });
+
+  test('answers cached for other launch settings are unknown for the current ones', async () => {
+    await refreshOpenCodeModelCapabilities(OPENCODE, {
+      run: async () => okListing,
+    });
+    const id = 'opencode/big-pickle';
+    expect(openCodeModelImageInput('opencode', id, OPENCODE)).toBe(false);
+    expect(
+      openCodeModelImageInput('opencode', id, {
+        ...OPENCODE,
+        command: '/elsewhere/other-engine',
+      }),
+    ).toBe(undefined);
+    expect(
+      openCodeModelImageInput('opencode', id, { ...OPENCODE, args: ['x'] }),
+    ).toBe(undefined);
+  });
+
   test('concurrent handshakes share one listing', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -353,6 +437,23 @@ describe('catalog fill', () => {
     expect(models.find((m) => m.id === 'unlisted/model')).not.toHaveProperty(
       'capabilities',
     );
+  });
+
+  test('an edited connection reads unknown until it is re-listed', async () => {
+    await refreshOpenCodeModelCapabilities(OPENCODE, {
+      run: async () => ({ ok: true, stdout: FIXTURE }),
+    });
+    const edited = { ...OPENCODE, command: '/elsewhere/other-engine' };
+    const models = acpRuntimeCatalogStatus(
+      liveStatus('opencode'),
+      edited,
+    ).models;
+    expect(models.every((model) => !('capabilities' in model))).toBe(true);
+    const same = acpRuntimeCatalogStatus(
+      liveStatus('opencode'),
+      OPENCODE,
+    ).models;
+    expect(same[0]?.capabilities?.imageInput).toBe(false);
   });
 
   test('another engine with the same model ids is untouched', async () => {
