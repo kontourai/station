@@ -219,3 +219,47 @@ test('a lost acknowledgement preserves the selected brief across edits and stale
   expect(start).toHaveBeenCalledOnce();
   expect(JSON.parse(await readFile(path, 'utf8')).records).toHaveLength(1);
 });
+
+test('settlement refuses a valid but substituted brief after invocation', async () => {
+  const path = await file();
+  const bound = {
+    taskId: 'task',
+    projectId: scope.projectId,
+    taskCreatedAt: scope.taskCreatedAt,
+  };
+  const original = createTaskRoomContext(bound, {
+    title: 'Objective',
+    description: '',
+    documentRevision: 'revision-1',
+    text: 'Original brief.',
+  });
+  const replacement = createTaskRoomContext(bound, {
+    title: 'Objective',
+    description: '',
+    documentRevision: 'revision-2',
+    text: 'Substituted brief.',
+  });
+  if (!original || !replacement) throw new Error('Missing context fixture');
+  const start = vi.fn<Parameters<TaskRoomWorkModule['submit']>[4]>(
+    async (sessionId) => {
+      const stored = JSON.parse(await readFile(path, 'utf8'));
+      stored.records[0].context = replacement;
+      await writeFile(path, JSON.stringify(stored));
+      return { sessionId };
+    },
+  );
+  await expect(
+    new TaskRoomWorkModule(path).submit(
+      'task',
+      'alice',
+      {
+        ...input,
+        context: { version: original.version, digest: original.digest },
+      },
+      async () => scope,
+      start,
+      async () => original,
+    ),
+  ).rejects.toThrow('identity changed before settlement');
+  expect(start).toHaveBeenCalledOnce();
+});

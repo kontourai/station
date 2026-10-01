@@ -1240,7 +1240,11 @@ export function configureRuntimeRoutes(
       description = task.description;
     const document = await projectTaskRoomRuntime.document({ taskId, request });
     const current = await authorizeTaskRoomWork(taskId, request, principal);
+    const currentTask = context.taskGraphService.readTaskView(taskId);
     if (
+      !currentTask ||
+      currentTask.title !== title ||
+      currentTask.description !== description ||
       !current ||
       current.projectId !== scope.projectId ||
       current.projectSlug !== scope.projectSlug ||

@@ -21,8 +21,9 @@ const MAX_REQUESTS = 256;
 type StoredRecord = Omit<TaskRoomWorkRecord, 'requesterId'> & {
   ownerId: string;
 };
+const CONTEXT_STORE_VERSION = 'station.task-room-work-store/v2' as const;
 type Store = {
-  version: typeof TASK_ROOM_WORK_VERSION;
+  version: typeof TASK_ROOM_WORK_VERSION | typeof CONTEXT_STORE_VERSION;
   records: StoredRecord[];
 };
 export type TaskRoomWorkScope = {
@@ -85,10 +86,13 @@ function checkedStore(value: unknown): Store {
   const store = value as Store;
   if (
     Object.keys(store).length !== 2 ||
-    store.version !== TASK_ROOM_WORK_VERSION ||
+    (store.version !== TASK_ROOM_WORK_VERSION &&
+      store.version !== CONTEXT_STORE_VERSION) ||
     !Array.isArray(store.records) ||
     store.records.length > MAX_REQUESTS ||
-    !store.records.every(validRecord)
+    !store.records.every(validRecord) ||
+    (store.version === TASK_ROOM_WORK_VERSION &&
+      store.records.some((record) => record.context !== undefined))
   )
     throw new TaskRoomWorkUnavailableError('Agent request history is corrupt.');
   const identities = new Set(
@@ -317,7 +321,10 @@ export class TaskRoomWorkModule {
           record: publishedRecord(record),
           replayed: false,
         };
-        return { ...checked, records: [...checked.records, record] };
+        return {
+          version: captured ? CONTEXT_STORE_VERSION : checked.version,
+          records: [...checked.records, record],
+        };
       },
       { maxBytes: MAX_BYTES, label: 'Task room agent requests' },
     );
@@ -400,6 +407,7 @@ export class TaskRoomWorkModule {
           previous.operationId !== record.operationId ||
           previous.agentId !== record.agentId ||
           previous.prompt !== record.prompt ||
+          previous.context?.digest !== record.context?.digest ||
           previous.createdAt !== record.createdAt
         )
           throw new TaskRoomWorkUnavailableError(
