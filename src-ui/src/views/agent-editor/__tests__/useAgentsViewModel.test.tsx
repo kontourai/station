@@ -928,7 +928,11 @@ describe('persisted detail remains authoritative while the collection reconciles
     // can land on a different record: its snapshot made that record read
     // dirty against a form it never had.
     state.selectedId = 'agent-a';
-    state.detail = agent({ slug: 'agent-a', name: 'Agent A', prompt: 'Answer.' });
+    state.detail = agent({
+      slug: 'agent-a',
+      name: 'Agent A',
+      prompt: 'Answer.',
+    });
     let settle: (value: { data: object }) => void = () => {};
     updateAgent.mockImplementation(
       () =>

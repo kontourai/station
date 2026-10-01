@@ -7984,15 +7984,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-/* A search box is a tap target (#3061). Declared beside the base rule because
-   modals borrow this class without the split-pane stylesheet; the element
-   selector outranks the phone rule further down, which stops at 40px. */
-@media (pointer: coarse) {
-  input.list-filter-input {
-    min-height: 44px;
-  }
-}
-
 .provider-overview__quickstart-btn {
   display: flex;
   align-items: center;
