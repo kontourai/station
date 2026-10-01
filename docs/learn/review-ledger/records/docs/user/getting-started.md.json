@@ -9,7 +9,7 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"11e1f422eb84b06af18fb66c2392707bdf3adc2e794f149d9856ab259ae87c53","revision":"7d1b3d94166917be8991f72c799f4dc8d87dc45d"},
+  "document": {"digest":"e39df6b0907871c59dce5b4d82940882bd40328d6d5fe10018283bc44da61d03","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -98,7 +98,7 @@
 
     {"path":"docs/learn/media.json#/captures/4","digest":"dfc26872dbfdc817f3357443a00abacdc81b64eed43326ecb0e5b7569a0ec62a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"src-ui/src/components/home/HomeChatStartForm.tsx","digest":"798900b8b864f659ffbb73ef99d943d84128b4e6d921787c5e9b64baa24b3482","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+    {"path":"src-ui/src/components/home/HomeChatStartForm.tsx","digest":"0cb35710135ce601992dcbe659e5bc96e0c5f2ec5de31399159314114c601c6c","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
     {"path":"src-ui/src/components/modals/AutomaticEnginePreparation.tsx","digest":"122cf55568f1b03b96db68b5ce4b79eb510022030c7ac4fcfccaa24292c59849","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 

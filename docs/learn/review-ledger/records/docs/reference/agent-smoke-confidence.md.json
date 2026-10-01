@@ -38,11 +38,11 @@
 
     {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"9d5cc117730655c3cba8987dbccd4b059acf287f1ace1677f720c43c17b8fcff","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"b54a36284f48f932623028d791005687cdb7643136798572909f53faaaeea532","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"103eb220b0d92bdb46e3a6c18c606af8ba916f310d993f40d9e9bd41c8eae066","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

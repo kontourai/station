@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"c21dc86c9f5bd89b8ae49cd25953daa7d774e4f8a55ff69b29ab3f4c2948409d","revision":"c75f24edf36e9dc018be74053f55ebcaeb5309c5"},
+  "document": {"digest":"5f0af0e5e6fedaa116d25a6b6b78247f696659dbd58f00e02db6c39f6330c31e","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
   "sources": [
     {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
@@ -242,11 +242,11 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"b54a36284f48f932623028d791005687cdb7643136798572909f53faaaeea532","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"103eb220b0d92bdb46e3a6c18c606af8ba916f310d993f40d9e9bd41c8eae066","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"9d5cc117730655c3cba8987dbccd4b059acf287f1ace1677f720c43c17b8fcff","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

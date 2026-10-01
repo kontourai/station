@@ -146,7 +146,7 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"b54a36284f48f932623028d791005687cdb7643136798572909f53faaaeea532","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"}
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"103eb220b0d92bdb46e3a6c18c606af8ba916f310d993f40d9e9bd41c8eae066","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"}
   ],
 
   "checks": [
