@@ -1,0 +1,109 @@
+{
+  "path": "docs/design/notification-delivery.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full documented protocol/caller review of registration, per-principal projection, sealed payloads and phone pinning, FCM/APNs lifecycle, bounded retry/queue/replay behavior, native tap routes and desktop feed ownership. Corrected gateway state/kinds, iOS18 implementation floor, soft queue cap, scoped sweep recovery, historical Rust/watch conclusions and implemented Kotlin CI. All provisioning and physical delivery receipts remain historical.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "document": {"digest":"f798be5ec16f66d9383acb89d695b1a61561bbb19b94bbb7009b6d2933e0827a","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+  "sources": [
+    {"path":".github/workflows/desktop-rust.yml","digest":"9b2aa3552d0ef5b237104f9e6e888b9de05e60b08bef763c448520bd77a24f81","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"deploy/push-gateway/src/apns-sweep.ts","digest":"ef3a72752b884638dd41f44da9bd5ef3079c1f78d82e264d7d80bdeabaeab41c","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"deploy/push-gateway/src/channel-ledger.ts","digest":"17bad5dbf102a1946b1b5a1659deec76d96a0083fcc1662c3e5f4a3d9821d991","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"deploy/push-gateway/src/fcm.ts","digest":"5f64631d1e9795907e98e7ab93a675906e70dc73f3055c48484a4165174bf317","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"deploy/push-gateway/src/gateway.ts","digest":"ab5ff9c9a035bd9113bdab194134541283c5522b372308ee348815c2440a2f48","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"deploy/push-gateway/src/send-request.ts","digest":"d0371956802c7db44bb320730442396497190d4dcb099c835755b37b1a0a8318","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"deploy/push-gateway/src/station-auth.ts","digest":"31cd6e0ab126d3bf7695c7e787090f284b7cbd1e002407834013a29b3399abf2","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"scripts/run-agent-activity-android-unit-tests.mjs","digest":"ab7cc62a2bb45d64a179a1f9932b0c0f20db8fad720b4d34ee54812cb4a23165","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityModel.kt","digest":"610de63ae20e700c84cb18dafd0533f642982db94d10083dadec49ce6a197a89","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityPlugin.kt","digest":"ae97e66c38aec44b9f250fff28a4f147a11fc12a3688202057d1f5ea314b2eb6","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentNotifications.kt","digest":"db5bb1a87b49dade0ef99bc2b3d7eb4a0aea60bbb8d4b0ddaa9eedf1395f6825","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/StationNotifications.kt","digest":"fa343a5df71d01c49fd2e364b4d7c016622bc8cb59955a7c1ffd8b32f9af1b74","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityPlugin/AgentActivityPlugin.swift","digest":"e7205f91316d32c88449fbfa21921c6aa201b62dc1ae0998ae43ec5d4dcffc4c","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityShared/CardOpener.swift","digest":"0c9c6720fe1c053bc493d33f0aa26bc1dec712ac4d7c7f2fcbe53bf83d17b1a2","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlert.swift","digest":"5c5591af4d19ceae035c59b45b84fdb565154a5a62cfaedd4ae68eddb00cce74","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift","digest":"fac89631a85638abd83cf3f9a19ae2b9e1e4475b31f0d010e70d7102ceb17896","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-desktop/src/notification_feed.rs","digest":"97dbdf6ab904d56d527d30a4e43593aef31ad6c80f41265cf5b60e1a3919671c","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/routes/operations/native-push-routes.ts","digest":"1b07cce4f490719d705ce042ea58337c59464d07d499069ee7cc2a7ef2c61e8b","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/agent-activity-card.ts","digest":"ef010e6476fea621bc234f122b23641f0a60dc20bd8ab79ab3f39c46adef0d9c","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/agent-activity-eligibility.ts","digest":"a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/agent-activity-seal.ts","digest":"6c1430a1c03a3142400076fcb9db922a9602509db14da57ec55b439a5860f4f8","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/delivery/apns-alert-channel.ts","digest":"78877650a356af5d5270f37fe1d221a1562f5949ffe324f58913ba48d9d8efa7","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/delivery/card-alerted-categories.ts","digest":"208a3531116112ddc698e2304468c110b40796e94f7bc4e2e9261d400302c97f","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/delivery/fcm-alert-channel.ts","digest":"17dbc1d2030dc5b9ecf66483f3f173433ac540c8771160bd76998c665965b0e2","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/live-activity-planner.ts","digest":"411f0b4b1a20e93394944ce2528c3f5bb3361837987ea86ade5ca965a19eec19","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/native-push-registration-store.ts","digest":"9bf34f453c3b8d7d6498a4457ff6d2ac70f075605d688efb62f0f75ea73482a4","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/native-push-send-floor.ts","digest":"eb52df1036c2081d42168eca575b3c9d87bc998e0566255e284bc3b8056d03e3","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/notifications/push-signing-key-store.ts","digest":"2d465430f0b5e3fba2e41622482ad4a91b5b26e9ce715a1cf084850bc0bd1394","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts","digest":"d966359769aef709ce188ff027309928a73dbe1ac340bb54f9b9db14640c8871","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/__tests__/deliveryFeed.test.ts","digest":"7a4927ec17bb0bfe3551ec8e2bc95705496385097b5ce0501aab0d0b9c0f57fa","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/platform/native/agentActivity.ts","digest":"de5c2f0244fcaecd73c890e84cf3c9e91407c921d9065ae40891bc5dd4039407","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/platform/native/deliveryFeed.ts","digest":"21f6dc6535997b75c01b050c1ee1c7ecce9df0b94c8e295456d72359bf0d1e11","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/platform/native/notifier.ts","digest":"82c3e59108cd69e6e4ac7e7f1d37a690d882a0b839a6f798888f2aeaaeb40d14","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/views/settings/AgentActivitySetting.tsx","digest":"293f4751b7189b845295e55bee3883ce584a293a190ce65014d0bc4abbcd3f3e","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through e0314c727: main deleted the host notification watch (lib.rs commands, notification_watch.rs, the notifier.ts watch/unwatch wrapper and the feed comment), moved the TLS listener guard into lib.rs as native_http_agent_can_actually_speak_tls, and un-exported the sweep limits with values unchanged; the merge already marked the watch retired. Two 'Rules this area has earned' bullets still described the deleted watch in the present tense, so they were changed to past tense. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds only a read-only `deviceHoldsScope(deviceId, scope)` to device-pairing-service, which checks for a live, non-pending device holding the scope. It changes no revoke, replace, scope-change notification (`onDeviceAccessChanged`) or registration behaviour that the design describes. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

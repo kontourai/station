@@ -132,6 +132,35 @@ requests through simulated process streams; they are not a live Codex receipt.
 }
 ```
 
+Harness questions carry a normalized `payload.questionnaire` on
+`request.opened`. To answer, send `decision: 'accept'`, the exact
+`expectedRequestEventId`, and `answers`, keyed by question ID:
+
+```json
+{
+  "type": "respondToRequest",
+  "threadId": "session-id",
+  "requestId": "request-id",
+  "expectedRequestEventId": "opened-event-id",
+  "decision": "accept",
+  "answers": {
+    "question-id": { "optionIds": ["option-id"], "custom": "Optional text" }
+  }
+}
+```
+
+Every question must have a valid answer. Unknown or repeated choices,
+incomplete batches, stale events, bare acceptance and session grants are
+refused before resolving the pending question. Custom text is preserved;
+limits are 16 questions, 32 choices per question and 12,000 characters per
+custom answer. Claude answers map back to question text; Codex answers retain
+question IDs and the original RPC ID. Cancellation sends Codex an empty answer
+map. `blocking: false` means an optional question: opening or resolving it does
+not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
+from all `openRequestIds`; older hosts omit that field and retain the legacy
+blocking interpretation. Request inspection sets `requiresAnswers` so clients
+route to the Session instead of offering a generic approval button.
+
 `acceptForSession` also grants later calls to the same tool in that Session.
 The grant never covers an escalation beyond the call. In a Claude Session, a
 request that suggests a directory, reports a blocked path or matches a user

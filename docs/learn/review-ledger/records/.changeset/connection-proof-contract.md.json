@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/connection-proof-contract.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"2b3e31b70721ab8e6865f2678454f2dfd3236044dd7fec30262f431067768dc1","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

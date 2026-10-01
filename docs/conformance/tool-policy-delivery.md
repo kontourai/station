@@ -31,7 +31,11 @@ the request payload carries `toolKind`, so a `switch_mode` request offers no
 session option. In a delegated child that cannot grant approvals
 (`delegation.denyApprovals`), a request either adapter would otherwise open is
 denied at once with the staged evaluator's `delegation_deny_approvals` denial,
-since nobody could answer it.
+since nobody could answer it. That includes a question from such a child.
+Known `AskUserQuestion` callbacks are handled before those grants: answering
+a question requires an exact structured batch and never creates a session
+tool grant. This is a question interaction boundary, not a new consent floor
+for every tool or proof that the engine invokes every callback.
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands
