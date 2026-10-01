@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"eb8695fe3798e6a9d1fae889fa7200278604a892bb042ffacf716f13c4733f98","revision":"09b6047098252a25e8fd7f531f59c920ede4464f"},
+  "document": {"digest":"ed5a90a48a8f38842fe7cd7f9f85ffabdb9a5c98ecacdf8673e4b3f5bf030307","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
   "sources": [
     {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
@@ -90,7 +90,7 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e12a8e9c7c3120e32a859ae668138d6da2394f6c1d82d6aadb989ab58b88b7c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"c83bf9d2893ac0fad3a7b9ee8818cd4de26bb1ae7fa2020436b2fa457dec7673","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"9c900e018d86204dc4c868ae3c58a32870d46bf448648f1f5217a5abd543ef4d","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"bfb4210cc70ad838829c8e340b6c15536b93a6cb15ee3d26c0fd1b4b3f39981a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -132,7 +132,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"307f68c43bdbd262d2b28fdf3aa0b696a5ff56ef397c3c96c50891a0083cd764","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
@@ -148,9 +148,9 @@
 
     {"path":"src-server/services/connections/connection-env.ts","digest":"80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
-    {"path":"src-server/services/connections/credential-enrolment.ts","digest":"f9cce55ccfe8c872ac19a1ae00c37fec39e4c5d6bd43412e23a1987737723d5b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/connections/credential-enrolment.ts","digest":"24aab7053e52c0795e3e2d9bb6c7d9f3ff0bdda5f6574419cfadc7bc5d610b19","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
-    {"path":"src-server/services/connections/device-code-login.ts","digest":"1a5c55d3745d516400be0fa77c2c465ca68e7866ec07bae639e017b630d0947f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/connections/device-code-login.ts","digest":"3e00fed7d285147cc71df82a7ad95e737552ab3c4ef1ecb99a1dc6490b23c213","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/services/connections/provider-service.ts","digest":"0992d08909fe9858120fb342b13700be1ec6361fa24f83154a2e855037b8e7cd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -214,7 +214,7 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"63486f4ca811d0b37f40377e11dc16d5388660c7c64248607b73c662e7c9763f","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-ui/src/views/ConnectionsHub.tsx","digest":"5c0aa36c80d1c78197030068ba0151e39fbe2bf4566dc492e3555b0ce3046567","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -248,7 +248,17 @@
 
     {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
 
-    {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
+    {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
+    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"ab37f64c68ddb16cfc6e93c58963d911f6cb3df9fd01660aadfe9fa0e62aaeee","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-server/services/connections/browser-code-login.ts","digest":"12d79b1b4d412be8ab19cccfeed4eadfb872a7bbc5b03febd487a11df662b9d6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-server/services/connections/credential-usage.ts","digest":"c945d4f4608383de1d716388deeba82423b46d8859cea14b0d9f4ed8dba6427c","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"616f25c83b780930f4297acd840a549a63a547189f83d6be087aae925d40dbc6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"9715b262b487656e2f235c4e843a6dab6b00a7ea8564c2bc4c7d0e598af286fd","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"}
   ],
 
   "checks": [

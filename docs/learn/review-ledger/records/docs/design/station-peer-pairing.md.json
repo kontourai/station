@@ -12,7 +12,7 @@
   "document": {"digest":"c2844918dc78fd9924dd1fd1f9dfe649ef85d4ad1e6d7d89af148d17b84d239e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
   "sources": [
-    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/services/peers/peer-credential-store.ts","digest":"08c2e2a1069e62cdc8196dffe4ed7a9c0dfc709047431d775e70c3c30e2378c3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

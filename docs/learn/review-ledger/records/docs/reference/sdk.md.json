@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"c22c10ac7fe222b7e54d0a4922410876d67a3c413c582019cddde6f10fac667e","revision":"b86d42394bb533067b2cc5026d21a531db62e2ba"},
+  "document": {"digest":"5af15a4df8de3ed64e8a16bc9e9a24e07e5346f3abce3c4093c960eeff84c87d","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -36,7 +36,7 @@
 
     {"path":"packages/contracts/src/task-basis.ts","digest":"9345de0dd369e4e9d5fae71c38261983385662c314c0cdbf77f9596cdd3d7834","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+    {"path":"packages/sdk/package.json","digest":"6401ee3a26149ffe0329d1141ba3668feafb6c4a9e4c5486ae762103967b8c4b","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"packages/sdk/src/__tests__/application-session-native.test.ts","digest":"ec9fa4c51df95e0d6c96132779f6be8ea426aa6d165d6093de5a6ab15d776c4f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
@@ -190,7 +190,7 @@
 
     {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"658b032f69dd4b9cf05339646c75f39123661bd466cc0c00e45db6fe4dcc8a50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"161c2036c67cee1ad73353aec04ca5dd82e2d38dca8d080352b9283e1f1a7fe8","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"packages/sdk/src/query-domains/chatRuntimeCoding.ts","digest":"8e4e9edcf70f9a46b8a47d1920a218ca6283f16b4e25495c850b02e2cf281b0d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -220,7 +220,7 @@
 
     {"path":"packages/sdk/src/query-domains/workspace.ts","digest":"ee6d243c02c72b0339d1606309f090edfaa6029b00fddfab1cb228da07ccecc3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/workspaceConnections.ts","digest":"86ff82fbffaccfea1f0d4bf9fdc01109ac85b8541d7d589031dc614115ca0a86","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/query-domains/workspaceConnections.ts","digest":"bf666f7dcffd5a14133194b599ce9472dab1ce686a054d855a3f20f4ea7c34e0","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"packages/sdk/src/query-domains/workspacePaneHostActions.ts","digest":"9746eed3bf2ad3f615af8afcaaf78421768de6359277d967d77622a1d4ce6a67","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -342,7 +342,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"307f68c43bdbd262d2b28fdf3aa0b696a5ff56ef397c3c96c50891a0083cd764","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -482,7 +482,7 @@
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"7c23eeae782d1d02efe8af19fad1d1ab37583a19ea8e33d706a621fcf4489981","revision":"51eff3e3c132dc9d4816cc9f1cd62fc9c48764b6"},
+    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"07ed17665765fac384ff9a87492de2e80648702031e162e337f11ff31cf717eb","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -496,7 +496,11 @@
 
     {"path":"src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx","digest":"fea4ba195d5618d81b20820ca4075c1220d13ac9ba4c71db011c6f12861dff54","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"616f25c83b780930f4297acd840a549a63a547189f83d6be087aae925d40dbc6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"packages/contracts/src/engine-accounts.ts","digest":"170485efee245dbd2ed77123202f070f32291b0d539208c9706d1e330fb60895","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"}
   ],
 
   "checks": [
