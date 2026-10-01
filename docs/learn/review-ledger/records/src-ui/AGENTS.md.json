@@ -9,10 +9,10 @@
 
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No visual, touch-target, theme, or all-surface conformance certification was performed.",
 
-  "document": {"digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"1338a31cc8b249dc8d8459e682b72b0ef9076562ed4a4e1bad4cd36daa34fb61","revision":"801b6662aff67a25eff4927c1c50e92f4c9b4e53"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"b38e8fff2feac60a53ce342236e2063edfc6f79edefbd87d0e59cebec3f53fcc","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"docs/architecture/module-map.md","digest":"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957","revision":"801b6662aff67a25eff4927c1c50e92f4c9b4e53"},
 
     {"path":"docs/guides/testing.md","digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
