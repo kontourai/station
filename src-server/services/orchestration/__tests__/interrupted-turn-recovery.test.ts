@@ -32,6 +32,7 @@ import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { EventBus } from '../event-bus.js';
@@ -1735,7 +1736,9 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
  * offered an approval no process could take.
  */
 describe('#3071: a request the interrupted turn opened is settled', () => {
-  const roots: string[] = [];
+  // Registered before the store-closing hook, so the directory is removed
+  // after the stores inside it are closed (after-hooks run in reverse).
+  const makeTempDir = trackTempDirs();
   const stores: EventStore[] = [];
 
   afterEach(() => {
@@ -1746,15 +1749,13 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
         // Already closed by the test.
       }
     }
-    for (const root of roots.splice(0)) {
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 
   function databasePath() {
-    const root = mkdtempSync(join(tmpdir(), 'interrupted-turn-requests-'));
-    roots.push(root);
-    return join(root, 'orchestration.sqlite');
+    return join(
+      makeTempDir('interrupted-turn-requests-'),
+      'orchestration.sqlite',
+    );
   }
 
   function approval(
