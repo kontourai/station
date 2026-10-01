@@ -81,6 +81,8 @@ const support = vi.hoisted(() => ({
   afterAdmission: undefined as (() => void) | undefined,
   /** Runs in the service's Agent resolution: after prepare, before the spawn. */
   beforeSpawn: undefined as (() => void) | undefined,
+  /** A composition that never wired the connection's default directory. */
+  withoutConnectionReader: false,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -278,6 +280,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     support.connectionCwd = undefined;
     support.afterAdmission = undefined;
     support.beforeSpawn = undefined;
+    support.withoutConnectionReader = false;
     for (const close of closers.splice(0)) await close();
     vi.unstubAllGlobals();
     if (previousApiBase === undefined) delete process.env.STATION_API_BASE;
@@ -312,12 +315,18 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       adoptionLedger: eventStore.createAdoptionLedger(),
       listProjects: () => support.projectDirs,
       // What `runtime-initialize.ts` wires: the connection's own default.
-      resolveConnectionDefaultCwd: async (provider: string) =>
-        provider === 'acp'
-          ? acpConnectionDefaultCwd({
-              ...(support.connectionCwd ? { cwd: support.connectionCwd } : {}),
-            })
-          : undefined,
+      ...(support.withoutConnectionReader
+        ? {}
+        : {
+            resolveConnectionDefaultCwd: async (provider: string) =>
+              provider === 'acp'
+                ? acpConnectionDefaultCwd({
+                    ...(support.connectionCwd
+                      ? { cwd: support.connectionCwd }
+                      : {}),
+                  })
+                : undefined,
+          }),
       resolveSessionAgent: async (input: ProviderSessionStartInput) => {
         const hook = support.beforeSpawn;
         support.beforeSpawn = undefined;
@@ -647,7 +656,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
   );
 
   test.each(ROUTES)(
-    '%s: a caller-supplied record is replaced, and the operator UI records none',
+    '%s: the operator UI is not a station-control caller: nothing is decided or recorded for it',
     async (route) => {
       const { base, adapter } = await setup();
       const { folder } = layout();
@@ -792,6 +801,38 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     expect(realpathSync(folder)).toBe(join(root, 'proj', 'sub'));
   });
 
+  test('a record supplied on a public start command is removed: only an admitted dispatch writes one', async () => {
+    const { adapter } = await setup();
+    const { folder } = layout();
+    const started = await (
+      support.service as OrchestrationService
+    ).sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'forged-record',
+          provider: 'acp',
+          cwd: folder,
+          metadata: {
+            agentSlug: 'writer',
+            connectionId: CONNECTION,
+            // Naming another path here would otherwise refuse every later
+            // start; naming this one would claim an admission never made.
+            [DISPATCH_CANONICAL_CWD_METADATA_KEY]: folder,
+          },
+        },
+      },
+      { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    );
+    expect(started.status).toBe('accepted');
+    expect(adapter.starts.map((start) => start.cwd)).toEqual([folder]);
+    expect(
+      adapter.starts[0]!.input.metadata &&
+        DISPATCH_CANONICAL_CWD_METADATA_KEY in
+          adapter.starts[0]!.input.metadata,
+    ).toBe(false);
+  });
+
   describe('a later engine start for the dispatched session', () => {
     async function dispatched() {
       const composed = await setup();
@@ -929,6 +970,25 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         // admission, which still reads the default session directory.
       },
     );
+
+    test('a composition that cannot read the connection’s directory refuses the dispatch', async () => {
+      support.withoutConnectionReader = true;
+      const { base, adapter } = await setup();
+      layout();
+      const request = DISPATCH['POST /delegations']();
+      const response = await post(
+        base,
+        request.path,
+        as('delegated-custody', 'op-caller-global'),
+        request.body,
+      );
+      expect([response.status, response.code]).toEqual([403, ROLE]);
+      expect(adapter.starts).toEqual([]);
+      // The operator's own request is not decided, so it still starts.
+      const ui = await post(base, request.path, operatorUi, request.body);
+      expect([ui.status, ui.code]).toEqual([200, undefined]);
+      expect(adapter.starts).toHaveLength(1);
+    });
 
     test('a link into a Project is resolved before it is scoped', async () => {
       const { base, adapter } = await setup();
