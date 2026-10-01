@@ -276,6 +276,24 @@ describe.skipIf(!chromiumAvailable)(
           // rule keeps the selected treatment; axe reads the live state.
           await page.locator('.split-pane__item--selected').nth(3).hover();
         }
+        // The page parses unstamped (dark defaults), so stamping the preset
+        // starts the rows' own `transition: color`, and the hover starts
+        // their `background` one. Scanned before those end, axe reads the
+        // previous theme's text colour, or a blend, on the new surface
+        // (#3074). Measure the settled state: wait for every CSS transition
+        // the page is running to finish. Transitions only: a looping keyframe
+        // animation would never finish.
+        await page.evaluate(async () => {
+          for (;;) {
+            const running = document
+              .getAnimations()
+              .filter((animation) => animation instanceof CSSTransition);
+            if (running.length === 0) return;
+            await Promise.allSettled(
+              running.map((animation) => animation.finished),
+            );
+          }
+        });
         const result = await page.evaluate(async () => {
           const axe = (
             window as unknown as {
