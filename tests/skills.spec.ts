@@ -1,5 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import {
+  actionRowsOverCap,
+  visibleLabelledActions,
+} from './helpers/visible-action-count';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
 type SkillRecord = {
@@ -184,12 +188,13 @@ test.describe('Skills (via Registry + API)', () => {
 
     await page.goto('/skills');
     await page.waitForSelector('.split-pane', { timeout: 15_000 });
-    // The rail row's name is name + subtitle only — the source word moved to
-    // the detail pane (`views/skills/skill-view-utils.ts:156-168`;
-    // `SkillsView.tsx:351-355`), which the next line already asserts. `exact`
-    // keeps this off "Browse Registry Skills".
+    // The rail row is named by its name alone; its subtitle is the row's
+    // description (SplitPaneLayout). The source word lives in the detail pane
+    // (`views/skills/skill-view-utils.ts:156-168`; `SkillsView.tsx:351-355`),
+    // which the next line asserts. `exact` keeps this off "Browse Registry
+    // Skills".
     await page
-      .getByRole('button', { name: /^Registry Skill Registry$/ })
+      .getByRole('button', { name: 'Registry Skill', exact: true })
       .click();
     await expect(
       page.locator('.skill-detail').getByText('Registry', { exact: true }),
@@ -433,6 +438,44 @@ test.describe('Command skills', () => {
     // ("POST /:name/run counts a run and answers with the stats"). What needs a
     // browser is the variable resolution reaching the dispatch, above.
   });
+
+  // #3045: the rendered half of the two-action cap, on a real screen. The
+  // static scan reads JSX; this counts the labelled buttons the skill detail
+  // header actually shows, at a desktop and a phone width, and then finds the
+  // folded actions where they went.
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`the skill detail header shows at most two labelled actions at ${viewport.width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await seedCommandSkillRoutes(page);
+      await page.goto('/guidance/release-check?tab=skills');
+      await page.waitForSelector('.skill-detail', { timeout: 15_000 });
+
+      // The WHOLE header is one row: a button added beside the ActionRow is
+      // the third label on screen, so it must be counted with the other two.
+      const selector = '.skill-detail .detail-header';
+      const [header] = await visibleLabelledActions(page, selector);
+      // The premise: the row is on screen with its labelled actions, so an
+      // empty "over cap" list below is not an empty page.
+      expect(header?.labels).toContain('▶ Test');
+      expect(await actionRowsOverCap(page, { selector })).toEqual([]);
+
+      await page.getByRole('button', { name: 'More skill actions' }).click();
+      const menu = page.getByRole('menu', { name: 'More skill actions' });
+      await expect(
+        menu.getByRole('menuitem', { name: 'Export .md' }),
+      ).toBeVisible();
+      await expect(
+        menu.getByRole('menuitem', { name: 'Remove' }),
+      ).toBeVisible();
+      // Opening the menu adds no labelled button to the row.
+      expect(await actionRowsOverCap(page, { selector })).toEqual([]);
+    });
+  }
 
   // #1180: `SkillsView` (`guidance`) is one of the routes where
   // `SplitPaneLayout`'s mobile detail sheet marks `PageFrame`'s route frame

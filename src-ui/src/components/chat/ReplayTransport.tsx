@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { getActiveReplay } from '../../hooks/orchestration/replay/controller';
 import { downloadSessionTape } from '../../hooks/orchestration/replay/tape-file';
+import { PauseGlyph, PlayGlyph, ReturnGlyph } from '../icons/Glyph';
 import './ReplayTransport.css';
 
 function transcriptElement(): HTMLElement | null {
@@ -72,6 +73,10 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
           <button
             type="button"
             className="button button--secondary"
+            // #3045: Back and Play/Pause are transport glyphs; Step and Run
+            // until issue are the bar's two labelled actions.
+            aria-label="Back"
+            title="Back"
             disabled={busy || running || observation.cursor.index < 0}
             onClick={() =>
               void run(async () => {
@@ -80,7 +85,8 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
               })
             }
           >
-            Back
+            {/* Not the timeline's Previous-turn arrow: this undoes one frame. */}
+            <ReturnGlyph />
           </button>
           <button
             type="button"
@@ -96,21 +102,25 @@ export function ReplayTransport({ sessionId }: { sessionId: string }) {
             <button
               type="button"
               className="button button--secondary"
+              aria-label="Pause"
+              title="Pause"
               onClick={() => player.pause()}
             >
-              Pause
+              <PauseGlyph />
             </button>
           ) : (
             <>
               <button
                 type="button"
                 className="button button--secondary"
+                aria-label="Play"
+                title="Play"
                 disabled={busy || observation.atEnd}
                 onClick={() =>
                   void run(() => player.play(transcriptElement, { speed }))
                 }
               >
-                Play
+                <PlayGlyph />
               </button>
               <button
                 type="button"

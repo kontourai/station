@@ -133,14 +133,30 @@ export function isPairingApprovalLeaf(request: {
   );
 }
 
+function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/device-code-profiles$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
+        path,
+      ))
+  );
+}
+
 /** Scope satisfaction only; credential authority must be checked first. */
 export function pairingScopeSatisfiesHttpRoute(
   grantedScope: string,
   requiredScope: PairingScope,
   request: { method: string; path: string },
+  verifiedOperator = false,
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    (verifiedOperator &&
+      requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      isEngineLoginLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
       isPairingApprovalLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
@@ -1308,6 +1324,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/api/connections/agent/:id/enrolment',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/connections/agent/:id/device-code-profiles:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/device-code-profiles',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
     origin: 'explicit',
   },
   // The device-code leaves, which START the engine's own login as a child

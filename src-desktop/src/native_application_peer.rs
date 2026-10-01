@@ -234,6 +234,40 @@ pub(crate) fn verify_native_route_transcript(
     Ok((claims.nbf, claims.exp))
 }
 
+pub(crate) fn native_member_read_path(path: &str) -> bool {
+    if matches!(
+        path,
+        "/.well-known/station/v1"
+            | "/api/system/status"
+            | "/api/system/identity"
+            | "/api/auth/authority"
+            | "/api/projects"
+    ) {
+        return true;
+    }
+    let Some(rest) = path.strip_prefix("/api/projects/") else {
+        return false;
+    };
+    let pieces: Vec<_> = rest.split('/').collect();
+    let identifier = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    };
+    match pieces.as_slice() {
+        [slug] => identifier(slug),
+        [slug, "shared-work"] => identifier(slug),
+        [slug, "shared-work", task, leaf] => {
+            identifier(slug)
+                && identifier(task)
+                && matches!(*leaf, "document" | "history" | "publication")
+        }
+        _ => false,
+    }
+}
+
 fn validate_request(method: &str, path: &str, body: &[u8]) -> Result<()> {
     if path.len() > 2048
         || !path.starts_with('/')
@@ -259,21 +293,21 @@ fn validate_request(method: &str, path: &str, body: &[u8]) -> Result<()> {
     }
     match method {
         "GET" | "HEAD" => {
-            let project = url
-                .path()
-                .strip_prefix("/api/projects/")
-                .is_some_and(|slug| {
-                    !slug.is_empty()
-                        && slug.len() <= 128
-                        && slug
-                            .bytes()
-                            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-                });
-            if !body.is_empty() || (url.path() != "/api/projects" && !project) {
+            if !body.is_empty() || !native_member_read_path(url.path()) {
                 return refused();
             }
         }
         "POST" => {
+            if path == "/api/account-auth/continuations/native/revoke" {
+                if url.query().is_some()
+                    || !serde_json::from_slice::<serde_json::Value>(body).is_ok_and(|value| {
+                        value.as_object().is_some_and(|fields| fields.is_empty())
+                    })
+                {
+                    return refused();
+                }
+                return Ok(());
+            }
             if path == "/api/account-auth/accept-invitation" {
                 #[derive(Deserialize)]
                 #[serde(deny_unknown_fields)]
@@ -1281,6 +1315,55 @@ mod tests {
         let answer = service.read(&prepared.peer_handle).unwrap();
         assert!(answer.station_proof.is_some());
         prepared
+    }
+
+    #[test]
+    fn native_revoke_request_signing_has_one_empty_body_post_leaf() {
+        let path = "/api/account-auth/continuations/native/revoke";
+        assert!(validate_request("POST", path, b"{}").is_ok());
+        for body in [b"[]".as_slice(), b"{\"deviceId\":\"other\"}", b""] {
+            assert!(validate_request("POST", path, body).is_err());
+        }
+        assert!(validate_request("POST", &format!("{path}?other=1"), b"{}").is_err());
+        assert!(validate_request("GET", path, b"{}").is_err());
+    }
+
+    #[test]
+    fn member_read_policy_is_exact_and_never_allows_request_bodies_or_write_leaves() {
+        for path in [
+            "/.well-known/station/v1",
+            "/api/system/status",
+            "/api/system/identity",
+            "/api/auth/authority",
+            "/api/projects",
+            "/api/projects/demo",
+            "/api/projects/demo/shared-work",
+            "/api/projects/demo/shared-work/task_1/document",
+            "/api/projects/demo/shared-work/task_1/history",
+            "/api/projects/demo/shared-work/task_1/publication",
+        ] {
+            assert!(native_member_read_path(path));
+            assert!(validate_request("GET", path, &[]).is_ok());
+            assert!(validate_request("HEAD", path, &[]).is_ok());
+            assert!(validate_request("GET", path, b"body").is_err());
+        }
+        for path in [
+            "/api/pairing/devices",
+            "/api/config",
+            "/api/projects/demo/git/status",
+            "/api/projects/demo/shared-work/task_1/messages",
+            "/api/projects/demo/shared-work/task_1/document/extra",
+            "/api/projects/%2Fadmin",
+        ] {
+            assert!(!native_member_read_path(path));
+            assert!(validate_request("GET", path, &[]).is_err());
+        }
+        assert!(validate_request(
+            "POST",
+            "/api/projects/demo/shared-work/task_1/document",
+            br#"{}"#
+        )
+        .is_err());
     }
 
     #[test]

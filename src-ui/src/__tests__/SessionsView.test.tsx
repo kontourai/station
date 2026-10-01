@@ -296,6 +296,19 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
+// The Station-owned detail's conversation reads its own durable window
+// (useSessionTranscriptEvents, covered by SessionTranscript.test.tsx).
+const transcriptLoadOlder = vi.hoisted(() => vi.fn());
+const transcriptHistory = vi.hoisted(() => ({ hasMore: false }));
+vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
+  useSessionTranscriptEvents: () => ({
+    events: [],
+    hasMore: transcriptHistory.hasMore,
+    loadOlder: transcriptLoadOlder,
+    settled: true,
+  }),
+}));
+
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
     events: feedEvents,
@@ -395,6 +408,8 @@ describe('SessionsView', () => {
     acknowledgeAttentionItem.mockReset();
     acknowledgeAttentionItem.mockResolvedValue(undefined);
     loadOlder.mockClear();
+    transcriptLoadOlder.mockClear();
+    transcriptHistory.hasMore = false;
     historyState = {
       hasMore: false,
       upgradeRequired: false,
@@ -821,8 +836,11 @@ describe('SessionsView', () => {
     expect(
       row?.querySelector('.split-pane__item-subtitle')?.textContent,
     ).toMatch(/^Waiting on you · \d+d ago$/);
+    // The row is named by its title alone; its status line describes it.
+    // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
-      name: /^An independent session Waiting on you · \d+d ago$/,
+      name: 'An independent session',
+      description: /^\s*Waiting on you · \d+d ago$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
@@ -905,6 +923,8 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    // The Station-owned detail pages its conversation's own window.
+    transcriptHistory.hasMore = true;
     renderView();
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
@@ -912,7 +932,8 @@ describe('SessionsView', () => {
       screen.getByRole('button', { name: 'Show older messages' }),
     );
 
-    expect(loadOlder).toHaveBeenCalledOnce();
+    expect(transcriptLoadOlder).toHaveBeenCalledOnce();
+    transcriptHistory.hasMore = false;
 
     // It shipped as a bare <button> with no className, inside a wrapper class
     // that has no CSS rule anywhere in the repo — so it rendered as raw
@@ -1356,7 +1377,7 @@ describe('SessionsView', () => {
 
     const input = screen.getByLabelText('Continue delegated task');
     fireEvent.change(input, { target: { value: 'continue please' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() =>
       expect(sendTurn).toHaveBeenCalledWith({
@@ -1415,7 +1436,14 @@ describe('SessionsView', () => {
     );
     expect(within(detail).getAllByText('Running').length).toBeGreaterThan(0);
 
-    fireEvent.click(within(detail).getByRole('button', { name: 'Stop task' }));
+    // Stop asks first (activity redesign): the header control only opens
+    // the confirmation, and the confirmation's own button stops the turn.
+    fireEvent.click(within(detail).getByRole('button', { name: 'Stop…' }));
+    expect(interruptTurn).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('alertdialog', {
+      name: 'Stop this task?',
+    });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Stop task' }));
 
     await waitFor(() =>
       expect(interruptTurn).toHaveBeenCalledWith({
@@ -1523,9 +1551,8 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
-    expect(within(detail).queryByText('● live')).toBeNull();
-    expect(within(detail).queryByText('○ connecting')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
+    expect(within(detail).queryByText('Connecting…')).toBeNull();
     expect(
       within(detail).queryByLabelText('Continue delegated task'),
     ).toBeNull();
@@ -1554,9 +1581,8 @@ describe('SessionsView', () => {
     const detail = screen.getByTestId('session-detail');
     const failure = screen.getByTestId('session-failure');
     expect(within(failure).getByText(/rate limited/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
-    expect(within(detail).queryByText('● live')).toBeNull();
-    expect(within(detail).queryByText('○ connecting')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
+    expect(within(detail).queryByText('Connecting…')).toBeNull();
     expect(within(detail).getAllByText('Failed').length).toBe(1);
   });
 
@@ -1656,9 +1682,9 @@ describe('SessionsView', () => {
     );
     // archive#1170's decisions stand alongside the new composer: no live
     // indicator, no Stop task on a stopped session.
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
     expect(
-      within(screen.getByTestId('session-detail')).queryByText('● live'),
+      within(screen.getByTestId('session-detail')).queryByText('Connecting…'),
     ).toBeNull();
   });
 
@@ -1673,7 +1699,7 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     expect(screen.getByLabelText('Send input to session')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
   });
 
   /*

@@ -515,3 +515,78 @@ describe('ConversationStoreAdapter.readableIds (cheap readability)', () => {
     expect(getConversations).toHaveBeenCalledTimes(1);
   });
 });
+
+// A `[CHAT_ERROR]` failed-turn marker persisted before its text was made
+// outward-safe, in the exact FileMemory shape the old writer produced. The
+// store is not rewritten, so the indexed record body must not carry it.
+describe('conversation-store never indexes a pre-fix failed-turn marker verbatim', () => {
+  const SECRET = 'sk-live-SECRET-9a8b7c';
+  const conversationId = 'eeeeeeee-5555-4555-8555-555555555555';
+
+  function adapterWithPreFixMarker() {
+    const fileStores = new Map<string, ConversationFileStoreReader>([
+      [
+        'default',
+        new FakeFileStoreReader(
+          [
+            {
+              id: conversationId,
+              resourceId: 'default',
+              userId: 'user-1',
+              title: 'Failed chat',
+              metadata: {},
+              createdAt: '2026-09-29T00:00:00.000Z',
+              updatedAt: '2026-09-29T00:00:01.000Z',
+            },
+          ],
+          new Map([
+            [
+              conversationId,
+              [
+                {
+                  id: 'u1',
+                  role: 'user',
+                  parts: [{ type: 'text', text: 'please answer' }],
+                  metadata: { timestamp: 1790688973100 },
+                },
+                {
+                  id: '0ce54880-6903-4b84-b5a8-46f23654145e',
+                  role: 'user',
+                  parts: [
+                    {
+                      type: 'text',
+                      text: `[SYSTEM_EVENT] [CHAT_ERROR] upstream exploded ${SECRET} leaked detail`,
+                    },
+                  ],
+                  metadata: { timestamp: 1790688973106 },
+                },
+              ],
+            ],
+          ]),
+        ),
+      ],
+    ]);
+    return createConversationStoreAdapterDescriptor({
+      sessionReader: emptySessionReader(),
+      fileStores,
+      getUserId: () => 'user-1',
+    }).create({ storeRoot: '/unused' });
+  }
+
+  test('listed records', async () => {
+    const adapter = await adapterWithPreFixMarker();
+    const [record] = await adapter.listByType('raw', {});
+
+    expect(record.body).toContain('please answer');
+    expect(record.body).toContain('The response stream failed.');
+    expect(record.body).not.toContain(SECRET);
+  });
+
+  test('a record read by id', async () => {
+    const adapter = await adapterWithPreFixMarker();
+    const record = await adapter.get(conversationId);
+
+    expect(record?.body).toContain('The response stream failed.');
+    expect(record?.body).not.toContain(SECRET);
+  });
+});

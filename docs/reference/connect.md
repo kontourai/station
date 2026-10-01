@@ -69,10 +69,13 @@ transport freezes it. Host read expiry may shorten a prior deadline, while an
 extension or expired read is refused. The adapter retains bounded peer leases
 and retires cancellation, failed/late preparation and expired handles.
 
-This is an opt-in library surface, separate from ordinary saved-route selection.
-It does not enable a default UI route, enroll or activate a Device, authenticate
-an account or grant Project access. Account continuation proof remains a
-separate caller requirement. Focused source tests do not establish executed
+The library does not enroll or activate a Device, authenticate an account or
+grant Project access. Station's native saved-route owner now composes this
+transport for a configured host-owned Device binding, obtaining fresh ICE for
+each peer. Its separate account bridge supplies continuation proof for bounded
+Project and authority reads. Unsupported resources and writes fail before
+peer creation; this is not a general operator Workspace transport. The CLI
+continues to exclude these routes from default selection. Focused source tests do not establish executed
 Tauri IPC, packaged-client, physical-device or complete authenticated
 Project-journey evidence.
 See the [package README](../../packages/connect/README.md#optional-native-application-transport)
@@ -148,8 +151,9 @@ subscriber set changes, and wakes on browser online/visibility signals. The
 last verified profile/session data may remain visible during a transient
 outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's
-credential resolver supplies `mutationAllowed: () => false`; Station's current
-`ApiBaseContext` resolver does not supply that optional guard. Individual
+credential resolver supplies `mutationAllowed: () => false`. Station's native
+broker credential owner supplies that guard for its bounded read transport;
+other resolver paths retain their existing behavior. Individual
 features still own their availability checks. See the
 [SDK transport](../../packages/sdk/src/client/http.ts) and
 [Station resolver](../../src-ui/src/contexts/ApiBaseContext.tsx).

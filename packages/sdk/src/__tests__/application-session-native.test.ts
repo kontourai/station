@@ -243,6 +243,100 @@ function invitationHostProvider(
 }
 
 describe('structured native account proof provider', () => {
+  test('fixed native revoke preparation validates exact endpoint proof and trust after host signing without widening reads', async () => {
+    let wrongPath = true;
+    let change: () => void = () => {};
+    const h = await fixture((key, trust) => ({
+      ...hostProvider(key, trust),
+      async prepareRevocation({ continuation }) {
+        const proof = await createNativeApplicationSessionProof(key, trust(), {
+          purpose: 'request',
+          deviceId: trust().deviceId,
+          nonce: continuation.nonce,
+          method: 'POST',
+          path: wrongPath
+            ? '/api/account-auth/continuations/revoke'
+            : '/api/account-auth/continuations/native/revoke',
+          credentialHash: createHash('sha256')
+            .update(continuation.credential)
+            .digest('base64url'),
+          expiresAtMs: continuation.expiresAtMs,
+        });
+        change();
+        return {
+          body: {},
+          headers: {
+            [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+            [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,
+          },
+        };
+      },
+    }));
+    const continuation = await h.client.exchange(credentials);
+    await expect(h.client.prepareRevocation(continuation)).rejects.toThrow();
+    wrongPath = false;
+    const prepared = await h.client.prepareRevocation(continuation);
+    expect(prepared.body).toEqual({});
+    expect(Object.isFrozen(prepared.body)).toBe(true);
+    expect(
+      decodeClaims(prepared.headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER]!),
+    ).toMatchObject({
+      method: 'POST',
+      path: '/api/account-auth/continuations/native/revoke',
+    });
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/account-auth/continuations/native/revoke',
+      }),
+    ).rejects.toThrow();
+    change = () =>
+      h.setTrust({ deviceId: '99999999-9999-4999-8999-999999999999' });
+    await expect(h.client.prepareRevocation(continuation)).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
+  test('host account read proofs cover only the exact member-read capability inventory', async () => {
+    const h = await fixture(hostProvider);
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    for (const path of [
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+      '/api/projects/demo',
+      '/api/projects/demo/shared-work',
+      '/api/projects/demo/shared-work/task_1/document',
+      '/api/projects/demo/shared-work/task_1/history',
+      '/api/projects/demo/shared-work/task_1/publication',
+    ])
+      expect(
+        await h.client.headers(continuation, { method: 'GET', path }),
+      ).toHaveProperty(APPLICATION_SESSION_NATIVE_PROOF_HEADER);
+    for (const path of [
+      '/api/pairing/devices',
+      '/api/config',
+      '/api/projects/demo/git/status',
+      '/api/projects/demo/shared-work/task_1/messages',
+      '/api/projects/demo/shared-work/task_1/document/extra',
+      '/api/projects/%2Fadmin',
+    ])
+      await expect(
+        h.client.headers(continuation, { method: 'GET', path }),
+      ).rejects.toThrow();
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/projects/demo/shared-work/task_1/document',
+      }),
+    ).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
   test('fixed invitation preparation validates the token and host proof without widening GET/HEAD request headers', async () => {
     const prepare = vi.fn();
     const reads = vi.fn();

@@ -119,6 +119,7 @@ export async function createNativeRelayApplicationRuntime(input: {
           [
             '/api/account-auth/continuations/native/challenge',
             '/api/account-auth/continuations/native/exchange',
+            '/api/account-auth/continuations/native/revoke',
             '/api/account-auth/accept-invitation',
           ].includes(url.pathname)
         ))

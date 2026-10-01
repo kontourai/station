@@ -1,4 +1,9 @@
-import type { NativeApplicationSessionContinuationV1 } from '@kontourai/station-contracts/application-session';
+import {
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
+  type NativeApplicationSessionContinuationV1,
+  type NativeApplicationSessionRevocation,
+} from '@kontourai/station-contracts/application-session';
+import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeScopeV2,
@@ -86,6 +91,22 @@ const invitationPrepared = z
     body: z.object({ token: opaque }).strict(),
     headers: accountHeaders,
   })
+  .strict();
+const invitationAcceptance = z
+  .object({
+    scope: z
+      .object({
+        stationId: z.string().uuid(),
+        localProjectId: z.string().min(1).max(128),
+        localProjectSlug: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
+        portableProjectId: z.string().min(1).max(512),
+      })
+      .strict(),
+    grantsDeviceAccess: z.literal(false),
+  })
+  .strict();
+const revocationPrepared = z
+  .object({ body: z.object({}).strict(), headers: accountHeaders })
   .strict();
 const INVITATION_PATH = '/api/account-auth/accept-invitation';
 const RESPONSE_LIMIT = 64 * 1024;
@@ -243,6 +264,18 @@ export async function createNativeAccountSessionBridge(input: {
       await assertCurrent();
       return accountHeaders.parse(result);
     },
+    async prepareRevocation(args) {
+      await assertCurrent();
+      const result = await invoke.invoke(
+        'station_native_account_revoke_prepare',
+        {
+          accountContextHandle: prepared.accountContextHandle,
+          ...args,
+        },
+      );
+      await assertCurrent();
+      return revocationPrepared.parse(result);
+    },
     async prepareInvitationAcceptance(args) {
       await assertCurrent();
       const result = await invoke.invoke(
@@ -348,7 +381,9 @@ export async function createNativeAccountSessionBridge(input: {
         throw new Error('native_account_scope_retired');
       return result;
     },
-    async acceptInvitation(token: string): Promise<unknown> {
+    async acceptInvitation(
+      token: string,
+    ): Promise<ProjectInvitationAcceptance> {
       await assertCurrent();
       if (!continuation) throw new Error('native_account_login_required');
       const retained = continuation;
@@ -373,7 +408,51 @@ export async function createNativeAccountSessionBridge(input: {
       await assertCurrent();
       if (continuation !== retained)
         throw new Error('native_account_scope_retired');
-      return result;
+      const accepted = z
+        .object({ data: invitationAcceptance })
+        .strict()
+        .parse(result).data;
+      if (accepted.scope.stationId !== prepared.target.stationId)
+        throw new Error('native_account_membership_owner_mismatch');
+      return accepted;
+    },
+    async logout(): Promise<NativeApplicationSessionRevocation> {
+      await assertCurrent();
+      if (busy || !continuation)
+        throw new Error('native_account_login_required');
+      busy = true;
+      const retained = continuation;
+      try {
+        const revocation = await client.prepareRevocation(retained);
+        await assertCurrent();
+        if (continuation !== retained)
+          throw new Error('native_account_scope_retired');
+        continuation = undefined;
+        projection = null;
+        generation++;
+        for (const listener of listeners) listener();
+        const response = await application.fetch(
+          `${application.origin}${APPLICATION_SESSION_NATIVE_REVOKE_PATH}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...revocation.headers,
+            },
+            body: JSON.stringify(revocation.body),
+            signal,
+          },
+        );
+        const result = await readBounded(response, signal);
+        await assertCurrent();
+        return z
+          .object({ data: z.object({ revoked: z.literal(true) }).strict() })
+          .strict()
+          .parse(result).data;
+      } finally {
+        busy = false;
+        retire();
+      }
     },
     retire,
   };

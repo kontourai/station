@@ -4,6 +4,7 @@ import {
   APPLICATION_SESSION_NATIVE_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
   APPLICATION_SESSION_NATIVE_VERSION,
   type ApplicationSessionPublicKey,
   type NativeApplicationSessionChallengeV1,
@@ -55,10 +56,18 @@ export interface NativeApplicationSessionProofProvider {
       readonly path: string;
     };
   }): Promise<Readonly<Record<string, string>>>;
+  prepareRevocation?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+  }): Promise<NativeAccountRevocationPreparation>;
   prepareInvitationAcceptance?(input: {
     readonly continuation: NativeAccountOpaqueContinuation;
     readonly token: string;
   }): Promise<NativeProjectInvitationAcceptancePreparation>;
+}
+
+export interface NativeAccountRevocationPreparation {
+  readonly body: Readonly<Record<string, never>>;
+  readonly headers: Readonly<Record<string, string>>;
 }
 
 export interface NativeProjectInvitationAcceptancePreparation {
@@ -297,8 +306,16 @@ function localReadRequest(request: {
   const path = requestPath(request.path);
   const pathname = new URL(path, 'https://station.invalid').pathname;
   if (
-    pathname !== '/api/projects' &&
-    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}$/.test(pathname)
+    ![
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+    ].includes(pathname) &&
+    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}(?:\/shared-work(?:\/[A-Za-z0-9_-]{1,128}\/(?:document|history|publication))?)?$/.test(
+      pathname,
+    )
   )
     throw new Error('Native host account proof supports only Project reads.');
   return Object.freeze({ method: request.method, path });
@@ -841,6 +858,48 @@ export class NativeApplicationSessionClient {
         nonce: current.nonce,
         method: 'POST',
         path: INVITATION_ACCEPT_PATH,
+        keyThumbprint: current.keyThumbprint,
+        credentialHash: await hashText(current.credential),
+      },
+    );
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      body: Object.freeze({ ...body }),
+      headers: Object.freeze({ ...headers }),
+    });
+  }
+
+  async prepareRevocation(
+    continuation: NativeApplicationSessionContinuationV1,
+  ): Promise<NativeAccountRevocationPreparation> {
+    const trust = this.current();
+    const thumbprint = await applicationSessionKeyThumbprint(
+      this.key.publicKey,
+    );
+    const current = parseContinuation(continuation, trust, thumbprint);
+    if (!isHostProofProvider(this.key) || !this.key.prepareRevocation)
+      throw new Error('Native host account revocation is unavailable.');
+    const prepared = await this.key.prepareRevocation({
+      continuation: Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      }),
+    });
+    const body = z.object({}).strict().parse(prepared.body);
+    const headers = hostRequestHeaders.parse(prepared.headers);
+    if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+      throw new Error('Native host account continuation changed.');
+    const claims = await verifyHostProof(
+      headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+      this.key.publicKey,
+      trust,
+      {
+        purpose: 'request',
+        nonce: current.nonce,
+        method: 'POST',
+        path: APPLICATION_SESSION_NATIVE_REVOKE_PATH,
         keyThumbprint: current.keyThumbprint,
         credentialHash: await hashText(current.credential),
       },

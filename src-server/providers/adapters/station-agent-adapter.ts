@@ -59,6 +59,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../utils/internal-api-token.js';
+import { outwardTransportError } from '../../utils/outward-error.js';
 import {
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
@@ -68,6 +69,11 @@ import {
   SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
+import {
+  MODEL_PROVIDER_CREDENTIALS_REJECTED,
+  modelProviderFailureMessage,
+  modelProviderHttpStatus,
+} from '../model-provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
@@ -735,13 +741,30 @@ export function mapStationAgentStreamEvent(options: {
     return { finishReason: finishReason(event.finishReason) };
   }
   if (event.type === 'error') {
+    // The chunk's `errorText` is the outward generic and is never read;
+    // only the numeric `statusCode` (`writeSSEError`) is, and it becomes a
+    // sentence composed here, so no provider text reaches the event. A 401
+    // flagged `statusInferred` came from the error's wording, not an HTTP
+    // response, so it is neither quoted nor recorded as a status.
+    const reportedStatus = modelProviderHttpStatus(event.statusCode);
+    const inferredCredentials =
+      reportedStatus === 401 && event.statusInferred === true;
+    const httpStatus = inferredCredentials ? undefined : reportedStatus;
     publish({
       ...base,
       method: 'runtime.error',
       severity: 'error',
-      message: 'Station agent turn failed',
+      message: inferredCredentials
+        ? MODEL_PROVIDER_CREDENTIALS_REJECTED
+        : httpStatus === undefined
+          ? // The same text the route persists in its failed-turn marker
+            // (`outwardTurnFailureText`), so a reloaded chat's projected
+            // runtime error and marker de-duplicate to one card.
+            outwardTransportError('sse')
+          : modelProviderFailureMessage(httpStatus),
       code: 'station_agent_turn_failed',
       retriable: true,
+      ...(httpStatus !== undefined ? { details: { httpStatus } } : {}),
     });
     return { failed: true };
   }
