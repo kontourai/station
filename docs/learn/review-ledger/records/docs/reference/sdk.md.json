@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"5af15a4df8de3ed64e8a16bc9e9a24e07e5346f3abce3c4093c960eeff84c87d","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+  "document": {"digest":"690b8587ab798617108cf1b62e2f9b0a102b3bd52df148da5be3f12027a2892c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -348,7 +348,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"307f68c43bdbd262d2b28fdf3aa0b696a5ff56ef397c3c96c50891a0083cd764","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

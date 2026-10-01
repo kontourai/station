@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"061c6364442502e2aa6bb541bc90039bee3a18e12be05fdeef8c7c29aec300ce","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+  "document": {"digest":"ed05e33d2688331c4ae675e82ce97079043cb0d3f886de04c0d2fc6f1d0ca01b","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -256,7 +256,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"307f68c43bdbd262d2b28fdf3aa0b696a5ff56ef397c3c96c50891a0083cd764","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

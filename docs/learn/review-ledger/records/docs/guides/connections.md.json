@@ -136,7 +136,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"307f68c43bdbd262d2b28fdf3aa0b696a5ff56ef397c3c96c50891a0083cd764","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
@@ -249,10 +249,6 @@
     {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
-
-    {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
     {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"0a1a3797a6b1e3f5979d7add3b363b614cf6dc93cd2b656f77c722ee575fea3c","revision":"f23e56a8542924fc7269d9ef14645a82c9065f0c"},
 
