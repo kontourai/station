@@ -26,7 +26,7 @@
 
     {"path":"src-server/providers/llm/defaults.ts","digest":"5a7c47c56107d89a2d450d11a6931155332c7990e7f1de79d807f9c5c9f038f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"fc19a93ee019f6618777ae7bc7f9c191f3f8a8f701e3fd4d45ec5d4ebe554658","revision":"f28ea67cceea02a6cb306952553587cbf6652bc2"},
 
     {"path":"src-server/services/connections/connection-service.ts","digest":"e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

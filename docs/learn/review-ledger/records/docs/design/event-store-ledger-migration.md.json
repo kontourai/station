@@ -12,7 +12,7 @@
   "document": {"digest":"6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"docs/architecture/module-map.md","digest":"fe2f22beb3ad5562546622b52f25b8729488cb3384657c03a6028c2b3363d282","revision":"f28ea67cceea02a6cb306952553587cbf6652bc2"},
 
     {"path":"src-server/services/orchestration/adoption-ledger.ts","digest":"fdf620001ececec0d9dd14dce71f3507a1adcf608c80122c216912b667d4fcd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -24,7 +24,7 @@
 
     {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"1c4ddd738fb50182585a9a35dc96a3a31a81c6c9737e62ca6e85658124bfaeb7","revision":"f28ea67cceea02a6cb306952553587cbf6652bc2"},
 
     {"path":"src-server/services/orchestration/recovery-ledger.ts","digest":"c590c5a7b9ba3d8b7fb6233fe271f3ffcf9e4a6a548d331726e1a49378bd2079","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
