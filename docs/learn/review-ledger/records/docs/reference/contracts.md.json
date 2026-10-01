@@ -66,7 +66,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-record-observation.ts","digest":"2f31998cc94993c1e8502f1407f167c2d56b8380c50045b8d78948391915d7a0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"10ac031f7d84abf32d47f9fdf5266a4e009760dd00c428c9bba88acc14d3e746","revision":"3a496195fe405aa2834aecf5960149222c92a48f"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"7746017a19522410ccaefebb69a53007123455499a9c72399b461d66f5ddaf95","revision":"aba169ab98b0546fc88ea07509450efe838e90b6"},
 
     {"path":"src-server/providers/adapters/claude-sdk-turns.ts","digest":"3a6e6078a3d208e96742fa1b29877697c6586ca5da312854c9b42adb56760f19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

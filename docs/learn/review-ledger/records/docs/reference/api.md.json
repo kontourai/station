@@ -106,7 +106,7 @@
 
     {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"10ac031f7d84abf32d47f9fdf5266a4e009760dd00c428c9bba88acc14d3e746","revision":"3a496195fe405aa2834aecf5960149222c92a48f"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"7746017a19522410ccaefebb69a53007123455499a9c72399b461d66f5ddaf95","revision":"aba169ab98b0546fc88ea07509450efe838e90b6"},
 
     {"path":"src-server/providers/adapters/bedrock-adapter.ts","digest":"6b4d3cac2bc65e6ce6d40008a21a8641ed2a268176f1f53534a98d8e9a85a5b6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
