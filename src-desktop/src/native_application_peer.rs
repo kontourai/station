@@ -298,6 +298,16 @@ fn validate_request(method: &str, path: &str, body: &[u8]) -> Result<()> {
             }
         }
         "POST" => {
+            if path == "/api/account-auth/continuations/native/revoke" {
+                if url.query().is_some()
+                    || !serde_json::from_slice::<serde_json::Value>(body).is_ok_and(|value| {
+                        value.as_object().is_some_and(|fields| fields.is_empty())
+                    })
+                {
+                    return refused();
+                }
+                return Ok(());
+            }
             if path == "/api/account-auth/accept-invitation" {
                 #[derive(Deserialize)]
                 #[serde(deny_unknown_fields)]
@@ -1305,6 +1315,17 @@ mod tests {
         let answer = service.read(&prepared.peer_handle).unwrap();
         assert!(answer.station_proof.is_some());
         prepared
+    }
+
+    #[test]
+    fn native_revoke_request_signing_has_one_empty_body_post_leaf() {
+        let path = "/api/account-auth/continuations/native/revoke";
+        assert!(validate_request("POST", path, b"{}").is_ok());
+        for body in [b"[]".as_slice(), b"{\"deviceId\":\"other\"}", b""] {
+            assert!(validate_request("POST", path, body).is_err());
+        }
+        assert!(validate_request("POST", &format!("{path}?other=1"), b"{}").is_err());
+        assert!(validate_request("GET", path, b"{}").is_err());
     }
 
     #[test]

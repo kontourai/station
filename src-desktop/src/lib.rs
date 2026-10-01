@@ -7,9 +7,6 @@ mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
-mod native_enrollment;
-mod native_enrollment_peer;
-mod native_enrollment_host;
 #[cfg(not(mobile))]
 mod desktop_companion;
 #[cfg(not(mobile))]
@@ -18,6 +15,9 @@ mod desktop_installation;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+mod native_enrollment;
+mod native_enrollment_host;
+mod native_enrollment_peer;
 #[cfg(not(mobile))]
 mod notification_feed;
 // Proof keys remain host-only; bounded account and Device operations are IPC.
@@ -11835,6 +11835,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_exchange_prepare,
         native_account_operations::station_native_account_request_headers,
         native_account_operations::station_native_account_accept_invitation_prepare,
+        native_account_operations::station_native_account_revoke_prepare,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -11927,6 +11928,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_exchange_prepare,
         native_account_operations::station_native_account_request_headers,
         native_account_operations::station_native_account_accept_invitation_prepare,
+        native_account_operations::station_native_account_revoke_prepare,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
