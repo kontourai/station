@@ -3026,11 +3026,20 @@ Host-action execution deliberately returns `indeterminate` after any failed or
 unreadable response; it does not expose the helper's exception to the caller.
 
 `ChatHttpError`, thrown by execution fetchers, now extends `StationHttpError`;
-`serverMessage` retains the helper's message. Execution fetchers derive
-`stationEnvelope` from a boolean `success` field or an object `error` with a
-string `code`. An HTML proxy response keeps its HTTP status but sets this flag
+`serverMessage` retains the helper's message. The execution, attachment
+staging, orchestration-command and chat-stream producers set `stationEnvelope`
+to say whether Station itself answered. The body must have Station's shape (a
+boolean `success` field, or an object `error` with a string `code`), and the
+response must carry the `x-station-envelope` header a current Station puts on
+every JSON body it writes. An HTML proxy response, or gateway JSON in
+Station's shape without the header, keeps its HTTP status but sets this flag
 to `false`, so status alone must not be treated as a definitive Station
-refusal. This shape check is not independent proof of the responder's identity.
+refusal. A Station older than the header never sends it: until an origin has
+sent the header once in this process (on any response the SDK's request
+functions return), the shape alone decides, as before. That fallback is not
+independent proof of the responder's identity. The desktop native transport
+does not yet pass the header to the renderer, so requests it carries stay on
+the fallback.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
 

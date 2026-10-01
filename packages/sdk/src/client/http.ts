@@ -39,6 +39,7 @@ import {
   StationRequestTimeoutError,
   unlessDeadline,
 } from './request-deadline';
+import { observeStationResponse } from './station-envelope';
 
 // Defined beside the envelope rule that builds it (#2708), so the rule and
 // the error need no import cycle; every existing `./http` import still works.
@@ -850,6 +851,18 @@ export async function authenticatedFetch(
   input: Parameters<typeof fetch>[0],
   ...args: [init?: AuthenticatedFetchInit]
 ): Promise<Response> {
+  // `...args` keeps the caller's arity, which `dispatchAuthenticatedFetch`
+  // preserves down to `fetch`.
+  return observeStationResponse(
+    input instanceof Request ? input.url : input.toString(),
+    await dispatchAuthenticatedFetch(input, ...args),
+  );
+}
+
+async function dispatchAuthenticatedFetch(
+  input: Parameters<typeof fetch>[0],
+  ...args: [init?: AuthenticatedFetchInit]
+): Promise<Response> {
   const { timeoutMs: initTimeoutMs, readOnly, ...rest } = args[0] ?? {};
   const init = args[0] === undefined ? undefined : (rest as RequestInit);
   const hasInitArgument = args.length > 0;
@@ -1067,9 +1080,12 @@ export async function getJson(
     maximum === undefined
       ? response
       : boundResponse(response, maximum, assertAuthority);
-  return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(result, assertAuthority)
-    : result;
+  return observeStationResponse(
+    url,
+    needsAuthorityGuard(url, requestOptions, configured)
+      ? guardResponseAuthority(result, assertAuthority)
+      : result,
+  );
 }
 
 /**
@@ -1152,9 +1168,12 @@ export async function mutateJson(
     maximum === undefined
       ? response
       : boundResponse(response, maximum, assertAuthority);
-  return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(result, assertAuthority)
-    : result;
+  return observeStationResponse(
+    url,
+    needsAuthorityGuard(url, requestOptions, configured)
+      ? guardResponseAuthority(result, assertAuthority)
+      : result,
+  );
 }
 
 export interface FetchSseMessage {

@@ -1395,6 +1395,18 @@ still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
 
+Every JSON response the runtime writes itself, success or refusal, carries the
+response header `x-station-envelope: 1`
+(`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
+exposes it. Because there is no universal envelope, a reverse proxy or gateway
+can answer with JSON in a Station shape; the header is how a client tells
+Station's own answer from one written in between. The header is set by
+[one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
+every handler. It describes one hop: a response relayed from another Station
+through `fetchRemoteStation` leaves without it. Non-JSON bodies (event
+streams, files, plain text) do not carry it. A Station older than the header
+never sends it, so its absence proves nothing about such a Station.
+
 Clients must check HTTP status and the family's body/stream result. Treat 202
 as acceptance with pending work when the response says so, 409 indeterminate
 receipts as requiring observation, and a failed health result as different

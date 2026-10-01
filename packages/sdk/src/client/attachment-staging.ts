@@ -9,7 +9,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import { ChatHttpError, isStationEnvelope } from './chatHttpError';
+import { ChatHttpError } from './chatHttpError';
 import {
   assertClientRawEgressAllowed,
   type ClientRequestOptions,
@@ -17,6 +17,7 @@ import {
   mutateJson,
 } from './http';
 import { unlessDeadline } from './request-deadline';
+import { isStationAnswer } from './station-envelope';
 
 const ROOT = '/api/orchestration/attachment-staging';
 
@@ -136,7 +137,7 @@ async function read<T>(response: Response, fallback: string): Promise<T> {
       typeof (body as { code?: unknown }).code === 'string'
         ? (body as { code: string }).code
         : undefined,
-      isStationEnvelope(body),
+      isStationAnswer(response, body),
     );
   }
   return body as T;
