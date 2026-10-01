@@ -176,7 +176,7 @@ export function ProjectPage({ slug }: { slug: string }) {
     );
   }
 
-  if (selectedNativeRelay && requestScope.requiresEnrolledCredential === true) {
+  if (selectedNativeRelay) {
     return (
       <div className="project-page">
         <div className="project-page__inner">

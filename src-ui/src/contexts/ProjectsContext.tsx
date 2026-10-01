@@ -348,6 +348,14 @@ export function useScopedMemberProjectSharedTaskDetails(
     staleTime: 0,
     gcTime: 0,
   });
+  const publicationIsCurrent = Boolean(
+    requestEnabled &&
+      publication.isSuccess &&
+      !publication.isFetching &&
+      publication.data?.kind === 'shared' &&
+      sameSharedProjectTask(publication.data.publication, sharedTask),
+  );
+  const sharedDetailsEnabled = requestEnabled && publicationIsCurrent;
   const history = useQuery<ProjectSharedTaskHistory>({
     queryKey: [...key, 'history'],
     queryFn: async ({ signal }) => {
@@ -370,7 +378,7 @@ export function useScopedMemberProjectSharedTaskDetails(
         throw new Error('The selected Station authority changed.');
       return value;
     },
-    enabled: requestEnabled,
+    enabled: sharedDetailsEnabled,
     retry: false,
     staleTime: 0,
     gcTime: 0,
@@ -405,13 +413,13 @@ export function useScopedMemberProjectSharedTaskDetails(
         throw new Error('Shared document returned a different Project scope.');
       return value;
     },
-    enabled: requestEnabled,
+    enabled: sharedDetailsEnabled,
     retry: false,
     staleTime: 0,
     gcTime: 0,
   });
 
-  return { publication, history, document };
+  return { publication, publicationIsCurrent, history, document };
 }
 
 export interface ProjectMetadata {

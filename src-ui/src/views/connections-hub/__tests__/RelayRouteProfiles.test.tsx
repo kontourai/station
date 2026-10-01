@@ -55,6 +55,7 @@ const mocks = vi.hoisted(() => ({
   credentialEvidence: null as null | {
     connectionId: string;
     origin: string;
+    activationEpoch: string;
     nativeBrokerRoute: {
       routeVersion: 1;
       profileName: string;
@@ -64,10 +65,14 @@ const mocks = vi.hoisted(() => ({
       enrollmentId: string;
     };
   },
+  selectionEpoch: 0,
   accountSessionActive: false,
   accountLogin: vi.fn(),
   accountAcceptInvitation: vi.fn(),
+  accountLogout: vi.fn(),
   accountRetire: vi.fn(),
+  connections: [] as Array<Record<string, unknown>>,
+  setActiveConnection: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => {
@@ -78,6 +83,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     useConnections: () => ({
       captureCredentialEvidence: () => mocks.credentialEvidence,
       isCredentialEvidenceCurrent: () => true,
+      connections: mocks.connections,
+      setActiveConnection: mocks.setActiveConnection,
     }),
   };
 });
@@ -85,11 +92,17 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () =>
     mocks.accountSessionActive
-      ? { requiresEnrolledCredential: true, isCurrent: () => true }
+      ? {
+          apiBase: 'https://station.example',
+          authorityKey: 'selected-route-account',
+          requiresEnrolledCredential: true,
+          isCurrent: () => true,
+        }
       : undefined,
   useNativeRelayAccountSession: () => ({
     login: mocks.accountLogin,
     acceptInvitation: mocks.accountAcceptInvitation,
+    logout: mocks.accountLogout,
     retireAccount: mocks.accountRetire,
   }),
 }));
@@ -552,6 +565,7 @@ function selectNativeRelayRoute(profileName = 'Home Station') {
   mocks.credentialEvidence = {
     connectionId: `station-profile:${profileName.toLowerCase()}`,
     origin: 'https://station.example',
+    activationEpoch: `selection:${profileName}:${++mocks.selectionEpoch}`,
     nativeBrokerRoute: {
       routeVersion: 1,
       profileName,
@@ -589,20 +603,34 @@ describe('RelayRouteProfiles', () => {
     mocks.recoveryAttempts.length = 0;
     mocks.transitionCurrentFails = false;
     mocks.credentialEvidence = null;
+    mocks.selectionEpoch = 0;
     mocks.accountSessionActive = false;
     mocks.accountLogin.mockReset();
     mocks.accountAcceptInvitation.mockReset();
+    mocks.accountLogout.mockReset();
     mocks.accountRetire.mockReset();
     mocks.accountLogin.mockImplementation(async () => {
       mocks.accountSessionActive = true;
       return { authorityKey: 'test-account-scope' };
     });
     mocks.accountAcceptInvitation.mockResolvedValue({
-      data: { grantsDeviceAccess: false },
+      scope: {
+        stationId,
+        localProjectId: 'member-project-local-id',
+        localProjectSlug: 'shared-project',
+        portableProjectId: 'portable-project-id',
+      },
+      grantsDeviceAccess: false,
+    });
+    mocks.accountLogout.mockImplementation(async () => {
+      mocks.accountSessionActive = false;
+      return { revoked: true };
     });
     mocks.accountRetire.mockImplementation(() => {
       mocks.accountSessionActive = false;
     });
+    mocks.connections = [];
+    mocks.setActiveConnection.mockReset();
     mocks.keyStatus.mockResolvedValue({
       status: 'untrusted',
       trustRevision: 0,
@@ -646,10 +674,10 @@ describe('RelayRouteProfiles', () => {
     });
   });
 
-  test('lists an unconnected route, offers edit, and removes it without revoking trust', async () => {
+  test('lists an unconfigured route, offers edit, and removes it without revoking trust', async () => {
     renderRoutes();
     expect(screen.getByText('Saved broker routes')).toBeTruthy();
-    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getByText('Device setup required')).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByText('Station key untrusted')).toBeTruthy(),
     );
@@ -680,6 +708,40 @@ describe('RelayRouteProfiles', () => {
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Add broker route' }),
+    ).toBeTruthy();
+  });
+
+  test('selects only a fresh configured Station through ConnectionsContext', async () => {
+    const profile = mocks.profiles[0];
+    mocks.profiles = [{ ...profile, configurationState: 'configured' }];
+    mocks.connections = [
+      {
+        id: 'station-profile:home station',
+        url: 'https://station.example',
+        nativeBrokerRoute: {
+          routeVersion: 1,
+          profileName: 'Home Station',
+          profileRevision: 12,
+          brokerOrigin: 'https://broker.example',
+          stationId,
+          enrollmentId,
+        },
+      },
+    ];
+    mocks.setActiveConnection.mockImplementation(async (id: string) => {
+      expect(id).toBe('station-profile:home station');
+      selectNativeRelayRoute();
+    });
+    renderRoutes();
+
+    expect(screen.getByText('Device configured · not selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Use this Station' }));
+    await screen.findByText('Station selected · account sign-in required');
+    expect(mocks.setActiveConnection).toHaveBeenCalledWith(
+      'station-profile:home station',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Sign in to this Station account' }),
     ).toBeTruthy();
   });
 
@@ -758,7 +820,7 @@ describe('RelayRouteProfiles', () => {
     await screen.findByText(
       'A routing grant has not been saved on this device.',
     );
-    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getByText('Device setup required')).toBeTruthy();
     expect(mocks.grantInvoke).toHaveBeenCalledTimes(1);
 
     fireEvent.change(screen.getByLabelText('One-time routing invitation'), {
@@ -780,7 +842,7 @@ describe('RelayRouteProfiles', () => {
     expect(mocks.grantInvoke).toHaveBeenCalledWith(
       'station_profile_store_read',
     );
-    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getByText('Device setup required')).toBeTruthy();
     expect(
       screen.getByText(
         /account access, device approval, and Project access remain separate/,
@@ -944,7 +1006,7 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Activate this Device' }),
     );
     await screen.findByText(/Device configured/);
-    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getByText('Device setup required')).toBeTruthy();
     expect(
       screen.getByText(/Account sign-in and Project access remain separate/),
     ).toBeTruthy();
@@ -1120,6 +1182,10 @@ describe('RelayRouteProfiles', () => {
     configureEnrollmentReadyRoute();
     selectNativeRelayRoute();
     const { queryClient } = renderRoutes();
+    queryClient.setQueryData(
+      ['projects', 'list', 'https://station.example', 'selected-route-account'],
+      [],
+    );
     await screen.findByRole('region', {
       name: 'Station account for Home Station',
     });
@@ -1144,7 +1210,11 @@ describe('RelayRouteProfiles', () => {
       queryClient
         .getMutationCache()
         .getAll()
-        .every((mutation) => mutation.state.variables === undefined),
+        .every(
+          (mutation) =>
+            mutation.state.variables === undefined ||
+            typeof mutation.state.variables === 'number',
+        ),
     ).toBe(true);
 
     fireEvent.change(screen.getByLabelText('Account invitation token'), {
@@ -1153,9 +1223,19 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Accept account invitation' }),
     );
-    await screen.findByText(/does not confirm Project membership/);
+    await screen.findByText(/Access was added for Project shared-project/);
     expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith(
       'one-time-account-invitation',
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryState([
+          'projects',
+          'list',
+          'https://station.example',
+          'selected-route-account',
+        ])?.isInvalidated,
+      ).toBe(true),
     );
     expect(
       (screen.getByLabelText('Account invitation token') as HTMLInputElement)
@@ -1164,6 +1244,11 @@ describe('RelayRouteProfiles', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
+        name: 'More account actions for Home Station',
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole('menuitem', {
         name: 'Forget account session on this device',
       }),
     );
@@ -1204,6 +1289,93 @@ describe('RelayRouteProfiles', () => {
       (screen.getByLabelText('Station account password') as HTMLInputElement)
         .value,
     ).toBe('');
+  });
+
+  test('ignores an older account failure after selection changes away and back', async () => {
+    configureEnrollmentReadyRoute();
+    selectNativeRelayRoute();
+    let rejectLogin: (error: Error) => void = () => {};
+    const delayedLogin = new Promise<never>((_, reject) => {
+      rejectLogin = reject;
+    });
+    mocks.accountLogin.mockReturnValue(delayedLogin);
+    const rendered = renderRoutes();
+    await screen.findByLabelText('Station account username');
+    fireEvent.change(screen.getByLabelText('Station account username'), {
+      target: { value: 'old@example.test' },
+    });
+    fireEvent.change(screen.getByLabelText('Station account password'), {
+      target: { value: 'old-secret' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Sign in to this Station account' }),
+    );
+    await waitFor(() => expect(mocks.accountLogin).toHaveBeenCalledTimes(1));
+
+    selectNativeRelayRoute('Other Station');
+    await act(async () => rendered.rerenderRoutes());
+    selectNativeRelayRoute();
+    await act(async () => rendered.rerenderRoutes());
+    await screen.findByLabelText('Station account username');
+
+    await act(async () => {
+      rejectLogin(new Error('old account attempt failed'));
+      await delayedLogin.catch(() => undefined);
+    });
+    expect(
+      screen.queryByText(
+        'Station could not sign in this account for the selected route.',
+      ),
+    ).toBeNull();
+  });
+
+  test('remote sign-out requires the typed revocation receipt and remains distinct from local retirement', async () => {
+    configureEnrollmentReadyRoute();
+    selectNativeRelayRoute();
+    mocks.accountSessionActive = true;
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Sign out of this Station account',
+      }),
+    );
+    await screen.findByText(
+      /Station confirmed this account session was revoked/,
+    );
+    expect(mocks.accountLogout).toHaveBeenCalledTimes(1);
+    expect(mocks.accountRetire).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Account invitation token')).toBeNull();
+    expect(
+      await screen.findByLabelText('Station account username'),
+    ).toBeTruthy();
+  });
+
+  test('does not claim remote revocation when sign-out outcome is unknown', async () => {
+    configureEnrollmentReadyRoute();
+    selectNativeRelayRoute();
+    mocks.accountSessionActive = true;
+    mocks.accountLogout.mockImplementation(async () => {
+      mocks.accountSessionActive = false;
+      throw new Error('remote_revocation_unknown');
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Sign out of this Station account',
+      }),
+    );
+    await screen.findByRole('alert');
+    expect(
+      screen.getByText(
+        /could not confirm whether the remote account session was revoked/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(/confirmed this account session was revoked/),
+    ).toBeNull();
+    expect(mocks.accountRetire).not.toHaveBeenCalled();
   });
 
   test('aborts the owned attempt and network signal when the user cancels', async () => {
@@ -1321,7 +1493,7 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save route' }));
 
     await screen.findByText('Zach Station');
-    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(screen.getByText('Device setup required')).toBeTruthy();
     expect(repository.getRelayRouteProfiles()).toHaveLength(1);
     expect(persisted.store.profiles[0]).toMatchObject({
       name: 'Zach Station',
@@ -1364,7 +1536,7 @@ describe('RelayRouteProfiles', () => {
     );
   });
 
-  test('does not promise automatic renewal on mobile', () => {
+  test('explains foreground grant renewal and route cap on mobile', () => {
     mocks.isDesktop = false;
     const template = mocks.profiles[0];
     mocks.profiles = Array.from({ length: 65 }, (_, index) => ({
@@ -1373,11 +1545,11 @@ describe('RelayRouteProfiles', () => {
     }));
     renderRoutes();
     expect(
-      screen.queryByText(
-        /approved routing grants renew while this desktop app/i,
+      screen.getByText(
+        /approved routing grants renew while this app is awake/i,
       ),
-    ).toBeNull();
-    expect(screen.queryByText(/automatic grant renewal is paused/i)).toBeNull();
+    ).toBeTruthy();
+    expect(screen.getByText(/automatic grant renewal is paused/i)).toBeTruthy();
   });
 
   test('hides cached approved trust and disables revocation after a native status refetch fails', async () => {

@@ -13,6 +13,17 @@ import '../project-page-frame.css';
 
 type RequestScope = ReturnType<typeof useHostRequestAuthorityScope>;
 
+function memberSafeProjectIcon(icon: string | undefined): string | undefined {
+  if (
+    icon?.startsWith('http://') ||
+    icon?.startsWith('https://') ||
+    icon?.startsWith('/') ||
+    icon?.startsWith('data:image/')
+  )
+    return undefined;
+  return icon;
+}
+
 export function MemberProjectPage({
   project,
   requestScope,
@@ -33,7 +44,7 @@ export function MemberProjectPage({
     <div className="project-page">
       <div className="project-page__inner">
         <MemberProjectHeader
-          project={project}
+          project={{ ...project, icon: memberSafeProjectIcon(project.icon) }}
           onRefresh={() => void sharedWork.refetch()}
           refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
         />
@@ -109,18 +120,28 @@ function SharedWorkDetails({
   sharedTask: ProjectSharedTaskSummary;
   requestScope: NonNullable<RequestScope>;
 }) {
-  const { publication, history, document } =
+  const { publication, publicationIsCurrent, history, document } =
     useScopedMemberProjectSharedTaskDetails(
       { id: project.id, slug: project.slug },
       sharedTask,
       requestScope,
     );
+  const canDisplaySharedDetails =
+    publicationIsCurrent && requestScope.isCurrent();
 
   return (
     <section aria-label={`Shared item details for ${sharedTask.task.title}`}>
       <h3>{sharedTask.task.title}</h3>
       <section aria-label="Shared publication">
         <h4>Publication</h4>
+        <Button
+          size="sm"
+          disabled={!requestScope.isCurrent() || publication.isFetching}
+          pending={publication.isFetching}
+          onClick={() => void publication.refetch()}
+        >
+          Refresh publication status
+        </Button>
         {publication.isPending ? (
           <SkeletonBlock count={1} label="Checking shared publication" />
         ) : publication.isError ? (
@@ -138,7 +159,11 @@ function SharedWorkDetails({
       </section>
       <section aria-label="Shared history">
         <h4>History</h4>
-        {history.isPending ? (
+        {!canDisplaySharedDetails ? (
+          <p role="status">
+            History is hidden until a current publication is confirmed.
+          </p>
+        ) : history.isPending ? (
           <SkeletonBlock count={1} label="Loading shared history" />
         ) : history.isError || history.data?.kind !== 'available' ? (
           <p role="status">Shared history is unavailable.</p>
@@ -162,7 +187,11 @@ function SharedWorkDetails({
       </section>
       <section aria-label="Shared document">
         <h4>Document</h4>
-        {document.isPending ? (
+        {!canDisplaySharedDetails ? (
+          <p role="status">
+            The document is hidden until a current publication is confirmed.
+          </p>
+        ) : document.isPending ? (
           <SkeletonBlock count={1} label="Loading shared document" />
         ) : document.isError || document.data?.kind !== 'snapshot' ? (
           <p role="status">Shared document is unavailable.</p>
