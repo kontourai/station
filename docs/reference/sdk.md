@@ -3007,10 +3007,31 @@ throws this error for a non-2xx response or a missing/false `success` value.
 It checks truthiness, not a literal-boolean schema, and does not validate the
 returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
-2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
-throw their own errors — some a `StationHttpError` without `details`, some a
-plain `Error` or a family-specific subclass — and move onto the same fields
-in later releases, keeping their subclasses (#2708).
+2xx it is a protocol failure and throws a plain `Error`.
+
+Every fetcher under `@kontourai/station-sdk/client` now builds its refusal
+through the same helper (#2708). The account, application-session,
+authority-observation, checkpoint-restore, conversation pull-request link,
+fleet-routing receipt, learning-source, personal Board and Project layout
+delete, pull-request review, quote-source, runs and setup-import fetchers
+throw a `StationHttpError` where some threw a plain `Error` before. Their
+family subclasses stay and gain the refusal's fields:
+
+| Class | Base | Gains on a refusal |
+|---|---|---|
+| `BoardResponseError`, `BoardProvenanceRefusedError` | `StationHttpError` | `details`, `retryAfterMs`; the provenance refusal keeps its observed status |
+| `DelegationApiError` | `Error` | `status`, `retryAfterMs` (it already carried `code`, `retryable`, `details`) |
+| `AnswerSupportRequestError` | `Error` | `code`, `details`, `retryAfterMs` |
+| `ActionOperationProtocolError`, `LiveActivityProtocolError` | `Error` | `status`, `code`, `details`, `retryAfterMs`; absent on a malformed response |
+| `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
+
+Each keeps its earlier constructor; the new form takes the helper's
+`StationHttpError`. A delegation response whose body is not JSON throws a
+`StationHttpError`, not a `DelegationApiError`: a page is not Station's
+refusal. `getAuthorityObservation` keeps its own two sentences and reports the
+refusal's `status` and `code`; branch on `status === 401`, not on the
+sentence. Fetchers outside `client/` (the React query domains) are not yet on
+the helper.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
@@ -3053,6 +3074,8 @@ with a fixed generic message. The Task and Session reference reads use
 `TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
 `TaskBasisRequestError`, `SessionOutputsRequestError` and
 `SessionInventoryRequestError`, which remain plain `Error` subclasses.
+The answer Basis, answer narrative, gate-evaluation and quote-source reads,
+and the action-operation list and watch, are opaque in the same way.
 These opaque errors retain the observed `status`, supplied `code` and
 `retryAfterMs`, without `details`. A status of `0` is a local failure marker,
 not an HTTP response status; callers must not interpret it as a server refusal.

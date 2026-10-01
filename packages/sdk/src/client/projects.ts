@@ -36,13 +36,12 @@ import type {
   WorkspacePaneAvailability,
   WorkspacePaneAvailabilityInput,
 } from '@kontourai/station-contracts/workspace-pane-availability';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
-  envelopeErrorMessage,
   getJson,
   mutateJson,
   readJsonBody,
-  StationHttpError,
 } from './http';
 import {
   type ProjectEnvelope,
@@ -523,14 +522,9 @@ export async function deleteProjectLayout(
   const result = (await readJsonBody(response)) as
     | ProjectEnvelope<never>
     | undefined;
-  if (!response.ok) {
-    throw new StationHttpError(
-      response.status,
-      envelopeErrorMessage(result, 'Failed to delete layout'),
-    );
-  }
-  if (!result?.success) {
-    throw new Error(envelopeErrorMessage(result, 'Failed to delete layout'));
+  // A 2xx `success:false` is a refusal too, and keeps its observed status.
+  if (!response.ok || !result?.success) {
+    throw envelopeError(response, result, 'Failed to delete layout');
   }
 }
 

@@ -9,6 +9,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
+import { envelopeError } from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import {
   assertClientRawEgressAllowed,
@@ -132,11 +133,7 @@ async function read<T>(response: Response, fallback: string): Promise<T> {
   };
   if (!response.ok) {
     throw new ChatHttpError(
-      response.status,
-      typeof body.error === 'string' ? body.error : fallback,
-      typeof (body as { code?: unknown }).code === 'string'
-        ? (body as { code: string }).code
-        : undefined,
+      envelopeError(response, body, fallback),
       isStationAnswer(response, body),
     );
   }
