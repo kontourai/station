@@ -48,6 +48,7 @@ const sdkMocks = vi.hoisted(() => ({
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({

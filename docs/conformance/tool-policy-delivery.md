@@ -169,6 +169,65 @@ a file-edit safety check the engine raises while it still suggests
 auto-accept option (#2932). Answering it allows that call and switches the
 session to `acceptEdits`; the engine keeps asking for such paths.
 
+Some escalations the SDK does let Station see, and those always prompt: no
+tool grant and no agent `autoApprove` pattern answers them, even `*`
+(#2932, part 1).
+
+- The sandbox network-host ask. Claude Code 2.1.278 (as 2.1.261) sends it
+  as tool
+  `SandboxNetworkAccess` with input `{host}`, a `WebFetch(domain:<host>)`
+  allow-rule suggestion for `localSettings`, and no reason. It offers no
+  session option and forwards nothing, and its title names the host
+  ("Allow network access to <host>", an ASCII host bounded to 120 characters,
+  otherwise "an unrecognised host"). The engine remembers a host it was
+  allowed for its own session, so each new host prompts.
+- A sandbox override: a call whose input sets `dangerouslyDisableSandbox:
+  true`. The engine's own override ask carries no suggestion, so without this
+  a Bash tool grant answered it.
+- A `decisionReason` that is exactly `dangerouslyDisableSandbox`,
+  `requiresUserInteraction`, or the MCP organization ceiling `Your
+  organization requires approval for this tool`. These are literals in the
+  engine. Nothing else in the reason text is matched. They are specific to
+  the CLI versions they were read from (2.1.261, and byte-identical in
+  2.1.278): if a later CLI rewords one,
+  the rule stops matching and that ask goes back to being treated as an
+  ordinary call. A wording change disables the rule; it never widens it.
+  The durable signal is the structured `decision_reason_type`, which part 2
+  reads.
+- The ask flags `suppressAlwaysAllowRule`, `defaultToNo` and
+  `requiresUserInteraction`. The CLI sends all three. Agent SDK 0.3.278
+  forwards `suppressAlwaysAllowRule` and `defaultToNo` and still drops
+  `requiresUserInteraction`, which the adapter reads if an SDK forwards it.
+  In 2.1.278 the engine sets these flags on escalations only: claude.ai
+  artifact reads, writes and deletes, an MCP tool marked as requiring user
+  interaction, an MCP connector's approval retry, a call run on a remote
+  host, an ask rule whose full check could not complete, and auto-mode
+  classifier review. A request flagged `suppressAlwaysAllowRule` also offers
+  no session option.
+
+The adapter sanitises `decisionReason` once (ANSI escape sequences, then
+control, format and separator characters, bounded to 1000 characters) and
+both matches and publishes that value. It copies it and any flag that is set
+onto `request.opened`, so the surfaces compute the same grant. Sanitising
+leaves the literals unchanged. The engine's `description` is published
+sanitised the same way. The network title's host is checked against the
+ASCII host syntax before any sanitising, so a host carrying an invisible or
+control character is shown as "an unrecognised host", never as the host
+left after the character is removed.
+
+What this does not cover: a Bash or PowerShell safety check (its reason is
+prose whose wording is not a stable contract) and a plain `permissions.ask`
+rule, which arrives with no `matchedAskRule` and no reason. Neither carries a
+signal the SDK forwards, so a Bash tool grant or pattern can still answer
+them, as can an Edit grant for a sensitive-file check above. Reading the
+engine's structured reason for those is later work (#2932, part 2).
+
+A session answer never writes the engine's settings files. Every suggestion
+a session answer forwards is sent with `destination: 'session'`
+(`mapClaudeDecisionToPermissionResult`), whatever the engine proposed, and
+Claude Code (2.1.261 and 2.1.278) persists an update only for a `localSettings`,
+`userSettings` or `projectSettings` destination.
+
 Both surfaces read the payload through the same `toolRequestPreviewFromPayload`,
 whose `TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish
 arguments under — `toolInput` (Claude's `canUseTool`), `toolArgs` (station-agent,
