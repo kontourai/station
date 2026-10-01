@@ -78,7 +78,13 @@ all or nothing: an unknown key, a non-hex value or a failed contrast check in
 either mode keeps the defaults. The check is `validateBrandOverride` from
 `@kontourai/ui/contrast`, which rates the brand as text at 4.5:1 on the page,
 the panel and the raised panel; Station adds the flat-key input shape and one
-stricter text-contrast rule for the action fill. A mode that
+stricter text-contrast rule for the action fill. The raised-panel check came
+with `@kontourai/ui` 1.18, so an upgrade can reject a theme that was applied
+before: a stored theme whose dark brand is under 4.5:1 on the dark raised panel
+`#16202d` (relative luminance from about 0.2155 up to 0.2377, such as
+`#9364ff`) now falls back to the defaults whole, including its light-mode
+colours. The only signal is a `[branding-theme]` line in the browser console of
+whoever opens the app; nothing tells the operator or the provider. A mode that
 sets only the brand also gets it as its action role, because the installed
 tokens define `--k-action` and would otherwise keep buttons and links on the
 shipped colour. `main.tsx` applies the last validated copy from
