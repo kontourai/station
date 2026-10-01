@@ -326,7 +326,7 @@ export function TaskRoomComposer({
                 }}
               />
             ) : (
-              <Empty variant="compact" />
+              <Empty variant="compact" label="Nothing available" />
             )
           ) : null}
           {candidates.map((agent, index) => (
