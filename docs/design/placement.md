@@ -150,19 +150,27 @@ every other route. These rules make it a region rather than a special case
     URL, so Back returns to the full-screen Chat the page was opened over
     — also when the page was opened from Activity's phone layer, whose own
     entry is left orphaned beneath and skipped on the way back.
-    The pushed entry copies the state it lands on and so shares the
-    navigation index of the entry beneath, the way a dialog layer does: a
-    traversal between the two is not a route change and asks no
-    unsaved-changes guard. A stamp says what the entry showed, so a change
-    of occupant that is not a page open (the chord returning Activity to its
-    dock, a tab moved out of `main`) rewrites the live entry's stamp rather
-    than adding an entry; a route entry carries no stamp, and an unstamped
-    `/` entry leaves `main` as it is. Limits: a page chosen from a dialog
-    (the command palette) leaves that dialog's entry orphaned beneath, which
-    costs one extra Forward press on the way back; and a jump of several
-    entries at once that an unsaved-changes guard interrupts is restored by
-    navigation index, which these same-URL entries share, so it can land on
-    the neighbouring page entry.
+    The swap is pushed through the navigation store, so the entry has a
+    navigation index of its own and a guarded traversal across page entries
+    is travelled back by the right distance; the traversal between two page
+    entries is itself same-URL and asks no unsaved-changes guard. A stamp
+    says what the entry showed, so a change of occupant that is not a page
+    open (the chord returning Activity to its dock, a tab moved out of
+    `main`) rewrites the live entry's stamp rather than adding an entry —
+    including at mount, where the stored arrangement is what is on screen. A
+    route entry carries no stamp, and an unstamped `/` entry is stamped on
+    arrival. Three traversals are not obeyed: the store's own bare
+    `popstate`; the landing of a guarded traversal before the guard has
+    answered (`navigationStore.traversalAwaitsGuard`); and a traversal
+    within one navigation entry — a dialog layer copies the state it was
+    pushed on, stamp included, so closing it lands on the entry beneath,
+    whose stamp is then brought up to date instead of applied. Limits: a
+    page chosen from a dialog (the command palette) closes that dialog, as
+    any navigation does, and leaves its entry orphaned beneath, which costs
+    one extra Forward press on the way back; and the page a traversal
+    removes is unplaced, as when Home's row takes the page, without asking
+    that surface's own unsaved-changes guards (no surface that declares
+    `main` registers one today).
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,
