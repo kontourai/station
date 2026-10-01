@@ -54,3 +54,48 @@ test('the CLI receives the browser code privately and only verified auth complet
   await vi.waitFor(() => expect(manager.get(dir)?.phase).toBe('completed'));
   expect(JSON.stringify(manager.get(dir))).not.toContain('AUTH#STATE');
 });
+
+test('a CLI that closes input fails sign-in without an uncaught host error', async () => {
+  const dir = makeTempDir('browser-login-closed-input-');
+  const unhandled = vi.fn();
+  process.prependListener('uncaughtException', unhandled);
+  const manager = new BrowserCodeLoginManager({
+    env: async () => process.env,
+    spawn: (_command, _args, options) =>
+      spawn(
+        process.execPath,
+        [
+          '-e',
+          "require('fs').closeSync(0);console.log('https://claude.com/cai/oauth/authorize?state=S&code_challenge=C');console.log('Paste code here if prompted >');setTimeout(()=>{},10000)",
+        ],
+        { ...options, windowsHide: true },
+      ),
+    verify: async () => ({ state: 'unauthenticated' }),
+    capabilities: async () => ({
+      engine: 'claude',
+      observedAt: new Date().toISOString(),
+      evidence: [
+        {
+          mechanism: 'browser-code',
+          argument: '--claudeai',
+          observedCommand: ['claude', 'auth', 'login', '--help'],
+          observedMatch: '--claudeai',
+        },
+      ],
+    }),
+  });
+  managers.push(manager);
+  try {
+    await manager.start(dir, () => true);
+    await vi.waitFor(() =>
+      expect(manager.get(dir)?.phase).toBe('awaiting-code'),
+    );
+    manager.submit(dir, 'SAMPLE#CODE', () => true);
+    await vi.waitFor(() => expect(manager.get(dir)?.phase).toBe('failed'));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(unhandled).not.toHaveBeenCalled();
+  } finally {
+    process.removeListener('uncaughtException', unhandled);
+    manager.close();
+  }
+});

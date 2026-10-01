@@ -155,6 +155,14 @@ export class BrowserCodeLoginManager {
         return session.record;
       }
       session.child = child;
+      // Writable failures emit an error event even when the write callback handles them.
+      child.stdin.on('error', () =>
+        this.finish(
+          session,
+          'failed',
+          'The code could not reach Claude. Check sign-in status before trying again.',
+        ),
+      );
       session.timer = setTimeout(
         () => this.finish(session, 'failed', 'Sign-in expired. Start again.'),
         15 * 60000,
@@ -274,7 +282,8 @@ export class BrowserCodeLoginManager {
 }
 let manager: BrowserCodeLoginManager | undefined;
 export function browserCodeLoginManager() {
-  return (manager ??= new BrowserCodeLoginManager());
+  if (!manager) manager = new BrowserCodeLoginManager();
+  return manager;
 }
 export function closeBrowserCodeLogins() {
   manager?.close();
