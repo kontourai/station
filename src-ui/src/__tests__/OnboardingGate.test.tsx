@@ -60,6 +60,7 @@ const pairingDeepLinkHookMock = vi.hoisted(() => ({
     | undefined,
 }));
 let bootstrapRecoveryError: string | undefined;
+const noSavedRelayProfiles: never[] = [];
 
 vi.mock('../hooks/useSystemStatus', () => ({
   useSystemStatus: () => ({
@@ -156,6 +157,8 @@ vi.mock('../platform/PlatformProfileContext', () => ({
     pendingLocalSelfProvisionProfileName:
       pendingLocalSelfProvisionProfileNameMock,
     refresh: nativeProfileRefreshMock,
+    getRelayRouteProfiles: () => noSavedRelayProfiles,
+    subscribeRelayRouteProfiles: () => () => {},
   }),
 }));
 
@@ -202,6 +205,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
         url: activeConnectionUrl,
       },
       connections,
+      captureCredentialEvidence: () => null,
+      isCredentialEvidenceCurrent: () => false,
+      setActiveConnection: async () => {},
     }),
     attemptLocalSelfProvisionOnce: (
       ...args: Parameters<typeof attemptLocalSelfProvisionOnceMock>
@@ -211,6 +217,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
       initialPanel,
       initialPairingPayload,
       pairingLinkError,
+      listFooterContent,
       onRestartInjectedConnection,
       onPairingSucceeded,
     }: {
@@ -218,6 +225,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
       initialPanel?: string;
       initialPairingPayload?: string;
       pairingLinkError?: string;
+      listFooterContent?: ReactNode;
       onRestartInjectedConnection?: () => void;
       onPairingSucceeded?: () => void;
     }) =>
@@ -228,6 +236,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
             {initialPairingPayload ?? ''}
           </output>
           {pairingLinkError && <div role="alert">{pairingLinkError}</div>}
+          {listFooterContent}
           {onRestartInjectedConnection && (
             <button
               type="button"
@@ -2080,6 +2089,9 @@ describe('OnboardingGate', () => {
     expect(onSettingsAction).toHaveBeenCalledOnce();
     fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
     expect(screen.getByTestId('connection-manager')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Set up a broker route' }),
+    ).toBeNull();
     expect(screen.queryByText("Can't reach server")).toBeNull();
 
     isLoading = false;
@@ -2094,6 +2106,35 @@ describe('OnboardingGate', () => {
 
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeTruthy();
     expect(screen.getByTestId('connection-manager')).toBeTruthy();
+  });
+
+  test('opens the existing native broker route editor from the first-run Stations manager', async () => {
+    platformProfile = {
+      isTauri: true,
+      target: 'ios',
+      isMobile: true,
+      isDesktop: false,
+      supervisesBundledServer: false,
+    };
+    connections = [];
+    currentStatus = null;
+
+    render(
+      <OnboardingGate>
+        <div>Home</div>
+      </OnboardingGate>,
+    );
+    fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Set up a broker route' }),
+    );
+    expect(
+      await screen.findByRole('region', { name: 'Saved broker routes' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Add broker route' }),
+    ).toBeTruthy();
   });
 
   test('does not treat an injected host connection as a real saved host', async () => {

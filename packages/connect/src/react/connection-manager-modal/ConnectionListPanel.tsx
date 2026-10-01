@@ -1,5 +1,6 @@
 import {
   type KeyboardEvent,
+  type ReactNode,
   type Ref,
   useEffect,
   useId,
@@ -83,6 +84,7 @@ interface ConnectionListPanelProps {
    * provider registers (part B, out of scope here).
    */
   discoveryAvailable: boolean;
+  listFooterContent?: ReactNode;
 }
 
 /**
@@ -530,6 +532,7 @@ export function ConnectionListPanel({
   onViewDevices,
   onDiscover,
   discoveryAvailable,
+  listFooterContent,
 }: ConnectionListPanelProps) {
   return (
     <>
@@ -785,6 +788,14 @@ export function ConnectionListPanel({
             </button>
           </section>
         )}
+        {listFooterContent ? (
+          <section
+            className="station-connect-footer__group"
+            aria-label="Additional connection options"
+          >
+            {listFooterContent}
+          </section>
+        ) : null}
       </div>
     </>
   );

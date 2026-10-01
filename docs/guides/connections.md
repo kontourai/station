@@ -89,6 +89,11 @@ this record does not connect, sign in, pair a Device or grant Project access.
 grant redemption and Device setup. The host keeps routing and Device
 credentials in OS custody, outside the saved public record.
 
+On a native client with no saved Station, open the Station manager from Home
+and choose **Set up a broker route** in the list footer. This opens the same
+saved-route setup used by **Add computer**; the address, QR and pairing-code
+actions remain available in the manager.
+
 **Device setup** verifies a supported account, presents the exact Device
 candidate for operator approval, then requires explicit activation. Reopening
 setup recovers an existing attempt from the host journal; an uncertain
