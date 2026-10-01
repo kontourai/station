@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/chat-563-composer-runtime.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"c7a415e91f28be3c28c842d6d534d35e6cd10f3f0960d6b30354b8c89ab4501d","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/veritas/proof-family-promotion-workflow.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "document": {"digest":"b8cd86f647b8a7aa514022ee58688fd5b2a3a7ea25c8e759951151cb0d10b63c","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

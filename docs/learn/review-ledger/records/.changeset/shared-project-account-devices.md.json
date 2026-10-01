@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/shared-project-account-devices.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"0c0025ba9bbc96a2629978d2b84937419d6ad1a731754859747cc8f9441440a1","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

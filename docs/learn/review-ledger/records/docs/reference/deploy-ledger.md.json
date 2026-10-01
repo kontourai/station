@@ -1,0 +1,41 @@
+{
+  "path": "docs/reference/deploy-ledger.md",
+
+  "kind": "generated",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed release-entry validation and deterministic Markdown projection. Routine data updates receive a separate generated-output check; publication and commit-back remain independently fallible.",
+
+  "limits": "Machine validation establishes entry shape and exact projection, not publication outcomes, complete release history, current artifact availability or platform behavior. Prior review hashes remain historical when generated data changes.",
+
+  "document": {"digest":"c8521379c6b73457d99c426a8aaf158b564070fde2bd7243322845da8d69915f","revision":"062fad816dcc1c2097eeea94216aba5783ab5e14"},
+
+  "sources": [
+    {"path":"docs/reference/deploy-ledger.json","digest":"2a4d94b117a6a8a2dd0a5b18f8b645f1c8ad6393a2f9b91bdcddb7e404d24bb4","revision":"062fad816dcc1c2097eeea94216aba5783ab5e14"},
+
+    {"path":"scripts/deploy-ledger.mjs","digest":"20a24b252e2de00f69435afffb7af55f74e8fe3b8b31e91c5a0ef8cc7cfd6522","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"}
+  ],
+
+  "checks": [
+    "Actual entry validation and deterministic rendering passed; public raw JSON returned HTTP 200 without authentication.",
+
+    "Reviewed integration deltas: Reviewed added upstream release record and deterministic projection separately from actual release execution; historical publication claims are not renewed by this audit. docs/reference/deploy-ledger.json: Reviewed added frozen upstream nightly-npm receipt as historical input; no new registry or hosted release execution claimed.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Reviewed the generated nightly-npm entry from upstream 39dfe2680: dated workflow/registry attribution and explicitly unknown artifactBuiltAt remain historical publication metadata, not new audit execution or qualification. No product/runtime source changed.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Canonical deployment entry validator now checks rendered changelog fields while retaining qualified note-only historical rows; 32 focused tests passed in 560ms. Generated compiler and CLI tests exercise refusal cases separately.",
+
+    "Reviewed the documentation-review.mjs delta: requireFresh also accepts the scoped predicate and reviewInputs is exported; the deploy-ledger generated-output validation path is unchanged.",
+
+    "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
+
+    "Reviewed the reportMissing passthrough in compileDocumentationReviews; the deploy-ledger generated-output validation is unchanged."
+  ]
+}

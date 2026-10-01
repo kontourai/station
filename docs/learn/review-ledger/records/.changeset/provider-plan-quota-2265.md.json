@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/provider-plan-quota-2265.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"1397a96f9bfd78b486eac31fa1c06b05969613ee509d883af16b7748f62d9d48","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

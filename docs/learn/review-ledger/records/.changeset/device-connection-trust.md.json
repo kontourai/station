@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/device-connection-trust.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"be58d833f34cea5ea2a6a67369e6f8105a1c9351d050f99f94028d53c4c13b9d","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

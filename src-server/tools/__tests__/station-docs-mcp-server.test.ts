@@ -384,14 +384,15 @@ describe('station-docs plugin-authoring topic', () => {
     expect(assistant).toContain('It proposes instead');
   });
 
-  test('every installation statement matches the reviewed permission and architecture text', () => {
-    // An explicit allow-list, not a heuristic. Any sentence that pairs
+  test('every user-facing installation statement matches the reviewed permission text', () => {
+    // An explicit allow-list, not a heuristic, for the topics that tell a
+    // person or an agent who installs a plugin. Any sentence that pairs
     // install/installs/installing/installed/installation with plugin(s) in
     // the same clause, whatever sits between them ("install your plugin"),
     // must appear below verbatim. A new or reworded one fails until someone
     // adds it on purpose, which is the review this guard exists to force: a
     // docs line saying an agent installs plugins is exactly the claim
-    // station-control refuses.
+    // station-control refuses (#2321). Kept verbatim deliberately (#2927).
     const PERMITTED = [
       [
         'station-docs',
@@ -418,42 +419,75 @@ describe('station-docs plugin-authoring topic', () => {
         'plugin-authoring',
         'A person installs from Plugins \u2192 Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
       ],
-      [
-        'architecture-workspacepanehostadmission',
-        'It captures the installation journal incarnation and selected physical artifact digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body.',
-      ],
-      [
-        'architecture-workspacepanehostadmission',
-        '**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser.',
-      ],
-      [
-        'architecture-installedplugininventory',
-        '[The inventory scanner](../../src-server/services/plugins/installed-plugin-inventory.ts) keeps broken installations visible so a user can repair them.',
-      ],
-      [
-        'architecture-installedplugininventory',
-        'Provider resolution and Registry installed-state consume only valid scan entries, while `GET /api/plugins` projects both valid and rejected entries.',
-      ],
-      [
-        'architecture-plugingrantreconciliation',
-        '**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName, permissions })` converges the runtime generation for one installed plugin after its durable grant state changes.',
-      ],
-      [
-        'architecture-operationaleventdelivery',
-        'The active [subscription registry](#operationaleventsubscriptions) wraps them for installed plugin observers; registration is no longer merely future work.',
-      ],
-      [
-        'architecture-operationaleventsubscriptions',
-        'It reads installed manifest declarations, checks the current artifact and `plugin.server`/`events.subscribe` grants, and additionally requires `events.read-payload` for an envelope.',
-      ],
     ];
-    const found = STATION_DOCS_TOPICS.flatMap((entry) =>
+    const found = STATION_DOCS_TOPICS.filter(
+      (entry) => !entry.id.startsWith('architecture-'),
+    ).flatMap((entry) =>
       installationStatements(entry.body).map((sentence) => [
         entry.id,
         sentence,
       ]),
     );
     expect(found).toEqual(PERMITTED);
+  });
+
+  /**
+   * Architecture topics describe installed-state mechanics (inventory,
+   * grants, admission) and change with the code they document; pinning each
+   * sentence verbatim made every architecture edit fail here (#2927). What
+   * the guard exists for is narrower: no statement may say an agent, the
+   * assistant or an automatic step installs a plugin.
+   */
+  const AGENT =
+    '(?:agents?|assistants?|models?|engines?|claude(?: code)?|codex|muse|opencode|kiro|gemini)';
+  const INSTALL = 'install(?:s|ed|ing)?';
+  // Active ("the agent installs"), passive ("installed by Codex"), an agent
+  // performing "the installation", and automatic installs all claim that
+  // something other than a person installs. "Installation" alone is the
+  // mechanics' noun, so it counts only with an agent doing it.
+  const claimsAgentInstall = (sentence: string) =>
+    new RegExp(
+      [
+        `\\b${AGENT}\\b[^.]{0,60}?\\b${INSTALL}\\b`,
+        `\\b(?:${INSTALL}|installation)\\b[^.]{0,40}?\\bby (?:an? |the )?${AGENT}\\b`,
+        `\\b${AGENT}\\b[^.]{0,30}?\\b(?:performs|completes|does|handles|runs|starts)\\b[^.]{0,20}?\\binstallation\\b`,
+        '\\bautomatic(?:ally)?\\b',
+      ].join('|'),
+      'i',
+    ).test(sentence);
+
+  test('no architecture installation statement claims an agent installs a plugin', () => {
+    const architecture = STATION_DOCS_TOPICS.filter((entry) =>
+      entry.id.startsWith('architecture-'),
+    ).flatMap((entry) =>
+      installationStatements(entry.body).map((sentence) => ({
+        id: entry.id,
+        sentence,
+      })),
+    );
+    // The scan has something to judge: these topics do discuss installs.
+    expect(architecture.length).toBeGreaterThan(0);
+    expect(
+      architecture.filter(({ sentence }) => claimsAgentInstall(sentence)),
+    ).toEqual([]);
+  });
+
+  test('the architecture guard rejects an agent-install claim and accepts mechanics', () => {
+    for (const claim of [
+      'The agent installs the plugin once its grants reconcile.',
+      'An assistant then installed your plugin from the inventory.',
+      'Plugins are installed automatically when the scanner finds them.',
+      'The plugin is installed by the agent after review.',
+      'Codex installs the plugin you asked for.',
+      'Plugins are installed by Claude Code on request.',
+      'The assistant completes the installation for you.',
+    ])
+      expect(claimsAgentInstall(claim), claim).toBe(true);
+    for (const mechanics of [
+      'The inventory scanner keeps broken installations visible so a user can repair them.',
+      'installation and admission share one plugin-Agent marker parser.',
+    ])
+      expect(claimsAgentInstall(mechanics), mechanics).toBe(false);
   });
 
   test('the install guard catches the phrasings the allow-list exists for', () => {
