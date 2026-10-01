@@ -215,6 +215,7 @@ export type NativeRelayEnrollmentRequestPath =
 /** Forward the exact body bytes on this one peer; no URL, method or header proxy. */
 export interface NativeRelayEnrollmentPreparedRequest {
   readonly version: 'station-native-enrollment-request/v1';
+  readonly requestHandle: string;
   readonly peerHandle: string;
   readonly enrollmentHandle?: string;
   readonly method: 'POST';
