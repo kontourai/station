@@ -1,0 +1,29 @@
+{
+  "path": "tests/fixtures/plugin-pane-sdk-context/README.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Manifest declares the test-only Pane without global actions/default Agent/execution authority. Renderer reads public Agent/navigation/toast/plugin identity contexts. The owning E2E source uses real preview-consent-install helpers and direct/placed Project occurrences; it does not migrate examples.",
+
+  "limits": "The installed browser journey was source-inspected, not executed in this audit. No first-party example migration, physical device proof, provider execution, or completed issue status is inferred.",
+
+  "document": {"digest":"eb9b9152b3bddc25dd4baea0c6751c30f7e1bc5c9b4ca35b4191d32350d8cf7f","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+  "sources": [
+    {"path":"tests/fixtures/plugin-pane-sdk-context/plugin.json","digest":"26af39a56c1677e3e94ad3c7dd75f375d60be6745069ce97a42d0146a98edc6a","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+    {"path":"tests/fixtures/plugin-pane-sdk-context/src/index.tsx","digest":"62f840d255b0c99a06fb2de422d52a68462ba2effb864cb775d3696caeb72e35","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+    {"path":"tests/helpers/install-plugin.ts","digest":"dc3683c74ba62c0c1f136e69279b91b3c465d01affdcdc98c34d7e2754c09a3c","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+    {"path":"tests/plugin-pane-sdk-context.spec.ts","digest":"9c7dae827f31537ac3078cbdce667f43fd8891df09ffba435f41bf301c282308","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

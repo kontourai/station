@@ -40,6 +40,30 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ---
 
+## Sign an engine profile in from a device
+
+Under **Connections → Engines**, open an engine and its credential profile.
+When the installed engine offers device-code login and the profile is signed
+out, select **Sign in**. Open the verification page, enter the displayed code,
+and finish on the provider's page. Station checks the result automatically and
+reports completion only when the engine confirms sign-in. **Cancel sign-in**
+stops the pending login. Returning to the profile resumes status checks.
+
+This flow applies to credential profiles, not the engine's global CLI account.
+Codex currently supports it; other engines must advertise an observed mechanism
+before the action appears. A paired device needs **Start engine sign-in**
+(`engine:login`), which the operator grants under **Change access**. If access
+cannot be checked, the action remains unavailable with a retry control.
+
+A refused start reports its reason, including an unsupported mechanism, a busy
+engine, an already signed-in profile or an unknown sign-in state. If a request
+or status check fails, check the login status before starting another attempt:
+the server may still be running it. A device with sign-in access alone sees existing profiles and their sign-in
+status. Add profiles, change recovery policy, or obtain manual login commands
+on the Station or through a device with credential-management access. The
+command/manual re-check remains available there for engines without device-code
+support.
+
 ## Saved Station addresses
 
 Open **Manage Stations** in the header to inspect the computers this client
@@ -453,6 +477,12 @@ scope along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
 never granted this way.
+
+An operator can separately grant **Approve pairing requests** (`access:approve`).
+This allows that Device to list, approve, or deny pending requests, without
+Device-management access. A pairing notification opens the exact request in
+**Notifications**; opening it does not approve it. Devices without approval
+authority see the trusted-Station remedy instead of decision controls.
 
 The current terminal and voice listeners retain a separate direct-loopback
 path without credential verification. Browser-shaped upgrades on that path

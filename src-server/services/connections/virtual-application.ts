@@ -33,6 +33,8 @@ export type ReadPionApplicationRequestFacts = (
 
 /** Native authority is supplied by the admitted Pion peer, never an HTTP Origin. */
 export interface VerifiedNativePionApplicationRequestFacts {
+  /** Exact broker offer nonce, captured before any await; never client-reported. */
+  readonly peerNonce: string;
   readonly stationId: string;
   readonly connectionEnrollmentId: string;
   readonly routingGeneration: number;

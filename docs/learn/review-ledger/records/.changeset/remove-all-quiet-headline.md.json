@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/remove-all-quiet-headline.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Read the package change description and release intent.",
+
+  "limits": "A changeset does not prove publication, current installation or an end-user outcome.",
+
+  "document": {"digest":"4d6ec2baf631206d44bc6e5d7c1596fa5b5575ae45561f5f143224bdb284f4a8","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

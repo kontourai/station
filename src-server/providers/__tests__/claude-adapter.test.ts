@@ -2903,6 +2903,25 @@ describe('ClaudeAdapter', () => {
             outsideDirRead('/work/b'),
           ],
           ['ExitPlanMode', { plan: 'Step 1' }, {}],
+          // A valid harness question (#3021): nobody can answer the child's
+          // question card either.
+          [
+            'AskUserQuestion',
+            {
+              questions: [
+                {
+                  question: 'Where should we deploy?',
+                  header: 'Target',
+                  multiSelect: false,
+                  options: [
+                    { label: 'Staging', description: 'Try first' },
+                    { label: 'Production', description: 'Release' },
+                  ],
+                },
+              ],
+            },
+            {},
+          ],
         ] as const) {
           // `allowed` here means the call settled without a request.opened.
           const outcome = await ask(toolName, toolInput, extra);
@@ -2915,6 +2934,14 @@ describe('ClaudeAdapter', () => {
             ),
           });
         }
+        // A question Station cannot render is refused for its format first.
+        const malformed = await ask('AskUserQuestion', { questions: 'nope' });
+        expect(malformed.kind).toBe('allowed');
+        if (malformed.kind !== 'allowed') throw new Error('unreachable');
+        expect(malformed.result).toEqual({
+          behavior: 'deny',
+          message: 'This question format is not supported.',
+        });
         await adapter.stopSession('thread-auto-child');
       });
 

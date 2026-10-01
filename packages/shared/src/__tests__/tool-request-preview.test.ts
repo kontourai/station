@@ -10,6 +10,7 @@ import {
   toolRequestGrantLabel,
   toolRequestIsPlainCall,
   toolRequestIsPlanExit,
+  toolRequestNeedsPerson,
   toolRequestPreview,
   toolRequestPreviewFromPayload,
   toolRequestSessionGrant,
@@ -215,6 +216,22 @@ describe('#2933: what a tool-level allowance may answer', () => {
     expect(toolRequestIsPlanExit('Bash', 'execute')).toBe(false);
     expect(toolRequestIsPlanExit(undefined)).toBe(false);
     expect(toolRequestIsPlanExit(null)).toBe(false);
+    // A harness question needs a person but leaves no mode.
+    expect(toolRequestIsPlanExit('AskUserQuestion')).toBe(false);
+  });
+
+  test('a request addressed to a person: a plan exit or a harness question', () => {
+    expect(toolRequestNeedsPerson('AskUserQuestion')).toBe(true);
+    expect(toolRequestNeedsPerson('ask_user_question')).toBe(true);
+    expect(toolRequestNeedsPerson('ExitPlanMode')).toBe(true);
+    expect(toolRequestNeedsPerson('anything', 'switch_mode')).toBe(true);
+    expect(toolRequestNeedsPerson('Bash', 'execute')).toBe(false);
+    expect(toolRequestNeedsPerson(undefined)).toBe(false);
+    // Neither a session grant nor a tool-level allowance answers a question.
+    expect(toolRequestSessionGrant({ toolName: 'AskUserQuestion' })).toBe(
+      'none',
+    );
+    expect(toolRequestIsPlainCall({ toolName: 'AskUserQuestion' })).toBe(false);
   });
 
   test('plain calls: a tool call without escalation, and a plain file edit', () => {

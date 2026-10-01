@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/pnpm-workspace-install-safety.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"229d1854a6ff72162b2393355b5b4c75a5d66e3a00a4222ab442bdc7f84fe489","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

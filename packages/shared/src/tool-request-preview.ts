@@ -301,15 +301,19 @@ export type ToolRequestGrantInput = {
   requiresUserInteraction?: unknown;
 };
 
+/** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
 const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
 /**
- * #2932: Claude Code's sandbox network ask (input `{host}`). The engine
- * remembers an allowed host for the session itself, and a Station grant on
- * the tool would answer every later host, so a session answer grants nothing.
+ * Tools whose request gets no standing answer: a plan exit and a harness
+ * question, which are addressed to a person, and Claude Code's sandbox
+ * network ask (#2932; input `{host}`). The engine remembers an allowed host
+ * for the session itself, and a Station grant on that tool would answer
+ * every later host (see `toolRequestNeedsPerson`).
  */
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
-  ...PLAN_EXIT_TOOLS,
+  'askuserquestion',
   'sandboxnetworkaccess',
+  ...PLAN_EXIT_TOOLS,
 ]);
 /**
  * #2932: `decisionReason` texts Claude Code sends verbatim (read in 2.1.261,
@@ -474,14 +478,29 @@ export function toolRequestIsPlanExit(
   return !!trimmed && PLAN_EXIT_TOOLS.has(canonicalKey(trimmed));
 }
 
+/**
+ * Whether the request is addressed to a person, so nothing standing answers
+ * it: no session grant is offered or honoured and no `tools.autoApprove`
+ * pattern covers it. True for a plan exit (`toolRequestIsPlanExit`), for
+ * a harness question (Claude's `AskUserQuestion`, #3021), whose answer is
+ * the person's own input, and for Claude's sandbox network-host ask
+ * (`SandboxNetworkAccess`, #2932), which is asked per host.
+ */
+export function toolRequestNeedsPerson(
+  toolName: string | null | undefined,
+  toolKind?: unknown,
+): boolean {
+  if (toolRequestIsPlanExit(toolName, toolKind)) return true;
+  const trimmed = toolName?.trim();
+  return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
+}
+
 export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestSessionGrant {
   const toolName = request.toolName?.trim();
   if (
-    toolRequestIsPlanExit(toolName, request.toolKind) ||
-    (toolName !== undefined &&
-      TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(toolName))) ||
+    toolRequestNeedsPerson(toolName, request.toolKind) ||
     // The engine says no standing allowance may answer this ask.
     request.suppressAlwaysAllowRule === true
   )

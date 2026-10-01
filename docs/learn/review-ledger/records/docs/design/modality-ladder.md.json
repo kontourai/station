@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/modality-ladder.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Adopted container/interaction policy with historical inventory; URL selection distinguished from draft/content persistence.",
+
+  "limits": "No complete overlay/focus/dismissal/accessibility/draft persistence review or live UI/device journey.",
+
+  "document": {"digest":"b9b10a81481d9a627dc64888ea5a7f37d296d4cf8774349755c0d9f91e5b6a8d","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+  "sources": [
+    {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-ui/src/hooks/useUrlSelection.ts","digest":"bf7d3e04f18cbcac294ae7386091eb7a0ce79fbc524214659473e6f8ae21584e","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+  ],
+
+  "checks": [
+    "Full body read; bounded actual-owner/caller inspection. Purpose classification, not whole-document semantic certification.",
+
+    "Original deviation table and references preserved; draft-persistence promise corrected.",
+
+    "Reviewed integration deltas: src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+  ]
+}

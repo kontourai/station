@@ -1,0 +1,155 @@
+{
+  "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
+
+  "limits": "No current all-surface connection census, saturated HTTP/1.1 pool, live reconnect/browser/native transport, or proxy deployment was measured. Per-visible-viewer implementation is not proof of the planned per-client multiplexing or its latency guarantee.",
+
+  "document": {"digest":"0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","digest":"3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/live-surface.ts","digest":"9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/workspace-browser-pane.ts","digest":"34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/workspace-browser-preview.ts","digest":"5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/__tests__/fetch-sse.test.ts","digest":"e4cdf570064a3099a4e15e5103638c08e1e2bcd3df8b0b25837ff227fb8b9ee5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/routes/browser-agent.ts","digest":"eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/browser.ts","digest":"41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/device-hosts.ts","digest":"d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/device-toolchain.ts","digest":"08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/device-tools.ts","digest":"551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/live-surface.ts","digest":"d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+
+    {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"d24c0f5ae869c2f83866647af0c38066bac77184dc6a2724fdf4bded4d7fecd4","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-host.ts","digest":"1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-live-surfaces.ts","digest":"e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-local-targets.ts","digest":"daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-project-settings.ts","digest":"6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-service.ts","digest":"1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"2021e106a5e8148732ecebf92f8872632f27fd318b36aaa48e9f6b403ef29be5","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"6b6f45100304b04049f432aff93a46a71d457398db5aacebdf554c8d33fce0b4","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/hosts/chromium-server-host.ts","digest":"f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/station-listeners.ts","digest":"09c20a6a69a1fd7da1cc0e958a6d775c2a21f5d295a9811dd46cfce1f99b9720","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/browser/url-policy.ts","digest":"46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-access.ts","digest":"c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-hub-endpoint.ts","digest":"1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"a12a892c21125c0baf162e09e8c0a0abf2b30dcfc5e8f9aa0f9dc6c2897af1b3","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/devices/device-session-service.ts","digest":"b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/hosts/device-host-registry.ts","digest":"02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/toolchain/device-hub-connection.ts","digest":"0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/toolchain/device-toolchain-service.ts","digest":"af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/control-lease.ts","digest":"8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/producer.ts","digest":"9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/registry.ts","digest":"7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/surface-hub.ts","digest":"ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"c88b2dceb6d09d7054a758b75ec2ddd9f51aa781a05237fb36fbbce8d2229e13","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-browser-tools.ts","digest":"c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-ui/src/live-surface/LiveSurfaceCanvas.tsx","digest":"c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx","digest":"5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx","digest":"34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/DeviceWorkspacePane.tsx","digest":"4aa07d6ef893ccb521e25b764cae0c71f64e8b41f1459e7a03aa5f2eabeed092","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically.",
+
+    "Reviewed source deltas: Reviewed comment correction; transpiled executable bytes unchanged.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: in runtime-routes, #2904 adds an app-wide middleware that binds full-access refusal identity (environment id and paired device name) and makes the device scope and revoke routes return revocation reports. SSE, Last-Event-ID replay and the live-surface routes are unchanged, so the reading note and design constraints hold. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to the runtime-routes.ts security options, used for 403 versus 401 on unadmitted credentials. It touches no SSE, Last-Event-ID, replay or live-surface route. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

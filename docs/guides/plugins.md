@@ -571,6 +571,13 @@ export default Main;
 
 ## SDK Integration
 
+Use the SDK root and owning UI subpaths for plug-in UI. For headless Agent
+execution and delegation, use `@kontourai/station-sdk/agent`; the builder and
+host bridge share its canonical clients. A plug-in can distribute an Agent and
+invoke it from a Pane, while a headless application invokes the same identity.
+See [Agent development](agent-development.md) and
+[ADR 0021](../adr/0021-separate-plugin-and-agent-sdk-surfaces.md).
+
 Use the documented SDK root or owning subpath. Key root hooks:
 
 ### Agents & Chat
@@ -1323,7 +1330,7 @@ These are provided by the host at runtime via `window.__station_ai_shared` and m
 |--------|-------|
 | `react`, `react/jsx-runtime`, `react/jsx-dev-runtime` | React runtime |
 | `@kontourai/station-sdk` | All SDK hooks and utilities |
-| `@kontourai/station-sdk/client`, `@kontourai/station-sdk/voice` | Admitted React-free client and voice runtime entries |
+| `@kontourai/station-sdk/agent`, `@kontourai/station-sdk/client`, `@kontourai/station-sdk/voice` | Admitted React-free client and voice runtime entries |
 | `@kontourai/station-components` | Shared UI components |
 | `@tanstack/react-query` | Shares host's QueryClient |
 | `dompurify` | HTML sanitization — host-loaded on demand (see below) |

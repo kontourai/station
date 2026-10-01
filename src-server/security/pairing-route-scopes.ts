@@ -56,6 +56,7 @@
  */
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
+  PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -90,6 +91,76 @@ import {
   RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
+
+/**
+ * The exact `/api/pairing` leaves a promoted device may act on
+ * (archive#1887): read the pending-request list, and confirm or deny ONE
+ * pending request.
+ *
+ * Matched positively and exactly — no prefix, no wildcard. `/api/pairing` is
+ * where the authority to mint further authority lives, so a route added under
+ * it later must be denied to promoted devices by default and admitted only by
+ * someone editing this list on purpose. The id segment is bounded to the
+ * shapes the routes actually accept so a traversal-ish path cannot widen the
+ * match.
+ */
+const PAIRING_APPROVAL_LEAVES: readonly {
+  method: string;
+  pattern: RegExp;
+}[] = [
+  { method: 'GET', pattern: /^\/api\/pairing\/requests$/ },
+  {
+    method: 'POST',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}\/confirm$/,
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}$/,
+  },
+];
+
+export function isPairingApprovalLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  // Compare against the path only; a query string must never participate in
+  // an authorization match.
+  const path = request.path.split('?')[0] ?? request.path;
+  return PAIRING_APPROVAL_LEAVES.some(
+    (leaf) => leaf.method === method && leaf.pattern.test(path),
+  );
+}
+
+function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/device-code-profiles$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
+        path,
+      ))
+  );
+}
+
+/** Scope satisfaction only; credential authority must be checked first. */
+export function pairingScopeSatisfiesHttpRoute(
+  grantedScope: string,
+  requiredScope: PairingScope,
+  request: { method: string; path: string },
+  verifiedOperator = false,
+): boolean {
+  return (
+    pairingScopeIncludes(grantedScope, requiredScope) ||
+    (verifiedOperator &&
+      requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      isEngineLoginLeaf(request)) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isPairingApprovalLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+  );
+}
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -788,6 +859,30 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/pairing/native-device-bindings/:bindingId:manage',
+    method: 'GET',
+    prefix: '/api/pairing/native-device-bindings/:bindingId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/auth/native-device-bindings/:bindingId/receipt:${method}:read`,
+    method,
+    prefix: '/api/auth/native-device-bindings/:bindingId/receipt',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit' as const,
+  })),
+  {
+    id: '/api/pairing/native-device-bindings/:bindingId/approve:manage',
+    method: 'POST',
+    prefix: '/api/pairing/native-device-bindings/:bindingId/approve',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/client-presence/summary:read',
     method: 'GET',
     prefix: '/api/client-presence/summary',
@@ -1204,6 +1299,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/api/connections/agent/:id/enrolment',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/connections/agent/:id/device-code-profiles:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/device-code-profiles',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
     origin: 'explicit',
   },
   // The device-code leaves, which START the engine's own login as a child

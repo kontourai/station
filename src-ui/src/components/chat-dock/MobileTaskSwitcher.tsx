@@ -12,6 +12,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import {
   chatTaskSessionId,
   type HomeTaskItem,
@@ -103,6 +104,7 @@ export function MobileTaskSwitcher({
   onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
   const openMembership = useMemo(
     () =>
       new Set(

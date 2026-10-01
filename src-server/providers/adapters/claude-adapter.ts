@@ -21,6 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -40,6 +41,10 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
+import {
+  harnessAnswerTexts,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
 import {
   sessionGrantPermissionUpdates,
   type ToolRequestGrantInput,
@@ -169,6 +174,7 @@ import {
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
+import { claudeQuestionnaire } from './harness-questions.js';
 
 type PendingRequest = {
   resolve: (result: PermissionResult) => void;
@@ -182,6 +188,8 @@ type PendingRequest = {
    * whether the approval surfaces offer it.
    */
   sessionGrant: ToolRequestSessionGrant;
+  questionnaire?: HarnessQuestionnaire;
+  eventId: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -2054,6 +2062,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
@@ -2061,6 +2070,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error(`Unknown Claude permission request: ${requestId}`);
     }
 
+    if (pending.questionnaire) {
+      if (
+        context?.expectedRequestEventId !== pending.eventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      if (decision === 'accept') {
+        const answers = validateHarnessQuestionAnswers(
+          pending.questionnaire,
+          context?.answers,
+        );
+        const claudeAnswers = Object.fromEntries(
+          pending.questionnaire.questions.map((question) => [
+            question.prompt,
+            harnessAnswerTexts(question, answers).join(', '),
+          ]),
+        );
+        pending.toolInput = { ...pending.toolInput, answers: claudeAnswers };
+      } else if (context?.answers !== undefined)
+        throw new Error('A declined question cannot carry answers.');
+    } else if (context?.answers !== undefined)
+      throw new Error('This request does not accept question answers.');
     record.pendingRequests.delete(requestId);
     const grant = pending.sessionGrant;
     // #2916 / #2915: where no session grant is offered (a plan exit, or an
@@ -2748,6 +2779,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
       canUseTool: async (toolName, toolInput, options) => {
+        const questionnaire =
+          toolName === 'AskUserQuestion'
+            ? claudeQuestionnaire(toolInput)
+            : null;
+        if (toolName === 'AskUserQuestion' && !questionnaire)
+          return {
+            behavior: 'deny',
+            message: 'This question format is not supported.',
+          };
+
         const record = this.requireSession(input.threadId);
         // #2932: the engine's ask flags. Agent SDK 0.3.278 forwards
         // suppressAlwaysAllowRule and defaultToNo; requiresUserInteraction is
@@ -2784,6 +2825,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // #2932 adds a sandbox override, a sandbox network-host ask, the
         // engine's literal escalation reasons and its ask flags.
         if (
+          !questionnaire &&
           toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
@@ -2808,7 +2850,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // #2932: nor a sandbox network ask, whose grant is 'none': the
         // engine remembers each allowed host itself, so each new host asks.
         const sessionGrant = toolRequestSessionGrant(request);
-        if (record.approvedTools.has(toolName) && sessionGrant === 'tool') {
+        if (
+          !questionnaire &&
+          record.approvedTools.has(toolName) &&
+          sessionGrant === 'tool'
+        ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
         // #2933: a delegated child that may not grant approvals reaches here
@@ -2825,20 +2871,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           return { behavior: 'deny', message: denial.reason };
         }
         const requestId = crypto.randomUUID();
+        const eventId = crypto.randomUUID();
         this.publish({
-          eventId: crypto.randomUUID(),
+          eventId,
           provider: this.provider,
           threadId: input.threadId,
           createdAt: new Date().toISOString(),
           requestId,
           method: 'request.opened',
           requestType: 'approval',
-          title:
-            options.title ??
-            claudeSandboxNetworkTitle(toolName, toolInput) ??
-            `Allow ${toolName}`,
+          title: questionnaire
+            ? 'The agent has questions for you'
+            : (options.title ??
+              claudeSandboxNetworkTitle(toolName, toolInput) ??
+              `Allow ${toolName}`),
           description: claudeRequestDisplayText(options.description),
           payload: {
+            ...(questionnaire ? { questionnaire } : {}),
             toolName,
             // #2316: the SDK's id for this exact tool_use block — the same id
             // `tool.started` carries as `toolCallId` — so the transcript binds
@@ -2877,6 +2926,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            eventId,
+            ...(questionnaire ? { questionnaire } : {}),
           });
           // #2316: the SDK aborts this callback when the call it gates is
           // abandoned; the request is then settled, never left answerable.

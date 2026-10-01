@@ -1,0 +1,163 @@
+{
+  "path": "docs/security/remote-access-threat-model.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
+
+  "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
+
+  "document": {"digest":"e25263a7e34256344f697794e63dc924527c18ec53a6dd190716ea8e964a26b1","revision":"09b6047098252a25e8fd7f531f59c920ede4464f"},
+
+  "sources": [
+    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"packages/sdk/src/client/application-session.ts","digest":"47e755613e8c9008336e854ce799b1411f44017b5250958cadd0401d16c2c501","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/routes/projects/project-shared-tasks.ts","digest":"88db69ca402777109e190b7e43e4f38c382136173392e765752f2f27d9c1a0dd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/routes/system/application-session-routes.ts","digest":"757cba2b71a472030ed65add072db04fb2ccfca48b590198d65da5c3b384ffa2","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/routes/system/deployment-authentication-routes.ts","digest":"ed7aa12b5049410821a0f11ba9c016a7b6f664519ebc0ee6e94b2ea021ecb6a1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/bootstrap/account-bound-device-gate.ts","digest":"d646b2bcba9f2f84c4c64246612e4a8899a7e11258c9834d53b1d3f52e502561","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+
+    {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+
+    {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+
+    {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/security/station-control-authority-guard.ts","digest":"0e3d20ae5bb4f5815cc8030595663768964ac5a7222004176edb35cb7697d6de","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/security/station-control-request-authority.ts","digest":"b522bde2d245f4d682cf1468329f5314fbfd5f5abb431cc916b88b56aa7c9ec6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/identity/application-session-service.ts","digest":"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/services/identity/deployment-authentication-loader.ts","digest":"8a1f644deecf950a6a47fd1ba28b168fe9fd1ddd086cfaa544413aab62265217","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/identity/deployment-authentication-service.ts","digest":"d71b6a106a14a8973a991fe44d08cf869c8ba299d516c6628a2e8d80b7c6fe9b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/identity/deployment-authentication-validation.ts","digest":"2e45b66f232289e2ecce9a06ba77d642b4cccf4a3d6c6f8601b0b6ca9581de3e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/identity/local-account-oidc.ts","digest":"9c5b3c183634eb1c90d9ed10e1e87c9d58fdce5b5a639ccdc0e63102e3779d3d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/identity/local-account-provider.ts","digest":"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/inference/fleet-inference-service.ts","digest":"c8e7e04752800198ffc520d4f351d54491c6b10c6a35ac7a029741fd2962c4cb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/projects/project-membership-service.ts","digest":"1d35bde19ff70f213d3b0db162489980c2f7fd957481156c3ac1b2907dc58af5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/projects/project-membership-store.ts","digest":"106bb47b626af93adadf3c16b4a97542f26292c545b64323a874adba101167af","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/projects/project-response-guard.ts","digest":"80bcc89434852cce3ae5d309fd71e73fe01d955298f3fe5f7ca6f25fee6421ac","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"7c655627f32e3048e82228592a1b81542e86acd44167e8d4b625cd64ebc10af2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"},
+
+    {"path":"src-server/services/ssh/openssh-environment-adapter.ts","digest":"40d9734371970646cdedf3af285f72abf6583ad52f38ffc87229ff57307f6cd0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/ssh/openssh-reachability.ts","digest":"bfb67e01248e42bc3be630b920f15a4e7d82d15b5791712d446d15d36c4efc27","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/ssh/remote-session-reader.ts","digest":"60ed7d86fd255199cbbc2af5e309bc3b2959633f253ec3eaf980e1e8bc9f5c09","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/ssh/ssh-probe-admission.ts","digest":"ea42fbf7a6835dcc10a138d0cd56af697dd88b7620ba5f61c045a91c423c7ba8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/terminal/terminal-ws-server.ts","digest":"fda1cd3049b51f46292bfa7672d66dfc08f3b83cfd0b45598c657a33df079f30","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/utils/private-sqlite.ts","digest":"2db8ea78c58db8e55a7aff6bff8768d7f0364b9025dd52eaa98a98e7a6d6061f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+  ],
+
+  "checks": [
+    "Prior accepted evidence, not rerun in this tranche: Independent access and dependency-level authentication reviews accepted scoped corrections.",
+
+    "Prior accepted evidence, not rerun in this tranche: Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Prior accepted evidence, not rerun in this tranche: Reviewed source deltas: Uses the extracted identical auth-limiter constant; 429 shape and budget behavior unchanged.",
+
+    "Prior accepted evidence, not rerun in this tranche: Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions. Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
+
+    "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
+
+    "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
+
+    "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
+
+    "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
+
+    "REASONED: synchronized bootstrap delta changes only KnowledgeStoreProvider comment, correcting the knowledgeStores flag description; connection bootstrap, terminal authentication and runtime statements reviewed here are unchanged.",
+
+    "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through d1e0facc2: Completion validation is private and still runs before provider admission. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; native account continuation is additive and separately admitted; existing browser/provider, Device and Project claims retain their documented scope. Changed inputs reviewed: src-server/routes/system/application-session-routes.ts, src-server/runtime/bootstrap/runtime-http.ts, src-server/services/identity/application-session-service.ts, src-server/services/identity/deployment-authentication-service.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the bearing/forage dependencies and lock entries were removed. lib.rs dropped the dormant notification_watch Tauri commands. lifecycle.ts packaged upgrade now tolerates this install root's archive service. None of these touch the documented HTTP capability, proxy/Origin, scope, SSH or credential boundaries, which remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 merged main's new scope-management paragraph into the document. Its claims check out against the source. Scope changes and revocations go through the operator-only `POST /api/pairing/devices/:id/scope` and `DELETE /api/pairing/devices/:id`. `setDeviceScope` still refuses `access:manage` and returns 409 `scope_changed` on a stale `expectedScope`, and `disconnectDevice` drops terminal and voice leases. The CLI operator channel refuses a non-loopback target before it reads a credential. The 403 refusal body from full-access-refusal.ts names the device (short id plus sanitized name, kept in `details`), the environment id and the grant command, and carries no credential. `fullAccessGrantFor` now names an operator or device grantor. `STATION_CONFINEMENT_GRANTOR_METADATA_KEY` is stamped beside `host`. `deviceHoldsScope`/`deviceHoldsFullAccess` is wired as `isFullAccessGrantorCurrent`, so a revoked grantor's stamp applies as workspace. `resetFullAccessGrantedBy` produces reset, reconfined, stillUnconfined and stillFullAccess results, plus an unattributed list capped at 50 with a total. I qualified the 'no separate history of who granted or revoked what' limitation: the new grantor stamps and revocation Ask decisions are per-conversation attribution, not a scope-change log. The earlier mayGrantFullAccess paragraph is still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds RuntimeHttpSecurityOptions.recognizeCredential, wired in runtime-routes.ts to verifyCredential. When admission refuses a credential the server still recognizes, runtime-http.ts now answers 403 insufficient_scope (audited, limiter cleared) instead of 401. The document states 401 only for missing, malformed or uncredentialed requests. It gives no status code for ordinary credentials refused on the pairing family, and its credentialed cells say scope/resource authorization applies. So nothing it states is contradicted. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds GET /api/system/core-update/service-update as an /api/system read in pairing-route-scopes.ts, which keeps the GET-requires-orchestration:read rule of the single table. lifecycle.ts passes STATION_SERVICE_LAUNCHER only to the supervised server and removes it from the UI child. The surface matrix, the scope-table description and the internal-token scrub claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

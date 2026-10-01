@@ -63,6 +63,7 @@ export type OrchestrationSnapshotPayload = {
     conversationActivity?: ConversationTurnActivity;
     /** Current unresolved request ids; present even when empty. */
     openRequestIds?: string[];
+    blockingOpenRequestIds?: string[];
     /**
      * #2303: the durable conversation this execution thread belongs to — the
      * root for the root row AND for every `<root>:session:<uuid>`

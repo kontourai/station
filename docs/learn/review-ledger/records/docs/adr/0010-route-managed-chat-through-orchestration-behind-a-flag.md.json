@@ -1,0 +1,47 @@
+{
+  "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
+
+  "limits": "The old flag-off transcript behavior, historical CLI/UI parity, permanent legacy-conversation claims and original rollout receipts were not requalified. This does not certify all current chat paths or a release cutover.",
+
+  "document": {"digest":"7f3b951e2319d56b29e31488507f5c69c13b31ef589a7a18da3e6e8ef371245c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md","digest":"fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"docs/reference/session-api.md","digest":"e7d4017c7eb8288f96b6407f25ec77da6a615f74ecc2165a356a343137a3bf43","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+
+    {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/runtime/bootstrap/station-features.ts","digest":"55c74fed5caae236c699dfc66ac63bb298b40abe1efd1b59dcf40a95e27842da","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+
+    "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing delta 622565ef7: The updated Session API remains the current successor; added wire-ID details do not change the historical cutover classification or ADR rationale. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
+
+    "Reviewed landing deltas through 111744681: Added the actual queued-send and Agent-handoff recovery behavior; API receipt, uncertain-outcome and no-blind-resubmission contracts remain unchanged. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: in useActiveChatSessionMessaging, #2904 only changes how a full-access refusal is handled: idle state, restored draft, structured refusal card and an explicit resend without full access. The status note pointing to ADR 0014, and its split between the superseded flag mechanism and the retained orchestration decisions, are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

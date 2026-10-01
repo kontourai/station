@@ -1,0 +1,21 @@
+{
+  "revision": "3059a6573285c28a92a51e39842ccb7ff8474651",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the exact media.json delta: only shared-task-document.png digest, capture revision and scoped evidence changed. Connection, approval and Knowledge capture metadata/bytes are unchanged. Existing linked capture limits remain accurate; this does not upgrade provider, Knowledge or deployment evidence."},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the exact media.json delta: only shared-task-document.png digest, capture revision and scoped evidence changed. Connection, approval and Knowledge capture metadata/bytes are unchanged. Existing linked capture limits remain accurate; this does not upgrade provider, Knowledge or deployment evidence."},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the exact media.json delta: only shared-task-document.png digest, capture revision and scoped evidence changed. Connection, approval and Knowledge capture metadata/bytes are unchanged. Existing linked capture limits remain accurate; this does not upgrade provider, Knowledge or deployment evidence."},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the exact media.json delta: only shared-task-document.png digest, capture revision and scoped evidence changed. Connection, approval and Knowledge capture metadata/bytes are unchanged. Existing linked capture limits remain accurate; this does not upgrade provider, Knowledge or deployment evidence."},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the exact media.json delta: only shared-task-document.png digest, capture revision and scoped evidence changed. Connection, approval and Knowledge capture metadata/bytes are unchanged. Existing linked capture limits remain accurate; this does not upgrade provider, Knowledge or deployment evidence."},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed updated Task capture and metadata: actual single-human document save, room message and reopen on isolated production UI; current first-task, dispatch and workspace ownership explanations remain accurate. Two-human, provider, public and native acceptance remain unverified."},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed new Task capture/metadata. It establishes single-human persisted document/message and geometry only; the documented two-browser/restart/seeded-agent acceptance scope is unchanged and not claimed from that capture."},
+
+    {"path":"docs/plans/README.md","note":"Regenerated tracked plan index. Shared-work-delivery is an active program ledger with explicit unfinished tracks; index presence does not claim completion."}
+  ]
+}
