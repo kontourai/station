@@ -185,6 +185,27 @@ function fixture() {
           profileRevision: liveRevision,
           transitionHandle: TRANSITION,
         };
+      if (command === 'station_native_enrollment_resume')
+        return {
+          version: VERSION,
+          attempts: [
+            {
+              enrollmentHandle: ENROLLMENT,
+              phase: 'active',
+              profileRevision: liveRevision,
+              expiresAt: Date.now() + 30_000,
+              registrationAvailable: true,
+              candidate: null,
+              transition: {
+                version: VERSION,
+                enrollmentHandle: ENROLLMENT,
+                state: 'active',
+                profileRevision: liveRevision,
+                transitionHandle: TRANSITION,
+              },
+            },
+          ],
+        };
       if (command.endsWith('_abort')) return;
       throw new Error(`Unexpected fixed host command: ${command}`);
     },
@@ -207,6 +228,14 @@ function fixture() {
     failNextOpen: () => {
       failOpen = true;
     },
+    recreatedClient: () =>
+      createNativeRelayEnrollmentClient({
+        profileName: 'Pilot',
+        expectedProfileRevision: liveRevision,
+        stationAudience: ORIGIN,
+        signal: lifetime.signal,
+        invoke: { invoke },
+      }),
   };
 }
 
@@ -271,5 +300,26 @@ test('retains a revalidated committed Device when the next recovery peer cannot 
   f.failNextOpen();
   await expect(f.client.status()).rejects.toThrow('ice_unavailable');
   await f.client.dispose();
+  expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
+});
+
+test('a recreated client resumes the exact host journal attempt without allocating another Device', async () => {
+  const f = fixture();
+  await f.client.begin();
+  await f.client.login({ username: 'zach', password: 'user-entered' });
+  await f.client.finalize();
+  await f.client.activate();
+  const restarted = f.recreatedClient();
+  await expect(restarted.resume('x'.repeat(43))).rejects.toThrow(
+    'native_enrollment_recovery_invalid',
+  );
+  await expect(restarted.resume(ENROLLMENT)).resolves.toMatchObject({
+    phase: 'active',
+    profileRevision: 8,
+  });
+  await restarted.dispose();
+  expect(
+    f.calls.filter((call) => call.command.endsWith('_begin_prepare')),
+  ).toHaveLength(1);
   expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
 });

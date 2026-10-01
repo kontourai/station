@@ -892,7 +892,16 @@ pub(crate) async fn station_native_enrollment_resume(
             if attempt.cancelled {finish_terminal_cleanup(&app,&row.id,&attempt)?;continue;}
             let route=current(&app,&attempt)?;if route.context.profile.revision!=expected_profile_revision{return Err(REFUSED.into());}
             let phase=if attempt.cancel_requested{"cancel-required"}else if attempt.transition_handle.is_some(){"active"}else if attempt.activation_proof_digest.is_some(){"activation-unknown"}else if attempt.delivery.is_some(){"staged"}else if attempt.candidate.is_some(){"candidate"}else{"begin-required"};
-            result.push(serde_json::json!({"enrollmentHandle":row.id,"phase":phase,"profileRevision":expected_profile_revision,"expiresAt":attempt.expires_at,"registrationAvailable":attempt.challenge.as_ref().is_some_and(|c|c.registration_available)}));
+            let transition = if phase == "active" {
+                Some(NativeEnrollmentActivationAccepted {
+                    version: VERSION,
+                    enrollment_handle: row.id.clone(),
+                    state: "active",
+                    profile_revision: expected_profile_revision,
+                    transition_handle: attempt.transition_handle.clone().ok_or_else(|| REFUSED.to_owned())?,
+                })
+            } else { None };
+            result.push(serde_json::json!({"enrollmentHandle":row.id,"phase":phase,"profileRevision":expected_profile_revision,"expiresAt":attempt.expires_at,"registrationAvailable":attempt.challenge.as_ref().is_some_and(|c|c.registration_available),"candidate":attempt.candidate,"transition":transition}));
         }
         Ok(serde_json::json!({"version":VERSION,"attempts":result}))
     }).await.map_err(|_|REFUSED.to_owned())?
