@@ -17730,6 +17730,17 @@ mod tests {
     fn native_enrollment_profile_fix_preserves_direct_pairing_http_authority() {
         let (_directory, path, authority, pending, handle, contents, host) =
             writer_pairing_fixture();
+        let station = "22222222-2222-4222-8222-222222222222";
+        pending
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&handle)
+            .unwrap()
+            .environment_id = station.into();
+        let mut contents: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        contents["profiles"][0]["environmentId"] = serde_json::json!(station);
+        let contents = contents.to_string();
         station_profile_store_write_with_host(
             &host,
             &authority,
