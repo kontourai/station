@@ -12,7 +12,6 @@ import { resolveConversationTranscriptSource } from '../../runtime/conversation/
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
-import { foldRequestTurnOwnership } from './session-lifecycle-service.js';
 import { isProviderTurnBoundary } from './session-turn-boundary.js';
 
 /**
@@ -33,7 +32,7 @@ interface InterruptedTurnRecoveryDeps {
    * swap after construction must be honoured. The handle crosses here
    * deliberately — the six operations this module needs
    * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
-   * `listEventsForTurn`, `listSessionProjectionEvents`, `hasEventId`,
+   * `listEventsForTurn`, `listUnresolvedRequestEvents`, `hasEventId`,
    * `resolveInterruptedTurnBoundary`) are
    * one transactional unit over the boundary table and event log, and
    * fanning them into six unrelated arrows would hide that. No Map crosses (T13).
@@ -227,8 +226,9 @@ export class InterruptedTurnRecovery {
    * #3071: nor does the abort settle what the turn was WAITING ON. A request
    * the dead turn opened has no adapter left to resolve it, so consume()
    * publishes its `request.resolved` (`expired`,
-   * `turn-interrupted-request:<boundaryId>:<requestId>`) before the abort.
-   * Requests opened outside that turn are left alone.
+   * `turn-interrupted-request:<boundaryId>:<requestId>`) before the abort,
+   * for every request still unresolved that was opened since the turn
+   * started. Requests opened before it are left alone.
    *
    * IDEMPOTENCE (review round 1, H1): the write→delete gap between a
    * banner landing and `resolveInterruptedTurnBoundary` closing its row is
@@ -395,29 +395,38 @@ export class InterruptedTurnRecovery {
           // will. Left open, the request re-stamped the session
           // `review_pending` over the banner below and every surface
           // offered an approval nothing could take. `expired`: nobody
-          // decided anything. Before the abort because a blocking
-          // `request.resolved` folds to `running`, which is only true while
-          // the turn is still the open one; the abort and banner then have
-          // the last word. Ownership is the shared rule the read folds use
-          // (`foldRequestTurnOwnership`); a request opened between turns is
-          // not this turn's and stays open. No `hasEventId` check is
-          // needed: once resolved, a request is no longer in the open set a
-          // retry reads.
-          const projection = eventStore
-            .listSessionProjectionEvents(record.threadId)
-            .map((event) => event.payload);
-          const { ownerTurnIdByOpenRequestId } =
-            foldRequestTurnOwnership(projection);
-          const nonBlockingRequestIds = new Set(
-            projection.flatMap((event) =>
-              event.method === 'request.opened' && event.blocking === false
-                ? [event.requestId]
-                : [],
-            ),
-          );
+          // decided anything.
+          //
+          // WHICH requests: every one still unresolved that was opened
+          // since this turn's `turn.started` — the recovery arm of
+          // `requestIdsSettledByTurnAbort`, read from the store's own
+          // request table. Not only the ones the turn "owned": a background
+          // subagent's, or one opened after a mid-turn error, died with the
+          // same process. A request opened before the turn started is left
+          // open.
+          //
+          // ORDER: before the abort because a blocking `request.resolved`
+          // folds to `running`, which is only true while the turn is still
+          // the open one; the abort and banner then have the last word. A
+          // crash after these resolutions and before the abort leaves the
+          // session reading exactly what an unrecovered crash already reads
+          // (turn open, running) with the boundary row intact, and the next
+          // boot finishes: the resolved requests are no longer in the open
+          // set, so no `hasEventId` check is needed for them.
+          const turnStartSequence = eventStore
+            .listEventsForTurn(record.threadId, providerTurnId, 64)
+            .find((event) => event.payload.method === 'turn.started')?.sequence;
+          const interruptedRequests =
+            turnStartSequence === undefined
+              ? []
+              : eventStore
+                  .listUnresolvedRequestEvents(record.threadId)
+                  .filter((event) => event.sequence > turnStartSequence);
           let requestSettlementDeclined = false;
-          for (const [requestId, owner] of ownerTurnIdByOpenRequestId) {
-            if (owner !== providerTurnId) continue;
+          for (const opened of interruptedRequests) {
+            const request = opened.payload;
+            if (request.method !== 'request.opened') continue;
+            const requestId = request.requestId;
             const published = this.deps.publishEvent({
               eventId: `turn-interrupted-request:${record.boundaryId}:${requestId}`,
               provider: provider ?? 'unknown',
@@ -428,9 +437,7 @@ export class InterruptedTurnRecovery {
               requestId,
               // An asynchronous question never paused the turn, and its
               // resolution must not read as resuming one.
-              ...(nonBlockingRequestIds.has(requestId)
-                ? { blocking: false }
-                : {}),
+              ...(request.blocking === false ? { blocking: false } : {}),
               status: TURN_ABORT_SETTLED_REQUEST_STATUS,
               response: { reason: INTERRUPTED_TURN_REQUEST_REASON },
             });

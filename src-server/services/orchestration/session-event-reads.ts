@@ -9,6 +9,7 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
@@ -25,7 +26,6 @@ import {
   buildOrchestrationSessionSummary,
   type ConversationDraftFacts,
 } from './orchestration-session-state.js';
-import { foldRequestTurnOwnership } from './session-lifecycle-service.js';
 import type { TurnProgressTracker } from './turn-progress-tracker.js';
 
 /** Provider resume state is server-only and can be arbitrarily large. */
@@ -155,11 +155,11 @@ export class SessionEventReads {
       // shared settle rule needs. A log written before recovery resolved
       // such a request itself reads settled here, so the approval inbox's
       // convergence sweep expires its notification.
-      return foldRequestTurnOwnership(
+      return requestIdsSettledByTurnAbort(
         eventStore
           .listSessionProjectionEvents(threadId)
           .map((event) => event.payload),
-      ).settledRequestIds.has(requestId)
+      ).has(requestId)
         ? { state: 'resolved', status: TURN_ABORT_SETTLED_REQUEST_STATUS }
         : outcome;
     } catch (error) {

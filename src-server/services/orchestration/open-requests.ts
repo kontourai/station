@@ -18,8 +18,7 @@
  * It lives in its own module rather than in `orchestration-service.ts`
  * because `attention-projection.ts` already depends on that module (it takes
  * an `OrchestrationService` in its constructor), so importing back would be
- * circular. Its one local import is `session-lifecycle-service.ts`, which
- * owns the turn folds and imports nothing from here.
+ * circular.
  *
  * SCOPE, STATED EXPLICITLY SO NO CALL SITE HAS TO GUESS: these functions
  * consider EVERY `request.opened` regardless of `requestType`. The lifecycle
@@ -39,12 +38,12 @@ import {
   foldedSessionLifecycleState,
   type SessionLifecycleState,
 } from '@kontourai/station-contracts/session-lifecycle';
-import { foldRequestTurnOwnership } from './session-lifecycle-service.js';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 
 /**
  * Every still-open `request.opened` event, keyed by `requestId`, in the
  * order they were opened. Open means no matching `request.resolved` AND not
- * settled by its own turn's abort (#3071, `foldRequestTurnOwnership`): a
+ * settled by its own turn's abort (#3071, `requestIdsSettledByTurnAbort`): a
  * request the dead turn left behind is nobody's to answer, so no surface
  * built on this map presents it.
  */
@@ -56,7 +55,7 @@ export function collectOpenRequests(
     if (event.method === 'request.opened') open.set(event.requestId, event);
     else if (event.method === 'request.resolved') open.delete(event.requestId);
   }
-  for (const requestId of foldRequestTurnOwnership(events).settledRequestIds)
+  for (const requestId of requestIdsSettledByTurnAbort(events))
     open.delete(requestId);
   return open;
 }
@@ -228,3 +227,7 @@ export function replayRequestOutcome(
   }
   return outcome;
 }
+
+/** What a surface is told about a request its turn's abort settled (#3071). */
+export const REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE =
+  'This request ended with the turn that asked it. Nothing is waiting on an answer.';

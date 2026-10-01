@@ -18,6 +18,7 @@ import {
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
   formatProviderQuotaEventText,
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
@@ -187,7 +188,7 @@ export function projectSessionLifecycle(options: {
   // makes the session resumable again: interrupted-turn recovery stamps
   // `needs_input` after its abort, and the dead turn's approval then
   // relabelled the session `review_pending` over that stamp.
-  const { settledRequestIds } = foldRequestTurnOwnership(options.events);
+  const settledRequestIds = requestIdsSettledByTurnAbort(options.events);
   const pendingReviewFromLog = options.events.some(
     (event) =>
       event.method === 'request.opened' &&
@@ -825,86 +826,6 @@ export function turnIdentityAnchorForEvents(
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
   return turnIdentityAnchor;
-}
-
-/**
- * #3071: which turn each request belongs to, and which requests their turn's
- * abort has settled.
- *
- * A request is OWNED by the turn it names (`request.opened.turnId`, set by
- * the adapters that know it) or, failing that, by the turn that was open
- * when it was opened. Most adapters do not stamp a turn id on their
- * requests, so position in the log is the only link there is. A request
- * opened while no turn was open has no owner and nothing here ever settles
- * it.
- *
- * A request is SETTLED when its owning turn is aborted after it was opened
- * and nothing resolved it in between: the turn that asked is gone, so no
- * answer can reach it. "Aborted" is `turn.aborted`, or the
- * `turn.completed(finishReason: 'cancelled')` an engine publishes to confirm
- * a stop. The abort is matched by turn id alone, with no
- * `acceptsTurnTerminalEvent` check: an abort the lifecycle fold rejects as
- * stale (a newer turn started since) still says its own turn is dead.
- *
- * Deliberately NOT settled:
- * - by an ordinary `turn.completed`. A background subagent can outlive the
- *   turn that spawned it, and its request stays answerable
- *   (`claude-adapter.ts` withdraws it only when the subagent itself ends).
- * - by a `runtime.error` or `session.exited` alone. A deferred-retry error
- *   keeps the turn alive, and archive#1548 pins an approval that survives a
- *   failure as still outstanding.
- *
- * Every live abort path already settles at the source: the adapter holding
- * the pending request publishes its `request.resolved` before the abort.
- * Interrupted-turn recovery has no adapter, so it publishes that resolution
- * itself (`interrupted-turn-recovery.ts`). This fold is the backstop for
- * logs written before it did, and for any publisher that forgets.
- *
- * Works on the bounded projection (`listSessionProjectionEvents`) as well as
- * a full log, with one limit: that set keeps only the latest turn's start
- * and terminal, so it can settle requests of the latest turn only. A request
- * orphaned by an earlier turn reads open there, as it did before this fold.
- */
-export function foldRequestTurnOwnership(
-  events: readonly CanonicalRuntimeEvent[],
-): {
-  /** Open requests that have an owning turn, by request id. */
-  ownerTurnIdByOpenRequestId: Map<string, string>;
-  /** Requests whose owning turn was aborted while they were open. */
-  settledRequestIds: Set<string>;
-} {
-  const ownerTurnIdByOpenRequestId = new Map<string, string>();
-  const settledRequestIds = new Set<string>();
-  let openTurnId: string | undefined;
-  for (const event of events) {
-    if (event.method === 'request.opened') {
-      // A re-opened request is a new ask; its earlier settlement is history.
-      settledRequestIds.delete(event.requestId);
-      const owner = event.turnId ?? openTurnId;
-      if (owner) ownerTurnIdByOpenRequestId.set(event.requestId, owner);
-      else ownerTurnIdByOpenRequestId.delete(event.requestId);
-    } else if (event.method === 'request.resolved') {
-      ownerTurnIdByOpenRequestId.delete(event.requestId);
-      settledRequestIds.delete(event.requestId);
-    } else if (
-      event.turnId &&
-      (event.method === 'turn.aborted' ||
-        (event.method === 'turn.completed' &&
-          event.finishReason === 'cancelled'))
-    ) {
-      for (const [requestId, owner] of ownerTurnIdByOpenRequestId) {
-        if (owner !== event.turnId) continue;
-        ownerTurnIdByOpenRequestId.delete(requestId);
-        settledRequestIds.add(requestId);
-      }
-    }
-    // The same "which turn is open" fold a Stop targets: a deferred-retry
-    // error keeps its turn, so a request opened during the retry is its own.
-    openTurnId = nextActiveTurnId(openTurnId, event, {
-      preserveDeferredRetry: true,
-    });
-  }
-  return { ownerTurnIdByOpenRequestId, settledRequestIds };
 }
 
 function providerStatusToLifecycleState(

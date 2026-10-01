@@ -41,6 +41,7 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -56,7 +57,6 @@ import {
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
-  foldRequestTurnOwnership,
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
@@ -579,7 +579,7 @@ export function buildOrchestrationSessionSummary(options: {
   // #3071: the store's unresolved set counts a request its turn's abort left
   // behind, when the log predates recovery resolving it. The summary's
   // `pendingReview` already excludes it (same fold); the id lists must agree.
-  const { settledRequestIds } = foldRequestTurnOwnership(events);
+  const settledRequestIds = requestIdsSettledByTurnAbort(events);
   const openRequestIds = options.openRequestIds?.filter(
     (id) => !settledRequestIds.has(id),
   );
@@ -1284,7 +1284,7 @@ export function buildAgentRunSummary(options: {
       .map((event) => event.requestId),
   );
   // #3071: same rule as the session summary's `pendingReview`.
-  const { settledRequestIds } = foldRequestTurnOwnership(events);
+  const settledRequestIds = requestIdsSettledByTurnAbort(events);
   const hasOpenRequest = events.some(
     (event) =>
       event.method === 'request.opened' &&

@@ -7,14 +7,19 @@
  * `toEqual` live in `helpers/request-settlement-fixtures.ts` so client tests
  * can use the same shapes.
  */
+
+import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { describe, expect, test } from 'vitest';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { EventStore } from '../event-store.js';
 import { collectOpenRequests } from '../open-requests.js';
-import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 import {
-  foldRequestTurnOwnership,
-  projectSessionLifecycle,
-} from '../session-lifecycle-service.js';
+  buildAgentRunSummary,
+  buildOrchestrationSessionSummary,
+} from '../orchestration-session-state.js';
+import { projectSessionLifecycle } from '../session-lifecycle-service.js';
 import {
   APPROVAL_BETWEEN_TURNS_EVENTS,
   APPROVAL_BETWEEN_TURNS_SUMMARY,
@@ -111,17 +116,30 @@ describe('#3071: the four inbox-row summaries, as the fold emits them', () => {
   });
 });
 
+const settled = (events: CanonicalRuntimeEvent[]) => [
+  ...requestIdsSettledByTurnAbort(events),
+];
+const open = (events: CanonicalRuntimeEvent[]) => [
+  ...collectOpenRequests(events).keys(),
+];
+/** A request the adapter knows the turn itself is waiting on. */
+const turnRequest = (
+  requestId: string,
+  turnId: string,
+  second: number,
+  overrides: Parameters<typeof requestOpened>[2] = {},
+) => requestOpened(requestId, second, { turnId, ...overrides });
+
 describe('#3071: requests that stay open', () => {
   test('a question between turns survives a later restart banner for a turn that never owned it', () => {
     // The question was asked at rest; a later turn starts, dies in a crash,
-    // and recovery aborts and banners it. The abort names turn-2, which the
-    // question never belonged to.
+    // and recovery aborts and banners it. The question predates that turn.
     const events = [
       ...QUESTION_BETWEEN_TURNS_EVENTS,
       turnStarted('turn-2', 6),
       ...recoveryAbortAndBanner('turn-2', 8),
     ];
-    expect([...collectOpenRequests(events).keys()]).toEqual(['req-1']);
+    expect(open(events)).toEqual(['req-1']);
     expect(summarize(events)).toMatchObject({
       lifecycleState: 'needs_input',
       transitionReason: 'runtime_exit',
@@ -156,12 +174,15 @@ describe('#3071: requests that stay open', () => {
       turnStarted('turn-2', 6),
       turnAborted('turn-2', 7),
     ];
-    expect(foldRequestTurnOwnership(events).settledRequestIds.size).toBe(0);
-    expect([...collectOpenRequests(events).keys()]).toEqual(['req-1']);
+    expect(settled(events)).toEqual([]);
+    expect(open(events)).toEqual(['req-1']);
   });
 
   test('an approval pausing a turn that is still open stays pending', () => {
-    const events = [turnStarted('turn-1', 1), requestOpened('req-1', 2)];
+    const events = [
+      turnStarted('turn-1', 1),
+      turnRequest('req-1', 'turn-1', 2),
+    ];
     expect(summarize(events)).toMatchObject({
       lifecycleState: 'review_pending',
       transitionReason: 'review_requested',
@@ -172,51 +193,69 @@ describe('#3071: requests that stay open', () => {
     });
   });
 
-  test('a turn retrying after a deferred error keeps its approval', () => {
+  test('the stop race: a request opened between a stop and its abort, naming no turn, is not settled by that abort', () => {
+    // A background subagent that survives the stop asks for permission after
+    // the adapter cancelled the turn's own request and before the abort is
+    // published. By position it sits inside the dying turn, and it is live:
+    // hiding it would leave the subagent waiting on an approval no surface
+    // shows.
     const events = [
       turnStarted('turn-1', 1),
-      // Codex's `willRetry` error: the one error that does not end its turn
-      // (`isDeferredRetriableTurnError`).
-      runtimeError(2, { provider: 'codex', turnId: 'turn-1', retriable: true }),
-      requestOpened('req-1', 3),
+      turnRequest('req-1', 'turn-1', 2),
+      requestResolved('req-1', 3, 'cancelled'),
+      requestOpened('req-subagent', 4),
+      turnAborted('turn-1', 5, 'user stopped it'),
     ];
-    const { ownerTurnIdByOpenRequestId, settledRequestIds } =
-      foldRequestTurnOwnership(events);
-    expect(ownerTurnIdByOpenRequestId.get('req-1')).toBe('turn-1');
-    expect(settledRequestIds.size).toBe(0);
+    expect(settled(events)).toEqual([]);
+    expect(open(events)).toEqual(['req-subagent']);
+    expect(summarize(events).openRequestIds).toEqual(['req-subagent']);
+    // ...including when the engine's own stop confirmation follows.
+    expect(
+      settled([...events, turnCompleted('turn-1', 6, 'cancelled')]),
+    ).toEqual([]);
+  });
+
+  test('a live abort never settles by position: an unattributed request is left visible', () => {
+    const events = [
+      turnStarted('turn-1', 1),
+      requestOpened('req-1', 2),
+      turnAborted('turn-1', 3),
+    ];
+    expect(settled(events)).toEqual([]);
+    expect(open(events)).toEqual(['req-1']);
   });
 
   test('a failure with no abort leaves the approval outstanding (archive#1548)', () => {
     const events = [
       turnStarted('turn-1', 1),
-      requestOpened('req-1', 2),
+      turnRequest('req-1', 'turn-1', 2),
       runtimeError(3, { turnId: 'turn-1' }),
     ];
     expect(lifecycle(events)).toMatchObject({
       lifecycleState: 'failed',
       pendingReview: true,
     });
-    expect([...collectOpenRequests(events).keys()]).toEqual(['req-1']);
+    expect(open(events)).toEqual(['req-1']);
   });
 
-  test('an ordinary completion does not settle a request: a background subagent can still be waiting on it', () => {
+  test('an ordinary completion does not settle a request, even one that names the turn', () => {
     const events = [
       turnStarted('turn-1', 1),
-      requestOpened('req-1', 2),
+      turnRequest('req-1', 'turn-1', 2),
       turnCompleted('turn-1', 3, 'stop'),
     ];
-    expect(foldRequestTurnOwnership(events).settledRequestIds.size).toBe(0);
-    expect([...collectOpenRequests(events).keys()]).toEqual(['req-1']);
+    expect(settled(events)).toEqual([]);
+    expect(open(events)).toEqual(['req-1']);
   });
 
   test('an abort of an earlier turn does not settle the current turn’s request', () => {
     const events = [
       turnStarted('turn-1', 1),
       turnStarted('turn-2', 2),
-      requestOpened('req-2', 3),
+      turnRequest('req-2', 'turn-2', 3),
       turnAborted('turn-1', 4),
     ];
-    expect(foldRequestTurnOwnership(events).settledRequestIds.size).toBe(0);
+    expect(settled(events)).toEqual([]);
     expect(summarize(events)).toMatchObject({
       lifecycleState: 'review_pending',
       pendingReview: true,
@@ -224,24 +263,42 @@ describe('#3071: requests that stay open', () => {
     });
   });
 
+  test('a request opened after its turn was aborted, with a stop confirmation still to come, is settled only if it names that turn', () => {
+    // Codex's ordinary stop ordering: abort, then completed(cancelled).
+    const unattributed = [
+      turnStarted('turn-1', 1),
+      turnAborted('turn-1', 2),
+      requestOpened('req-1', 3),
+      turnCompleted('turn-1', 4, 'cancelled'),
+    ];
+    expect(settled(unattributed)).toEqual([]);
+    const attributed = [
+      turnStarted('turn-1', 1),
+      turnAborted('turn-1', 2),
+      turnRequest('req-1', 'turn-1', 3),
+      turnCompleted('turn-1', 4, 'cancelled'),
+    ];
+    expect(settled(attributed)).toEqual(['req-1']);
+  });
+
   test('a request re-opened after its turn was aborted is a new ask', () => {
     const events = [
       turnStarted('turn-1', 1),
-      requestOpened('req-1', 2),
+      turnRequest('req-1', 'turn-1', 2),
       turnAborted('turn-1', 3),
       turnCompleted('turn-1', 4, 'cancelled'),
       requestOpened('req-1', 5),
     ];
-    expect(foldRequestTurnOwnership(events).settledRequestIds.size).toBe(0);
-    expect([...collectOpenRequests(events).keys()]).toEqual(['req-1']);
+    expect(settled(events)).toEqual([]);
+    expect(open(events)).toEqual(['req-1']);
   });
 });
 
-describe('#3071: requests an aborted turn settles', () => {
+describe('#3071: requests a live abort settles (they name the turn)', () => {
   test('a user-stopped turn with an open approval: stopped, nothing pending, and a new turn does not revive it', () => {
     const stopped = [
       turnStarted('turn-1', 1),
-      requestOpened('req-1', 2),
+      turnRequest('req-1', 'turn-1', 2),
       turnAborted('turn-1', 3, 'user stopped it'),
     ];
     expect(summarize(stopped)).toMatchObject({
@@ -252,7 +309,7 @@ describe('#3071: requests an aborted turn settles', () => {
       openRequestIds: [],
       blockingOpenRequestIds: [],
     });
-    expect(collectOpenRequests(stopped).size).toBe(0);
+    expect(open(stopped)).toEqual([]);
 
     // Before the fix the dead approval came back the moment the session was
     // resumable again: the next turn read review_pending with nothing to
@@ -270,13 +327,11 @@ describe('#3071: requests an aborted turn settles', () => {
   test('an engine’s stop confirmation (turn.completed, cancelled) settles like an abort', () => {
     const events = [
       turnStarted('turn-1', 1),
-      requestOpened('req-1', 2),
+      turnRequest('req-1', 'turn-1', 2),
       turnCompleted('turn-1', 3, 'cancelled'),
       turnStarted('turn-2', 5),
     ];
-    expect([...foldRequestTurnOwnership(events).settledRequestIds]).toEqual([
-      'req-1',
-    ]);
+    expect(settled(events)).toEqual(['req-1']);
     expect(lifecycle(events)).toMatchObject({
       lifecycleState: 'running',
       pendingReview: false,
@@ -288,7 +343,7 @@ describe('#3071: requests an aborted turn settles', () => {
     // outstanding (pendingReview: true) with no turn left to take it.
     const events = [
       turnStarted('turn-1', 1),
-      requestOpened('req-1', 2),
+      turnRequest('req-1', 'turn-1', 2),
       turnAborted('turn-1', 3, 'engine failed'),
       runtimeError(3, { turnId: 'turn-1' }),
     ];
@@ -299,38 +354,276 @@ describe('#3071: requests an aborted turn settles', () => {
       openRequestIds: [],
       blockingOpenRequestIds: [],
     });
-    expect(collectOpenRequests(events).size).toBe(0);
+    expect(open(events)).toEqual([]);
   });
 
   test('a request that names its turn is settled by that turn’s abort even when another turn is open', () => {
     const events = [
       turnStarted('turn-1', 1),
       turnStarted('turn-2', 2),
-      requestOpened('req-1', 3, { turnId: 'turn-1' }),
+      turnRequest('req-1', 'turn-1', 3),
       turnAborted('turn-1', 4),
     ];
-    expect([...foldRequestTurnOwnership(events).settledRequestIds]).toEqual([
-      'req-1',
-    ]);
+    expect(settled(events)).toEqual(['req-1']);
   });
 
   test('a question the aborted turn asked is settled with its approvals; a resolved one is left as resolved', () => {
     const events = [
       turnStarted('turn-1', 1),
-      requestOpened('req-answered', 2),
+      turnRequest('req-answered', 'turn-1', 2),
       requestResolved('req-answered', 3),
-      requestOpened('req-question', 4, { requestType: 'input' }),
-      requestOpened('req-async', 5, { blocking: false }),
+      turnRequest('req-question', 'turn-1', 4, { requestType: 'input' }),
+      turnRequest('req-async', 'turn-1', 5, { blocking: false }),
       turnAborted('turn-1', 6),
     ];
-    expect([...foldRequestTurnOwnership(events).settledRequestIds]).toEqual([
-      'req-question',
-      'req-async',
-    ]);
+    expect(settled(events)).toEqual(['req-question', 'req-async']);
     expect(summarize(events)).toMatchObject({
       lifecycleState: 'canceled',
       pendingReview: false,
       openRequestIds: [],
     });
+  });
+});
+
+describe('#3071: requests a recovery abort settles (the process died)', () => {
+  test('every request opened since the dead turn started, attributed or not, and none from before it', () => {
+    const events = [
+      requestOpened('req-before', 0),
+      turnStarted('turn-1', 1),
+      requestOpened('req-unattributed', 2),
+      turnRequest('req-attributed', 'turn-1', 3),
+      requestOpened('req-other-turn', 4, { turnId: 'turn-0' }),
+      ...recoveryAbortAndBanner('turn-1', 6),
+    ];
+    expect(settled(events)).toEqual([
+      'req-unattributed',
+      'req-attributed',
+      'req-other-turn',
+    ]);
+    expect(open(events)).toEqual(['req-before']);
+  });
+
+  test('a request opened after a mid-turn error that named no turn is still the dead turn’s', () => {
+    // The error clears every "is a turn open" fold, so position-by-open-turn
+    // would call this request ownerless and the banner would be re-stamped
+    // review_pending: the original defect by another road.
+    const events = [
+      turnStarted('turn-1', 1),
+      runtimeError(2, { retriable: true }),
+      requestOpened('req-1', 3),
+      ...recoveryAbortAndBanner('turn-1', 6),
+    ];
+    expect(settled(events)).toEqual(['req-1']);
+    expect(summarize(events)).toMatchObject({
+      lifecycleState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+      pendingReview: false,
+      openRequestIds: [],
+    });
+  });
+
+  test('a recovery abort for a turn with no turn.started settles nothing', () => {
+    const events = [
+      requestOpened('req-1', 2),
+      ...recoveryAbortAndBanner('turn-never-started', 6),
+    ];
+    expect(settled(events)).toEqual([]);
+  });
+});
+
+describe('#3071: the agent-run fold agrees', () => {
+  test('a run whose only open request was settled by its turn’s abort is not waiting for approval', () => {
+    const base = {
+      persisted: SETTLEMENT_SESSION,
+      answerability: SETTLEMENT_OBSERVATION,
+    };
+    // Stopped, then resumed: with the request unsettled the run reads
+    // waiting_for_approval under a turn that is plainly running.
+    const stoppedThenResumed = [
+      turnStarted('turn-1', 1),
+      turnRequest('req-1', 'turn-1', 2),
+      turnAborted('turn-1', 3),
+      turnStarted('turn-2', 5),
+    ];
+    expect(
+      buildAgentRunSummary({ ...base, events: stoppedThenResumed }).status,
+    ).toBe('running');
+    // Control: the same shape with the request genuinely open.
+    expect(
+      buildAgentRunSummary({
+        ...base,
+        events: [
+          turnStarted('turn-1', 1),
+          turnAborted('turn-1', 3),
+          turnStarted('turn-2', 5),
+          turnRequest('req-1', 'turn-2', 6),
+        ],
+      }).status,
+    ).toBe('waiting_for_approval');
+  });
+});
+
+/**
+ * The summary routes fold `listSessionProjectionEvents` (and its batched
+ * twin), not the full log. The settle rule is only honest if both give the
+ * same answer, so this drives every sequence through a real EventStore and
+ * compares the three.
+ */
+describe('#3071: the bounded projection settles exactly what the full log does', () => {
+  const makeTempDir = trackTempDirs();
+  const stores: EventStore[] = [];
+  afterEach(() => {
+    for (const store of stores.splice(0)) store.close();
+  });
+
+  const later = [turnStarted('turn-9', 20), requestOpened('req-live', 21)];
+  const sequences: Record<string, CanonicalRuntimeEvent[]> = {
+    'interrupted, resolved by recovery':
+      INTERRUPTED_WITH_SETTLED_APPROVAL_EVENTS,
+    'interrupted, pre-fix orphan': INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS,
+    'interrupted, no request': INTERRUPTED_WITH_NO_REQUEST_EVENTS,
+    'approval between turns': APPROVAL_BETWEEN_TURNS_EVENTS,
+    'question between turns': QUESTION_BETWEEN_TURNS_EVENTS,
+    // The dead turn is no longer the latest: its start and abort are outside
+    // every other slot of the bounded set.
+    'pre-fix orphan, then a later turn running': [
+      ...INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS,
+      ...later,
+    ],
+    'pre-fix orphan, then two later turns': [
+      ...INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS,
+      turnStarted('turn-8', 15),
+      turnCompleted('turn-8', 16, 'stop'),
+      ...later,
+    ],
+    'request before the dead turn, then a later turn': [
+      requestOpened('req-before', 0),
+      ...INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS,
+      ...later,
+    ],
+    'attributed request, live abort, later turn': [
+      turnStarted('turn-1', 1),
+      turnRequest('req-1', 'turn-1', 2),
+      turnAborted('turn-1', 3),
+      ...later,
+    ],
+    'attributed request, stop confirmation, later turn': [
+      turnStarted('turn-1', 1),
+      turnRequest('req-1', 'turn-1', 2),
+      turnAborted('turn-1', 3),
+      turnCompleted('turn-1', 4, 'cancelled'),
+      ...later,
+    ],
+    // The later completion replaces the abort in the latest-terminal slot.
+    'abort, unattributed request, stop confirmation': [
+      turnStarted('turn-1', 1),
+      turnAborted('turn-1', 2),
+      requestOpened('req-1', 3),
+      turnCompleted('turn-1', 4, 'cancelled'),
+    ],
+    'completion, request at rest, stale abort of the same turn': [
+      turnStarted('turn-1', 1),
+      turnCompleted('turn-1', 2, 'stop'),
+      requestOpened('req-1', 3),
+      turnAborted('turn-1', 4),
+    ],
+    'stop race': [
+      turnStarted('turn-1', 1),
+      turnRequest('req-1', 'turn-1', 2),
+      requestResolved('req-1', 3, 'cancelled'),
+      requestOpened('req-subagent', 4),
+      turnAborted('turn-1', 5),
+    ],
+    'unattributed request, live abort, later turn': [
+      turnStarted('turn-1', 1),
+      requestOpened('req-1', 2),
+      turnAborted('turn-1', 3),
+      ...later,
+    ],
+    'error mid-turn, request, recovery abort, later turn': [
+      turnStarted('turn-1', 1),
+      runtimeError(2, { retriable: true }),
+      requestOpened('req-1', 3),
+      ...recoveryAbortAndBanner('turn-1', 6),
+      ...later,
+    ],
+  };
+
+  test.each(Object.entries(sequences))('%s', (_name, events) => {
+    const store = new EventStore(
+      join(makeTempDir('request-settlement-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    for (const event of events) store.appendEvent(event);
+
+    const full = store
+      .listEvents(SETTLEMENT_THREAD_ID)
+      .map((event) => event.payload);
+    const bounded = store
+      .listSessionProjectionEvents(SETTLEMENT_THREAD_ID)
+      .map((event) => event.payload);
+    const batched = (
+      store
+        .listSessionProjectionEventsForThreads([SETTLEMENT_THREAD_ID])
+        .get(SETTLEMENT_THREAD_ID) ?? []
+    ).map((event) => event.payload);
+
+    const expected = settled(full);
+    expect(settled(bounded)).toEqual(expected);
+    expect(settled(batched)).toEqual(expected);
+    expect(lifecycle(bounded).pendingReview).toBe(
+      lifecycle(full).pendingReview,
+    );
+    expect(lifecycle(batched).pendingReview).toBe(
+      lifecycle(full).pendingReview,
+    );
+    // The store's own unresolved set minus the settled ones is what every
+    // summary lists; pin it against the full-log answer.
+    const unresolved = store
+      .listOpenRequestIdsByThreads([SETTLEMENT_THREAD_ID])
+      .get(SETTLEMENT_THREAD_ID);
+    expect(unresolved?.filter((id) => !settled(bounded).includes(id))).toEqual(
+      open(full),
+    );
+  });
+
+  test('the session inventory reads recovery’s expired resolution as closed, not pending', () => {
+    const store = new EventStore(
+      join(makeTempDir('request-settlement-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    for (const event of [
+      ...INTERRUPTED_WITH_SETTLED_APPROVAL_EVENTS,
+      requestOpened('req-answered', 30),
+      requestResolved('req-answered', 31, 'approved'),
+    ])
+      store.appendEvent(event);
+    expect(
+      store
+        .listSessionInventoryEvents(SETTLEMENT_THREAD_ID, {
+          group: 'decisions',
+        })
+        .events.map((descriptor) =>
+          descriptor.method === 'request.resolved'
+            ? [descriptor.requestId, descriptor.status]
+            : [],
+        ),
+    ).toEqual([
+      ['req-1', 'cancelled'],
+      ['req-answered', 'accepted'],
+    ]);
+  });
+
+  test('the sequences cover both answers', () => {
+    // Guards the property against passing on an all-empty table.
+    const answers = Object.values(sequences).map(
+      (events) => settled(events).length > 0,
+    );
+    expect(answers).toContain(true);
+    expect(answers).toContain(false);
+    expect(
+      settled(sequences['pre-fix orphan, then a later turn running']!),
+    ).toEqual(['req-1']);
   });
 });
