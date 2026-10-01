@@ -164,6 +164,10 @@ export interface LiveSurfaceControlState {
   status: UseLiveSurfaceResult['status'];
   tone: LiveSurfaceControllerTone;
   claimControl: () => Promise<void>;
+  /** Give control up explicitly (only meaningful while `tone` is `you`). */
+  releaseControl: () => Promise<void>;
+  /** Keep this person's hold alive (capped by the server; not input). */
+  keepControlAlive: () => Promise<void>;
 }
 
 export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
@@ -674,11 +678,24 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
 
   const controller = controllerLine(surface);
   const { onControlState } = props;
-  const { status, claimControl } = surface;
+  const { status, claimControl, releaseControl, keepControlAlive } = surface;
   const tone = controller.tone;
   useEffect(() => {
-    onControlState?.({ status, tone, claimControl });
-  }, [onControlState, status, tone, claimControl]);
+    onControlState?.({
+      status,
+      tone,
+      claimControl,
+      releaseControl,
+      keepControlAlive,
+    });
+  }, [
+    onControlState,
+    status,
+    tone,
+    claimControl,
+    releaseControl,
+    keepControlAlive,
+  ]);
   const recordAge = secondsAgo(clock, surface.lastActivityAt);
   const frameAge = secondsAgo(clock, surface.lastFrameAt);
   let statusText: string | null = null;
@@ -791,6 +808,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       ) : surface.inputNotice === 'input-failed' ? (
         <p className="live-surface__notice" role="status">
           Your input could not be delivered.
+        </p>
+      ) : surface.inputNotice === 'page-dialog' ? (
+        <p className="live-surface__notice" role="status">
+          The page is showing a dialog. Answer it to continue.
         </p>
       ) : surface.inputNotice === 'host-busy' ? (
         <p className="live-surface__notice" role="status">

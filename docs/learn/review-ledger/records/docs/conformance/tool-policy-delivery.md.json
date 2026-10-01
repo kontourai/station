@@ -9,32 +9,32 @@
 
   "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
 
-  "document": {"digest":"64c48b56e05b11bc29bae5facba9007dce7d9825bebea4e48c8c5903e29b12b8","revision":"4775195c62ee67b1c20882a1561a4578b8db017f"},
+  "document": {"digest":"eaf8811c2feade2dfa7377efde1e1395d6fde7361b8ed14c5e504cfc050b8957","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
 
   "sources": [
     {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"6e28dc1f4fe54630cdd2f12774b95429e8b7effa0f9571b39cc69eab27acf5c6","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"d118c809a928964381bd99c8fb18f9f0774497f59504b9639af3ae37874a34b2","revision":"8e353a6a1600fadd5df7f82941cfc289a66a686a"},
 
     {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/shared/src/runtime-event-projection.ts","digest":"b6e58833d00c3823cf7cc0410b757ec27b4ec1a65ef2d26b2efa37a76bac8fc3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"packages/shared/src/tool-request-preview.ts","digest":"44bbfa48a3e86f1ad67af39215c7a902cdd6a3a6c7e2e459bfa5fffc93a0864d","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"packages/shared/src/tool-request-preview.ts","digest":"eea1bd5a34c79fe429276d813748d1930fa66c2ee33f4c3d702fd64d6da4f731","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
 
     {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"05d377f35984a9f474c503f45089f82c3d30eaa3799b28508c030b38a17f9de6","revision":"f0a064455d997b3467c6dabb42a5e009d583cf02"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"d2e52873b90578b12d8d8cb22328524d3a13ec2b160debf13bdb0929c147782c","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"62628f377e3b3ec1ed3bb134c58ab9cfd1aaf287508fdc9a3c559c1efe8d5ad7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"a194c76e9d176303a57fb46953fb0c32b874994a9073888eba4a585de57d6b25","revision":"593ba7779013fc65c6136152fcfb948e1ba91ce9"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"7f03adbf1b54dcd4a7fa983c1580d64f1ba9c284af54cb9fc9e29d8b4b1ef64a","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

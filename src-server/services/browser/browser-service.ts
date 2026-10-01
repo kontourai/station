@@ -7,6 +7,7 @@ import { findRunning } from '@kontourai/station-shared/instance-registry';
 import { createLogger } from '../../utils/logger.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { BrowserProjectAuthorizer } from './browser-access.js';
+import type { BrowserConsoleSnapshot } from './browser-console-log.js';
 import {
   type BrowserHost,
   createLocalBrowserHostResolver,
@@ -16,9 +17,14 @@ import { LocalTargetStore } from './browser-local-targets.js';
 import { BrowserProjectSettingsStore } from './browser-project-settings.js';
 import {
   type BrowserProfile,
+  type BrowserSessionActor,
   BrowserSessionRegistry,
 } from './browser-session-registry.js';
 import { ChromiumAcquisition } from './chromium-acquisition.js';
+import type {
+  AnswerDialogResult,
+  PendingJavaScriptDialog,
+} from './chromium-screencast-producer.js';
 import type { EgressPolicy } from './egress-policy.js';
 import {
   BrowserHostExitedError,
@@ -70,6 +76,22 @@ export interface BrowserService {
   listeners(): StationListeners;
   /** The live-surface id of a live session, when live surfaces are wired. */
   surfaceIdFor(browserSessionId: string): string | undefined;
+  /** A dialog the session's page holds for a person (live surfaces only). */
+  pendingDialogFor(
+    browserSessionId: string,
+  ): PendingJavaScriptDialog | undefined;
+  /** A person's answer to that dialog; `no-dialog` without live surfaces. */
+  answerDialog(
+    browserSessionId: string,
+    dialogId: string,
+    answer: { accept: boolean; promptText?: string },
+    actor: BrowserSessionActor,
+  ): Promise<AnswerDialogResult>;
+  /** The session page's console, newer than `after` (live surfaces only). */
+  consoleFor(
+    browserSessionId: string,
+    after?: number,
+  ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
   shutdown(): Promise<void>;
 }
 
@@ -183,6 +205,14 @@ export function createBrowserService(
     listeners,
     surfaceIdFor: (browserSessionId) =>
       surfaces?.surfaceIdFor(browserSessionId),
+    pendingDialogFor: (browserSessionId) =>
+      surfaces?.pendingDialogFor(browserSessionId),
+    answerDialog: async (browserSessionId, dialogId, answer, actor) =>
+      surfaces
+        ? surfaces.answerDialog(browserSessionId, dialogId, answer, actor)
+        : { ok: false, code: 'no-dialog' },
+    consoleFor: (browserSessionId, after) =>
+      surfaces?.consoleFor(browserSessionId, after),
     shutdown: async () => {
       // Surfaces first: no viewer keeps streaming from a browser being shut.
       await surfaces?.dispose();
