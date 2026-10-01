@@ -28,8 +28,13 @@ import {
   bindRuntimeLocalOperator,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { CheckpointRefStore } from '../../../services/checkpoints/checkpoint-ref-store.js';
+import { GitReviewWorkspaceSource } from '../../../services/evidence/git-review-workspace-source.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
+import { gitDirectoryInsideProject } from '../../../services/projects/git-directory-confinement.js';
 import { readProjectRepository } from '../../../services/projects/git-read-repository.js';
+import { WorktreeProvisioningService } from '../../../services/projects/worktree-provisioning-service.js';
 import { execGit } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
 
@@ -119,6 +124,14 @@ function app() {
     '/',
     createCodingRoutes(new FileTreeService(), {
       resolveProjectFolder: (slug) => (slug === 'acme' ? project : undefined),
+      // Commit is the operator's act; these requests are the operator's.
+      visibility: {
+        resolvePrincipal: () => ({
+          id: LOCAL_OPERATOR_PRINCIPAL_ID,
+          kind: 'human',
+          display: 'Operator',
+        }),
+      },
     }),
   );
   return mounted;
@@ -401,12 +414,13 @@ describe.skipIf(process.platform === 'win32')(
       } finally {
         flipper.kill('SIGKILL');
       }
-      // The flipper really ran against these requests.
+      // The flipper really alternated under these requests (each response
+      // was checked for the outside repository's markers as it arrived).
       expect(Number(readFileSync(flips, 'utf-8'))).toBeGreaterThan(50);
-      expect(
-        Object.keys(answers).length,
-        JSON.stringify(answers),
-      ).toBeGreaterThan(0);
+      // Both states were served: the member's own repository was read, and
+      // the link was refused.
+      expect(answers['200'] ?? 0, JSON.stringify(answers)).toBeGreaterThan(0);
+      expect(answers['409'] ?? 0, JSON.stringify(answers)).toBeGreaterThan(0);
     }, 180_000);
 
     describe('a planted partial clone whose missing object would be fetched', () => {
@@ -1035,6 +1049,106 @@ describe.skipIf(process.platform === 'win32')(
       expect(result.ok).toBe(false);
     });
 
+    test('a folder ABOVE the repository swapped during the read and put back afterwards: the output is discarded', async () => {
+      const outside = outsideRepository();
+      repo(project, { 'README.md': '# project\n' });
+      const folder = repo(
+        join(project, 'x', 'repo'),
+        { 'own.txt': 'own\n' },
+        { subject: 'member work' },
+      );
+      mkdirSync(join(project, 'x.evil', 'repo'), { recursive: true });
+      writeFileSync(
+        join(project, 'x.evil', 'repo', '.git'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      const seen: string[] = [];
+
+      const result = await readProjectRepository(
+        project,
+        folder,
+        {},
+        async (repository) => {
+          renameSync(join(project, 'x'), join(project, 'x.own'));
+          renameSync(join(project, 'x.evil'), join(project, 'x'));
+          try {
+            // Plain git by the same path: what the swap makes it name.
+            seen.push(git(folder, ['log', '-1', '--format=%s']));
+            return subject(repository).catch(() => 'failed');
+          } finally {
+            renameSync(join(project, 'x'), join(project, 'x.evil'));
+            renameSync(join(project, 'x.own'), join(project, 'x'));
+          }
+        },
+      );
+
+      // Live: by that path git read the outside repository, every time.
+      expect(seen).toEqual([OUTSIDE_SUBJECT, OUTSIDE_SUBJECT, OUTSIDE_SUBJECT]);
+      expect(result).toEqual({
+        ok: false,
+        state: 'refused',
+        reason: '.git kept changing while Station read it',
+      });
+    });
+
+    test('config rewritten in place during the read to name programs: none runs, and the output is discarded', async () => {
+      repo(project, {
+        'a.txt': 'one\n',
+        '.gitattributes': '*.txt diff=evil filter=evil\n',
+      });
+      writeFileSync(join(project, 'a.txt'), 'two\n');
+      const marker = join(root, 'ran.log');
+      const program = join(root, 'program.sh');
+      writeFileSync(program, `#!/bin/sh\necho ran >> '${marker}'\ncat\n`, {
+        mode: 0o755,
+      });
+      const config = join(project, '.git', 'config');
+      const clean = readFileSync(config, 'utf-8');
+      const hostile = `${clean}[diff]\n\texternal = ${program}\n[diff "evil"]\n\ttextconv = ${program}\n\tcommand = ${program}\n[filter "evil"]\n\tclean = ${program}\n\tsmudge = ${program}\n`;
+      const ran = () =>
+        existsSync(marker)
+          ? readFileSync(marker, 'utf-8').split('\n').filter(Boolean).length
+          : 0;
+      let reads = 0;
+
+      const result = await readProjectRepository(
+        project,
+        project,
+        {},
+        async (repository) => {
+          reads += 1;
+          // In place, as a member holding the file open would: no rename.
+          // Clean again afterwards, so each attempt starts from a config
+          // Station accepts and meets the hostile one only while git runs.
+          const attributes = join(project, '.git', 'info', 'attributes');
+          writeFileSync(config, hostile);
+          writeFileSync(attributes, '*.txt diff=evil filter=evil\n');
+          writeFileSync(join(project, 'a.txt'), `two ${reads}\n`);
+          try {
+            const options = { cwd: repository.top, env: repository.repoEnv };
+            await execGit(
+              [...repository.repoArgs, 'status', '--porcelain'],
+              options,
+            );
+            return (await execGit([...repository.repoArgs, 'diff'], options))
+              .stdout;
+          } finally {
+            writeFileSync(config, clean);
+            rmSync(attributes);
+          }
+        },
+      );
+
+      expect(ran(), 'a program the rewritten config names ran').toBe(0);
+      // The rewrite was noticed, and what was read is not returned.
+      expect(reads).toBe(3);
+      expect(result.ok).toBe(false);
+      // Control: plain git, reading the repository's own config, runs it.
+      writeFileSync(config, hostile);
+      git(project, ['diff']);
+      expect(ran(), 'control: plain git runs the program').toBeGreaterThan(0);
+    });
+
     test('a change during the first read only: the read is repeated and the second answer is returned', async () => {
       const { folder } = ownRepository();
       let reads = 0;
@@ -1072,6 +1186,308 @@ describe.skipIf(process.platform === 'win32')(
 
       expect(reads).toBe(1);
       expect(result).toEqual({ ok: true, top: folder, value: 'member work' });
+    });
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  'a nested repository (submodule) is never entered or reported',
+  () => {
+    /**
+     * The Project repository with a nested repository `sub` recorded at an
+     * older commit than it is at, and the Project's own `diff.submodule`
+     * asking git to show what changed INSIDE it (which makes git run git
+     * there). `sub`'s own config and git directory are the member's.
+     */
+    function nested(): { sub: string; marker: string } {
+      repo(project, { 'README.md': '# project\n' });
+      const sub = repo(join(project, 'sub'), { 'f.txt': 'one\n' });
+      const recorded = git(sub, ['rev-parse', 'HEAD']);
+      writeFileSync(join(sub, 'f.txt'), 'two\n');
+      git(sub, ['commit', '-q', '-am', 'second']);
+      git(project, [
+        'update-index',
+        '--add',
+        '--cacheinfo',
+        `160000,${recorded},sub`,
+      ]);
+      git(project, ['commit', '-q', '-m', 'record sub']);
+      git(project, ['config', 'diff.submodule', 'diff']);
+      const marker = join(root, 'ran.log');
+      const program = join(root, 'program.sh');
+      writeFileSync(program, `#!/bin/sh\necho ran >> '${marker}'\n`, {
+        mode: 0o755,
+      });
+      git(sub, ['config', 'diff.external', program]);
+      return { sub, marker };
+    }
+
+    test('its own diff program does not run, and nothing from inside it is shown', async () => {
+      const { marker } = nested();
+
+      for (const route of ['diff', 'status', 'log'] as const) {
+        const response = await read(route, project);
+        expect(response.status, route).toBe(200);
+        expect(response.text).not.toMatch(/Submodule|Subproject/);
+      }
+      expect((await read('diff', project)).json.data.diff).toBe('');
+      expect(existsSync(marker), 'the nested program ran').toBe(false);
+
+      // Control, last: plain git runs the nested repository's program.
+      git(project, ['diff']);
+      expect(existsSync(marker), 'control: plain git runs it').toBe(true);
+    });
+
+    test("a nested .git file naming an outside repository does not disclose that repository's commit", async () => {
+      const outside = outsideRepository();
+      const outsideHead = git(outside, ['rev-parse', 'HEAD']);
+      repo(project, { 'README.md': '# project\n' });
+      const recorded = git(project, ['rev-parse', 'HEAD']);
+      mkdirSync(join(project, 'sub2'));
+      writeFileSync(
+        join(project, 'sub2', '.git'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      git(project, [
+        'update-index',
+        '--add',
+        '--cacheinfo',
+        `160000,${recorded},sub2`,
+      ]);
+      git(project, ['commit', '-q', '-m', 'record sub2']);
+      // Live: plain git names the outside repository's commit.
+      expect(git(project, ['diff'])).toContain(
+        `+Subproject commit ${outsideHead}`,
+      );
+
+      for (const route of ['diff', 'status', 'log', 'branches'] as const) {
+        const response = await read(route, project);
+        expect(response.status, route).toBe(200);
+        expectNothingFromOutside(response.text, outsideHead);
+      }
+    });
+
+    test('Commit does not record a nested repository, so its commit id is not published', async () => {
+      const outside = outsideRepository();
+      const outsideHead = git(outside, ['rev-parse', 'HEAD']);
+      repo(project, { 'README.md': '# project\n' });
+      mkdirSync(join(project, 'sub2'));
+      writeFileSync(
+        join(project, 'sub2', '.git'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      writeFileSync(join(project, 'change.txt'), 'change\n');
+      // Live: plain `git add` would record the outside repository's commit.
+      expect(git(project, ['add', '-A', '-n', '.'])).toContain("add 'sub2/'");
+
+      const response = await post('/git/commit', { message: 'change' });
+
+      expect(response.status, response.text).toBe(200);
+      const tree = git(project, ['ls-tree', '-r', 'HEAD']);
+      expect(tree).toContain('change.txt');
+      expect(tree).not.toContain('sub2');
+      expect(tree).not.toContain(outsideHead);
+    });
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  "other services that run git in a Project's folder",
+  () => {
+    /** A Project whose root `.git` names the outside repository. */
+    function plantedProject(): string {
+      const outside = outsideRepository();
+      mkdirSync(project);
+      writeFileSync(
+        join(project, '.git'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      // Live: git in the Project's folder is in the outside repository.
+      expect(git(project, ['log', '-1', '--format=%s'])).toBe(OUTSIDE_SUBJECT);
+      return outside;
+    }
+
+    test('worktree provisioning creates no branch in, and checks nothing out of, an outside repository', async () => {
+      const outside = plantedProject();
+      const before = outsideState(outside);
+
+      await expect(
+        new WorktreeProvisioningService().provision({
+          repoPath: project,
+          threadId: 'session-planted',
+          providerKind: 'codex',
+          isolation: { mode: 'worktree' },
+        }),
+      ).rejects.toThrow(/not the Project's own/);
+
+      expect(outsideState(outside)).toBe(before);
+      expect(existsSync(`${project}-worktrees`)).toBe(false);
+    });
+
+    test('an independent review does not check out or read an outside repository', async () => {
+      const outside = plantedProject();
+      const head = git(outside, ['rev-parse', OUTSIDE_SIDE_BRANCH]);
+      const base = git(outside, ['rev-parse', OUTSIDE_BRANCH]);
+      const before = outsideState(outside);
+      const source = new GitReviewWorkspaceSource(
+        { workspace: () => project },
+        join(root, 'review-workspaces'),
+      );
+
+      await expect(
+        source.open({
+          kind: 'git-range',
+          projectSlug: 'acme',
+          baseRevision: base,
+          headRevision: head,
+        }),
+      ).rejects.toThrow(/not the Project's own/);
+
+      expect(outsideState(outside)).toBe(before);
+      expect(
+        git(outside, ['worktree', 'list', '--porcelain']).match(/^worktree /gm),
+      ).toHaveLength(1);
+    });
+
+    test('a checkpoint capture writes nothing into an outside repository', async () => {
+      const outside = plantedProject();
+      const refs = () => git(outside, ['for-each-ref']);
+      const before = refs();
+
+      const result = await new CheckpointRefStore().capture({
+        repoDir: project,
+        threadId: 'thread-planted',
+        checkpointId: 'cp-planted',
+        kind: 'baseline',
+        turnId: 'turn-planted',
+      });
+
+      expect(result).toMatchObject({
+        status: 'degraded',
+        reason: 'not_a_git_repository',
+      });
+      expect(refs()).toBe(before);
+    });
+
+    test('each of them still works in an ordinary Project repository', async () => {
+      repo(project, { 'module.ts': 'export const value = 1;\n' });
+      const base = git(project, ['rev-parse', 'HEAD']);
+      writeFileSync(join(project, 'module.ts'), 'export const value = 2;\n');
+      git(project, ['commit', '-q', '-am', 'second']);
+      const head = git(project, ['rev-parse', 'HEAD']);
+
+      const metadata = await new WorktreeProvisioningService().provision({
+        repoPath: project,
+        threadId: 'session-ordinary',
+        providerKind: 'codex',
+        isolation: { mode: 'worktree' },
+      });
+      expect(metadata?.path && existsSync(metadata.path)).toBe(true);
+
+      const workspace = await new GitReviewWorkspaceSource(
+        { workspace: () => project },
+        join(root, 'review-workspaces'),
+      ).open({
+        kind: 'git-range',
+        projectSlug: 'acme',
+        baseRevision: base,
+        headRevision: head,
+      });
+      expect(
+        readFileSync(join(workspace.root, 'module.ts'), 'utf-8'),
+      ).toContain('value = 2');
+      await workspace.close();
+
+      const captured = await new CheckpointRefStore().capture({
+        repoDir: project,
+        threadId: 'thread-ordinary',
+        checkpointId: 'cp-ordinary',
+        kind: 'baseline',
+        turnId: 'turn-ordinary',
+      });
+      expect(captured.status).toBe('captured');
+    });
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  'gitDirectoryInsideProject',
+  () => {
+    test('a linked worktree whose pointers are relative paths is accepted', async () => {
+      const main = repo(join(root, 'main-checkout'), {
+        'README.md': '# main\n',
+      });
+      git(main, ['worktree', 'add', '-q', '-b', 'linked-branch', project]);
+      // As `git worktree add --relative-paths` writes them.
+      const entry = join(main, '.git', 'worktrees', 'project');
+      writeFileSync(
+        join(project, '.git'),
+        'gitdir: ../main-checkout/.git/worktrees/project\n',
+      );
+      writeFileSync(join(entry, 'gitdir'), '../../../../project/.git\n');
+      expect(git(project, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+        'linked-branch',
+      );
+
+      expect((await gitDirectoryInsideProject(project, project)).verdict).toBe(
+        'linked-worktree',
+      );
+      expect((await read('status', project)).json.data).toMatchObject({
+        isRepo: true,
+        branch: 'linked-branch',
+      });
+    });
+
+    test('a git directory with more entries than the walk will check is refused, for refs and for objects', async () => {
+      repo(project, { 'README.md': '# project\n' });
+      for (let branch = 0; branch < 12; branch += 1) {
+        git(project, ['branch', `b${branch}`]);
+      }
+      const generous = { entries: 50_000, objectEntries: 2_000_000 };
+      expect(
+        (
+          await gitDirectoryInsideProject(project, project, {
+            limits: generous,
+          })
+        ).verdict,
+      ).toBe('inside');
+
+      expect(
+        await gitDirectoryInsideProject(project, project, {
+          limits: { ...generous, entries: 20 },
+        }),
+      ).toEqual({
+        verdict: 'outside',
+        reason: '.git holds more than 20 entries to check',
+      });
+      expect(
+        await gitDirectoryInsideProject(project, project, {
+          limits: { ...generous, objectEntries: 3 },
+        }),
+      ).toEqual({
+        verdict: 'outside',
+        reason: '.git holds more than 3 entries to check',
+      });
+    });
+
+    test('unchanged notices a folder above the repository renamed away and back; sameIdentity allows a commit and notices another .git', async () => {
+      repo(project, { 'README.md': '# project\n' });
+      const folder = repo(join(project, 'x', 'repo'), { 'own.txt': 'own\n' });
+      const verdict = await gitDirectoryInsideProject(folder, project);
+      if (verdict.verdict === 'outside') throw new Error(verdict.reason);
+      expect(await verdict.unchanged()).toBe(true);
+
+      renameSync(join(project, 'x'), join(project, 'x.away'));
+      renameSync(join(project, 'x.away'), join(project, 'x'));
+      expect(await verdict.unchanged()).toBe(false);
+      expect(await verdict.sameIdentity()).toBe(true);
+
+      git(folder, ['commit', '-q', '--allow-empty', '-m', 'second']);
+      expect(await verdict.sameIdentity()).toBe(true);
+
+      renameSync(join(folder, '.git'), join(folder, '.git-real'));
+      mkdirSync(join(folder, '.git'));
+      expect(await verdict.sameIdentity()).toBe(false);
     });
   },
 );

@@ -5,8 +5,8 @@
  * (`git-read-repository.ts`).
  */
 import type { BigIntStats, Dirent } from 'node:fs';
-import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import { lstat, opendir, readFile, realpath } from 'node:fs/promises';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
 
 /** Names the repository explicitly, so git never discovers another one. */
@@ -31,13 +31,30 @@ export function repositoryArgs(root: string): string[] {
  * one counts as inside, and is walked the same way.
  *
  * An accepting verdict carries the git directory and common directory it
- * checked, and `unchanged`, which says whether everything the check looked
- * at (the `.git` entry, every directory it listed, and the `commondir`
- * pointer) still has the identity and change times it had. A caller that
- * runs git afterwards asks, so a `.git` swapped (or an entry planted and
- * removed) while git ran is noticed. It costs one `lstat` per directory and
- * lists nothing again: adding, removing or renaming an entry changes its
- * directory's times. Its limits are in `git-read-repository.ts`.
+ * checked, and two ways to ask whether that is still what is there:
+ *
+ * - `unchanged`: everything the check looked at still has the identity and
+ *   change times it had. That is every folder from the member-writable root
+ *   down to `target` (renaming a folder ABOVE the repository swaps the whole
+ *   repository without touching anything inside it), the `.git` entry,
+ *   every directory the check listed, and the files whose content steers
+ *   git (`commondir`, `config`, `config.worktree`, `info/attributes`). For
+ *   after a READ: on `false` the output is discarded. It costs one `lstat`
+ *   per path and lists nothing again: adding, removing or renaming an entry
+ *   changes its directory's times.
+ * - `sameIdentity`: the folders down to `target`, the `.git` entry and the
+ *   git directories are still the same files (device and inode), whatever
+ *   their times. For after a WRITE, which changes the times itself.
+ *
+ * Their limits are in `git-read-repository.ts`.
+ *
+ * NOT CLOSED, by choice: a linked worktree's registration is what vouches
+ * for it, and a registration can outlive its folder (a worktree removed
+ * without `git worktree prune`). Whoever recreates that folder's `.git`
+ * file inside the Project gets the worktree back, and Station cannot tell
+ * that file from the one git wrote: the content is the same, and judging by
+ * file times would refuse a genuine worktree after a restore from backup.
+ * It takes a repository the operator once checked out at that very path.
  */
 export type GitDirectoryVerdict =
   | {
@@ -47,12 +64,24 @@ export type GitDirectoryVerdict =
       /** Symlink-resolved. */
       commonDir: string;
       unchanged: () => Promise<boolean>;
+      sameIdentity: () => Promise<boolean>;
     }
   | { verdict: 'outside'; reason: string };
+
+export interface GitDirectoryCheckOptions {
+  alsoMemberWritable?: readonly string[];
+  /** The walk's bounds; for tests of the bounds themselves. */
+  limits?: { entries: number; objectEntries: number };
+}
 
 /** Identity and change times of one path, by `lstat` (a link is a link). */
 function stampOf(stats: BigIntStats): string {
   return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
+}
+
+/** The device and inode of a stamp. */
+function identityOf(stamp: string): string {
+  return stamp.split(':').slice(0, 2).join(':');
 }
 
 const ABSENT = 'absent';
@@ -69,36 +98,68 @@ async function currentStamp(path: string): Promise<string> {
 /** Paths stamped at once when checking them again. */
 const STAMP_BATCH = 64;
 
-async function stampsUnchanged(stamps: Map<string, string>): Promise<boolean> {
+async function stampsHold(
+  stamps: ReadonlyMap<string, string>,
+  same: (before: string, now: string) => boolean,
+): Promise<boolean> {
   const all = [...stamps];
   for (let start = 0; start < all.length; start += STAMP_BATCH) {
-    const same = await Promise.all(
+    const held = await Promise.all(
       all
         .slice(start, start + STAMP_BATCH)
-        .map(async ([path, stamp]) => (await currentStamp(path)) === stamp),
+        .map(async ([path, stamp]) => same(stamp, await currentStamp(path))),
     );
-    if (same.includes(false)) return false;
+    if (held.includes(false)) return false;
   }
   return true;
 }
 
+/**
+ * What a check recorded. `pinned` is what must stay the SAME FILES even
+ * across a write; `listed` is everything else that must not change at all.
+ */
+interface Stamps {
+  pinned: Map<string, string>;
+  listed: Map<string, string>;
+}
+
+/** Files in a git directory whose content steers git. */
+const STEERING_FILES = [
+  'config',
+  'config.worktree',
+  join('info', 'attributes'),
+];
+
 export async function gitDirectoryInsideProject(
   target: string,
   projectRoot: string,
-  alsoMemberWritable: readonly string[] = [],
+  options: GitDirectoryCheckOptions = {},
 ): Promise<GitDirectoryVerdict> {
+  const memberWritable = [projectRoot, ...(options.alsoMemberWritable ?? [])];
   const outside = (reason: string): GitDirectoryVerdict => ({
     verdict: 'outside',
     reason,
   });
   const dotGit = join(target, '.git');
-  const stamps = new Map<string, string>();
+  const stamps: Stamps = { pinned: new Map(), listed: new Map() };
+  // Every folder below the member-writable root, down to `target`: any of
+  // them can be renamed away and another put in its place.
+  const root = memberWritable
+    .filter((candidate) => target.startsWith(candidate + sep))
+    .sort((a, b) => b.length - a.length)[0];
+  if (root) {
+    let folder = root;
+    for (const segment of relative(root, target).split(sep)) {
+      folder = join(folder, segment);
+      stamps.pinned.set(folder, await currentStamp(folder));
+    }
+  }
   try {
     const stats = await lstat(dotGit, { bigint: true });
     if (stats.isSymbolicLink()) {
       return outside('.git is a symbolic link');
     }
-    stamps.set(dotGit, stampOf(stats));
+    stamps.pinned.set(dotGit, stampOf(stats));
   } catch {
     return outside('.git is missing');
   }
@@ -124,21 +185,35 @@ export async function gitDirectoryInsideProject(
     return outside('git could not locate its git directory');
   }
   const inside = (path: string) =>
-    [projectRoot, ...alsoMemberWritable].some(
-      (root) => path === root || path.startsWith(root + sep),
+    memberWritable.some(
+      (writable) => path === writable || path.startsWith(writable + sep),
     );
   // A directory inside the Project is member-writable: its entries may be
   // symlinks into, or alternates of, another repository.
   for (const dir of new Set([gitDir, commonDir])) {
     if (!inside(dir)) continue;
-    const redirected = await redirectedGitEntry(dir, inside, stamps);
+    const redirected = await redirectedGitEntry(
+      dir,
+      inside,
+      stamps,
+      options.limits ?? DEFAULT_LIMITS,
+    );
     if (redirected) return outside(redirected);
   }
   const accepted = (verdict: 'inside' | 'linked-worktree') => ({
     verdict,
     gitDir,
     commonDir,
-    unchanged: () => stampsUnchanged(stamps),
+    unchanged: async () =>
+      (await stampsHold(stamps.pinned, (before, now) => before === now)) &&
+      (await stampsHold(stamps.listed, (before, now) => before === now)),
+    sameIdentity: () =>
+      stampsHold(
+        stamps.pinned,
+        (before, now) =>
+          (before === ABSENT) === (now === ABSENT) &&
+          identityOf(before) === identityOf(now),
+      ),
   });
   if (inside(gitDir) && inside(commonDir)) return accepted('inside');
   if (inside(gitDir) || dirname(dirname(gitDir)) !== commonDir) {
@@ -148,7 +223,10 @@ export async function gitDirectoryInsideProject(
     const backPointer = (
       await readFile(join(gitDir, 'gitdir'), 'utf-8')
     ).trim();
-    return (await realpath(backPointer)) === (await realpath(dotGit))
+    // git writes it absolute, or relative to the entry it lives in
+    // (`worktree.useRelativePaths`, `git worktree add --relative-paths`).
+    return (await realpath(resolve(gitDir, backPointer))) ===
+      (await realpath(dotGit))
       ? accepted('linked-worktree')
       : outside(".git points at another checkout's worktree entry");
   } catch {
@@ -175,6 +253,11 @@ const MAX_WALKED_ENTRIES = 50_000;
  */
 const MAX_WALKED_OBJECT_ENTRIES = 2_000_000;
 
+const DEFAULT_LIMITS = {
+  entries: MAX_WALKED_ENTRIES,
+  objectEntries: MAX_WALKED_OBJECT_ENTRIES,
+};
+
 class WalkLimitExceeded extends Error {}
 
 /**
@@ -195,29 +278,38 @@ class WalkLimitExceeded extends Error {}
  * Alternates (`objects/info/alternates`, `http-alternates`) are refused
  * outright: they make git read another repository's objects.
  *
- * `stamps` collects the identity and change times of every directory
- * listed, taken BEFORE its listing, and of the `commondir` pointer.
+ * `stamps` collects the identity and change times of the git directory
+ * itself and its `commondir` pointer (pinned), and of every directory
+ * listed, taken BEFORE its listing, and the steering files (listed).
  */
 async function redirectedGitEntry(
   gitDir: string,
   insideProject: (path: string) => boolean,
-  stamps: Map<string, string>,
+  stamps: Stamps,
+  limits: { entries: number; objectEntries: number },
 ): Promise<string | null> {
   let walked = 0;
-  let limit = MAX_WALKED_ENTRIES;
-  // Entries of `dir` by `readdir`'s own type (an lstat: a link is a link).
+  let limit = limits.entries;
+  // Entries of `dir` by the directory's own types (an lstat: a link is a
+  // link), read one at a time so the bound stops the listing itself: a
+  // directory holding millions of entries is never held in memory whole.
   const entries = async (dir: string) => {
-    let list: Dirent[];
+    const record = dir === gitDir ? stamps.pinned : stamps.listed;
+    const list: Dirent[] = [];
+    let handle: Awaited<ReturnType<typeof opendir>>;
     try {
-      stamps.set(dir, stampOf(await lstat(dir, { bigint: true })));
-      list = await readdir(dir, { withFileTypes: true });
+      record.set(dir, stampOf(await lstat(dir, { bigint: true })));
+      handle = await opendir(dir);
     } catch {
       // Missing, or not a directory: nothing to list, and it must stay so.
-      stamps.set(dir, await currentStamp(dir));
-      return [];
+      record.set(dir, await currentStamp(dir));
+      return list;
     }
-    walked += list.length;
-    if (walked > limit) throw new WalkLimitExceeded();
+    for await (const entry of handle) {
+      walked += 1;
+      if (walked > limit) throw new WalkLimitExceeded();
+      list.push(entry);
+    }
     return list;
   };
   const named = (path: string) => `.git/${relative(gitDir, path)}`;
@@ -262,7 +354,7 @@ async function redirectedGitEntry(
       (await linkBelow(join(gitDir, 'logs')));
     if (!found) {
       walked = 0;
-      limit = MAX_WALKED_OBJECT_ENTRIES;
+      limit = limits.objectEntries;
       found = await linkBelow(join(gitDir, 'objects'));
     }
     if (found) return `${named(found)} is a symbolic link`;
@@ -275,7 +367,12 @@ async function redirectedGitEntry(
   // `commondir` names where this git directory's objects and refs live; its
   // content can be rewritten in place, which no directory's times record.
   const commonPointer = join(gitDir, 'commondir');
-  stamps.set(commonPointer, await currentStamp(commonPointer));
+  stamps.pinned.set(commonPointer, await currentStamp(commonPointer));
+  // So can these; a read made while one changed is discarded.
+  for (const file of STEERING_FILES) {
+    const path = join(gitDir, file);
+    stamps.listed.set(path, await currentStamp(path));
+  }
   for (const alternates of ['alternates', 'http-alternates']) {
     try {
       await lstat(join(gitDir, 'objects', 'info', alternates));

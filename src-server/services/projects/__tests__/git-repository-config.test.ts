@@ -39,6 +39,13 @@ describe('judgeRepositoryConfig', () => {
     ['http.https://github.com/.proxy', 'http://evil.test:8080'],
     ['http.cookiefile', '/tmp/cookies'],
     ['fetch.bundleuri', 'https://evil.test/bundle'],
+    ['include.path', '/tmp/more'],
+    ['includeif.gitdir:/x/.path', '/tmp/more'],
+    ['core.excludesfile', '/etc/passwd'],
+    ['core.attributesfile', '/tmp/attributes'],
+    ['mailmap.file', '/tmp/mailmap'],
+    ['diff.orderfile', '/tmp/order'],
+    ['blame.ignorerevsfile', '/tmp/revs'],
     ['submodule.lib.update', '!sh -c x'],
     ['filter.x.clean', 'sh -c x'],
     ['diff.external', 'sh -c x'],
@@ -71,19 +78,23 @@ describe('judgeRepositoryConfig', () => {
       ['local', 'submodule.lib.update', 'rebase'],
       ['local', 'submodule.lib.url', 'https://github.com/acme/lib.git'],
       ['local', 'protocol.file.allow', 'always'],
-      ['local', 'http.sslverify', 'true'],
+      ['local', 'commit.template', '.gitmessage'],
       ['local', 'user.name', 'Someone'],
     ];
     expect(refusedKeys(ordinary, 'read')).toEqual([]);
     expect(refusedKeys(ordinary, 'write')).toEqual([]);
   });
 
-  test('a commit or push also refuses a partial clone, includes, a remote named by an address, and a program fsmonitor', () => {
+  test('a commit or push also refuses a partial clone, http settings, a remote named by an address, and a program fsmonitor', () => {
     const entries: Array<[string, string, string]> = [
       ['local', 'extensions.partialclone', 'origin'],
       ['local', 'remote.origin.promisor', 'true'],
       ['local', 'remote.origin.partialclonefilter', 'blob:none'],
-      ['local', 'include.path', '/tmp/more'],
+      ['local', 'http.sslverify', 'false'],
+      ['local', 'http.curloptresolve', 'github.com:443:10.0.0.1'],
+      ['local', 'http.sslcainfo', '/tmp/ca'],
+      ['local', 'http.extraheader', 'X: y'],
+      ['local', 'http.proactiveauth', 'basic'],
       ['local', 'remote.https://github.com/acme/pulse.git.url', 'x'],
       ['local', 'core.fsmonitor', '.git/hooks/fsmonitor'],
     ];
@@ -91,7 +102,11 @@ describe('judgeRepositoryConfig', () => {
     expect(refusedKeys(entries, 'write')).toEqual([
       'core.fsmonitor',
       'extensions.partialclone',
-      'include.path',
+      'http.curloptresolve',
+      'http.extraheader',
+      'http.proactiveauth',
+      'http.sslcainfo',
+      'http.sslverify',
       'remote.https://github.com/acme/pulse.git.url',
       'remote.origin.partialclonefilter',
       'remote.origin.promisor',

@@ -32,11 +32,25 @@
  *      terminal would (owner decision on #2363).
  *    - `core.fsmonitor=false`: a repo-local fsmonitor hook would otherwise
  *      run on `git status`, which the Project page calls on mount.
- *    - `diff.ignoreSubmodules=dirty`, and `--ignore-submodules=dirty` added
- *      to `status`/`diff`/`diff-files`/`diff-index` (the flag, because a
- *      `.gitmodules` `submodule.<name>.ignore=none` outranks the setting):
- *      git never looks inside a nested repository's or submodule's work
- *      tree, whose own config (filters, fsmonitor) nothing here has read.
+ *    - NO SUBMODULE IS ENTERED OR REPORTED. `diff.ignoreSubmodules=all`,
+ *      `diff.submodule=short`, `status.submoduleSummary=false`, and
+ *      `--ignore-submodules=all` forced onto `status` and every command that
+ *      prints a diff (the flag, because a `.gitmodules`
+ *      `submodule.<name>.ignore=none` outranks the setting). A nested
+ *      repository's git directory and config are the member's own and
+ *      nothing has checked them: with `diff.submodule=diff` or `log`, git
+ *      runs ANOTHER git inside it, which ran that repository's
+ *      `diff.external` and printed another repository's commits and file
+ *      content through its `alternates`; and merely comparing a gitlink
+ *      resolves the nested repository's HEAD, so a nested `.git` file naming
+ *      another repository printed that repository's commit id (measured on
+ *      git 2.50). So a changed submodule is not reported at all: Station
+ *      shows nothing from inside one.
+ *    - NO DIFF PROGRAM. `--no-ext-diff` and `--no-textconv` forced onto
+ *      every command that prints a diff: a repository's `diff.external`,
+ *      `diff.<driver>.command` and `diff.<driver>.textconv` never run,
+ *      whatever its config says by the time git reads it. (Both flags are
+ *      needed: `--no-ext-diff` alone still ran a textconv.)
  *    - `core.pager=cat`, `core.editor=true`: no pager or editor program from
  *      the repository (and `GIT_PAGER`/`GIT_EDITOR` are not inherited).
  *    - `core.sshCommand` = batch-mode ssh, doubled by `GIT_SSH_COMMAND`
@@ -397,20 +411,21 @@ const SSH_BATCH_COMMAND = 'ssh -o BatchMode=yes';
 const HOOKS_DISABLED = process.platform === 'win32' ? 'NUL' : '/dev/null';
 
 /**
- * Subcommands that compare against the working tree and would otherwise
- * enter a nested repository or submodule (`--ignore-submodules=none`, which
- * a `.gitmodules` `submodule.<name>.ignore` can select over any
- * `diff.ignoreSubmodules` setting). Measured on git 2.50: `status` and
- * `diff` in the parent ran a clean filter defined in the NESTED
- * repository's own config. `dirty` still reports a changed submodule
- * commit; it only stops git looking inside the submodule's work tree.
+ * Subcommands that print a diff. Each gets `--no-ext-diff`, `--no-textconv`
+ * and `--ignore-submodules=all`; see the header.
  */
-const SUBMODULE_COMPARING_SUBCOMMANDS = new Set([
-  'status',
+const DIFF_SUBCOMMANDS = new Set([
   'diff',
   'diff-files',
   'diff-index',
+  'diff-tree',
+  'log',
+  'show',
+  'whatchanged',
+  'format-patch',
 ]);
+
+const IGNORE_SUBMODULES = '--ignore-submodules=all';
 
 /**
  * Subcommands that can reach a remote, and so need the operator's
@@ -515,7 +530,9 @@ function hardeningSettings(
 ): string[] {
   return [
     ...(options.operatorHooks ? [] : [`core.hooksPath=${HOOKS_DISABLED}`]),
-    'diff.ignoreSubmodules=dirty',
+    'diff.ignoreSubmodules=all',
+    'diff.submodule=short',
+    'status.submoduleSummary=false',
     'core.fsmonitor=false',
     'core.pager=cat',
     'core.editor=true',
@@ -670,21 +687,29 @@ function toConfigArgs(settings: readonly string[]): string[] {
 
 /**
  * Full argv for a call: the hardening settings, then the caller's args,
- * with `--ignore-submodules=dirty` added to a working-tree comparison that
- * does not choose its own.
+ * with the submodule and diff-program flags forced onto the commands they
+ * apply to (a caller's own `--ignore-submodules` is replaced).
  */
 function hardenedArgs(
   args: readonly string[],
   options: GitHardeningOptions,
 ): string[] {
-  const command = [...args];
+  let command = [...args];
   const verb = gitSubcommand(command);
-  if (
-    verb !== undefined &&
-    SUBMODULE_COMPARING_SUBCOMMANDS.has(verb) &&
-    !command.some((arg) => arg.startsWith('--ignore-submodules'))
-  ) {
-    command.splice(command.indexOf(verb) + 1, 0, '--ignore-submodules=dirty');
+  if (verb !== undefined && (verb === 'status' || DIFF_SUBCOMMANDS.has(verb))) {
+    const at = command.indexOf(verb);
+    // Options end at `--`; a path after it may be named like the flag.
+    const end = command.indexOf('--', at);
+    const options = command
+      .slice(at + 1, end === -1 ? undefined : end)
+      .filter((arg) => !arg.startsWith('--ignore-submodules'));
+    command = [
+      ...command.slice(0, at + 1),
+      IGNORE_SUBMODULES,
+      ...(verb === 'status' ? [] : ['--no-ext-diff', '--no-textconv']),
+      ...options,
+      ...(end === -1 ? [] : command.slice(end)),
+    ];
   }
   return [
     ...toConfigArgs(

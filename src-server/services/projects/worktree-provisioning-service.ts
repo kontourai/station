@@ -21,6 +21,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { spawnGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
+import { ownRepositoryGitArgs } from './git-read-repository.js';
 import { judgeRepositoryConfig } from './git-repository-config.js';
 
 type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
@@ -354,6 +355,11 @@ class SpawnGitCommandRunner implements GitCommandRunner {
 export class WorktreeProvisioningService {
   constructor(
     private readonly git: GitCommandRunner = new SpawnGitCommandRunner(),
+    /**
+     * The repository a Project folder may be provisioned from, as the
+     * arguments that name it. Replaceable for tests that script the runner.
+     */
+    private readonly ownRepository: typeof ownRepositoryGitArgs = ownRepositoryGitArgs,
   ) {}
 
   /** Read-only continuation proof, sharing cleanup's hostile-metadata checks. */
@@ -525,16 +531,14 @@ export class WorktreeProvisioningService {
     },
   ): Promise<WorktreeSessionMetadata> {
     const policy = validateWorktreePolicy(request.isolation.policy);
-    const repoRootResult = await this.git.run([
-      '-C',
-      request.repoPath,
-      'rev-parse',
-      '--show-toplevel',
-    ]);
-    const repoRoot = repoRootResult.stdout.trim();
-    if (!repoRoot) {
-      throw new Error(`Git repository root not found for ${request.repoPath}`);
-    }
+    // The Project's folder is member-writable: a `.git` file there can name
+    // any repository on this computer, and provisioning would branch and
+    // check out whichever one git finds. Only the folder's own repository
+    // is provisioned from, and every call below names it (`repo`) rather
+    // than letting git discover it again.
+    const repository = await this.ownRepository(request.repoPath);
+    const repoRoot = repository.top;
+    const repo = repository.args;
 
     // #2411: `worktree add` checks files out, which runs a smudge filter the
     // repository's own config defines, as the operator (and the `status`
@@ -546,8 +550,7 @@ export class WorktreeProvisioningService {
     try {
       configList = (
         await this.git.run([
-          '-C',
-          repoRoot,
+          ...repo,
           'config',
           '--show-scope',
           '--null',
@@ -565,12 +568,7 @@ export class WorktreeProvisioningService {
       );
     }
 
-    const status = await this.git.run([
-      '-C',
-      repoRoot,
-      'status',
-      '--porcelain',
-    ]);
+    const status = await this.git.run([...repo, 'status', '--porcelain']);
     if (status.stdout.trim()) {
       worktreeConflictPreventedTotal.add(1, {
         detection_source: 'dirty_repo',
@@ -585,14 +583,7 @@ export class WorktreeProvisioningService {
       branchPrefix: policy.branchPrefix,
     });
     const branchExists = await this.git.run(
-      [
-        '-C',
-        repoRoot,
-        'rev-parse',
-        '--verify',
-        '--quiet',
-        `refs/heads/${branch}`,
-      ],
+      [...repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
       { allowCodes: [0, 1] },
     );
     if (branchExists.code === 0) {
@@ -619,10 +610,16 @@ export class WorktreeProvisioningService {
     }
 
     await mkdir(worktreeBaseDir, { recursive: true });
+    // The checks above took several git calls; what they checked must
+    // still be there when the checkout starts.
+    if (!(await repository.unchanged())) {
+      throw new Error(
+        'The repository changed while Station was preparing the worktree',
+      );
+    }
     try {
       await this.git.run([
-        '-C',
-        repoRoot,
+        ...repo,
         'worktree',
         'add',
         '-b',

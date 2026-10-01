@@ -25,6 +25,10 @@ import {
 import { execGit } from '../../utils/git-exec.js';
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
+import {
+  ProjectRepositoryRefusedError,
+  requireProjectRepository,
+} from './git-read-repository.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
 
 const logger = createLogger({ name: 'project-service' });
@@ -182,7 +186,18 @@ async function checkWorktreeDirectory(
       // stays stable across host locales.
       { encoding: 'utf8', timeout: timeoutMs, env: { LC_ALL: 'C' } },
     );
-    if (stdout.trim() === 'true') return;
+    if (stdout.trim() === 'true') {
+      // git answered, so the folder is reachable; now the in-process check
+      // that the repository it found is the folder's own. A `.git` file in
+      // a member-writable folder can name any repository on this computer,
+      // and worktree isolation would then branch and check THAT one out.
+      try {
+        await requireProjectRepository(resolve(expandTilde(workingDirectory)));
+        return;
+      } catch (error) {
+        if (!(error instanceof ProjectRepositoryRefusedError)) throw error;
+      }
+    }
     throw new ProjectWorktreeDirectoryError(
       projectSlug,
       workingDirectory,

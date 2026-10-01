@@ -36,11 +36,17 @@
  *   `http.proxy*`, `http.cookieFile`, `http.saveCookies`),
  *   `fetch.bundleURI`.
  *
+ * - Files read by name: `include`/`includeIf` (more configuration, read
+ *   when git runs rather than when Station judged it),
+ *   `core.excludesFile`, `core.attributesFile`, `mailmap.file|blob`,
+ *   `diff.orderFile`, `blame.ignoreRevsFile`. `commit.template` is not
+ *   among them: Station commits with `-m`, which never reads it.
+ *
  * These are the READ refusals, applied by every coding git read. Before the
  * operator's COMMIT or PUSH, which run with the operator's credentials and
- * signing, these are refused as well: `include`/`includeIf` (more
- * configuration from elsewhere), a remote NAMED by an address, a
- * `core.fsmonitor` that is a program rather than the builtin daemon's
+ * signing, these are refused as well: every `http.*` key, a remote NAMED by
+ * an address, a `core.fsmonitor` that is a program rather than the builtin
+ * daemon's
  * boolean, and a PARTIAL CLONE (`extensions.partialClone`,
  * `remote.<name>.promisor`, `remote.<name>.partialCloneFilter`).
  *
@@ -113,6 +119,19 @@ const READ_REFUSED = [
   /^url\..+\.(?:insteadof|pushinsteadof)$/,
   /^http\.(?:.+\.)?(?:proxy[a-z]*|cookiefile|savecookies)$/,
   /^fetch\.bundleuri$/,
+  // More configuration from another file, read when git runs rather than
+  // when Station judged this one.
+  /^include\./,
+  /^includeif\./,
+  // A file git reads and acts on by name. Pointed outside the Project (by an
+  // absolute path, or through a link) it answers questions about a file the
+  // member cannot read: which names its patterns match, which authors it
+  // maps. In-tree `.gitignore`, `.gitattributes` and `.mailmap` need none of
+  // these keys.
+  /^core\.(?:excludesfile|attributesfile)$/,
+  /^mailmap\.(?:file|blob)$/,
+  /^diff\.orderfile$/,
+  /^blame\.ignorerevsfile$/,
 ];
 
 /** Keys (lowercased) refused before an operator commit or push. */
@@ -120,8 +139,10 @@ const WRITE_REFUSED = [
   ...READ_REFUSED,
   /^extensions\.partialclone$/,
   /^remote\..+\.(?:promisor|partialclonefilter)$/,
-  /^include\./,
-  /^includeif\./,
+  // Everything under `http.`: where a push connects, what it trusts and
+  // what it sends (`curloptResolve`, `sslVerify`, `sslCAInfo`,
+  // `extraHeader`, `proactiveAuth`, …).
+  /^http\./,
   // A remote whose NAME is an address (`remote."https://host/x.git".url`):
   // `git push -- <that address>` reads it as that remote, so its
   // `url`/`pushurl` would redirect a push to an address Station validated.
@@ -171,18 +192,26 @@ export type RepositoryConfigVerdict =
  * key under the scope of the file that included it) and judges the
  * repository's own keys. `gitArgs` locates the repository explicitly
  * (`--git-dir`/`--work-tree`) where the caller knows it; otherwise git
- * discovers it from `cwd`.
+ * discovers it from `cwd`. `env` is the environment of that git call (the
+ * coding reads judge the config copy they then run git with).
  */
 export async function checkRepositoryConfig(
   cwd: string,
   purpose: RepositoryConfigPurpose,
   gitArgs: readonly string[] = [],
+  env?: NodeJS.ProcessEnv,
 ): Promise<RepositoryConfigVerdict> {
   let stdout: string;
   try {
     ({ stdout } = await execGit(
       [...gitArgs, 'config', '--show-scope', '--null', '--list'],
-      { cwd, encoding: 'utf-8', timeout: 10_000, maxBuffer: 4 * 1024 * 1024 },
+      {
+        cwd,
+        encoding: 'utf-8',
+        timeout: 10_000,
+        maxBuffer: 4 * 1024 * 1024,
+        ...(env ? { env } : {}),
+      },
     ));
   } catch {
     return { ok: false, code: 'repository-config-unreadable' };

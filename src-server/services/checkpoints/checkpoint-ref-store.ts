@@ -10,6 +10,7 @@ import {
   removeThreadCheckpointRefs,
 } from '@kontourai/station-shared/checkpoints';
 import { execGit, killGitProcessTree, spawnGit } from '../../utils/git-exec.js';
+import { requireProjectRepository } from '../projects/git-read-repository.js';
 import { checkRepositoryConfig } from '../projects/git-repository-config.js';
 
 /**
@@ -208,6 +209,10 @@ export class CheckpointRefStore {
       if (inside.stdout.trim() !== 'true') {
         return { status: 'degraded', reason: 'not_a_git_repository' };
       }
+      // The folder is member-writable: a `.git` file there can name any
+      // repository on this computer, and a capture writes objects and refs
+      // into whichever one git finds. Only the Project's own is captured.
+      await requireProjectRepository(input.repoDir);
       const toplevel = await execGit(['rev-parse', '--show-toplevel'], {
         cwd: input.repoDir,
         encoding: 'utf-8',

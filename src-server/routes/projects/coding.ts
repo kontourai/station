@@ -27,6 +27,7 @@ import {
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import {
   type ProjectRepositoryReadOptions,
+  type ReadRepository,
   readProjectRepository,
   resolveProjectRepositoryForRead,
 } from '../../services/projects/git-read-repository.js';
@@ -211,8 +212,12 @@ const CONFIG_REFUSED_MESSAGE =
  * go ahead. `gitArgs`
  * names the repository the route resolved.
  */
-async function readRefusal(dir: string, gitArgs: readonly string[]) {
-  const verdict = await checkRepositoryConfig(dir, 'read', gitArgs);
+async function readRefusal(
+  dir: string,
+  gitArgs: readonly string[],
+  env?: NodeJS.ProcessEnv,
+) {
+  const verdict = await checkRepositoryConfig(dir, 'read', gitArgs, env);
   if (verdict.ok) return null;
   return verdict.code === 'repository-config-refused'
     ? {
@@ -504,7 +509,7 @@ export function createCodingRoutes(
     c: Context,
     location: { target: string; projectRoot: string },
     notRepository: unknown,
-    read: (repository: { top: string; repoArgs: string[] }) => Promise<T>,
+    read: (repository: ReadRepository) => Promise<T>,
   ): Promise<Response> => {
     const outcome = await readProjectRepository(
       location.projectRoot,
@@ -514,7 +519,11 @@ export function createCodingRoutes(
         timeoutMs: GIT_QUICK_TIMEOUT_MS,
       },
       async (repository) => {
-        const refusal = await readRefusal(repository.top, repository.repoArgs);
+        const refusal = await readRefusal(
+          repository.top,
+          repository.repoArgs,
+          repository.repoEnv,
+        );
         return refusal ? { refusal } : { data: await read(repository) };
       },
     );
@@ -697,6 +706,7 @@ export function createCodingRoutes(
         async (repository) => {
           const opts = {
             cwd: repository.top,
+            env: repository.repoEnv,
             encoding: 'utf-8' as const,
             windowsHide: true,
             timeout: GIT_READ_TIMEOUT_MS,
@@ -722,7 +732,10 @@ export function createCodingRoutes(
               // no remotes" and "git could not be run" apart — collapsing
               // them would disable Push over an unreadable config, which is
               // a different fact.
-              readRemotes(repository.top, { gitArgs: repository.repoArgs }),
+              readRemotes(repository.top, {
+                gitArgs: repository.repoArgs,
+                gitEnv: repository.repoEnv,
+              }),
             ]);
 
           const changes = statusOut.stdout
@@ -819,6 +832,7 @@ export function createCodingRoutes(
             ],
             {
               cwd: repository.top,
+              env: repository.repoEnv,
               encoding: 'utf-8',
               timeout: GIT_READ_TIMEOUT_MS,
             },
@@ -857,6 +871,7 @@ export function createCodingRoutes(
         diff: (
           await execGit([...repository.repoArgs, 'diff'], {
             cwd: repository.top,
+            env: repository.repoEnv,
             encoding: 'utf-8',
             timeout: GIT_DIFF_TIMEOUT_MS,
           })
@@ -886,6 +901,7 @@ export function createCodingRoutes(
             ],
             {
               cwd: repository.top,
+              env: repository.repoEnv,
               encoding: 'utf-8',
               timeout: GIT_READ_TIMEOUT_MS,
             },
@@ -966,6 +982,7 @@ export function createCodingRoutes(
                 [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
                 {
                   cwd: repository.top,
+                  env: repository.repoEnv,
                   encoding: 'utf-8',
                   timeout: GIT_QUICK_TIMEOUT_MS,
                 },
@@ -1002,37 +1019,9 @@ export function createCodingRoutes(
       const { projectSlug, path, branch, create } = getBody(c);
       const location = await writeLocation(c, projectSlug, path);
       if (location instanceof Response) return location;
-      // The folder is member-writable: the repository git would discover
-      // from it is not trusted (see `gitRead`), and a checkout through a
-      // planted `.git` would move ANOTHER repository's HEAD and write its
-      // files here. Unlike a read there is no checking again afterwards
-      // (the checkout itself changes `.git`, and a write cannot be
-      // discarded), so a `.git` swapped between this check and the checkout
-      // is not noticed.
-      const repository = await resolveProjectRepositoryForRead(
-        location.projectRoot,
-        location.target,
-        {
-          registeredWorktrees: () =>
-            registeredWorktrees(c, location.projectRoot),
-          timeoutMs: GIT_QUICK_TIMEOUT_MS,
-        },
-      );
-      if (!repository.ok) {
-        return repository.state === 'refused'
-          ? repositoryRefused(c, repository.reason)
-          : c.json(
-              {
-                success: false,
-                error: 'That folder is not in a git repository',
-                code: 'not-a-repository',
-              },
-              409,
-            );
-      }
       // #2363: a branch name only. `.` would discard every change, and `-f`
       // or `--orphan=…` would be read as options.
-      if (!(await isBranchName(repository.top, branch))) {
+      if (!(await isBranchName(location.target, branch))) {
         return c.json(
           {
             success: false,
@@ -1042,9 +1031,53 @@ export function createCodingRoutes(
           400,
         );
       }
-      // #2363: `checkout` runs repository-defined smudge filters.
-      const refusal = await readRefusal(repository.top, repository.repoArgs);
-      if (refusal) return c.json(refusal, 409);
+      // The folder is member-writable: the repository git would discover
+      // from it is not trusted (see `gitRead`), and a checkout through a
+      // planted `.git` would move ANOTHER repository's HEAD and write its
+      // files here. A write cannot be discarded as a read's output can, so
+      // the repository is checked again immediately before git starts (the
+      // checks themselves take several git calls), and its identity is
+      // compared afterwards. A `.git` swapped in the moment between that
+      // last check and git opening it is still followed.
+      let repository:
+        | Extract<
+            Awaited<ReturnType<typeof resolveProjectRepositoryForRead>>,
+            { ok: true }
+          >
+        | undefined;
+      for (let attempt = 0; attempt < 3 && !repository; attempt += 1) {
+        const resolved = await resolveProjectRepositoryForRead(
+          location.projectRoot,
+          location.target,
+          {
+            registeredWorktrees: () =>
+              registeredWorktrees(c, location.projectRoot),
+            timeoutMs: GIT_QUICK_TIMEOUT_MS,
+          },
+        );
+        if (!resolved.ok) {
+          return resolved.state === 'refused'
+            ? repositoryRefused(c, resolved.reason)
+            : c.json(
+                {
+                  success: false,
+                  error: 'That folder is not in a git repository',
+                  code: 'not-a-repository',
+                },
+                409,
+              );
+        }
+        // #2363: `checkout` runs repository-defined smudge filters.
+        const refusal = await readRefusal(resolved.top, resolved.repoArgs);
+        if (refusal) return c.json(refusal, 409);
+        if (await resolved.unchanged()) repository = resolved;
+      }
+      if (!repository) {
+        return repositoryRefused(
+          c,
+          '.git kept changing while Station was checking it',
+        );
+      }
       const opts = {
         cwd: repository.top,
         encoding: 'utf-8' as const,
@@ -1060,6 +1093,20 @@ export function createCodingRoutes(
         ],
         opts,
       );
+      // A write cannot be discarded, but it can be reported: if what was
+      // checked is no longer the same files, the checkout may have landed
+      // somewhere else, and nothing about it is echoed back.
+      if (!(await repository.sameIdentity())) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'The repository changed while Station was checking out. The checkout may not have applied here; check the branch from a terminal',
+            code: 'repository-changed-during-write',
+          },
+          409,
+        );
+      }
       const { stdout } = await execGit(
         [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
         opts,

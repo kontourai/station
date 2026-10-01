@@ -7,6 +7,7 @@ import {
   spawnGit,
 } from '../../utils/git-exec.js';
 import {
+  type GitDirectoryVerdict,
   gitDirectoryInsideProject,
   repositoryArgs,
 } from './git-directory-confinement.js';
@@ -142,7 +143,13 @@ async function changedPaths(root: string): Promise<ChangedPath[]> {
       deleted: status[1] === 'D' || (status[0] === 'D' && status[1] === ' '),
     });
   }
-  return changes.filter((change) => change.path !== '');
+  // A path ending in `/` is an untracked folder git did not look inside: a
+  // nested repository. `git add` would record that repository's HEAD commit
+  // as a submodule entry, and a nested `.git` file can name any repository
+  // on this computer, so its commit id would be published. Never added.
+  return changes.filter(
+    (change) => change.path !== '' && !change.path.endsWith('/'),
+  );
 }
 
 async function containsPrivateKey(file: string): Promise<boolean> {
@@ -253,24 +260,46 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
 async function refuseByConfig(
   root: string,
   projectRoot: string | undefined,
-): Promise<CodingGitRefusal | null> {
+): Promise<
+  | { refusal: CodingGitRefusal }
+  | { location: Exclude<GitDirectoryVerdict, { verdict: 'outside' }> }
+> {
   if (typeof projectRoot !== 'string') {
-    return { code: 'git-dir-outside-project', reason: 'no Project folder' };
+    return {
+      refusal: { code: 'git-dir-outside-project', reason: 'no Project folder' },
+    };
   }
   const location = await gitDirectoryInsideProject(root, projectRoot);
   if (location.verdict === 'outside') {
-    return { code: 'git-dir-outside-project', reason: location.reason };
+    return {
+      refusal: { code: 'git-dir-outside-project', reason: location.reason },
+    };
   }
   const verdict = await checkRepositoryConfig(
     root,
     'write',
     repositoryArgs(root),
   );
-  if (verdict.ok) return null;
-  return verdict.code === 'repository-config-refused'
-    ? { code: verdict.code, keys: verdict.keys }
-    : { code: verdict.code };
+  if (verdict.ok) return { location };
+  return {
+    refusal:
+      verdict.code === 'repository-config-refused'
+        ? { code: verdict.code, keys: verdict.keys }
+        : { code: verdict.code },
+  };
 }
+
+/**
+ * What both actions answer when the repository is not the one that was
+ * checked any more. Asked immediately before the step that writes: the
+ * checks take several git calls, and a `.git` (or a folder above it)
+ * swapped meanwhile would otherwise be followed. A swap in the moment
+ * between this and git opening the path is still followed.
+ */
+const CHANGED_WHILE_CHECKING: CodingGitRefusal = {
+  code: 'git-dir-outside-project',
+  reason: '.git changed while Station was checking it',
+};
 
 /**
  * Commits every change in `root` with `message`, after the refusals in the
@@ -282,8 +311,8 @@ export async function commitRepository(
   /** The Project's folder, symlink-resolved; `root` is it or inside it. */
   scope: { projectRoot: string },
 ): Promise<CodingGitOutcome<{ sha: string }>> {
-  const configRefusal = await refuseByConfig(root, scope?.projectRoot);
-  if (configRefusal) return { ok: false, refusal: configRefusal };
+  const checked = await refuseByConfig(root, scope?.projectRoot);
+  if ('refusal' in checked) return { ok: false, refusal: checked.refusal };
 
   const changes = await changedPaths(root);
   if (changes.length === 0) {
@@ -297,10 +326,18 @@ export async function commitRepository(
     return { ok: false, refusal: { code: 'secrets', files: secrets } };
   }
 
+  if (!(await checked.location.unchanged())) {
+    return { ok: false, refusal: CHANGED_WHILE_CHECKING };
+  }
   await addPaths(
     root,
     changes.map((change) => change.path),
   );
+  // `add` changed the index and the object store; what must still hold is
+  // that they are the same files.
+  if (!(await checked.location.sameIdentity())) {
+    return { ok: false, refusal: CHANGED_WHILE_CHECKING };
+  }
   await git(root, ['commit', '-q', '-m', message], {
     timeout: 120_000,
     // As in the operator's terminal: the repository's hooks run, and the
@@ -333,8 +370,8 @@ export async function pushRepository(
     allowFileProtocol?: boolean;
   },
 ): Promise<CodingGitOutcome<{ output: string; remote: string }>> {
-  const configRefusal = await refuseByConfig(root, options?.projectRoot);
-  if (configRefusal) return { ok: false, refusal: configRefusal };
+  const checked = await refuseByConfig(root, options?.projectRoot);
+  if ('refusal' in checked) return { ok: false, refusal: checked.refusal };
 
   let branch = request.branch;
   if (branch === undefined) {
@@ -399,6 +436,9 @@ export async function pushRepository(
     };
   }
 
+  if (!(await checked.location.unchanged())) {
+    return { ok: false, refusal: CHANGED_WHILE_CHECKING };
+  }
   const output = await git(
     root,
     ['push', '--porcelain', '--', url, `${commit}:refs/heads/${branch}`],

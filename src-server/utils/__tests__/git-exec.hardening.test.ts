@@ -439,6 +439,105 @@ describe.skipIf(process.platform === 'win32')(
       });
     });
 
+    test("a repository's diff programs (diff.external, a driver's command and textconv) run on no command that prints a diff", async () => {
+      const repo = initRepo();
+      const marker = join(sandbox(), 'diff-program-ran');
+      const script = markerScript(repo, marker);
+      writeFileSync(join(repo, '.gitattributes'), '*.md diff=planted\n');
+      plainGit(repo, ['add', '-A']);
+      plainGit(repo, ['commit', '-q', '-m', 'attributes']);
+      writeFileSync(join(repo, 'README.md'), '# edited\n');
+      plainGit(repo, ['commit', '-q', '-am', 'edit']);
+      writeFileSync(join(repo, 'README.md'), '# edited again\n');
+      for (const key of [
+        'diff.external',
+        'diff.planted.command',
+        'diff.planted.textconv',
+      ]) {
+        plainGit(repo, ['config', key, script]);
+      }
+      plainGit(repo, ['diff']);
+      expect(existsSync(marker), 'control: plain git runs the plant').toBe(
+        true,
+      );
+      rmSync(marker, { force: true });
+      plainGit(repo, ['config', '--unset', 'diff.external']);
+      plainGit(repo, ['log', '-p', '-1']);
+      expect(existsSync(marker), 'control: a textconv runs on log -p').toBe(
+        true,
+      );
+      rmSync(marker, { force: true });
+      plainGit(repo, ['config', 'diff.external', script]);
+
+      for (const args of [
+        ['diff'],
+        ['diff', 'HEAD~1', 'HEAD'],
+        ['diff-index', '-p', 'HEAD'],
+        ['log', '-p', '-2'],
+        ['show', 'HEAD'],
+      ]) {
+        await settledWithin(execGit(args, { cwd: repo }));
+        expect(existsSync(marker), `after ${args.join(' ')}`).toBe(false);
+      }
+    });
+
+    test('a nested repository is not entered even when the parent asks for its diff or log, and a changed one is not reported', async () => {
+      const parent = initRepo();
+      const nested = join(parent, 'sub');
+      mkdirSync(nested);
+      plainGit(nested, ['init', '-q', '-b', 'main']);
+      writeFileSync(join(nested, 'f.txt'), 'one\n');
+      plainGit(nested, ['add', '-A']);
+      plainGit(nested, ['commit', '-q', '-m', 'one']);
+      const recorded = plainGit(nested, ['rev-parse', 'HEAD']).trim();
+      writeFileSync(join(nested, 'f.txt'), 'two\n');
+      plainGit(nested, ['commit', '-q', '-am', 'two']);
+      plainGit(parent, [
+        'update-index',
+        '--add',
+        '--cacheinfo',
+        `160000,${recorded},sub`,
+      ]);
+      plainGit(parent, ['commit', '-q', '-m', 'record sub']);
+      const marker = join(sandbox(), 'nested-program-ran');
+      plainGit(nested, [
+        'config',
+        'diff.external',
+        markerScript(nested, marker),
+      ]);
+
+      for (const mode of ['diff', 'log']) {
+        plainGit(parent, ['config', 'diff.submodule', mode]);
+        if (mode === 'diff') {
+          plainGit(parent, ['diff']);
+          expect(
+            existsSync(marker),
+            'control: plain git runs the nested program',
+          ).toBe(true);
+          rmSync(marker, { force: true });
+        } else {
+          expect(
+            plainGit(parent, ['diff']),
+            'control: plain git prints the nested commits',
+          ).toContain('two');
+        }
+        for (const args of [
+          ['diff'],
+          ['status', '--porcelain'],
+          ['log', '-p'],
+        ]) {
+          const result = (await settledWithin(
+            execGit(args, { cwd: parent }),
+          )) as { stdout?: string };
+          expect(result.stdout ?? '').not.toMatch(/Submodule sub|two/);
+          expect(existsSync(marker), `after ${args.join(' ')}`).toBe(false);
+        }
+        expect(
+          (await execGit(['status', '--porcelain'], { cwd: parent })).stdout,
+        ).toBe('');
+      }
+    });
+
     test('credential helpers: a repo-local helper never runs, and the operator helpers run in plain git order', async () => {
       const config = sandbox();
       const log = join(config, 'helpers.log');

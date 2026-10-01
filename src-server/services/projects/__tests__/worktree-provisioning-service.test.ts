@@ -58,6 +58,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+/**
+ * For the tests that script the git runner over a folder that is not a
+ * repository: the guard's answer for an ordinary repository at `folder`.
+ */
+const scriptedRepository = async (folder: string) => ({
+  top: folder,
+  args: ['-C', folder],
+  unchanged: async () => true,
+});
+
 describe('worktree isolation policy and session binding', () => {
   test('provisions nothing unless the session asked for worktree isolation', async () => {
     const service = new WorktreeProvisioningService();
@@ -108,7 +118,7 @@ describe('worktree isolation policy and session binding', () => {
     };
 
     await expect(
-      new WorktreeProvisioningService(runner).provision({
+      new WorktreeProvisioningService(runner, scriptedRepository).provision({
         repoPath: '/nonexistent-repo',
         threadId: 'unsafe-prefix',
         providerKind: 'codex',
@@ -269,7 +279,7 @@ describe('WorktreeProvisioningService', () => {
         throw new Error(`unexpected git call: ${args.join(' ')}`);
       },
     };
-    const service = new WorktreeProvisioningService(runner);
+    const service = new WorktreeProvisioningService(runner, scriptedRepository);
 
     const metadata = await service.provision({
       repoPath,
@@ -318,7 +328,7 @@ describe('WorktreeProvisioningService', () => {
         throw new Error(`unexpected git call: ${args.join(' ')}`);
       },
     };
-    const service = new WorktreeProvisioningService(runner);
+    const service = new WorktreeProvisioningService(runner, scriptedRepository);
 
     const metadata = await service.provision({
       repoPath,
@@ -335,7 +345,6 @@ describe('WorktreeProvisioningService', () => {
     const segment = branch.split('/').at(-1)!;
     expect(metadata?.path).toBe(join(worktreeBaseDir, segment));
     expect(calls.map((call) => call.args.join(' '))).toEqual([
-      `-C ${repoPath} rev-parse --show-toplevel`,
       `-C ${repoPath} config --show-scope --null --list`,
       `-C ${repoPath} status --porcelain`,
       `-C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`,
@@ -344,7 +353,7 @@ describe('WorktreeProvisioningService', () => {
         segment,
       )} HEAD`,
     ]);
-    expect(calls[3]?.allowCodes).toEqual([0, 1]);
+    expect(calls[2]?.allowCodes).toEqual([0, 1]);
   });
 
   test('provisions and cleans up an isolated worktree', async () => {
@@ -636,7 +645,7 @@ describe('repository-defined programs (#2411)', () => {
     };
 
     await expect(
-      new WorktreeProvisioningService(runner).provision({
+      new WorktreeProvisioningService(runner, scriptedRepository).provision({
         repoPath,
         threadId: 'session-unreadable',
         providerKind: 'codex',

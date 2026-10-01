@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { execGit } from '../../utils/git-exec.js';
 import { JsonFileStore } from '../infra/json-store.js';
+import { requireProjectRepository } from '../projects/git-read-repository.js';
 import { checkRepositoryConfig } from '../projects/git-repository-config.js';
 import type {
   CheckpointIndexStore,
@@ -262,6 +263,14 @@ export class CheckpointRestoreService {
     )
       throw new CheckpointRestoreError('checkpoint_identity_mismatch');
 
+    // A restore cleans and rewrites the work tree of whichever repository
+    // git finds from this folder, and the folder is member-writable: only
+    // the folder's own repository is restored into.
+    try {
+      await requireProjectRepository(phase.repoRoot);
+    } catch {
+      throw new CheckpointRestoreError('workspace_changed');
+    }
     const canonicalRoot = (
       await execGit(['rev-parse', '--show-toplevel'], {
         cwd: phase.repoRoot,
