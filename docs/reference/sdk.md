@@ -1503,12 +1503,21 @@ unsupported by this native provider path.
 Prepare the account exchange body before application-channel body freezing;
 the later Device proof binds that complete body, including the account proof.
 Native IPC uses these structured operations, never an adapter for `sign(bytes)`.
-The Desktop account operation handle is bounded, owner/epoch-fenced and allows
+The native account operation handle is bounded, owner/epoch-fenced and allows
 one exchange. An unknown exchange outcome requires an explicit new context and
 challenge; it is not retried automatically. Expiry hints cannot extend host
 lifetimes. Provider sessions, replay, Device binding and Project membership are
-still verified by the server. This source interface does not enable ordinary
-native sign-in or qualify a packaged/native IPC journey.
+still verified by the server. This interface alone does not enable sign-in or
+qualify a packaged/native IPC journey. Station now composes it through the
+[production account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts),
+[selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts),
+and [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx). The ordinary
+[account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+uses that owner for sign-in, typed invitation acceptance and remote logout.
+Public scope lives only in the process and partitions the
+[ephemeral member shell](../../src-ui/src/views/native-relay/NativeRelayMemberShell.tsx);
+authority loss clears its cache. Those source consumers and a reachable
+simulator UI entry do not establish a fresh or physical native journey.
 
 ```ts
 import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
@@ -1533,7 +1542,12 @@ The host proof provider may implement `prepareInvitationAcceptance({continuation
 validates the exact token-only body and host account signature, rejects reused
 JTIs or changed targets, and returns frozen body/headers for **only**
 `POST /api/account-auth/accept-invitation`. It does not broaden the existing
-GET/HEAD `requestHeaders` operation or accept generic signing bytes. Send this
+GET/HEAD `requestHeaders` operation or accept generic signing bytes.
+`requestHeaders` remains limited to Station health/authority, Project list/detail and
+Project-scoped shared-work document/history/publication. Only well-known/status/
+identity observations may omit account material; authority and member reads
+require the current separate account, and invalid supplied account material
+never falls back to Device-only access. Send the prepared invitation
 body through the current native application transport: the separate Device
 proof authenticates its exact bytes, and the server independently rechecks the
 real account, Device binding and invitation/membership owner. No browser Origin

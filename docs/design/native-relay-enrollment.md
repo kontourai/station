@@ -133,7 +133,9 @@ private adapter provenance. It refuses direct HTTP imitation, conflicting
 Origin/cookies, replayed proofs, changed bodies and revoked account sessions;
 account revocation preserves the independently approved Device.
 
-The native route UI now mounts the host-owned Device enrollment ceremony,
+The [default native client](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx)
+mount the host-owned Device enrollment ceremony,
 including explicit operator approval, activation and recovery from the host
 journal. Ordinary route selection composes fresh ICE, verified Station proof,
 Device signing and a separate account continuation for a bounded read surface.
@@ -141,6 +143,25 @@ These are executed frontend and server composition checks with mocked native
 IPC/peer boundaries, not a packaged-client result. Recovery hints do not grant
 account or Project authority; an unknown activation publication is rechecked
 against the host before its configured revision is accepted.
+
+The [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+composes a separate [account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts),
+including actual native revocation and host-deadline-clamped public scope. The
+[entry boundary](../../src-ui/src/platform/native/NativeRelayEntryBoundary.tsx)
+loads an [ephemeral member shell](../../src-ui/src/views/native-relay/NativeRelayMemberShell.tsx)
+for the selected native route, independently of operator Workspace providers.
+Membership reads require the current account, Device and Project authority;
+contribution writes remain outside the fixed read-only enrollment grant.
+The simulator Station manager broker action now reaches the real relay-profile
+UI; that observed entry does not establish the ceremony.
+
+The October 1 public fixture separately observed actual connector registration
+(lease revision 1), subsequent renewal (revision 15), fixed human shared-work
+publication and confirmed owned cleanup. The preserved early-init run instead
+expired before first registration. These are real server/operational receipts,
+not a native client or application-peer result. The
+[fixture guide](../../tests/tauri-shell/native-fresh-relay-fixture.md) and
+[operator guide](../guides/self-hosted-broker.md) retain their ordering and limits.
 
 Actual Keychain/process-relaunch lifecycle, the newly composed Tauri IPC journey,
 public TURN application traffic and physical iOS operation remain

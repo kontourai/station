@@ -11,7 +11,7 @@ not grant any of those permissions.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
 `/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
-`/native-application` and `/native-enrollment`,
+`/native-application`, `/native-enrollment` and `/relay-ice`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
@@ -57,8 +57,15 @@ The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station now composes it in its native saved-route owner
 for a configured host-owned Device binding. Each peer obtains fresh ICE, and
 a separate account bridge supplies continuation proof for bounded Project
-reads. Unsupported resources and writes fail before peer allocation. The CLI
-continues to exclude these routes from default selection.
+reads. Unsupported resources and writes fail before peer allocation in the
+[Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
+The generic library does not choose that policy.
+[ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
+[selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+mount the host transport; the
+[member entry boundary](../../src-ui/src/platform/native/NativeRelayEntryBoundary.tsx)
+keeps its account-partitioned reads separate from operator Workspace providers.
+The CLI continues to exclude these routes from default selection.
 Source and focused tests do not establish executed Tauri IPC, packaged-client,
 physical-device or complete authenticated Project-journey evidence.
 
@@ -89,7 +96,19 @@ credential custody or activation itself; this generic transport does neither.
 The host also owns cancellation of pending enrollment and reconciliation of an
 unknown activation outcome. Closing a network peer alone is not cancellation
 of a staged or committed enrollment. These library primitives do not establish
-a mounted native onboarding workflow or a released client.
+a mounted native onboarding workflow or a released client. Station supplies
+that source composition in its
+[default native enrollment client](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx).
+The simulator Station manager entry reaches that UI, but fresh enrollment,
+public native application traffic and physical Nightly acceptance remain
+unverified; the library tests do not establish them.
+
+The `/relay-ice` entry validates a closed relay-only receipt against the exact
+scope/surface and current time. The host/connector owns obtaining it with its
+current routing credential, and callers must keep peer lifetime within the
+credential expiry. End-user TURN credentials are allocation metadata, not
+Station, Device, account or Project authority; no issuer secret belongs here.
 
 ## Optional self-hosted browser transport
 
