@@ -105,34 +105,28 @@ export interface NativeRelaySignalingBridgeOptions {
   readonly invoke: TauriInvoker;
 }
 
-/**
- * Shared host-relay signaling factory for one exact saved-profile revision.
- * Command names and error prefixes are caller-owned; validation, trust
- * rechecking, and receipt parsing are shared so every relay adapter fails
- * closed identically.
- */
-export async function createNativeRelaySignalingBridge(
-  options: NativeRelaySignalingBridgeOptions,
-): Promise<{
-  signaling: NativeDiagnosticSignaling;
-  trust: {
-    current(): ApprovedStationConnectionTrust | null;
-    isCurrent(value: ApprovedStationConnectionTrust): boolean;
-    recheck(
-      value: ApprovedStationConnectionTrust,
-      stage: 'checkpoint' | 'before-remote-description',
-    ): Promise<boolean>;
-  };
-}> {
-  const {
-    bindingCommand,
-    openCommand,
-    readCommand,
-    errorPrefix,
-    profileName,
-    profileRevision,
-    invoke,
-  } = options;
+export interface NativeRelayTrustOwner {
+  current(): ApprovedStationConnectionTrust | null;
+  isCurrent(value: ApprovedStationConnectionTrust): boolean;
+  recheck(
+    value: ApprovedStationConnectionTrust,
+    stage: 'checkpoint' | 'before-remote-description',
+  ): Promise<boolean>;
+}
+
+/** Reads current host-owned routing and signing trust without allocating a peer. */
+export async function createNativeRelayBindingOwner(
+  options: Pick<
+    NativeRelaySignalingBridgeOptions,
+    | 'bindingCommand'
+    | 'errorPrefix'
+    | 'profileName'
+    | 'profileRevision'
+    | 'invoke'
+  >,
+): Promise<{ binding: NativeRelayBindingDto; trust: NativeRelayTrustOwner }> {
+  const { bindingCommand, errorPrefix, profileName, profileRevision, invoke } =
+    options;
   if (!profileName.trim() || !safeInteger(profileRevision))
     throw new Error(`${errorPrefix}_profile_invalid`);
   const request = { profileName, expectedProfileRevision: profileRevision };
@@ -145,7 +139,13 @@ export async function createNativeRelaySignalingBridge(
       profileRevision,
       errorPrefix,
     );
-  const initial = await fetchBinding();
+  const initialValue = await fetchBinding();
+  const initial = Object.freeze({
+    ...initialValue,
+    scope: Object.freeze({ ...initialValue.scope }),
+    surface: Object.freeze({ ...initialValue.surface }),
+    signingKey: Object.freeze({ ...initialValue.signingKey }),
+  });
   const trust: ApprovedStationConnectionTrust = Object.freeze({
     stationId: initial.stationId,
     enrollmentId: initial.enrollmentId,
@@ -153,6 +153,64 @@ export async function createNativeRelaySignalingBridge(
     signingKey: Object.freeze({ ...initial.signingKey }),
   });
   let current: ApprovedStationConnectionTrust | null = trust;
+  return {
+    binding: initial,
+    trust: {
+      current: () => current,
+      isCurrent: (expected) => !!current && sameTrust(current, expected),
+      async recheck(
+        expected,
+        _stage: 'checkpoint' | 'before-remote-description',
+      ) {
+        try {
+          const fresh = await fetchBinding();
+          const same =
+            fresh.trustRevision === initial.trustRevision &&
+            fresh.scope.routingGeneration === initial.scope.routingGeneration &&
+            JSON.stringify(fresh.surface) === JSON.stringify(initial.surface) &&
+            sameTrust(
+              {
+                stationId: fresh.stationId,
+                enrollmentId: fresh.enrollmentId,
+                generation: fresh.generation,
+                signingKey: fresh.signingKey,
+              },
+              expected,
+            );
+          current = same ? trust : null;
+          return same;
+        } catch {
+          current = null;
+          return false;
+        }
+      },
+    },
+  };
+}
+
+/**
+ * Shared host-relay signaling factory for one exact saved-profile revision.
+ * Command names and error prefixes are caller-owned; validation, trust
+ * rechecking, and receipt parsing are shared so every relay adapter fails
+ * closed identically.
+ */
+export async function createNativeRelaySignalingBridge(
+  options: NativeRelaySignalingBridgeOptions,
+): Promise<{
+  signaling: NativeDiagnosticSignaling;
+  trust: NativeRelayTrustOwner;
+}> {
+  const {
+    openCommand,
+    readCommand,
+    errorPrefix,
+    profileName,
+    profileRevision,
+    invoke,
+  } = options;
+  const request = { profileName, expectedProfileRevision: profileRevision };
+  const { binding: initial, trust } =
+    await createNativeRelayBindingOwner(options);
   const signaling: NativeDiagnosticSignaling = Object.freeze({
     scope: Object.freeze({ ...initial.scope }),
     surface: Object.freeze({ ...initial.surface }),
@@ -220,35 +278,6 @@ export async function createNativeRelaySignalingBridge(
   });
   return {
     signaling,
-    trust: {
-      current: () => current,
-      isCurrent: (expected) => !!current && sameTrust(current, expected),
-      async recheck(
-        expected,
-        _stage: 'checkpoint' | 'before-remote-description',
-      ) {
-        try {
-          const fresh = await fetchBinding();
-          const same =
-            fresh.trustRevision === initial.trustRevision &&
-            fresh.scope.routingGeneration === initial.scope.routingGeneration &&
-            JSON.stringify(fresh.surface) === JSON.stringify(initial.surface) &&
-            sameTrust(
-              {
-                stationId: fresh.stationId,
-                enrollmentId: fresh.enrollmentId,
-                generation: fresh.generation,
-                signingKey: fresh.signingKey,
-              },
-              expected,
-            );
-          current = same ? trust : null;
-          return same;
-        } catch {
-          current = null;
-          return false;
-        }
-      },
-    },
+    trust,
   };
 }
