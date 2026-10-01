@@ -4267,3 +4267,71 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
     expect(run.status).toBe('cancelled');
   });
 });
+
+test('nonblocking questions retain running/settled status and snapshot blocking ids exclude them', () => {
+  const base = {
+    provider: 'codex' as const,
+    threadId: 'async-thread',
+    createdAt: '2026-09-29T10:00:00Z',
+  };
+  const loaded = {
+    provider: 'codex' as const,
+    threadId: base.threadId,
+    status: 'running' as const,
+    createdAt: base.createdAt,
+    updatedAt: base.createdAt,
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...base,
+      eventId: 'async-start',
+      method: 'turn.started',
+      turnId: 'async-turn',
+      prompt: 'go',
+    },
+    {
+      ...base,
+      eventId: 'async-open',
+      method: 'request.opened',
+      requestId: 'async-q',
+      requestType: 'approval',
+      title: 'Question',
+      blocking: false,
+    },
+  ];
+  expect(
+    buildAgentRunSummary({ answerability: OBSERVATION, loaded, events })
+      ?.status,
+  ).toBe('running');
+  expect(
+    buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      loaded,
+      events,
+      openRequestIds: ['async-q'],
+    }),
+  ).toMatchObject({ openRequestIds: ['async-q'], blockingOpenRequestIds: [] });
+  events.push({
+    ...base,
+    eventId: 'async-done',
+    method: 'turn.completed',
+    turnId: 'async-turn',
+  });
+  const settled = buildAgentRunSummary({
+    answerability: OBSERVATION,
+    loaded,
+    events,
+  })?.status;
+  events.push({
+    ...base,
+    eventId: 'async-close',
+    method: 'request.resolved',
+    requestId: 'async-q',
+    status: 'cancelled',
+    blocking: false,
+  });
+  expect(
+    buildAgentRunSummary({ answerability: OBSERVATION, loaded, events })
+      ?.status,
+  ).toBe(settled);
+});

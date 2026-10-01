@@ -18,7 +18,13 @@ import {
   TRANSFER_BASELINE_PRUNE_ENV,
   touchTransferBaselineMarker,
 } from '../lib/transfer-baselines.mjs';
-import { runTransferGate } from '../orchestration-transfer-gate.mjs';
+import {
+  discoverTransferBaseline,
+  missingBaseline,
+  runTransferGate,
+  suggestedBaselineRoot,
+  transferBaseSha,
+} from '../orchestration-transfer-gate.mjs';
 
 // The managed per-file root is reclaimed by Vitest global teardown, even when
 // a pooled worker is interrupted. Raw OS temp paths bypass that owner.
@@ -544,5 +550,230 @@ describe.skipIf(!posix)('--prepare-baseline reuse and pruning (#2355)', () => {
     const after = registered(f.primary);
     expect(after).toEqual(expect.arrayContaining([tipBaseline, requested]));
     expect(after).not.toContain(stale);
+  });
+  test('keeps the baseline another lane branched from while pruning an orphaned one (#2925)', () => {
+    const f = fixture();
+    // A sibling lane branched from old1 and has not merged main since: its
+    // gate compares against old1, so that baseline is still in use.
+    const siblingLane = join(f.lanes, 'sibling-lane');
+    git(f.primary, ['worktree', 'add', '-b', 'sibling', siblingLane, f.old1]);
+    writeFileSync(join(siblingLane, 'subject.txt'), 'sibling work\n');
+    git(siblingLane, [
+      '-c',
+      'user.name=x',
+      '-c',
+      'user.email=x@x',
+      'commit',
+      '-qam',
+      'sibling work',
+    ]);
+    const siblingBaseline = f.addDetached(f.baselinePath(f.old1), f.old1);
+    // Nothing branches from old2 any more.
+    const orphaned = f.addDetached(f.baselinePath(f.old2), f.old2);
+
+    quiet(() =>
+      runTransferGate({
+        candidateRoot: f.primary,
+        baselineRoot: f.baselinePath(f.tip),
+        base: f.tip,
+        outputDir: '.kontourai/orchestration-transfer-gate',
+        prepareBaseline: true,
+      }),
+    );
+
+    const after = registered(f.primary);
+    expect(after).toContain(siblingBaseline);
+    expect(after).not.toContain(orphaned);
+  });
+});
+
+describe.skipIf(!posix)('pre-push baseline discovery (#2925)', () => {
+  const accept = () => true;
+  const silent = () => {};
+
+  test('finds a verified baseline for the exact base whatever its suffix length or lane prefix', () => {
+    const f = fixture();
+    const nine = f.addDetached(
+      join(f.lanes, `${TRANSFER_BASELINE_PREFIX}${f.old1.slice(0, 9)}`),
+      f.old1,
+    );
+    const twelve = f.addDetached(f.baselinePath(f.old2), f.old2);
+    const laneNamed = f.addDetached(
+      join(f.lanes, `docs-transfer-baseline-${f.tip.slice(0, 9)}-20260927`),
+      f.tip,
+    );
+    const find = (baseSha: string) =>
+      discoverTransferBaseline({
+        candidateRoot: f.primary,
+        baseSha,
+        verify: accept,
+        log: silent,
+      });
+    expect(find(f.old1)).toBe(nine);
+    expect(find(f.old2)).toBe(twelve);
+    expect(find(f.tip)).toBe(laneNamed);
+  });
+
+  test('never returns a baseline for a different SHA, whatever its name claims', () => {
+    const f = fixture();
+    f.addDetached(
+      join(f.lanes, `${TRANSFER_BASELINE_PREFIX}${f.old1.slice(0, 9)}`),
+      f.old1,
+    );
+    f.addDetached(f.baselinePath(f.old1), f.old1);
+    f.addDetached(
+      join(f.lanes, `docs-transfer-baseline-${f.old1.slice(0, 12)}`),
+      f.old1,
+    );
+    // Named for the base being asked about, but checked out elsewhere.
+    const decoyParent = join(f.root, 'decoy');
+    mkdirSync(decoyParent);
+    f.addDetached(f.baselinePath(f.old2, decoyParent), f.old1);
+    const verified: string[] = [];
+    const found = discoverTransferBaseline({
+      candidateRoot: f.primary,
+      baseSha: f.old2,
+      verify: (path: string) => {
+        verified.push(path);
+        return true;
+      },
+      log: silent,
+    });
+    expect(found).toBeNull();
+    // Refused on the SHA, before verification could vouch for any of them.
+    expect(verified).toEqual([]);
+  });
+
+  test('requires the full SHA, not an abbreviation the name and HEAD share', () => {
+    // Two commits sharing a seven-character prefix cannot be made on demand,
+    // so the worktree list is supplied: a real directory whose HEAD agrees
+    // with its name and with the base's first seven characters only.
+    const f = fixture();
+    const near = `${f.old2.slice(0, 7)}${f.old2.slice(7).replace(/./g, (c) => (c === '0' ? '1' : '0'))}`;
+    const path = join(
+      f.lanes,
+      `${TRANSFER_BASELINE_PREFIX}${near.slice(0, 7)}`,
+    );
+    mkdirSync(path);
+    const verified: string[] = [];
+    expect(
+      discoverTransferBaseline({
+        candidateRoot: f.primary,
+        baseSha: f.old2,
+        worktrees: [
+          {
+            path,
+            head: near,
+            branch: null,
+            detached: true,
+            locked: false,
+            prunable: false,
+            isPrimary: false,
+          },
+        ],
+        verify: (candidate: string) => {
+          verified.push(candidate);
+          return true;
+        },
+        log: silent,
+      }),
+    ).toBeNull();
+    expect(verified).toEqual([]);
+  });
+
+  test('prunes a stale gate baseline with a nine-character name', () => {
+    const f = fixture();
+    const nine = f.addDetached(
+      join(f.lanes, `${TRANSFER_BASELINE_PREFIX}${f.old1.slice(0, 9)}`),
+      f.old1,
+    );
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip],
+      env: {},
+      log: silent,
+    });
+    expect(outcome.pruned).toEqual([nine]);
+  });
+
+  test('skips a baseline at the exact SHA whose verification fails', () => {
+    const f = fixture();
+    const broken = f.addDetached(f.baselinePath(f.old2), f.old2);
+    const logged: string[] = [];
+    const found = discoverTransferBaseline({
+      candidateRoot: f.primary,
+      baseSha: f.old2,
+      verify: () => {
+        throw new Error('dependencies missing');
+      },
+      log: (line: string) => logged.push(line),
+    });
+    expect(found).toBeNull();
+    // The refusal names the tree, so its owner knows which one to repair.
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain(broken);
+  });
+
+  /** A lane branched from old2 that origin/main (at tip) has moved past. */
+  function laneBehindMain(f: ReturnType<typeof fixture>) {
+    const lane = join(f.lanes, 'feature-lane');
+    git(f.primary, ['worktree', 'add', '-b', 'feature', lane, f.old2]);
+    writeFileSync(join(lane, 'feature.txt'), 'feature\n');
+    git(lane, ['add', 'feature.txt']);
+    git(lane, ['commit', '-m', 'feature']);
+    return lane;
+  }
+
+  test('measures against the merge base, so a moved origin/main needs no new baseline', () => {
+    const f = fixture();
+    const lane = laneBehindMain(f);
+    expect(transferBaseSha(lane, 'origin/main')).toBe(f.old2);
+    const asked: string[] = [];
+    expect(() =>
+      runTransferGate({
+        candidateRoot: lane,
+        baselineRoot: '',
+        base: 'origin/main',
+        outputDir: '.kontourai/orchestration-transfer-gate',
+        prepareBaseline: false,
+        discoverBaseline: ({ baseSha }: { baseSha: string }) => {
+          asked.push(baseSha);
+          return null;
+        },
+      }),
+    ).toThrow(missingBaseline(f.old2, lane).prepareCommand);
+    expect(asked).toEqual([f.old2]);
+  });
+
+  test('names one command that prepares the missing baseline and installs its own dependencies', () => {
+    const f = fixture();
+    const lane = laneBehindMain(f);
+    const missing = missingBaseline(f.old2, lane);
+    expect(missing.baselineRoot).toBe(suggestedBaselineRoot(lane, f.old2));
+    expect(missing.prepareCommand).toContain(
+      `--prepare-baseline --baseline-root ${missing.baselineRoot} --base ${f.old2}`,
+    );
+    expect(missing.prepareCommand).toContain('npm run dependencies:ci');
+    expect(missing.prepareCommand).toContain('npm run dependencies:verify');
+    // The approved lifecycle, never a raw install.
+    expect(missing.prepareCommand).not.toMatch(/\bnpm ci\b/);
+  });
+
+  test('the gate still refuses a discovered root that is not at the base', () => {
+    // Defence in depth: even a discovery that returned the wrong tree cannot
+    // make the gate measure against it.
+    const f = fixture();
+    const lane = laneBehindMain(f);
+    const wrong = f.addDetached(f.baselinePath(f.old1), f.old1);
+    expect(() =>
+      runTransferGate({
+        candidateRoot: lane,
+        baselineRoot: '',
+        base: 'origin/main',
+        outputDir: '.kontourai/orchestration-transfer-gate',
+        prepareBaseline: false,
+        discoverBaseline: () => wrong,
+      }),
+    ).toThrow(`baseline root is ${f.old1}, expected exact ${f.old2}`);
   });
 });

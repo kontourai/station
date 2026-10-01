@@ -69,6 +69,7 @@ describe('virtual application ingress', () => {
       return Response.json({ admitted: !!native });
     });
     const owner = new VirtualApplicationIngress(origin, undefined, () => ({
+      peerNonce: 'a'.repeat(43),
       stationId: 'station-a',
       connectionEnrollmentId: 'enrollment-a',
       routingGeneration: 1,

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/cloud-move-preparation.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"c80785d84c2ab1d583c9898a5f409cf7c8cbbed9d322ca8090745f204c7b7a96","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

@@ -38,6 +38,7 @@ export function AttentionSection({
   pendingVisible,
   filtered = false,
   focusedApprovalId,
+  focusedPairingRequestId,
   unavailableSources = [],
 }: {
   items: AttentionItem[];
@@ -45,6 +46,7 @@ export function AttentionSection({
   pendingVisible: number;
   filtered?: boolean;
   focusedApprovalId?: string;
+  focusedPairingRequestId?: string;
   /**
    * #2064 review (c): sources this read could not fully cover. Rendered
    * whether or not there are items — a partial read under a populated list is
@@ -88,8 +90,10 @@ export function AttentionSection({
               key={item.id}
               item={item}
               focused={
-                item.kind === 'approval' &&
-                item.source.notificationId === focusedApprovalId
+                (item.kind === 'approval' &&
+                  item.source.notificationId === focusedApprovalId) ||
+                (item.kind === 'device-pairing' &&
+                  item.source.requestId === focusedPairingRequestId)
               }
             />
           ))}

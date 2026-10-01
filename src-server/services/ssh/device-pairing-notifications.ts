@@ -86,8 +86,10 @@ export class DevicePairingNotificationProvider
             expiresAt: request.expiresAt,
             // Where to go to decide. Not a grant.
             surface: 'connections:pairing',
-            // Toast "Open" uses navigateTo; surface is the pairing-specific cue.
-            navigateTo: { path: '/connections', mode: 'pair-device' },
+            link: `/notifications?pairing=${encodeURIComponent(request.requestId)}`,
+            navigateTo: {
+              path: `/notifications?pairing=${encodeURIComponent(request.requestId)}`,
+            },
           },
         }))
     );

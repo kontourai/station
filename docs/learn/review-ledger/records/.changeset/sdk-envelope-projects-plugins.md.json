@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/sdk-envelope-projects-plugins.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Read the upstream changeset as package release intent; it records the named SDK or Windows behavior change.",
+
+  "limits": "A changeset does not prove publication, installation, a Windows host result or a current release version. Canonical guides carry the current source review.",
+
+  "document": {"digest":"327a7ac5e19115cd1e5b0aa9794ff72c5605f3ca199428ec108e0c58758ed57a","revision":"6fa523e4d5b5a265a9e545edcbba6f5602193bef"},
+
+  "sources": [],
+
+  "checks": []
+}

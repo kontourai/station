@@ -1,0 +1,17 @@
+{
+  "path": "docs/adr/0008-drive-acp-through-the-canonical-adapter-seam.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Architecture decision record; preserve its rationale and stated scope.",
+
+  "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+
+  "document": {"digest":"82ba1903b63bdc92f4fa7d00b01c01f5049a1c9467f3ae98bc8d93c536c23a91","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

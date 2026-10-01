@@ -129,23 +129,30 @@ read/retry, and both diagnostic and application-named signaling binding/open/rea
 Those main-window
 commands reload the saved profile and approved Station trust in the host;
 the renderer does not supply trusted keyring identity. Profile removal and
-startup also have pending-cleanup hooks. These capabilities still do not select
-a native application route or carry protected application traffic.
+startup also have pending-cleanup hooks. Ordinary UI does not select a native
+application route. The separate manual
+[native Project pilot](native-shell-verification.md#native-protected-project-pilot)
+composes protected application traffic for bounded debug-shell verification.
 
-The [application signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
-share the diagnostic host service: they admit an existing routing grant and
-return public binding metadata or bounded SDP/proof responses. The renderer's
+The [application signaling and peer commands](../design/native-capabilities.md#desktop-application-signaling-commands)
+admit an existing routing grant and return public binding metadata or bounded
+SDP/proof responses. The renderer's
 [application signaling adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
-wraps those names for one exact saved-profile revision, but nothing in the
-renderer composes it into a connection yet. Returning an opaque Station proof
-does not verify it or open an application DataChannel. Broker signaling remains
-separate from Device/account authorization and application transport.
+wraps the host-owned peer lifecycle for one exact saved-profile revision. The
+host verifies the Station transcript and signs one bounded Device request after
+peer preparation; the opt-in Connect adapter carries it over the application
+DataChannel. Returning an opaque Station proof alone does not verify it or prove
+DTLS connectivity. Broker signaling remains separate from Device/account
+authorization and application transport; ordinary UI activation remains gated.
 
 The separate [desktop account proof-key foundation](../design/native-capabilities.md#desktop-account-proof-key-foundation)
 uses its own keyring namespace, additionally bound to a Station and approved
-Device identity. It has no Tauri IPC or production sign-in caller yet. The
-broker's routing proof key and grant maintenance do not become account proof
-or account authority through that foundation.
+Device identity. Bounded host account operations now have Tauri commands and a
+typed SDK proof provider used by the manual pilot. There is no ordinary
+production sign-in UI caller. The broker's routing proof key and grant
+maintenance do not become account proof or account authority through that
+foundation. See the pilot's retained verification limits before treating a
+development run as packaged or relay-only onboarding evidence.
 
 Host renewal records its renewal ID, expected expiry and exact body in private
 grant custody before sending the request. A lost reply reuses that intent with

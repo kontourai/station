@@ -1450,58 +1450,91 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     expect(root.scripts['docs:truth:gate']).toBe(
       'node scripts/docs-truth-gate-aggregate.mjs',
     );
-    // Membership, not order: the aggregate runs every lane to completion. A
-    // lane silently dropped from the catalog is the regression this exists
-    // for, and the lanes share no script-name prefix to derive the set from.
-    expect(DOCS_TRUTH_GATE_LANES.map((lane) => lane.id).sort()).toEqual(
-      [
-        'contribution:gate',
-        'labels:check',
-        'docs:issue-lifecycle:check',
-        'docs:contributor-commands:check',
-        'docs:public:hygiene',
-        'docs:hygiene:repo',
-        'docs:index:check',
-        'docs:cli-parity:check',
-        'docs:public:contract-examples',
-        'docs:foundations:test',
-        'docs:links:check',
-        'docs:metrics:check',
-        'docs:truth:biome',
-      ].sort(),
+    // Membership, derived rather than copied (#2927): every `docs:*` script
+    // is a lane unless it is excluded below with the reason it is not one,
+    // and the two lanes outside that namespace are named. Dropping a lane,
+    // or adding a docs check nobody placed, fails; adding a lane does not.
+    const OUTSIDE_DOCS_NAMESPACE = ['contribution:gate', 'labels:check'];
+    const NOT_A_DOCS_TRUTH_LANE: Record<string, string> = {
+      'docs:truth:gate': 'the aggregate itself',
+      'docs:learn:build': 'writes the learning reader',
+      'docs:learn:check': 'standalone learning-reader check',
+      'docs:impact': 'advisory dependency report',
+      'docs:freshness:check': 'standalone freshness check',
+      'docs:freshness:sweep': 'Nightly sweep that files an issue',
+      'docs:review:record': 'writes a review record',
+      'docs:mcp:generate': 'writes the MCP docs bundle',
+      'docs:mcp:check': 'standalone MCP docs check',
+      'docs:metrics:generate': 'writes the metric reference',
+      'docs:index': 'writes the docs index',
+      'docs:pages:build': 'builds the Pages site',
+      'docs:pages:check': 'composed by docs:pages:build',
+      'docs:reference:gate': 'composed by gate:platform and ci:fast',
+    };
+    const laneIds = DOCS_TRUTH_GATE_LANES.map((lane) => lane.id);
+    const docsScripts = Object.keys(root.scripts).filter((name) =>
+      name.startsWith('docs:'),
     );
+    expect(
+      [...docsScripts, ...OUTSIDE_DOCS_NAMESPACE].filter(
+        (name) =>
+          !Object.hasOwn(NOT_A_DOCS_TRUTH_LANE, name) &&
+          !laneIds.includes(name),
+      ),
+      'docs scripts neither in the aggregate nor excluded with a reason',
+    ).toEqual([]);
+    expect(
+      Object.keys(NOT_A_DOCS_TRUTH_LANE).filter(
+        (name) => !docsScripts.includes(name) || laneIds.includes(name),
+      ),
+      'stale or contradicted exclusions',
+    ).toEqual([]);
     // Every lane the aggregate runner claims to run must be a REAL npm script.
     for (const lane of DOCS_TRUTH_GATE_LANES) {
       expect(root.scripts).toHaveProperty(lane.script);
     }
-    // Each node lane is pinned to its exact command. A pattern is not enough:
-    // repointing a lane at another script (docs-index.mjs without --check
-    // regenerates files and exits 0), adding --write, or passing a path
-    // (check-markdown-links.mjs narrows to that file) would all still match
-    // one. Literal on purpose -- never derive this from package.json.
-    const EXPECTED_NODE_LANE_COMMANDS: Record<string, string> = {
-      'contribution:gate': 'node scripts/public-contribution-surfaces.mjs',
-      'labels:check': 'node scripts/label-manifest.mjs',
+    // Which program each node lane runs is intent, pinned per lane: a lane
+    // repointed at another script (docs:links:check at any other checker)
+    // still passes every derived invariant below, so the derived checks alone
+    // did not catch it. A new node lane must be added here on purpose.
+    const LANE_PROGRAM: Record<string, string> = {
+      'contribution:gate': 'scripts/public-contribution-surfaces.mjs',
+      'labels:check': 'scripts/label-manifest.mjs',
       'docs:issue-lifecycle:check':
-        'node scripts/generate-issue-lifecycle-reference.mjs --check',
-      'docs:contributor-commands:check': 'node scripts/just-interface.mjs',
-      'docs:public:hygiene': 'node scripts/public-docs-hygiene.mjs',
-      'docs:hygiene:repo': 'node scripts/repo-docs-hygiene.mjs',
-      'docs:index:check': 'node scripts/docs-index.mjs --check',
-      'docs:cli-parity:check': 'node scripts/cli-doc-parity.mjs',
+        'scripts/generate-issue-lifecycle-reference.mjs',
+      'docs:contributor-commands:check': 'scripts/just-interface.mjs',
+      'docs:public:hygiene': 'scripts/public-docs-hygiene.mjs',
+      'docs:hygiene:repo': 'scripts/repo-docs-hygiene.mjs',
+      'docs:index:check': 'scripts/docs-index.mjs',
+      'docs:cli-parity:check': 'scripts/cli-doc-parity.mjs',
+      'docs:metrics:check': 'scripts/generate-metric-reference.mjs',
       'docs:public:contract-examples':
-        'node scripts/public-doc-contract-examples.mjs',
-      'docs:links:check': 'node scripts/check-markdown-links.mjs',
-      'docs:metrics:check':
-        'node scripts/generate-metric-reference.mjs --check',
+        'scripts/public-doc-contract-examples.mjs',
+      'docs:links:check': 'scripts/check-markdown-links.mjs',
     };
-    expect(Object.keys(EXPECTED_NODE_LANE_COMMANDS)).toHaveLength(11);
-    const nodeLaneCommands = Object.fromEntries(
-      DOCS_TRUTH_GATE_LANES.filter((lane) =>
-        root.scripts[lane.script].startsWith('node '),
-      ).map((lane) => [lane.id, root.scripts[lane.script]]),
+    // Flags stay derived: each node lane runs its script in CHECK form, with
+    // no path argument (check-markdown-links.mjs would narrow to that file)
+    // and no --write. These do not pin the exact command, so a new check-only
+    // flag passes; the program pin above is what holds each lane's identity.
+    const nodeLanes = DOCS_TRUTH_GATE_LANES.filter((lane) =>
+      root.scripts[lane.script].startsWith('node '),
     );
-    expect(nodeLaneCommands).toEqual(EXPECTED_NODE_LANE_COMMANDS);
+    expect(nodeLanes.map((lane) => lane.id).sort()).toEqual(
+      Object.keys(LANE_PROGRAM).sort(),
+    );
+    for (const lane of nodeLanes) {
+      const [, script, ...args] = root.scripts[lane.script].split(/\s+/);
+      expect(script, lane.id).toBe(LANE_PROGRAM[lane.id]);
+      expect(
+        args.filter((arg: string) => !arg.startsWith('--')),
+        `${lane.id} passes a positional argument`,
+      ).toEqual([]);
+      expect(args, lane.id).not.toContain('--write');
+      if (/['"]--check['"]/.test(readFileSync(script, 'utf8')))
+        expect(args, `${lane.id} must run ${script} in --check mode`).toContain(
+          '--check',
+        );
+    }
     // lint:check's roots exclude .github/, so this lane is the only formatter
     // check of the label manifest.
     expect(root.scripts['docs:truth:biome']).toContain(

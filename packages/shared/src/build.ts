@@ -98,6 +98,7 @@ export const SHARED_EXTERNALS = [
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
   '@kontourai/station-sdk',
+  '@kontourai/station-sdk/agent',
   '@kontourai/station-sdk/client',
   '@kontourai/station-sdk/voice',
   '@kontourai/station-components',
@@ -109,7 +110,7 @@ export const SHARED_EXTERNALS = [
 
 /** esbuild filter regex matching all shared externals */
 export const SHARED_EXTERNALS_REGEX =
-  /^react$|^react\/|^@kontourai\/station-sdk(?:\/(?:client|voice))?$|^@kontourai\/station-components$|^@tanstack\/react-query$|^dompurify$|^debug$|^zod$/;
+  /^react$|^react\/|^@kontourai\/station-sdk(?:\/(?:agent|client|voice))?$|^@kontourai\/station-components$|^@tanstack\/react-query$|^dompurify$|^debug$|^zod$/;
 
 /**
  * Runtime require() shim — maps externals to window.__station_ai_shared.

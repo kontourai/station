@@ -22,6 +22,15 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Harness question helpers
+
+`@kontourai/station-shared/harness-questions` owns the browser-safe
+`readHarnessQuestionnaire`, `validateHarnessQuestionAnswers` and
+`harnessAnswerTexts` helpers. They parse bounded descriptors, validate a
+complete answer batch and translate selected IDs to display labels/custom
+text. They do not authorize a reply or prove engine delivery. Stable types
+come from `@kontourai/station-contracts/harness-questions`.
+
 ---
 
 ## plugin types
@@ -959,7 +968,7 @@ The [builder](../../packages/shared/src/build.ts) owns containment and dependenc
 preparation. Managed workspace builds require the managed dependency setup;
 standalone plugins use the helper's constrained npm preparation. This can write
 dependencies and outputs. Its exact external allowlist includes root SDK and
-the SDK client/voice entries, not every SDK subpath. A build does not install,
+the SDK agent/client/voice entries, not every SDK subpath. A build does not install,
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
 

@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
 import type {
   ApprovalMode,
   EngineId,
@@ -190,6 +191,7 @@ export interface ChatMessage {
     approvalEventId?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
+    questionnaire?: HarnessQuestionnaire;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'

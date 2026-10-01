@@ -1,0 +1,21 @@
+{
+  "revision": "54ea6c850c2a256aef964239525d30edf47cce91",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Merge review through 54ea6c850: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/guides/knowledge.md","note":"Merge review through 54ea6c850: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/guides/starter-work.md","note":"Merge review through 54ea6c850: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Merge review through 54ea6c850: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Merge review through 54ea6c850: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/user/getting-started.md","note":"Merge review through 54ea6c850: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Merge review through 54ea6c850: docs/learn/media.json holds only capture metadata and revisions; this page states that capture revisions live in the media manifest and reviewed sources in review-ledger/captures/, which matches, so the prose is accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/learn/README.md","note":"Merge review through 54ea6c850: learning-atlas.browser.test.ts combines #2951 (expected review-status label derived from the module map's recorded state) with the pinned JOB_ENV freshness mode; the README's browser-check list and its 'Review out of date' description remain accurate. Source review is separate from executed test evidence."}
+  ]
+}

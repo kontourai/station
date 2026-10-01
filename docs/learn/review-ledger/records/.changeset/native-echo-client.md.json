@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/native-echo-client.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Read the package change description and release intent.",
+
+  "limits": "A changeset does not prove publication, current installation or an end-user outcome.",
+
+  "document": {"digest":"8475d544acae9239c10491cff9203bda4c33e9ba5b1ca3878186c8c14d88266e","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}
