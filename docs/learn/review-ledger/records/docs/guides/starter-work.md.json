@@ -9,7 +9,7 @@
 
   "limits": "Source/caller review of the stated contract, not exhaustive testing of every Scheduler or engine branch. No new tests, live engine completion, browser/device journey, external SDK compatibility, hosted execution or release qualification. Existing 175-test tranche and captures remain their original evidence.",
 
-  "document": {"digest":"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
+  "document": {"digest":"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839","revision":"a15d7b09e3b1a1434ac3d51a25d52773d30746a7"},
 
   "sources": [
     {"path":"docs/learn/media/inspect-request.png","digest":"389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
 
-    {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/HomeView.tsx","digest":"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f","revision":"c4e12e530c3346d3191a89e29cd504f2e2e475a7"},
 
     {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

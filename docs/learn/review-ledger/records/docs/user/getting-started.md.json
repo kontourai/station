@@ -9,14 +9,14 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+  "document": {"digest":"11e1f422eb84b06af18fb66c2392707bdf3adc2e794f149d9856ab259ae87c53","revision":"7d1b3d94166917be8991f72c799f4dc8d87dc45d"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"docs/guides/release-channel-ports.md","digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
-    {"path":"docs/guides/starter-work.md","digest":"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
+    {"path":"docs/guides/starter-work.md","digest":"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839","revision":"a15d7b09e3b1a1434ac3d51a25d52773d30746a7"},
 
     {"path":"docs/learn/media/inspect-request.png","digest":"389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -60,13 +60,13 @@
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172","revision":"7d1b3d94166917be8991f72c799f4dc8d87dc45d"},
 
     {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"cc0fe918eafae5643d0a191a130fe17a222a8d6303fd26d977bed447196cd141","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"4cd9d4ae529abe21bf225e74dff79d88bc2a08620b66b4238b42d0cf0aa5aae1","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
     {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"cc2d69428c1b40135252806c9ac78f35ef536536f4f666cff63efbde60adbadc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,17 @@
 
     {"path":"docs/learn/media.json#/captures/3","digest":"75f3273ae5d8cb21aa6612ef17f80d01155cf729dd5267763b888f5a2ca8c55a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"docs/learn/media.json#/captures/4","digest":"dfc26872dbfdc817f3357443a00abacdc81b64eed43326ecb0e5b7569a0ec62a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
+    {"path":"docs/learn/media.json#/captures/4","digest":"dfc26872dbfdc817f3357443a00abacdc81b64eed43326ecb0e5b7569a0ec62a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
+    {"path":"src-ui/src/components/home/HomeChatStartForm.tsx","digest":"798900b8b864f659ffbb73ef99d943d84128b4e6d921787c5e9b64baa24b3482","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+
+    {"path":"src-ui/src/components/modals/AutomaticEnginePreparation.tsx","digest":"122cf55568f1b03b96db68b5ce4b79eb510022030c7ac4fcfccaa24292c59849","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+
+    {"path":"src-ui/src/lib/newChatIntent.ts","digest":"a759731abdda8846bbfa382a714b397cfaeb913b7e407f46ebc92b956c304c5e","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+
+    {"path":"src-ui/src/components/chat-dock/useChatDockOverlays.ts","digest":"ddc9e5110725ab4e806ae6abe91021397faf665cb4ba6703926d67170979b325","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDockModalStack.tsx","digest":"30292eee3830872a07acd638a3c65ffea109690df23d03dff7b95b7f8e1da243","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"}
   ],
 
   "checks": [
