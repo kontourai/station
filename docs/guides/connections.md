@@ -96,6 +96,13 @@ Open **Manage Stations** in the header to inspect the computers this client
 connects to. Each address wraps on narrow screens so its port stays visible.
 The row's **More actions** menu provides **Copy address** and **Edit Station**.
 
+Use an HTTPS address when connecting another device. An HTTP address requires
+**Allow an unencrypted connection** before requesting access, including a
+`localhost` address in a native app. The exception is numeric loopback
+(`127.0.0.1` or `[::1]`), or the browser session on the Station that served its
+page. The choice applies only to that exact origin on this device; approval
+and pairing are still required.
+
 Native clients save edits through the shared profile store. A name change
 preserves pairing and updates references to that profile, including its default
 and project selections. Changing the address requires connecting the device
