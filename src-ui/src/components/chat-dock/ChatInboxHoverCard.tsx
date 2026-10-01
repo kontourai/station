@@ -7,10 +7,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { relativeTime } from '../../utils/relativeTime';
+import { relativeTime, relativeTimeAgo } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import type { WorkFacts } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
 import { InboxRowStatusGlyph } from '../inbox-row/InboxRowStatus';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../ResponsiveDialogSurface';
 import './ChatInboxHoverCard.css';
 
 /** Hover-card geometry: fixed width, clamped into the viewport beside the row. */
@@ -67,6 +72,7 @@ function sourceLabel(source: 'explicit' | 'branch-derived' | 'task-declared') {
 export function ChatInboxHoverCard({
   item,
   now,
+  facts,
   gitLocation,
   anchor,
   onClose,
@@ -74,6 +80,8 @@ export function ChatInboxHoverCard({
 }: {
   item: HomeWorkItem;
   now: number;
+  /** The row's status facts, so the card's status word is the row's. */
+  facts?: WorkFacts;
   /**
    * The row's local session working directory and its Project (#2412: git
    * reads name the Project), resolved by the host from its own session
@@ -95,12 +103,142 @@ export function ChatInboxHoverCard({
    */
   id: string;
 }) {
-  const scope = useHostRequestAuthorityScope();
-  const status = workStatus(item, now);
   const cardRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<React.CSSProperties>({
     visibility: 'hidden',
   });
+
+  // Position once from the anchor's rect; flip to the left side when the row
+  // sits against the viewport's right edge (the dock can dock either side).
+  useLayoutEffect(() => {
+    const rect = anchor.getBoundingClientRect();
+    const height = cardRef.current?.offsetHeight ?? 0;
+    const top = Math.min(
+      Math.max(VIEWPORT_MARGIN, rect.top),
+      Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
+    );
+    const fitsRight =
+      rect.right + CARD_GAP + CARD_WIDTH <= window.innerWidth - VIEWPORT_MARGIN;
+    const left = fitsRight
+      ? rect.right + CARD_GAP
+      : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
+    setPosition({ top, left, visibility: 'visible' });
+  }, [anchor]);
+
+  // The card is fixed-positioned: any scroll (the inbox's own scroll included)
+  // detaches it from its anchor, and a tooltip that has lost its anchor is a
+  // lie about the row under it. Close instead of following.
+  useEffect(() => {
+    const onScroll = () => onClose();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      id={id}
+      className="chat-dock-inbox-hover-card"
+      style={position}
+      role="tooltip"
+      data-testid="inbox-row-hover-card"
+    >
+      <ChatInboxCardBody
+        item={item}
+        now={now}
+        facts={facts}
+        gitLocation={gitLocation}
+      />
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * The same card as a dismissible sheet/popover, for chromes with no hover
+ * (the mobile sheet, Home). Opened by the row's Details action, so touch
+ * and keyboard users reach every fact the tooltip shows.
+ */
+export function ChatInboxDetailsSheet({
+  item,
+  now,
+  facts,
+  gitLocation,
+  triggerRef,
+  onClose,
+}: {
+  item: HomeWorkItem;
+  now: number;
+  facts?: WorkFacts;
+  gitLocation?: GitReadLocation;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}) {
+  return (
+    <ResponsiveDialogSurface
+      layer="popover"
+      ariaLabel={`Details for ${item.title}`}
+      onClose={onClose}
+      returnFocusTarget={triggerRef.current}
+      anchorRef={triggerRef}
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      panelClassName="composer-popover-panel chat-dock-inbox-details"
+    >
+      <ResponsiveDialogHeader
+        title={item.title}
+        closeLabel="Close details"
+        onClose={onClose}
+      />
+      <div
+        className="chat-dock-inbox-details__body"
+        data-testid="inbox-row-details"
+      >
+        <ChatInboxCardBody
+          item={item}
+          now={now}
+          facts={facts}
+          gitLocation={gitLocation}
+          showTitle={false}
+        />
+      </div>
+    </ResponsiveDialogSurface>
+  );
+}
+
+/**
+ * What the card says, shared by its two chromes: the hover/focus tooltip
+ * beside a row, and the details sheet a touch row opens (there is no hover
+ * on a phone, and Home has no tooltip host). Everything the row's fixed line
+ * budget leaves out is here in full: the model, the kind of item, its
+ * folder, when it last made progress, and the whole failure or
+ * unanswerable reason, unclamped.
+ */
+function ChatInboxCardBody({
+  item,
+  now,
+  facts,
+  gitLocation,
+  showTitle = true,
+}: {
+  item: HomeWorkItem;
+  now: number;
+  facts?: WorkFacts;
+  gitLocation?: GitReadLocation;
+  showTitle?: boolean;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const status = workStatus(item, now, { facts });
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).
@@ -153,43 +291,6 @@ export function ChatInboxHoverCard({
       'compact',
     );
   }, [basisScope, inventory.data]);
-
-  // Position once from the anchor's rect; flip to the left side when the row
-  // sits against the viewport's right edge (the dock can dock either side).
-  useLayoutEffect(() => {
-    const rect = anchor.getBoundingClientRect();
-    const height = cardRef.current?.offsetHeight ?? 0;
-    const top = Math.min(
-      Math.max(VIEWPORT_MARGIN, rect.top),
-      Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
-    );
-    const fitsRight =
-      rect.right + CARD_GAP + CARD_WIDTH <= window.innerWidth - VIEWPORT_MARGIN;
-    const left = fitsRight
-      ? rect.right + CARD_GAP
-      : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
-    setPosition({ top, left, visibility: 'visible' });
-  }, [anchor]);
-
-  // The card is fixed-positioned: any scroll (the inbox's own scroll included)
-  // detaches it from its anchor, and a tooltip that has lost its anchor is a
-  // lie about the row under it. Close instead of following.
-  useEffect(() => {
-    const onScroll = () => onClose();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      onClose();
-    };
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-      document.removeEventListener('keydown', onKeyDown, true);
-    };
-  }, [onClose]);
 
   // A section that has nothing to say renders NOTHING — not a heading over
   // silence. The heading appears only while a read is in flight (named gap),
@@ -328,18 +429,14 @@ export function ChatInboxHoverCard({
     </section>
   ) : null;
 
-  return createPortal(
-    <div
-      ref={cardRef}
-      id={id}
-      className="chat-dock-inbox-hover-card"
-      style={position}
-      role="tooltip"
-      data-testid="inbox-row-hover-card"
-    >
-      <p className="chat-dock-inbox-hover-card__title">
-        <bdi>{item.title}</bdi>
-      </p>
+  const lastProgressAt = item.turnProgress?.lastProgressEventAt;
+  return (
+    <>
+      {showTitle && (
+        <p className="chat-dock-inbox-hover-card__title">
+          <bdi>{item.title}</bdi>
+        </p>
+      )}
       <dl className="chat-dock-inbox-hover-card__meta">
         <div>
           <dt>Project</dt>
@@ -347,6 +444,26 @@ export function ChatInboxHoverCard({
             <bdi>{item.projectLabel}</bdi>
           </dd>
         </div>
+        <div>
+          <dt>Kind</dt>
+          <dd>{item.kindLabel}</dd>
+        </div>
+        {item.cwdLabel && (
+          <div>
+            <dt>Folder</dt>
+            <dd>
+              <bdi>{item.cwdLabel}</bdi>
+            </dd>
+          </div>
+        )}
+        {facts?.worktreeBranch && (
+          <div>
+            <dt>Branch</dt>
+            <dd>
+              <bdi>{facts.worktreeBranch}</bdi>
+            </dd>
+          </div>
+        )}
         {item.environmentLabel && (
           <div>
             <dt>Machine</dt>
@@ -379,6 +496,12 @@ export function ChatInboxHoverCard({
             )}
           </dd>
         </div>
+        {lastProgressAt && (
+          <div>
+            <dt>Last progress</dt>
+            <dd>{relativeTimeAgo(Date.parse(lastProgressAt), now)}</dd>
+          </div>
+        )}
       </dl>
       {(item.failureNotice || item.unanswerableNotice) && (
         <p className="chat-dock-inbox-hover-card__notice">
@@ -388,8 +511,7 @@ export function ChatInboxHoverCard({
       {gitSection}
       {prSection}
       {basisSection}
-    </div>,
-    document.body,
+    </>
   );
 }
 

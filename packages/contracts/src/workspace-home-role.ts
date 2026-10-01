@@ -289,15 +289,11 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
   conversationUpdatedAt: 'When each conversation last changed',
   acknowledgedAt: 'When you last opened each conversation',
   cwdLabel: 'Working-directory hints for sessions',
-  worktreeBranch: 'The branch of each session’s own worktree',
   turnProgress:
     'Last-progress times and quiet-turn observations for active sessions',
   updatedAt: 'When each item last changed',
   lifecycleLabel: 'Each item’s current state',
   activeReason: 'Whether a Running item has an open turn or background work',
-  attention: 'What each item that needs you is waiting on',
-  activity:
-    'The open turn’s start time, running tool name, and running sub-agent count for working items',
   unanswerableNotice: 'Why an item is waiting on something it cannot answer',
   failureNotice:
     'Why an item failed or was stopped, when a reason was recorded',

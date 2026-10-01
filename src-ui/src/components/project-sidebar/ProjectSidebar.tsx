@@ -29,6 +29,7 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
+import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   projectLiveCount,
   projectLiveLabel,
@@ -150,6 +151,7 @@ function ProjectSidebarImpl() {
   // chip in this sidebar.
   const openChats = useOpenChats(agents, sessions);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
+  const openChatFacts = useWorkFacts(recentTasks, sessions);
   const openChatsOverflow = openChats.length - recentTasks.length;
   // archive#3314: per-section collapse + removal, persisted device-side alongside
   // `projectSidebarCollapsed` (restore for a removed section lives in
@@ -449,6 +451,7 @@ function ProjectSidebarImpl() {
                   pending={null}
                   componentProps={{
                     items: recentTasks,
+                    workFacts: openChatFacts,
                     now: Date.now(),
                     onActivate: (task) => {
                       openChatsStore.focus({

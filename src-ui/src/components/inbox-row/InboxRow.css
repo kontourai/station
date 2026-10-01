@@ -126,6 +126,31 @@
   white-space: nowrap;
 }
 
+/* A failure or unanswerable REASON is the one place the line budget yields:
+ * the line flows as text and may take a second line rather than cut off
+ * what the user needs to read. Anything longer than two lines is in full in
+ * the row's details and is always the whole of its accessible description. */
+.inbox-row__status--reason {
+  display: -webkit-box;
+  height: auto;
+  min-height: var(--inbox-row-line);
+  overflow: hidden;
+  line-height: var(--inbox-row-line);
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.inbox-row__status--reason .inbox-row__status-glyph {
+  vertical-align: -2px;
+}
+
+.inbox-row__status--reason .inbox-row__detail {
+  overflow: visible;
+  white-space: normal;
+}
+
 /* Its own element because the line is a flex row, which would collapse a
  * bare text separator's spaces. */
 .inbox-row__sep {
@@ -300,11 +325,16 @@
 
 /* An always-on invisible hit area: the drawn control stays 26px while the
  * target is 44px tall on every pointer, with no media query deciding who
- * gets it. Horizontally it reaches only to the midpoint of the gap, so
+ * gets it. It starts at the ROW's top edge (the slot sits `--space-2` below
+ * it) and extends downward, so it never reaches into the row above or
+ * below. Horizontally it reaches only to the midpoint of the gap, so
  * neighbouring targets never overlap. */
 .inbox-row__action::after {
   position: absolute;
-  inset: -9px calc(var(--space-2) / -2);
+  top: calc(var(--space-2) * -1);
+  right: calc(var(--space-2) / -2);
+  left: calc(var(--space-2) / -2);
+  height: 44px;
   content: "";
 }
 
@@ -317,10 +347,6 @@
 .inbox-row__action svg {
   width: 14px;
   height: 14px;
-}
-
-.inbox-row__action--open {
-  color: var(--accent-primary);
 }
 
 .inbox-row__actions .chat-dock-inbox__snooze-menu-trigger {
@@ -371,6 +397,14 @@
 .inbox-row--slim .inbox-row__actions {
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* A slim row is 30px tall, so the hit area is the row's own height: staying
+ * inside the row's box outranks the 44px floor here. The touch chrome's slim
+ * rows are 44px tall and use real 44px buttons. */
+.inbox-row--slim .inbox-row__action::after {
+  top: -2px;
+  height: 30px;
 }
 
 /* ── Touch chrome: always-visible ≥44px actions beside the row ─────────── */

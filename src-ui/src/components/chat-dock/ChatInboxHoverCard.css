@@ -244,3 +244,15 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+/* The same card as a sheet/popover, opened by a touch row's Details action. */
+.chat-dock-inbox-details {
+  width: min(360px, calc(100vw - 16px));
+}
+
+.chat-dock-inbox-details__body {
+  padding: 0 12px 12px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}

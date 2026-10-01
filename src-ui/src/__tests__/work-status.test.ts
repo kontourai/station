@@ -3,14 +3,17 @@ import type {
   TaskRecord,
 } from '@kontourai/station-sdk';
 import { describe, expect, it } from 'vitest';
-import { createDefaultChatState } from '../contexts/active-chats-state';
+import {
+  type ChatUIState,
+  createDefaultChatState,
+} from '../contexts/active-chats-state';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import {
-  buildActiveChatTaskItems,
   buildHomeWorkItems,
   buildOrchestrationItems,
   type HomeWorkItem,
 } from '../views/home/home-view-model';
+import { buildWorkFacts, type WorkFacts } from '../views/home/work-facts';
 import {
   formatElapsed,
   type WorkLane,
@@ -29,6 +32,16 @@ import {
 
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 const TURN_STARTED = '2026-09-30T10:00:03.000Z'; // 1m 12s before NOW
+
+const SILENCE = {
+  lastProgressEventAt: '2026-09-30T09:55:15.000Z',
+  progressSilence: {
+    detectedAt: '2026-09-30T10:00:15.000Z',
+    windowMs: 300_000,
+    silentSinceEventAt: '2026-09-30T09:55:15.000Z',
+    provider: 'claude',
+  },
+} satisfies OrchestrationSessionSummary['turnProgress'];
 
 function session(
   over: Partial<OrchestrationSessionSummary>,
@@ -140,6 +153,29 @@ const BLOCKED = session({
   },
 });
 
+/**
+ * turn.started, request.opened(approval), then the process restarts:
+ * recovery's turn.aborted and its `needs_input` stamp. Recovery does not
+ * resolve the request the dead turn opened, so the lifecycle fold re-stamps
+ * the session `review_pending` over the recovery stamp. Nothing can approve
+ * it: no turn is open.
+ */
+const APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN = session({
+  lifecycleState: 'review_pending',
+  previousLifecycleState: 'needs_input',
+  transitionReason: 'review_requested',
+  transitionSource: 'runtime',
+  pendingReview: true,
+  hasActiveTurn: false,
+  lastEventMethod: 'session.state-changed',
+  conversationActivity: {
+    conversationId: 'T',
+    currentThreadId: 'T',
+    asOfSequence: 4,
+    lastActivityAt: '2026-09-30T10:00:06.000Z',
+  },
+});
+
 /** turn.started, turn.completed: a finished turn on a live session. */
 const TURN_COMPLETED = session({
   lifecycleState: 'idle',
@@ -156,26 +192,29 @@ const TURN_COMPLETED = session({
   },
 });
 
-function rowFor(summary: OrchestrationSessionSummary): HomeWorkItem {
-  const [item] = buildOrchestrationItems([summary], []);
-  return item;
+function rowFor(summary: OrchestrationSessionSummary): {
+  item: HomeWorkItem;
+  facts: WorkFacts | undefined;
+} {
+  const items = buildOrchestrationItems([summary], []);
+  return {
+    item: items[0],
+    facts: buildWorkFacts({ items, sessions: [summary] }).get(items[0].id),
+  };
 }
 
 function statusOf(summary: OrchestrationSessionSummary) {
-  const { line, lane, rung } = workStatus(rowFor(summary), NOW);
+  const { item, facts } = rowFor(summary);
+  const { line, lane, rung } = workStatus(item, NOW, { facts });
   return { line, lane, rung };
 }
 
 describe('the status ladder, from real server summaries', () => {
   it('a running row with a pending approval reads as needs-approval, never as running', () => {
-    const item = rowFor(APPROVAL_IN_OPEN_TURN);
-    // Both facts are on the item: the turn really is still open.
-    expect(item.activity).toEqual({
-      turnStartedAt: TURN_STARTED,
-      toolName: 'Bash',
-    });
-    expect(item.attention).toBe('approval');
-    expect(workStatus(item, NOW)).toMatchObject({
+    // The turn really is still open on this summary; the shared attention
+    // fold files it as awaiting anyway, and the row follows.
+    expect(APPROVAL_IN_OPEN_TURN.hasActiveTurn).toBe(true);
+    expect(statusOf(APPROVAL_IN_OPEN_TURN)).toEqual({
       rung: 'approval',
       lane: 'needsYou',
       line: 'Needs approval',
@@ -188,6 +227,31 @@ describe('the status ladder, from real server summaries', () => {
       lane: 'needsYou',
       line: 'Needs your answer',
     });
+  });
+
+  it('an approval that outlived its interrupted turn reads Interrupted, not Needs approval', () => {
+    expect(statusOf(APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN)).toEqual({
+      rung: 'interrupted',
+      lane: 'needsYou',
+      line: 'Interrupted',
+    });
+  });
+
+  it('keeps Needs approval for an approval between turns that nothing interrupted', () => {
+    // Same state, but reached by a request (the last event), not by recovery.
+    expect(
+      statusOf({
+        ...APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN,
+        previousLifecycleState: 'idle',
+        lastEventMethod: 'request.opened',
+      }).line,
+    ).toBe('Needs approval');
+    expect(
+      statusOf({
+        ...APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN,
+        lastEventMethod: 'request.opened',
+      }).line,
+    ).toBe('Needs approval');
   });
 
   it('a running turn names its current tool and how long the turn has run', () => {
@@ -232,19 +296,8 @@ describe('the status ladder, from real server summaries', () => {
   });
 
   it('a run the watchdog marks silent is its own cautionary rung, still in Running', () => {
-    const silent = rowFor({
-      ...RUNNING_TOOL,
-      turnProgress: {
-        lastProgressEventAt: '2026-09-30T09:55:15.000Z',
-        progressSilence: {
-          detectedAt: '2026-09-30T10:00:15.000Z',
-          windowMs: 300_000,
-          silentSinceEventAt: '2026-09-30T09:55:15.000Z',
-          provider: 'claude',
-        },
-      },
-    });
-    const status = workStatus(silent, NOW);
+    const silent = rowFor({ ...RUNNING_TOOL, turnProgress: SILENCE });
+    const status = workStatus(silent.item, NOW, { facts: silent.facts });
     expect(status).toMatchObject({
       rung: 'quiet',
       lane: 'running',
@@ -252,10 +305,10 @@ describe('the status ladder, from real server summaries', () => {
       line: 'No progress for 6m · Bash · 1m 12s',
     });
     // Never drawn as the healthy run it sits beside.
-    const healthy = workStatus(rowFor(RUNNING_TOOL), NOW);
-    expect(healthy).toMatchObject({ rung: 'running', tone: 'active' });
-    expect(status.tone).not.toBe(healthy.tone);
-    expect(status.rung).not.toBe(healthy.rung);
+    const healthy = rowFor(RUNNING_TOOL);
+    expect(
+      workStatus(healthy.item, NOW, { facts: healthy.facts }),
+    ).toMatchObject({ rung: 'running', tone: 'active' });
   });
 
   it('an interrupted turn waits on you and says so', () => {
@@ -283,12 +336,14 @@ describe('the status ladder, from real server summaries', () => {
       observedBy: 'station-a',
       observedAt: '2026-09-30T10:00:10.000Z',
     } as OrchestrationSessionSummary['answerability'];
-    const item = rowFor({ ...APPROVAL_IN_OPEN_TURN, answerability });
-    const status = workStatus(item, NOW);
+    const { item, facts } = rowFor({ ...APPROVAL_IN_OPEN_TURN, answerability });
+    const status = workStatus(item, NOW, { facts });
     expect(status.rung).toBe('unanswerable');
     expect(status.lane).toBe('idle');
     expect(status.line).toBe(`Can't answer here · ${item.unanswerableNotice}`);
     expect(item.unanswerableNotice).toMatch(/observed by station-a/);
+    // No kind is recorded for a request nothing here can answer.
+    expect(facts?.attention).toBeUndefined();
   });
 
   it('a failed session carries its recorded reason', () => {
@@ -313,11 +368,11 @@ describe('the status ladder, from real server summaries', () => {
     });
   });
 
-  it('carries the branch only for a session with its own worktree', () => {
-    expect(rowFor(RUNNING_TOOL).worktreeBranch).toBeUndefined();
+  it('records the branch only for a session with its own worktree', () => {
+    expect(rowFor(RUNNING_TOOL).facts?.worktreeBranch).toBeUndefined();
     expect(
-      rowFor({ ...RUNNING_TOOL, workspaceIsolation: { mode: 'shared' } })
-        .worktreeBranch,
+      rowFor({ ...RUNNING_TOOL, workspaceIsolation: { mode: 'shared' } }).facts
+        ?.worktreeBranch,
     ).toBeUndefined();
     expect(
       rowFor({
@@ -332,29 +387,57 @@ describe('the status ladder, from real server summaries', () => {
           preserveOnFailure: true,
           createdAt: '2026-09-30T10:00:00.000Z',
         },
-      }).worktreeBranch,
+      }).facts?.worktreeBranch,
     ).toBe('station/inbox-row');
   });
 
-  it('a retired execution child does not borrow the conversation’s open turn', () => {
-    // The summary of a child that is no longer current still carries the
-    // conversation's record; only the current child owns its open turn.
-    const retired = rowFor({
-      ...TURN_COMPLETED,
-      threadId: 'retired',
-      lifecycleState: 'running',
-      conversationActivity: RUNNING_TOOL.conversationActivity,
+  it('a stuck earlier execution child does not borrow the current child’s turn', () => {
+    // This summary's own fold says a turn is open (it never got a terminal),
+    // but the conversation's open turn is on ANOTHER thread. The row is
+    // Running by its own fold; it must not show that other turn's tool or
+    // clock as its own.
+    expect(
+      statusOf({
+        ...RUNNING_TOOL,
+        threadId: 'earlier-child',
+        conversationActivity: RUNNING_TOOL.conversationActivity,
+      }),
+    ).toEqual({ rung: 'running', lane: 'running', line: 'Running' });
+  });
+
+  it('a remote row reads its own environment’s session, by the id it carries', () => {
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      remoteEnvironments: [
+        {
+          environmentId: 'env-1',
+          environmentName: 'brian-media',
+          sessions: [APPROVAL_IN_OPEN_TURN],
+        },
+      ],
     });
-    expect(retired.activity).toBeUndefined();
-    expect(workStatus(retired, NOW).lane).toBe('idle');
+    expect(items[0].id).toBe('remote:env-1:T');
+    const facts = buildWorkFacts({
+      items,
+      // A LOCAL session with the same thread id must not answer for it.
+      sessions: [RUNNING_TOOL],
+      remoteEnvironments: [
+        { environmentId: 'env-1', sessions: [APPROVAL_IN_OPEN_TURN] },
+      ],
+    });
+    expect(
+      workStatus(items[0], NOW, { facts: facts.get(items[0].id) }).line,
+    ).toBe('Needs approval');
   });
 });
 
 /**
- * The literal table (#3042 acceptance): each state, written out as the facts
- * a row carries, pinned to its line and lane. `partitionHomeWorkItems` is
- * asserted against the same row, so a lane that stopped coming from the
- * ladder fails here.
+ * The literal table (#3042 acceptance): each state, written out as the item
+ * and the facts beside it, pinned to its line, its lane, and the bucket the
+ * partition files it in. Every column is a literal; nothing in the expected
+ * values is derived from the ladder.
  */
 function item(over: Partial<HomeWorkItem>): HomeWorkItem {
   return {
@@ -372,123 +455,157 @@ function item(over: Partial<HomeWorkItem>): HomeWorkItem {
 }
 
 const ACTIVITY = { turnStartedAt: TURN_STARTED, toolName: 'Bash' };
+const OPENED = {
+  conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
+  acknowledgedAt: Date.parse('2026-09-30T09:36:15.000Z'),
+};
 
 const TABLE: ReadonlyArray<
-  [name: string, facts: Partial<HomeWorkItem>, line: string, lane: WorkLane]
+  [
+    name: string,
+    row: Partial<HomeWorkItem>,
+    facts: WorkFacts | undefined,
+    line: string,
+    lane: WorkLane,
+    bucket: string,
+  ]
 > = [
   [
     'needs approval',
-    { lifecycleLabel: 'Needs attention', attention: 'approval' },
+    { lifecycleLabel: 'Needs attention' },
+    { attention: 'approval' },
     'Needs approval',
     'needsYou',
-  ],
-  [
-    'needs approval while its turn is open',
-    {
-      lifecycleLabel: 'Needs attention',
-      attention: 'approval',
-      activity: ACTIVITY,
-    },
-    'Needs approval',
     'needsYou',
   ],
   [
     'needs your answer',
-    { lifecycleLabel: 'Needs attention', attention: 'answer' },
+    { lifecycleLabel: 'Needs attention' },
+    { attention: 'answer' },
     'Needs your answer',
+    'needsYou',
     'needsYou',
   ],
   [
     'waiting on you',
-    { lifecycleLabel: 'Needs attention', attention: 'waiting' },
+    { lifecycleLabel: 'Needs attention' },
+    { attention: 'waiting' },
     'Waiting on you',
+    'needsYou',
     'needsYou',
   ],
   [
     'needs attention with no recorded kind',
     { lifecycleLabel: 'Needs attention' },
+    undefined,
     'Waiting on you',
+    'needsYou',
     'needsYou',
   ],
   [
     'queued while offline',
-    { lifecycleLabel: 'Needs attention', attention: 'queued' },
+    { lifecycleLabel: 'Needs attention' },
+    { attention: 'queued' },
     'Queued to send',
+    'needsYou',
     'needsYou',
   ],
   [
     'blocked',
-    { lifecycleLabel: 'Needs attention', attention: 'blocked' },
+    { lifecycleLabel: 'Needs attention' },
+    { attention: 'blocked' },
     'Blocked',
+    'needsYou',
     'needsYou',
   ],
   [
     'interrupted',
-    { lifecycleLabel: 'Needs attention', attention: 'interrupted' },
+    { lifecycleLabel: 'Needs attention' },
+    { attention: 'interrupted' },
     'Interrupted',
+    'needsYou',
     'needsYou',
   ],
   [
     'failed with a reason',
     { lifecycleLabel: 'Failed', failureNotice: 'rate limit exceeded' },
+    undefined,
     'Failed · rate limit exceeded',
     'finished',
+    'recentlyFinished',
   ],
-  ['failed with none', { lifecycleLabel: 'Failed' }, 'Failed', 'finished'],
-  ['stopped', { lifecycleLabel: 'Stopped' }, 'Stopped', 'finished'],
+  [
+    'failed with none',
+    { lifecycleLabel: 'Failed' },
+    undefined,
+    'Failed',
+    'finished',
+    'recentlyFinished',
+  ],
+  [
+    'stopped',
+    { lifecycleLabel: 'Stopped' },
+    undefined,
+    'Stopped',
+    'finished',
+    'recentlyFinished',
+  ],
   [
     "can't answer here",
     { lifecycleLabel: 'Unanswerable', unanswerableNotice: 'Observed by a.' },
+    undefined,
     "Can't answer here · Observed by a.",
+    'idle',
     'idle',
   ],
   [
     'sub-agents running',
-    {
-      lifecycleLabel: 'Running',
-      activity: { ...ACTIVITY, childWorkCount: 2 },
-    },
+    { lifecycleLabel: 'Running' },
+    { activity: { ...ACTIVITY, childWorkCount: 2 } },
     '2 sub-agents running · 1m 12s',
+    'running',
     'running',
   ],
   [
     'running a tool',
-    { lifecycleLabel: 'Running', activeReason: 'turn', activity: ACTIVITY },
+    { lifecycleLabel: 'Running', activeReason: 'turn' },
+    { activity: ACTIVITY },
     'Running · Bash · 1m 12s',
+    'running',
     'running',
   ],
   [
     'running, but the watchdog reports no progress',
-    {
-      lifecycleLabel: 'Running',
-      activeReason: 'turn',
-      activity: ACTIVITY,
-      turnProgress: {
-        lastProgressEventAt: '2026-09-30T09:55:15.000Z',
-        progressSilence: {
-          detectedAt: '2026-09-30T10:00:15.000Z',
-          windowMs: 300_000,
-          silentSinceEventAt: '2026-09-30T09:55:15.000Z',
-          provider: 'claude',
-        },
-      },
-    },
+    { lifecycleLabel: 'Running', activeReason: 'turn', turnProgress: SILENCE },
+    { activity: ACTIVITY },
     'No progress for 6m · Bash · 1m 12s',
+    'running',
     'running',
   ],
   [
-    'running with no server record',
+    'running with no facts',
     { lifecycleLabel: 'Running', activeReason: 'turn' },
+    undefined,
     'Running',
+    'running',
     'running',
   ],
   [
     'background work with no count',
     { lifecycleLabel: 'Running', activeReason: 'background' },
+    undefined,
     'Background work running',
     'running',
+    'running',
   ],
-  ['idle', { lifecycleLabel: 'Ready' }, 'Idle · last activity 25m ago', 'idle'],
+  [
+    'idle',
+    { lifecycleLabel: 'Ready' },
+    undefined,
+    'Idle · last activity 25m ago',
+    'idle',
+    'idle',
+  ],
   [
     'idle, changed since it was opened',
     {
@@ -496,25 +613,34 @@ const TABLE: ReadonlyArray<
       conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
       acknowledgedAt: Date.parse('2026-09-30T09:00:00.000Z'),
     },
+    undefined,
     'Idle · new activity 25m ago',
+    'idle',
     'idle',
   ],
   [
     'idle with no recorded time',
     { lifecycleLabel: 'Current', updatedAt: 0 },
+    undefined,
     'Idle',
     'idle',
+    'idle',
   ],
-  ['draft', { lifecycleLabel: 'Draft' }, 'Draft · nothing sent yet', 'drafts'],
+  [
+    'draft',
+    { lifecycleLabel: 'Draft' },
+    undefined,
+    'Draft · nothing sent yet',
+    'drafts',
+    'drafts',
+  ],
   [
     'done and opened',
-    {
-      lifecycleLabel: 'Completed',
-      conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
-      acknowledgedAt: Date.parse('2026-09-30T09:36:15.000Z'),
-    },
+    { lifecycleLabel: 'Completed', ...OPENED },
+    undefined,
     'Done',
     'finished',
+    'settled',
   ],
   [
     'done, not opened',
@@ -522,18 +648,21 @@ const TABLE: ReadonlyArray<
       lifecycleLabel: 'Completed',
       conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
     },
+    undefined,
     'Done · not opened yet',
     'finished',
+    'recentlyFinished',
   ],
   [
     'followed from another app',
     { lifecycleLabel: 'Running', controlMode: 'read-only-attached' },
+    undefined,
     'Started in Claude Code',
+    'external',
     'external',
   ],
 ];
 
-/** The partition's bucket for each ladder lane, written out independently. */
 function bucketOf(row: HomeWorkItem): string {
   const partition = partitionHomeWorkItems({
     items: [row],
@@ -547,34 +676,56 @@ function bucketOf(row: HomeWorkItem): string {
     .join(',');
 }
 
-const BUCKETS: Record<WorkLane, readonly string[]> = {
-  needsYou: ['needsYou'],
-  running: ['running'],
-  idle: ['idle'],
-  drafts: ['drafts'],
-  external: ['external'],
-  finished: ['recentlyFinished', 'settled'],
-};
-
 describe('the status ladder, state by state', () => {
-  it.each(TABLE)('%s', (_name, facts, line, lane) => {
-    const row = item(facts);
-    const status = workStatus(row, NOW);
+  it.each(TABLE)('%s', (_name, over, facts, line, lane, bucket) => {
+    const row = item(over);
+    const status = workStatus(row, NOW, { facts });
     expect(status.line).toBe(line);
     expect(status.lane).toBe(lane);
-    expect(BUCKETS[lane]).toContain(bucketOf(row));
+    expect(bucketOf(row)).toBe(bucket);
+  });
+
+  it('facts only choose words: no fact moves an item to another lane', () => {
+    // The partition files items with no facts in hand, so a fact that could
+    // change the lane would let a row and its heading disagree. Every fact,
+    // against every label.
+    const everyFact: WorkFacts[] = [
+      { attention: 'approval' },
+      { attention: 'interrupted' },
+      { activity: { ...ACTIVITY, childWorkCount: 3 } },
+      { attention: 'approval', activity: ACTIVITY, worktreeBranch: 'b' },
+    ];
+    for (const lifecycleLabel of [
+      'Needs attention',
+      'Failed',
+      'Stopped',
+      'Running',
+      'Current',
+      'Ready',
+      'Recent',
+      'Draft',
+      'Unanswerable',
+      'Completed',
+    ] as const) {
+      const row = item({ lifecycleLabel });
+      const bare = workStatus(row, NOW).lane;
+      for (const facts of everyFact) {
+        expect(workStatus(row, NOW, { facts }).lane).toBe(bare);
+      }
+    }
+    // And a fact its label does not explain changes nothing at all.
+    expect(
+      workStatus(item({ lifecycleLabel: 'Ready' }), NOW, {
+        facts: { attention: 'approval', activity: ACTIVITY },
+      }).line,
+    ).toBe('Idle · last activity 25m ago');
   });
 
   it('marks unread only when the conversation changed after it was opened', () => {
     const unread = (over: Partial<HomeWorkItem>) =>
       workStatus(item(over), NOW).unread;
     expect(unread({})).toBe(false);
-    expect(
-      unread({
-        conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
-        acknowledgedAt: Date.parse('2026-09-30T09:36:15.000Z'),
-      }),
-    ).toBe(false);
+    expect(unread(OPENED)).toBe(false);
     expect(
       unread({
         conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
@@ -586,6 +737,27 @@ describe('the status ladder, state by state', () => {
     );
   });
 
+  it('the conversation on screen is never unread, in the flag or the words', () => {
+    const changed = item({
+      lifecycleLabel: 'Recent',
+      conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
+      acknowledgedAt: Date.parse('2026-09-30T09:00:00.000Z'),
+    });
+    expect(workStatus(changed, NOW)).toMatchObject({
+      unread: true,
+      line: 'Idle · new activity 25m ago',
+    });
+    expect(workStatus(changed, NOW, { current: true })).toMatchObject({
+      unread: false,
+      line: 'Idle · last activity 25m ago',
+    });
+    const finished = item({
+      lifecycleLabel: 'Completed',
+      conversationUpdatedAt: '2026-09-30T09:36:15.000Z',
+    });
+    expect(workStatus(finished, NOW, { current: true }).line).toBe('Done');
+  });
+
   it('formats a duration so it reads the same while it ticks', () => {
     expect(formatElapsed(0)).toBe('0s');
     expect(formatElapsed(42_900)).toBe('42s');
@@ -595,91 +767,89 @@ describe('the status ladder, state by state', () => {
   });
 });
 
-describe('status facts on chat and task rows', () => {
-  const chat = (over: Record<string, unknown>) =>
-    buildActiveChatTaskItems({
-      chats: {
-        'chat-1': {
-          ...createDefaultChatState(),
-          title: 'Chat',
-          createdAt: NOW - 60_000,
-          ...over,
-        },
-      },
-      agents: [],
-    })[0];
-
-  it('a chat holding a pending approval reads as needs-approval', () => {
-    const row = chat({ pendingApprovals: ['r1'], status: 'sending' });
-    expect(row.attention).toBe('approval');
-    expect(workStatus(row, NOW).line).toBe('Needs approval');
-  });
-
-  it('a send queued while offline reads as queued, under Needs you', () => {
-    const row = chat({ status: 'queued' });
-    expect(workStatus(row, NOW)).toMatchObject({
-      line: 'Queued to send',
-      lane: 'needsYou',
-    });
-  });
-
-  it('a blocked durable Task reads as blocked', () => {
-    const [row] = buildHomeWorkItems({
-      chats: {},
-      sessions: [],
-      agents: [],
-      tasks: [
-        {
-          id: 'task-1',
-          title: 'Task',
-          status: 'blocked',
-          updatedAt: '2026-09-30T10:00:00.000Z',
-        } as TaskRecord,
-      ],
-    });
-    expect(workStatus(row, NOW).line).toBe('Blocked');
-  });
-
-  it('a merged chat+session row keeps the more urgent kind, bound to the label that won', () => {
-    const mergedWith = (
-      chatOver: Record<string, unknown>,
-      summary: OrchestrationSessionSummary,
-    ) =>
-      buildHomeWorkItems({
-        chats: {
+describe('status facts for chat, task and merged rows', () => {
+  const build = (
+    chatOver: Record<string, unknown> | null,
+    sessions: OrchestrationSessionSummary[] = [],
+    tasks: TaskRecord[] = [],
+  ) => {
+    const chats: Record<string, ChatUIState> = chatOver
+      ? {
           c1: {
             ...createDefaultChatState(),
-            conversationId: 'c1',
             title: 'Chat',
             createdAt: NOW - 60_000,
             ...chatOver,
           },
-        },
-        sessions: [{ ...summary, threadId: 'c1', conversationId: 'c1' }],
-        agents: [],
-      })[0];
+        }
+      : {};
+    const items = buildHomeWorkItems({ chats, sessions, tasks, agents: [] });
+    const facts = buildWorkFacts({ items, chats, sessions, tasks });
+    return {
+      item: items[0],
+      facts: facts.get(items[0].id),
+      line: workStatus(items[0], NOW, { facts: facts.get(items[0].id) }).line,
+    };
+  };
+  const asConversation = (summary: OrchestrationSessionSummary) => ({
+    ...summary,
+    threadId: 'conv',
+    conversationId: 'conv',
+    conversationActivity: summary.conversationActivity && {
+      ...summary.conversationActivity,
+      conversationId: 'conv',
+      currentThreadId: 'conv',
+    },
+  });
 
+  it('a chat holding a pending approval reads as needs-approval', () => {
+    expect(build({ pendingApprovals: ['r1'], status: 'sending' }).line).toBe(
+      'Needs approval',
+    );
+  });
+
+  it('a send queued while offline reads as queued', () => {
+    expect(build({ status: 'queued' }).line).toBe('Queued to send');
+  });
+
+  it('a blocked durable Task reads as blocked', () => {
+    expect(
+      build(
+        null,
+        [],
+        [
+          {
+            id: 'task-1',
+            title: 'Task',
+            status: 'blocked',
+            updatedAt: '2026-09-30T10:00:00.000Z',
+          } as TaskRecord,
+        ],
+      ).line,
+    ).toBe('Blocked');
+  });
+
+  it('a merged chat+session row reads the more urgent kind, only under the label that won', () => {
     // The chat only knows "waiting"; the session knows it is an approval.
     expect(
-      mergedWith(
-        { orchestrationStatus: 'awaiting-approval' },
-        APPROVAL_IN_OPEN_TURN,
+      build(
+        { conversationId: 'conv', orchestrationStatus: 'awaiting-approval' },
+        [asConversation(APPROVAL_IN_OPEN_TURN)],
       ),
-    ).toMatchObject({
-      lifecycleLabel: 'Needs attention',
-      attention: 'approval',
-    });
+    ).toMatchObject({ line: 'Needs approval' });
     // The chat holds the approval first-hand; the session summary is stale.
     expect(
-      mergedWith({ pendingApprovals: ['r1'] }, TURN_COMPLETED),
-    ).toMatchObject({
-      lifecycleLabel: 'Needs attention',
-      attention: 'approval',
-    });
-    // Nothing is owed: no kind survives a label that is not Needs attention.
-    const settled = mergedWith({}, TURN_COMPLETED);
-    expect(settled.lifecycleLabel).not.toBe('Needs attention');
-    expect(settled.attention).toBeUndefined();
-    expect(settled.activity).toBeUndefined();
+      build({ conversationId: 'conv', pendingApprovals: ['r1'] }, [
+        asConversation(TURN_COMPLETED),
+      ]),
+    ).toMatchObject({ line: 'Needs approval' });
+    // Nothing is owed: no kind is recorded under a label that is not
+    // Needs attention.
+    const settled = build({ conversationId: 'conv' }, [
+      asConversation(TURN_COMPLETED),
+    ]);
+    expect(settled.item.lifecycleLabel).not.toBe('Needs attention');
+    expect(settled.facts?.attention).toBeUndefined();
+    expect(settled.facts?.activity).toBeUndefined();
   });
 });

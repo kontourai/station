@@ -34,6 +34,7 @@ import {
 import { MIN_TOUCH_TARGET_PX } from '../../../../../tests/helpers/touch-target';
 import { writeSnooze } from '../../../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
+import type { WorkFactsById } from '../../../views/home/work-facts';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { MobileTaskSwitcher } from '../../chat-dock/MobileTaskSwitcher';
 
@@ -68,17 +69,8 @@ function item(over: Partial<HomeWorkItem> & { id: string }): HomeWorkItem {
 /** One row per shape whose height could differ: with and without a chip
  *  line, a long detail, a ticking duration, and both slim groups. */
 const ITEMS: HomeWorkItem[] = [
-  item({
-    id: 'approval',
-    lifecycleLabel: 'Needs attention',
-    attention: 'approval',
-    worktreeBranch: 'station/a-branch-name-long-enough-to-truncate-in-a-rail',
-  }),
-  item({
-    id: 'running',
-    lifecycleLabel: 'Running',
-    activity: { turnStartedAt: '2026-09-30T10:00:03.000Z', toolName: 'Bash' },
-  }),
+  item({ id: 'approval', lifecycleLabel: 'Needs attention' }),
+  item({ id: 'running', lifecycleLabel: 'Running' }),
   item({ id: 'idle', environmentLabel: 'brian-media' }),
   item({
     id: 'failed',
@@ -93,6 +85,22 @@ const ITEMS: HomeWorkItem[] = [
     updatedAt: NOW - 3 * 3_600_000,
   }),
 ];
+
+const FACTS: WorkFactsById = new Map([
+  [
+    'approval',
+    {
+      attention: 'approval',
+      worktreeBranch: 'station/a-branch-name-long-enough-to-truncate-in-a-rail',
+    },
+  ],
+  [
+    'running',
+    {
+      activity: { turnStartedAt: '2026-09-30T10:00:03.000Z', toolName: 'Bash' },
+    },
+  ],
+]);
 
 function page(markup: string): string {
   return `<!doctype html><html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1" /><style>${css}</style></head><body>${markup}</body></html>`;
@@ -116,6 +124,7 @@ function panelMarkup(): string {
       onCloseChat={vi.fn()}
       onOpenHistory={vi.fn()}
       now={NOW}
+      workFacts={FACTS}
     />,
   );
   // Expand the two collapsed sections the way a user does, so the slim
@@ -145,6 +154,7 @@ function sheetMarkup(): string {
       onOpenSession={vi.fn()}
       onCloseChat={vi.fn()}
       now={NOW}
+      workFacts={FACTS}
     />,
   );
   const markup = document.body.innerHTML;
@@ -238,46 +248,108 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test('a revealed action is a 44px-tall target on any pointer, and neighbours do not overlap', async () => {
+  test('a revealed action is a 44px-tall target that stays inside its own row', async () => {
     const pg = await browser.newPage({
       viewport: { width: 1280, height: 900 },
     });
     try {
       await pg.setContent(page(panelMarkup()));
       await settle(pg);
-      const row = pg.locator('[data-row-key="running"]');
-      await row.hover();
-      const targets = await row
-        .locator('.inbox-row__action')
-        .evaluateAll((actions) =>
-          actions.map((action) => {
-            const rect = action.getBoundingClientRect();
-            const after = getComputedStyle(action, '::after');
-            const height =
-              rect.height -
-              Number.parseFloat(after.top) -
-              Number.parseFloat(after.bottom);
-            const left = rect.left + Number.parseFloat(after.left);
-            const right = rect.right - Number.parseFloat(after.right);
-            return {
-              label: action.getAttribute('aria-label'),
-              height,
-              left,
-              right,
-            };
-          }),
-        );
-      expect(targets.length).toBeGreaterThanOrEqual(3);
-      for (const target of targets) {
-        expect(target.height, `${target.label}`).toBeGreaterThanOrEqual(
-          MIN_TOUCH_TARGET_PX,
-        );
+      const rows = pg.locator('[data-testid="inbox-row"]');
+      const count = await rows.count();
+      let cards = 0;
+      for (let index = 0; index < count; index += 1) {
+        const row = rows.nth(index);
+        await row.hover();
+        const measured = await row.evaluate((element) => {
+          const rowBox = element.getBoundingClientRect();
+          return {
+            slim: element.classList.contains('inbox-row--slim'),
+            rowTop: rowBox.top,
+            rowBottom: rowBox.bottom,
+            targets: [...element.querySelectorAll('.inbox-row__action')].map(
+              (action) => {
+                const rect = action.getBoundingClientRect();
+                const after = getComputedStyle(action, '::after');
+                const top = rect.top + Number.parseFloat(after.top);
+                const height = Number.parseFloat(after.height);
+                return {
+                  label: action.getAttribute('aria-label'),
+                  top,
+                  bottom: top + height,
+                  height,
+                  left: rect.left + Number.parseFloat(after.left),
+                  right: rect.right - Number.parseFloat(after.right),
+                };
+              },
+            ),
+          };
+        });
+        expect(measured.targets.length).toBeGreaterThanOrEqual(2);
+        for (const [position, target] of measured.targets.entries()) {
+          // Inside the row's own box: never the row above or below.
+          expect(target.top, `${target.label} top`).toBeGreaterThanOrEqual(
+            measured.rowTop - 0.01,
+          );
+          expect(target.bottom, `${target.label} bottom`).toBeLessThanOrEqual(
+            measured.rowBottom + 0.01,
+          );
+          if (!measured.slim) {
+            expect(target.height, `${target.label}`).toBeGreaterThanOrEqual(
+              MIN_TOUCH_TARGET_PX,
+            );
+          }
+          if (position > 0) {
+            expect(target.left).toBeGreaterThanOrEqual(
+              measured.targets[position - 1].right - 0.01,
+            );
+          }
+        }
+        if (!measured.slim) cards += 1;
       }
-      for (let index = 1; index < targets.length; index += 1) {
-        expect(targets[index].left).toBeGreaterThanOrEqual(
-          targets[index - 1].right - 0.01,
-        );
+      expect(cards).toBeGreaterThanOrEqual(4);
+    } finally {
+      await pg.close();
+    }
+  });
+
+  test('hit-testing just outside a hovered row never lands on that row’s actions', async () => {
+    const pg = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      await pg.setContent(page(panelMarkup()));
+      await settle(pg);
+      const rows = pg.locator('[data-testid="inbox-row"]');
+      const count = await rows.count();
+      let probes = 0;
+      for (let index = 0; index < count; index += 1) {
+        const row = rows.nth(index);
+        await row.hover();
+        const hits = await row.evaluate((element) => {
+          const rowBox = element.getBoundingClientRect();
+          const owner = (x: number, y: number) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest('[data-testid="inbox-row"]')
+              ?.getAttribute('data-row-key') ?? null;
+          return [...element.querySelectorAll('.inbox-row__action')].flatMap(
+            (action) => {
+              const rect = action.getBoundingClientRect();
+              const x = rect.left + rect.width / 2;
+              return [
+                // One pixel into whatever is above, and below, this row.
+                owner(x, rowBox.top - 1),
+                owner(x, rowBox.bottom + 1),
+              ];
+            },
+          );
+        });
+        const key = await row.getAttribute('data-row-key');
+        probes += hits.length;
+        expect(hits, `row ${key}`).not.toContain(key);
       }
+      expect(probes).toBeGreaterThanOrEqual(2 * ITEMS.length);
     } finally {
       await pg.close();
     }

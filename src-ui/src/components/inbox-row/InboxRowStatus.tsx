@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import {
   formatElapsed,
   type WorkStatus,
@@ -58,22 +58,33 @@ export function InboxRowStatusGlyph({ rung }: { rung: WorkStatusRung }) {
 }
 
 /**
- * A duration that ticks once a second. Starts from the injected `now`, so
- * the first paint equals the ladder's own `line`, then advances by wall-clock
- * time elapsed since. Text only: nothing here animates.
+ * A duration that ticks once a second. Anchored ONCE, to the `now` it was
+ * mounted with: the first paint equals the ladder's own `line`, and every
+ * tick after adds the wall-clock time since. A host handing down a fresh
+ * `now` on each of its own renders therefore never restarts the interval.
+ * The row keys this by `since`, so a new turn gets a new anchor. Text only:
+ * nothing here animates.
  */
 function TickingElapsed({ since, now }: { since: number; now: number }) {
-  const [elapsed, setElapsed] = useState(0);
-  // Re-anchored whenever the host hands down a fresh `now`, so the offset is
-  // only ever the time since THAT reading and is never counted twice.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `now` is the anchor this effect resets on.
+  const anchor = useRef({ now, at: Date.now() });
+  const [, tick] = useReducer((count: number) => count + 1, 0);
   useEffect(() => {
-    const anchoredAt = Date.now();
-    setElapsed(0);
-    const timer = setInterval(() => setElapsed(Date.now() - anchoredAt), 1000);
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [now]);
-  return <>{formatElapsed(now + elapsed - since)}</>;
+  }, []);
+  const { now: anchoredNow, at } = anchor.current;
+  return <>{formatElapsed(anchoredNow + (Date.now() - at) - since)}</>;
+}
+
+/** What a screen reader hears instead of a number that changes every
+ *  second: a coarse duration that only moves when the host's clock does. */
+function coarseDuration(elapsedMs: number): string {
+  const minutes = Math.round(elapsedMs / 60_000);
+  if (minutes < 1) return 'for under a minute';
+  if (minutes < 60)
+    return `for about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  return `for about ${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
 /** The detail's test id names what it is the basis for, where one exists. */
@@ -84,30 +95,42 @@ const DETAIL_TEST_IDS: Partial<Record<WorkStatusRung, string>> = {
 };
 
 /**
+ * The rungs whose detail is a REASON the user needs in full: why it failed,
+ * why nothing here can answer it. For these the fixed one-line budget
+ * yields: the line may wrap to two lines rather than cut the reason off
+ * (archive#1783 requires the unanswerable basis on the row itself). The
+ * whole text is always in the DOM, so the row's `aria-describedby` reads all
+ * of it, and the row's details surface shows it unclamped.
+ */
+const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set([
+  'failed',
+  'stopped',
+  'unanswerable',
+]);
+
+/**
  * The row's single status line: icon, word, then whatever the ladder says
  * the word is about, then a ticking duration while a turn is open.
  */
 export function InboxRowStatusLine({
   status,
   now,
-  showUnread,
   id,
 }: {
   status: WorkStatus;
   now: number;
-  /** The row decides: the chat on screen is not unread. */
-  showUnread: boolean;
   id: string;
 }) {
+  const wraps = REASON_RUNGS.has(status.rung) && Boolean(status.detail);
   return (
     <span
       id={id}
-      className="inbox-row__status"
+      className={`inbox-row__status${wraps ? ' inbox-row__status--reason' : ''}`}
       data-tone={status.tone}
       data-testid="inbox-row-status"
     >
       <InboxRowStatusGlyph rung={status.rung} />
-      {showUnread && (
+      {status.unread && (
         <span className="inbox-row__unread">
           <span className="sr-only">Unread. </span>
         </span>
@@ -127,9 +150,21 @@ export function InboxRowStatusLine({
       )}
       {status.since !== undefined && (
         <>
-          <span className="inbox-row__sep">{' · '}</span>
-          <span className="inbox-row__elapsed">
-            <TickingElapsed since={status.since} now={now} />
+          {/* The ticking number is for the eye only. This line is the row
+              button's description; a value that changes every second would
+              be re-read or go stale mid-sentence. */}
+          <span aria-hidden="true">
+            <span className="inbox-row__sep">{' · '}</span>
+            <span className="inbox-row__elapsed">
+              <TickingElapsed
+                key={status.since}
+                since={status.since}
+                now={now}
+              />
+            </span>
+          </span>
+          <span className="sr-only">
+            {`, ${coarseDuration(now - status.since)}`}
           </span>
         </>
       )}

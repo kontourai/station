@@ -1,5 +1,6 @@
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
+import type { WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
 
 interface HomeWorkRowProps {
@@ -19,6 +20,13 @@ interface HomeWorkRowProps {
   discardDraft?: boolean;
   /** `slim` for the settled tail; every other lane renders the full card. */
   size?: 'card' | 'slim';
+  /** The lanes' own clock and the status facts derived beside the items. */
+  context: HomeRowContext;
+}
+
+export interface HomeRowContext {
+  now: number;
+  workFacts?: WorkFactsById;
 }
 
 /** The discard itself is the button's own server command; Home has no tab
@@ -28,8 +36,8 @@ const afterDraftDiscarded = () => {};
 /**
  * Home's work row is the shared inbox row (#3043), in the always-visible
  * `touch` chrome: Home is used on phones, where there is no hover to reveal
- * a snooze control with. It mounts no hover card; Home has no session
- * records to resolve one's git section from.
+ * a snooze control with. Its Details action opens the row's metadata card
+ * as a sheet (without a git section: Home resolves no session folders).
  */
 export function renderHomeWorkRow({
   task,
@@ -39,6 +47,7 @@ export function renderHomeWorkRow({
   onSnooze,
   discardDraft = false,
   size = 'card',
+  context,
 }: HomeWorkRowProps) {
   return (
     <li key={task.stableId}>
@@ -48,10 +57,10 @@ export function renderHomeWorkRow({
         isCurrent={false}
         isSnoozed={false}
         isOpenChat={false}
-        now={Date.now()}
+        now={context.now}
+        facts={context.workFacts?.get(task.id)}
         size={size}
         chrome="touch"
-        hoverCard={false}
         agents={agents}
         isWoken={isWoken}
         onActivate={() => onOpen(task)}

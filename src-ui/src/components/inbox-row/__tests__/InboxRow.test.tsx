@@ -11,16 +11,34 @@
  */
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatDraftsStore } from '../../../contexts/chat-drafts-store';
 import {
   buildOrchestrationItems,
   type HomeWorkItem,
 } from '../../../views/home/home-view-model';
+import { buildWorkFacts, type WorkFacts } from '../../../views/home/work-facts';
 import { workStatus } from '../../../views/home/work-status';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { inboxRowChips } from '../inbox-row-chips';
+
+// The details sheet's on-demand reads (git, pull requests, basis) need a
+// connection scope; with none they stay disabled, which is all these tests
+// need of them.
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../contexts/ApiBaseContext')
+  >()),
+  useHostRequestAuthorityScope: () => null,
+}));
 
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 const TURN_STARTED = '2026-09-30T10:00:03.000Z';
@@ -60,31 +78,85 @@ function session(
   };
 }
 
-function itemFor(
-  over: Partial<OrchestrationSessionSummary> = {},
-): HomeWorkItem {
-  return buildOrchestrationItems([session(over)], [])[0];
+interface Row {
+  item: HomeWorkItem;
+  facts: WorkFacts | undefined;
+}
+
+/** A row the way a host builds one: the item, and its facts beside it. */
+function rowFor(over: Partial<OrchestrationSessionSummary> = {}): Row {
+  const sessions = [session(over)];
+  const items = buildOrchestrationItems(sessions, []);
+  return {
+    item: items[0],
+    facts: buildWorkFacts({ items, sessions }).get(items[0].id),
+  };
 }
 
 function renderRow(
-  item: HomeWorkItem,
+  row: Row,
   props: Partial<React.ComponentProps<typeof InboxRow>> = {},
 ) {
   return render(
-    <InboxRow
-      item={item}
-      isCurrent={false}
-      isSnoozed={false}
-      isOpenChat={false}
-      now={NOW}
-      onActivate={vi.fn()}
-      hoverCard={false}
-      {...props}
-    />,
+    <QueryClientProvider client={new QueryClient()}>
+      <InboxRow
+        item={row.item}
+        facts={row.facts}
+        isCurrent={false}
+        isSnoozed={false}
+        isOpenChat={false}
+        now={NOW}
+        onActivate={vi.fn()}
+        hoverCard={false}
+        {...props}
+      />
+    </QueryClientProvider>,
   );
 }
 
-const statusText = () => screen.getByTestId('inbox-row-status').textContent;
+/** The status line as drawn: screen-reader-only text is not part of it. */
+function statusText(): string {
+  const clone = screen
+    .getByTestId('inbox-row-status')
+    .cloneNode(true) as Element;
+  for (const hidden of clone.querySelectorAll('.sr-only')) hidden.remove();
+  return clone.textContent ?? '';
+}
+
+/** What a screen reader is told about the row: its description, with
+ *  `aria-hidden` content left out as the accessibility tree leaves it out. */
+function describedText(): string {
+  const open = screen.getByTestId('inbox-row').querySelector('button')!;
+  return (open.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => {
+      const clone = document.getElementById(id)?.cloneNode(true) as Element;
+      for (const hidden of clone.querySelectorAll('[aria-hidden="true"]'))
+        hidden.remove();
+      return clone.textContent ?? '';
+    })
+    .join(' ');
+}
+
+const SILENCE = {
+  lastProgressEventAt: '2026-09-30T09:55:15.000Z',
+  progressSilence: {
+    detectedAt: '2026-09-30T10:00:15.000Z',
+    windowMs: 300_000,
+    silentSinceEventAt: '2026-09-30T09:55:15.000Z',
+    provider: 'claude',
+  },
+} satisfies OrchestrationSessionSummary['turnProgress'];
+
+const FAILED = {
+  lifecycleState: 'failed',
+  hasActiveTurn: false,
+  terminalAttribution: {
+    kind: 'runtime_error',
+    detail:
+      'The engine reported an error: Claude model "claude-opus-5" failed: stream ended early.',
+  },
+} satisfies Partial<OrchestrationSessionSummary>;
 
 afterEach(() => {
   cleanup();
@@ -102,39 +174,37 @@ describe('the row says exactly what the ladder says', () => {
         pendingReview: true,
       },
     ],
-    [
-      'failed with a reason',
-      {
-        lifecycleState: 'failed',
-        hasActiveTurn: false,
-        terminalAttribution: { kind: 'runtime_error', detail: 'rate limit' },
-      },
-    ],
+    ['failed with a reason', FAILED],
     ['idle', { hasActiveTurn: false, conversationActivity: undefined }],
   ] as const)('%s', (_name, over) => {
-    const item = itemFor(over as Partial<OrchestrationSessionSummary>);
-    renderRow(item);
-    const status = workStatus(item, NOW);
+    const row = rowFor(over as Partial<OrchestrationSessionSummary>);
+    renderRow(row);
+    const status = workStatus(row.item, NOW, { facts: row.facts });
     expect(statusText()).toBe(status.line);
-    const row = screen.getByTestId('inbox-row');
-    expect(row.dataset.statusRung).toBe(status.rung);
-    expect(row.dataset.lane).toBe(status.lane);
+    const element = screen.getByTestId('inbox-row');
+    expect(element.dataset.statusRung).toBe(status.rung);
+    expect(element.dataset.lane).toBe(status.lane);
+  });
+
+  it('without its facts a row says only what its label says', () => {
+    renderRow({ item: rowFor().item, facts: undefined });
+    expect(statusText()).toBe('Running');
   });
 
   it('a needs-approval row shows the status and opens the chat; it offers no inline decision', () => {
     const onActivate = vi.fn();
-    const item = itemFor({
+    const row = rowFor({
       lifecycleState: 'review_pending',
       transitionReason: 'review_requested',
       pendingReview: true,
     });
-    renderRow(item, { onActivate, onSnoozeWake: vi.fn() });
+    renderRow(row, { onActivate, onSnoozeWake: vi.fn() });
     expect(statusText()).toBe('Needs approval');
     expect(screen.queryByRole('button', { name: /approve|deny/i })).toBeNull();
     screen
       .getByRole('button', { name: 'Migrate sessions table, station' })
       .click();
-    expect(onActivate).toHaveBeenCalledWith(item);
+    expect(onActivate).toHaveBeenCalledWith(row.item);
   });
 
   it('status is never colour-only: every rung renders an icon beside its word', () => {
@@ -144,7 +214,7 @@ describe('the row says exactly what the ladder says', () => {
       { lifecycleState: 'failed', hasActiveTurn: false },
       { lifecycleState: 'idle', hasActiveTurn: false },
     ] as Partial<OrchestrationSessionSummary>[]) {
-      renderRow(itemFor(over));
+      renderRow(rowFor(over));
       const status = screen.getByTestId('inbox-row-status');
       expect(
         status.querySelector('svg.inbox-row__status-glyph'),
@@ -162,25 +232,13 @@ describe('the row says exactly what the ladder says', () => {
         .getByTestId('inbox-row-status')
         .querySelector('svg.inbox-row__status-glyph path')
         ?.getAttribute('d');
-    const healthy = renderRow(itemFor());
+    const healthy = renderRow(rowFor());
     const healthyTone = screen.getByTestId('inbox-row-status').dataset.tone;
     const healthyGlyph = glyphPath();
     expect(healthyTone).toBe('active');
     healthy.unmount();
 
-    renderRow(
-      itemFor({
-        turnProgress: {
-          lastProgressEventAt: '2026-09-30T09:55:15.000Z',
-          progressSilence: {
-            detectedAt: '2026-09-30T10:00:15.000Z',
-            windowMs: 300_000,
-            silentSinceEventAt: '2026-09-30T09:55:15.000Z',
-            provider: 'claude',
-          },
-        },
-      }),
-    );
+    renderRow(rowFor({ turnProgress: SILENCE }));
     expect(statusText()).toBe('No progress for 6m · Bash · 1m 12s');
     expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
     expect(glyphPath()).toBeTruthy();
@@ -189,20 +247,41 @@ describe('the row says exactly what the ladder says', () => {
     expect(screen.getByTestId('inbox-row').dataset.lane).toBe('running');
   });
 
-  it('offers the status line as the description of the open control', () => {
-    renderRow(itemFor());
-    const open = screen.getByRole('button', {
-      name: 'Migrate sessions table, station',
+  it('does not mark the chat on screen as unread', () => {
+    const idle = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
     });
-    const describedBy = open.getAttribute('aria-describedby') ?? '';
-    expect(document.getElementById(describedBy)?.textContent).toBe(
-      'Running · Bash · 1m 12s',
+    const row = {
+      ...idle,
+      item: { ...idle.item, conversationUpdatedAt: '2026-09-30T10:00:05.000Z' },
+    };
+    const other = renderRow(row);
+    expect(screen.getByTestId('inbox-row').className).toContain('is-unread');
+    expect(statusText()).toMatch(/new activity/);
+    expect(describedText()).toContain('Unread.');
+    other.unmount();
+    renderRow(row, { isCurrent: true });
+    expect(screen.getByTestId('inbox-row').className).not.toContain(
+      'is-unread',
     );
+    expect(statusText()).toMatch(/last activity/);
+    expect(describedText()).not.toContain('Unread.');
+  });
+});
+
+describe('what a screen reader and a ticking clock each get', () => {
+  it('describes the row by its status, with a coarse duration instead of the ticking one', () => {
+    renderRow(rowFor());
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
+    // The per-second number is hidden from the description; a duration that
+    // only moves with the host's clock stands in for it.
+    expect(describedText()).toBe('Running · Bash, for about 1 minute');
   });
 
-  it('ticks the duration once a second, from the injected clock', () => {
+  it('ticks once a second from the injected clock', () => {
     vi.useFakeTimers();
-    renderRow(itemFor());
+    renderRow(rowFor());
     expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(3000);
@@ -210,27 +289,130 @@ describe('the row says exactly what the ladder says', () => {
     expect(statusText()).toBe('Running · Bash · 1m 15s');
   });
 
+  it('a host re-rendering with a fresh now neither restarts the ticker nor double-counts', () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const row = rowFor();
+    const view = renderRow(row);
+    const started = setIntervalSpy.mock.calls.length;
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    // The host re-renders, handing down a clock 2s later (as `Date.now()`
+    // in render did on every render).
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxRow
+          item={row.item}
+          facts={row.facts}
+          isCurrent={false}
+          isSnoozed={false}
+          isOpenChat={false}
+          now={NOW + 2000}
+          onActivate={vi.fn()}
+          hoverCard={false}
+        />
+      </QueryClientProvider>,
+    );
+    expect(setIntervalSpy.mock.calls.length).toBe(started);
+    expect(statusText()).toBe('Running · Bash · 1m 14s');
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(statusText()).toBe('Running · Bash · 1m 15s');
+  });
+
   it('a row with no open turn runs no timer', () => {
     vi.useFakeTimers();
     renderRow(
-      itemFor({ hasActiveTurn: false, conversationActivity: undefined }),
+      rowFor({ hasActiveTurn: false, conversationActivity: undefined }),
     );
     expect(vi.getTimerCount()).toBe(0);
   });
+});
 
-  it('does not mark the chat on screen as unread', () => {
-    const item: HomeWorkItem = {
-      ...itemFor({ hasActiveTurn: false, conversationActivity: undefined }),
-      conversationUpdatedAt: '2026-09-30T10:00:05.000Z',
-    };
-    const other = renderRow(item);
-    expect(screen.getByTestId('inbox-row').className).toContain('is-unread');
-    expect(statusText()).toContain('Unread.');
-    other.unmount();
-    renderRow(item, { isCurrent: true });
-    expect(screen.getByTestId('inbox-row').className).not.toContain(
-      'is-unread',
+describe('a reason is readable in full on every surface', () => {
+  it('a failure reason is on the row unshortened, may wrap, and is the row’s description', () => {
+    renderRow(rowFor(FAILED));
+    const status = screen.getByTestId('inbox-row-status');
+    expect(status.className).toContain('inbox-row__status--reason');
+    expect(screen.getByTestId('inbox-row-failure-reason').textContent).toBe(
+      FAILED.terminalAttribution.detail,
     );
+    expect(describedText()).toBe(
+      `Failed · ${FAILED.terminalAttribution.detail}`,
+    );
+  });
+
+  it('the unanswerable basis is on the row and in its description', () => {
+    const row = rowFor({
+      lifecycleState: 'review_pending',
+      pendingReview: true,
+      hasActiveTurn: false,
+      answerability: {
+        answerable: false,
+        qualification: 'past_resume',
+        observedBy: 'station-a',
+        observedAt: '2026-09-30T10:00:10.000Z',
+      } as OrchestrationSessionSummary['answerability'],
+    });
+    renderRow(row);
+    expect(row.item.unanswerableNotice).toMatch(/observed by station-a/);
+    expect(screen.getByTestId('inbox-row-answerability').textContent).toBe(
+      row.item.unanswerableNotice,
+    );
+    expect(screen.getByTestId('inbox-row-status').className).toContain(
+      'inbox-row__status--reason',
+    );
+    expect(describedText()).toContain(row.item.unanswerableNotice);
+  });
+
+  it('a line that is not a reason keeps the one-line budget', () => {
+    renderRow(rowFor());
+    expect(screen.getByTestId('inbox-row-status').className).not.toContain(
+      'inbox-row__status--reason',
+    );
+  });
+
+  it('a slim failed row shows the word and still describes the reason', () => {
+    renderRow(rowFor(FAILED), { size: 'slim' });
+    expect(statusText()).toBe('Failed');
+    expect(describedText()).toBe(
+      `Failed · ${FAILED.terminalAttribution.detail}`,
+    );
+  });
+
+  it('touch chrome opens the card as a sheet holding every fact the row leaves off', async () => {
+    const row = rowFor({
+      ...FAILED,
+      model: 'claude-opus-5',
+      cwd: '/Users/me/dev/kontourai/station',
+    });
+    renderRow(row, { chrome: 'touch', hoverCard: true });
+    const details = screen.getByRole('button', {
+      name: 'Details for Migrate sessions table',
+    });
+    expect(details.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(details);
+    const sheet = await screen.findByTestId(
+      'inbox-row-details',
+      {},
+      { timeout: 8000 },
+    );
+    expect(details.getAttribute('aria-expanded')).toBe('true');
+    // The whole reason, the model, the kind and the folder.
+    expect(sheet.textContent).toContain(FAILED.terminalAttribution.detail);
+    expect(sheet.textContent).toContain(row.item.modelLabel);
+    expect(sheet.textContent).toContain('Session');
+    expect(sheet.textContent).toContain('…/kontourai/station');
+    expect(sheet.textContent).toContain('Failed');
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+  });
+
+  it('hover chrome offers no Details action: its card opens on hover and focus', () => {
+    renderRow(rowFor(), { hoverCard: true, onSnoozeWake: vi.fn() });
+    expect(screen.queryByRole('button', { name: /^Details for/ })).toBeNull();
   });
 });
 
@@ -247,18 +429,18 @@ describe('the chip line exists only when a chip does', () => {
   } as const;
 
   it('renders no chip line for a row with no chip facts', () => {
-    renderRow(itemFor());
+    renderRow(rowFor());
     expect(screen.queryByTestId('inbox-row-chips')).toBeNull();
     expect(document.querySelector('.inbox-row__chip')).toBeNull();
   });
 
   it('a shared-workspace session has no branch chip', () => {
-    renderRow(itemFor({ workspaceIsolation: { mode: 'shared' } }));
+    renderRow(rowFor({ workspaceIsolation: { mode: 'shared' } }));
     expect(screen.queryByTestId('inbox-row-chips')).toBeNull();
   });
 
   it('a worktree session shows its branch, and only that', () => {
-    renderRow(itemFor({ workspaceIsolation: WORKTREE }));
+    renderRow(rowFor({ workspaceIsolation: WORKTREE }));
     const chips = [...document.querySelectorAll('.inbox-row__chip')];
     expect(chips.map((chip) => chip.getAttribute('data-chip'))).toEqual([
       'branch',
@@ -267,10 +449,14 @@ describe('the chip line exists only when a chip does', () => {
   });
 
   it('shows the remote machine, the unsent draft and the woke marker each from its own fact', () => {
-    const remote: HomeWorkItem = {
-      ...itemFor(),
-      environmentLabel: 'brian-media',
-      chatSessionId: 'chat-with-draft',
+    const base = rowFor();
+    const remote: Row = {
+      ...base,
+      item: {
+        ...base.item,
+        environmentLabel: 'brian-media',
+        chatSessionId: 'chat-with-draft',
+      },
     };
     chatDraftsStore.set('chat-with-draft', 'unsent');
     renderRow(remote, { isWoken: true });
@@ -297,7 +483,7 @@ describe('the chip line exists only when a chip does', () => {
     expect(
       inboxRowChips({}, { hasUnsentDraft: false, isWoken: false }),
     ).toEqual([]);
-    expect(inboxRowChips({ worktreeBranch: 'a' })).toEqual([
+    expect(inboxRowChips({}, { worktreeBranch: 'a' })).toEqual([
       { kind: 'branch', label: 'a' },
     ]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
@@ -311,30 +497,21 @@ describe('the chip line exists only when a chip does', () => {
 
 describe('two sizes and two chromes', () => {
   it('the slim size is one line: no meta line, no chips, the status word and the time', () => {
-    renderRow(
-      itemFor({
-        lifecycleState: 'failed',
-        hasActiveTurn: false,
-        terminalAttribution: { kind: 'runtime_error', detail: 'rate limit' },
-        workspaceIsolation: { mode: 'shared' },
-      }),
-      { size: 'slim' },
-    );
+    renderRow(rowFor({ ...FAILED, workspaceIsolation: { mode: 'shared' } }), {
+      size: 'slim',
+    });
     const row = screen.getByTestId('inbox-row');
     expect(row.className).toContain('inbox-row--slim');
     expect(row.querySelector('.inbox-row__meta')).toBeNull();
     expect(row.querySelector('.inbox-row__chips')).toBeNull();
     expect(statusText()).toBe('Failed');
-    // The reason is not lost, only folded: it is the word's tooltip.
-    expect(screen.getByTestId('inbox-row-status').getAttribute('title')).toBe(
-      'Failed · rate limit',
-    );
     expect(row.querySelector('.inbox-row__time')?.textContent).toBe('1m');
   });
 
   it('a slim remote row still names its machine', () => {
+    const base = rowFor();
     renderRow(
-      { ...itemFor(), environmentLabel: 'brian-media' },
+      { ...base, item: { ...base.item, environmentLabel: 'brian-media' } },
       { size: 'slim' },
     );
     expect(document.querySelector('.inbox-row__slim-remote')?.textContent).toBe(
@@ -342,30 +519,18 @@ describe('two sizes and two chromes', () => {
     );
   });
 
-  it('hover chrome offers open and snooze, each named and with a tooltip', () => {
-    renderRow(itemFor(), { onSnoozeWake: vi.fn() });
-    const open = screen.getByRole('button', {
-      name: 'Open Migrate sessions table',
-    });
+  it('hover chrome offers snooze, named and with a tooltip, and no separate open control', () => {
+    renderRow(rowFor(), { onSnoozeWake: vi.fn() });
     const snooze = screen.getByRole('button', {
       name: 'Snooze Migrate sessions table',
     });
-    expect(open.getAttribute('title')).toBe('Open');
     expect(snooze.getAttribute('title')).toBe('Snooze for 30 minutes');
-  });
-
-  it('touch chrome omits the separate open control; the row is the target', () => {
-    renderRow(itemFor(), { onSnoozeWake: vi.fn(), chrome: 'touch' });
-    expect(
-      screen.queryByRole('button', { name: 'Open Migrate sessions table' }),
-    ).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Snooze Migrate sessions table' }),
-    ).not.toBeNull();
+    // The row itself opens; a second control would be a redundant tab stop.
+    expect(screen.queryByRole('button', { name: /^Open / })).toBeNull();
   });
 
   it('a host that offers no actions gets no slot and no extra tab stop', () => {
-    renderRow(itemFor());
+    renderRow(rowFor());
     expect(document.querySelector('.inbox-row__actions')).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });

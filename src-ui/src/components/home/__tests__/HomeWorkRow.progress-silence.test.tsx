@@ -4,6 +4,7 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { buildHomeWorkItems } from '../../../views/home/home-view-model';
+import { buildWorkFacts } from '../../../views/home/work-facts';
 import { renderHomeWorkRow } from '../HomeWorkRow';
 
 const LAST_PROGRESS_AT = '2026-08-24T12:00:00.000Z';
@@ -37,11 +38,9 @@ function session(
 function renderSession(
   overrides: Partial<OrchestrationSessionSummary> = {},
 ): void {
-  const [item] = buildHomeWorkItems({
-    chats: {},
-    agents: [],
-    sessions: [session(overrides)],
-  });
+  const sessions = [session(overrides)];
+  const items = buildHomeWorkItems({ chats: {}, agents: [], sessions });
+  const [item] = items;
   render(
     <ul>
       {renderHomeWorkRow({
@@ -49,9 +48,22 @@ function renderSession(
         isWoken: false,
         agents: [],
         onOpen: () => {},
+        context: {
+          now: Date.now(),
+          workFacts: buildWorkFacts({ items, sessions }),
+        },
       })}
     </ul>,
   );
+}
+
+/** The status line as drawn: screen-reader-only text is not part of it. */
+function visibleStatus(): string {
+  const clone = screen
+    .getByTestId('inbox-row-status')
+    .cloneNode(true) as Element;
+  for (const hidden of clone.querySelectorAll('.sr-only')) hidden.remove();
+  return clone.textContent ?? '';
 }
 
 describe('HomeWorkRow status line from the server projections (station#4054)', () => {
@@ -68,9 +80,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
     });
-    expect(screen.getByTestId('inbox-row-status').textContent).toBe(
-      '1 sub-agent running',
-    );
+    expect(visibleStatus()).toBe('1 sub-agent running');
   });
 
   test('a stopped parent with a running child still reads as running, never Stopped', () => {
@@ -105,9 +115,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
         },
       },
     });
-    expect(screen.getByTestId('inbox-row-status').textContent).toBe(
-      'Background work running',
-    );
+    expect(visibleStatus()).toBe('Background work running');
   });
 
   test('renders the exact watchdog silence marker on the status line', () => {
@@ -126,9 +134,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
       },
     });
 
-    expect(screen.getByTestId('inbox-row-status').textContent).toBe(
-      'No progress for 4m',
-    );
+    expect(visibleStatus()).toBe('No progress for 4m');
   });
 
   test('renders no quiet wording when the watchdog holds no marker', () => {
@@ -137,7 +143,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
     );
     renderSession({ turnProgress: { lastProgressEventAt: LAST_PROGRESS_AT } });
 
-    expect(screen.getByTestId('inbox-row-status').textContent).toBe('Running');
+    expect(visibleStatus()).toBe('Running');
     expect(screen.queryByText(/no progress/i)).toBeNull();
   });
 

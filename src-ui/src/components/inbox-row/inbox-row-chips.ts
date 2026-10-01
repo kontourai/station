@@ -22,12 +22,17 @@ export interface InboxRowChip {
 }
 
 export function inboxRowChips(
-  item: Pick<HomeWorkItem, 'worktreeBranch' | 'environmentLabel'>,
-  local: { hasUnsentDraft?: boolean; isWoken?: boolean } = {},
+  item: Pick<HomeWorkItem, 'environmentLabel'>,
+  local: {
+    /** `WorkFacts.worktreeBranch`, derived beside the item. */
+    worktreeBranch?: string;
+    hasUnsentDraft?: boolean;
+    isWoken?: boolean;
+  } = {},
 ): InboxRowChip[] {
   const chips: InboxRowChip[] = [];
-  if (item.worktreeBranch) {
-    chips.push({ kind: 'branch', label: item.worktreeBranch });
+  if (local.worktreeBranch) {
+    chips.push({ kind: 'branch', label: local.worktreeBranch });
   }
   if (item.environmentLabel) {
     chips.push({ kind: 'remote', label: item.environmentLabel });

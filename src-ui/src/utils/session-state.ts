@@ -209,7 +209,7 @@ export function orchestrationLifecycleLabel(
 /**
  * WHAT an awaiting session is waiting on (#3042), read off the same shared
  * fold `orchestrationLifecycleLabel` uses plus the summary's own transition
- * reason. Meaningful only for a session that fold calls `Needs attention`.
+ * facts. Meaningful only for a session that fold calls `Needs attention`.
  *
  * - `review_pending` is the server's fold of every open request that is not
  *   an `input` request (approval, permission, confirmation), and of the
@@ -218,20 +218,40 @@ export function orchestrationLifecycleLabel(
  * - `needs_input` stamped by interrupted-turn recovery carries
  *   `transitionReason: 'runtime_exit'`: the turn was cut short.
  * - any other `needs_input` says only that the session waits on the user.
+ *
+ * ONE STALE SHAPE IS READ AS INTERRUPTED, NOT AS AN APPROVAL. Recovery
+ * aborts a dead turn and stamps `needs_input`, but it does not resolve a
+ * request that turn had opened, so the lifecycle fold re-stamps the session
+ * `review_pending` / `review_requested` over the recovery stamp. Nothing can
+ * approve that request: the turn that asked is gone. The summary still says
+ * what happened in three fields together: no turn is open, the state this
+ * one replaced is recovery's `needs_input`, and the last event is that
+ * recovery `session.state-changed` (any later request or turn would be the
+ * last event instead). A client-side reading of a server gap; the proper
+ * fix is for the server to settle open requests when it aborts their turn.
  */
 export function sessionAttentionKind(
   session: Pick<
     OrchestrationSessionSummary,
     | 'lifecycleState'
+    | 'previousLifecycleState'
     | 'status'
     | 'pendingReview'
     | 'terminalAttribution'
     | 'transitionReason'
+    | 'hasActiveTurn'
+    | 'lastEventMethod'
   >,
 ): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
-  if (disposition.via === 'review_pending') return 'approval';
+  if (disposition.via === 'review_pending') {
+    const approvalOutlivedItsInterruptedTurn =
+      !session.hasActiveTurn &&
+      session.previousLifecycleState === 'needs_input' &&
+      session.lastEventMethod === 'session.state-changed';
+    return approvalOutlivedItsInterruptedTurn ? 'interrupted' : 'approval';
+  }
   if (disposition.via === 'blocked') return 'blocked';
   if (session.transitionReason === 'input_requested') return 'answer';
   if (session.transitionReason === 'runtime_exit') return 'interrupted';

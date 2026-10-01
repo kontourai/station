@@ -12,6 +12,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import {
   chatTaskSessionId,
@@ -56,8 +57,9 @@ export function MobileTaskSwitcher({
   onOpenFailed,
   onCloseChat,
   onAcknowledgeConversation,
-  now,
+  now: suppliedNow,
   agents,
+  workFacts,
   pending = false,
   loadError = false,
   onRetryLoad,
@@ -98,12 +100,16 @@ export function MobileTaskSwitcher({
    * not drift into different row anatomy. Omitted renders no icons.
    */
   agents?: InboxGroupListProps['agents'];
+  /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
+  workFacts?: InboxGroupListProps['workFacts'];
   /** True until every read contributing rows has settled. */
   pending?: boolean;
   loadError?: boolean;
   onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // One coarse tick for the open sheet's relative times; none while closed.
+  const now = useCoarseNow(suppliedNow, { enabled: open });
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
   const openMembership = useMemo(
     () =>
@@ -141,11 +147,11 @@ export function MobileTaskSwitcher({
   // Read snoozes when the sheet opens rather than on every render: the map is
   // in localStorage and lapsed entries are pruned on read.
   useEffect(() => {
-    if (open) setSnoozed(readSnoozes(now ?? Date.now()));
+    if (open) setSnoozed(readSnoozes(now));
   }, [now, open]);
 
   const groups = useMemo(
-    () => groupMobileActivity(collectionTasks, now ?? Date.now(), snoozed),
+    () => groupMobileActivity(collectionTasks, now, snoozed),
     [collectionTasks, now, snoozed],
   );
   const visibleGroups = useMemo(
@@ -282,8 +288,9 @@ export function MobileTaskSwitcher({
             idPrefix="mobile-task-switcher"
             activeChatSessionId={activeChatSessionId}
             openChatIds={openMembership}
-            now={now ?? Date.now()}
+            now={now}
             agents={agents}
+            workFacts={workFacts}
             showGroupCounts
             snoozeMenuOnly
             chrome="touch"
@@ -315,7 +322,7 @@ export function MobileTaskSwitcher({
               // The row leaves its group on snooze/unsnooze; keep focus in
               // the sheet rather than stranding it on a removed node (#1054).
               moveFocusBeforeRemovingInboxRow(panelRef.current, action);
-              const clock = now ?? Date.now();
+              const clock = now;
               const snoozeKey = snoozeKeyFor(task);
               setSnoozed(
                 wakeAt === null

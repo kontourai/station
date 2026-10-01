@@ -1,5 +1,6 @@
 import { relativeTime, relativeTimeAgo } from '../../utils/relativeTime';
-import type { HomeWorkItem, WorkAttentionKind } from './home-view-model';
+import type { HomeWorkItem } from './home-view-model';
+import type { WorkAttentionKind, WorkFacts } from './work-facts';
 
 /**
  * THE STATUS LADDER (#3042): one function decides a work item's single
@@ -7,34 +8,37 @@ import type { HomeWorkItem, WorkAttentionKind } from './home-view-model';
  * counts over that lane cannot disagree. `partitionHomeWorkItems` reads the
  * lane from here; the shared inbox row reads the line.
  *
- * Pure and `now`-injected. Every rung reads a fact the item already carries
- * (see `HomeWorkItem`), and the facts are independent of each other: an
- * awaiting session whose turn is still open carries BOTH `attention` and
- * `activity`. The ORDER below is therefore the contract, not a restatement
- * of `lifecycleLabel`:
+ * Pure and `now`-injected. Two inputs, with different jobs:
  *
- *  1. needs approval            (Needs you)
- *  2. needs your answer         (Needs you)
- *  3. waiting on you / queued   (Needs you)
- *  4. blocked                   (Needs you)
- *  5. interrupted               (Needs you)
- *  6. failed, stopped           (finished)
- *  7. can't answer here         (Idle)
- *  8. sub-agents running        (Running)
- *  9. no progress (watchdog)    (Running)
- * 10. running                   (Running)
- * 11. draft                     (Drafts)
- * 12. done                      (finished)
- * 13. idle                      (Idle)
+ * - THE ITEM decides the rung's family and therefore the lane. That is a
+ *   switch on `lifecycleLabel` (plus `controlMode`), and nothing else: the
+ *   label is already the product's one answer to "what state is this in".
+ *   In particular "an owed decision outranks running" is decided where the
+ *   label is: the shared attention fold (`sessionAttentionDisposition`)
+ *   files an awaiting session ahead of an active one even while its turn is
+ *   still open, and a chat's pending approval is read before its running
+ *   state. This function does not re-decide it.
+ * - THE FACTS (`WorkFacts`, derived beside the item) only choose the words
+ *   inside that family: which thing is owed, which tool is running. They
+ *   are optional, and the lane is the same with or without them, which is
+ *   why the partition can call this with the item alone.
  *
- * An owed decision always outranks running: rungs 1-5 are tested before any
- * `activity` is read.
+ * Rungs, in the order a reader should expect them down an inbox:
+ *
+ *  needs approval, needs your answer, waiting on you, queued to send,
+ *  blocked, interrupted                          (Needs you)
+ *  failed, stopped                               (finished)
+ *  can't answer here                             (Idle)
+ *  sub-agents running, no progress, running      (Running)
+ *  draft                                         (Drafts)
+ *  done                                          (finished)
+ *  idle                                          (Idle)
  *
  * NOT ON THE LADDER, because nothing computes it: "a sub-agent needs
  * approval". Child work reports only running/settled per child
  * (`ChildWorkItem.status`); a parent's summary carries no request state for
  * its children. A delegated child that needs approval is its own session and
- * reaches rung 1 through its own row.
+ * reaches the approval rung through its own row.
  */
 
 export type LiveLaneId = 'needsYou' | 'running' | 'idle';
@@ -45,12 +49,7 @@ export type WorkLane = LiveLaneId | 'finished' | 'drafts' | 'external';
 
 export type WorkStatusRung =
   | 'external'
-  | 'approval'
-  | 'answer'
-  | 'waiting'
-  | 'queued'
-  | 'blocked'
-  | 'interrupted'
+  | WorkAttentionKind
   | 'failed'
   | 'stopped'
   | 'unanswerable'
@@ -89,6 +88,13 @@ export interface WorkStatus {
   unread: boolean;
   /** The whole line as text at `now`. */
   line: string;
+}
+
+export interface WorkStatusContext {
+  /** The facts derived beside the item; absent says only what the label says. */
+  facts?: WorkFacts;
+  /** This conversation is on screen right now, so it is not unread. */
+  current?: boolean;
 }
 
 /**
@@ -136,32 +142,11 @@ const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
   interrupted: 'Interrupted',
 };
 
-/**
- * Rungs 1-5, most urgent first. An item carries ONE kind; this order decides
- * which survives when a chat and its session each recorded a different one
- * (`mergeHomeWorkItems`).
- */
-const WORK_ATTENTION_ORDER: readonly WorkAttentionKind[] = [
-  'approval',
-  'answer',
-  'waiting',
-  'queued',
-  'blocked',
-  'interrupted',
-];
-
-export function moreUrgentAttention(
-  left: WorkAttentionKind | undefined,
-  right: WorkAttentionKind | undefined,
-): WorkAttentionKind | undefined {
-  if (!left || !right) return left ?? right;
-  return WORK_ATTENTION_ORDER.indexOf(right) <
-    WORK_ATTENTION_ORDER.indexOf(left)
-    ? right
-    : left;
-}
-
-function rungFor(item: HomeWorkItem, now: number): Rung {
+function rungFor(
+  item: HomeWorkItem,
+  facts: WorkFacts | undefined,
+  now: number,
+): Rung {
   if (item.controlMode === 'read-only-attached') {
     return {
       rung: 'external',
@@ -170,101 +155,105 @@ function rungFor(item: HomeWorkItem, now: number): Rung {
       word: `Started in ${item.agentLabel}`,
     };
   }
-  const label = item.lifecycleLabel;
-  // Rungs 1-5. `Needs attention` with no recorded kind (a durable Task, an
-  // older server) is still owed something; it reads as the generic rung.
-  const attention =
-    item.attention ?? (label === 'Needs attention' ? 'waiting' : undefined);
-  if (attention) {
-    return {
-      rung: attention,
-      lane: 'needsYou',
-      tone: 'attention',
-      word: ATTENTION_WORDS[attention],
-    };
-  }
-  if (label === 'Failed' || label === 'Stopped') {
-    return {
-      rung: label === 'Failed' ? 'failed' : 'stopped',
-      lane: 'finished',
-      tone: label === 'Failed' ? 'broken' : 'neutral',
-      word: label,
-      detail: item.failureNotice,
-    };
-  }
-  if (label === 'Unanswerable') {
-    return {
-      rung: 'unanswerable',
-      lane: 'idle',
-      tone: 'neutral',
-      word: "Can't answer here",
-      detail: item.unanswerableNotice,
-    };
-  }
-  if (label === 'Running' || item.activity) {
-    const since = epochMs(item.activity?.turnStartedAt);
-    const children = item.activity?.childWorkCount ?? 0;
-    if (children > 0) {
+  switch (item.lifecycleLabel) {
+    case 'Needs attention': {
+      // With no recorded kind (no facts, a durable Task, an older server)
+      // something is still owed; it reads as the generic rung.
+      const kind = facts?.attention ?? 'waiting';
       return {
-        rung: 'childWork',
+        rung: kind,
+        lane: 'needsYou',
+        tone: 'attention',
+        word: ATTENTION_WORDS[kind],
+      };
+    }
+    case 'Failed':
+    case 'Stopped':
+      return {
+        rung: item.lifecycleLabel === 'Failed' ? 'failed' : 'stopped',
+        lane: 'finished',
+        tone: item.lifecycleLabel === 'Failed' ? 'broken' : 'neutral',
+        word: item.lifecycleLabel,
+        detail: item.failureNotice,
+      };
+    case 'Unanswerable':
+      return {
+        rung: 'unanswerable',
+        lane: 'idle',
+        tone: 'neutral',
+        word: "Can't answer here",
+        detail: item.unanswerableNotice,
+      };
+    case 'Running': {
+      const activity = facts?.activity;
+      const since = epochMs(activity?.turnStartedAt);
+      const children = activity?.childWorkCount ?? 0;
+      if (children > 0) {
+        return {
+          rung: 'childWork',
+          lane: 'running',
+          tone: 'active',
+          word: `${children} sub-agent${children === 1 ? '' : 's'} running`,
+          since,
+        };
+      }
+      // The watchdog's own silence marker, never a comparison of
+      // `updatedAt` with the clock (see `HomeWorkItem.turnProgress`).
+      //
+      // Its own rung, in the caution tone, so a silent run is never drawn
+      // like a healthy one. The word is the observation itself, not
+      // "Stalled": the contract says a quiet run can be expected (a long
+      // tool call), so a verdict would claim more than the watchdog
+      // computed. The turn is still open and nothing is owed to the user,
+      // so the lane stays Running; the tool still running is kept as the
+      // detail because it is usually why.
+      const silentSince = epochMs(
+        item.turnProgress?.progressSilence?.silentSinceEventAt,
+      );
+      if (silentSince !== undefined) {
+        return {
+          rung: 'quiet',
+          lane: 'running',
+          tone: 'caution',
+          word: `No progress for ${relativeTime(silentSince, now)}`,
+          detail: activity?.toolName,
+          since,
+        };
+      }
+      return {
+        rung: 'running',
         lane: 'running',
         tone: 'active',
-        word: `${children} sub-agent${children === 1 ? '' : 's'} running`,
+        word:
+          item.activeReason === 'background'
+            ? 'Background work running'
+            : 'Running',
+        detail: activity?.toolName,
         since,
       };
     }
-    // The watchdog's own silence marker, never a comparison of `updatedAt`
-    // with the clock (see `HomeWorkItem.turnProgress`).
-    //
-    // Its own rung, in the caution tone, so a silent run is never drawn like
-    // a healthy one. The word is the observation itself, not "Stalled": the
-    // contract says a quiet run can be expected (a long tool call), so a
-    // verdict would claim more than the watchdog computed. The turn is still
-    // open and nothing is owed to the user, so the lane stays Running; the
-    // tool still running is kept as the detail because it is usually why.
-    const silentSince = epochMs(
-      item.turnProgress?.progressSilence?.silentSinceEventAt,
-    );
-    if (silentSince !== undefined) {
+    case 'Draft':
       return {
-        rung: 'quiet',
-        lane: 'running',
-        tone: 'caution',
-        word: `No progress for ${relativeTime(silentSince, now)}`,
-        detail: item.activity?.toolName,
-        since,
+        rung: 'draft',
+        lane: 'drafts',
+        tone: 'neutral',
+        word: 'Draft',
+        detail: 'nothing sent yet',
       };
-    }
-    return {
-      rung: 'running',
-      lane: 'running',
-      tone: 'active',
-      word:
-        item.activeReason === 'background'
-          ? 'Background work running'
-          : 'Running',
-      detail: item.activity?.toolName,
-      since,
-    };
+    case 'Completed':
+      return { rung: 'done', lane: 'finished', tone: 'neutral', word: 'Done' };
+    default:
+      return { rung: 'idle', lane: 'idle', tone: 'neutral', word: 'Idle' };
   }
-  if (label === 'Draft') {
-    return {
-      rung: 'draft',
-      lane: 'drafts',
-      tone: 'neutral',
-      word: 'Draft',
-      detail: 'nothing sent yet',
-    };
-  }
-  if (label === 'Completed') {
-    return { rung: 'done', lane: 'finished', tone: 'neutral', word: 'Done' };
-  }
-  return { rung: 'idle', lane: 'idle', tone: 'neutral', word: 'Idle' };
 }
 
-export function workStatus(item: HomeWorkItem, now: number): WorkStatus {
-  const rung = rungFor(item, now);
-  const unread = changedSinceAcknowledged(item);
+export function workStatus(
+  item: HomeWorkItem,
+  now: number,
+  { facts, current = false }: WorkStatusContext = {},
+): WorkStatus {
+  const rung = rungFor(item, facts, now);
+  const unread = !current && changedSinceAcknowledged(item);
   let detail = rung.detail;
   if (rung.rung === 'idle' && item.updatedAt > 0) {
     detail = `${unread ? 'new' : 'last'} activity ${relativeTimeAgo(item.updatedAt, now)}`;

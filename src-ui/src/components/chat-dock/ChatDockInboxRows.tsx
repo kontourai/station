@@ -17,12 +17,13 @@ import {
   splitDraftsByAge,
 } from '../../views/home/draft-lane';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
   ArrowDownGlyph,
-  ArrowRightGlyph,
+  InfoGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
@@ -58,14 +59,20 @@ import '../inbox-row/InboxRow.css';
  *
  * THE ROW (#3043) has a fixed line budget: a meta line (agent mark, agent
  * and project, time), the title, ONE status line chosen by the status ladder
- * (`workStatus`), and a chip line that exists only when a chip does. Time
- * and the hover/focus actions share one slot at the end of the meta line;
- * the actions are positioned over it rather than laid out beside it, so a
- * row's height and its text never move on hover. Settled and snoozed rows
- * use the one-line `slim` size.
+ * (`workStatus`), and a chip line that exists only when a chip does. The
+ * budget yields in one place: a failure or unanswerable REASON may wrap to
+ * a second line, because the user needs to read it. Time and the hover/focus
+ * actions share one slot at the end of the meta line; the actions are
+ * positioned over it rather than laid out beside it, so a row's height and
+ * its text never move on hover. Settled and snoozed rows use the one-line
+ * `slim` size.
+ *
+ * Everything the budget leaves off the row (model, kind, folder, last
+ * progress, the whole reason) is on the metadata card: a tooltip on hover or
+ * keyboard focus, and a Details sheet on a touch chrome.
  *
  * The row's metadata hover card (`ChatInboxHoverCard`) is part of the shared
- * anatomy: hover/focus opens it on either host, touch pointers never do.
+ * anatomy: hover/focus opens it on a hover chrome, touch pointers never do.
  *
  * `chrome="touch"` (the sheet, and Home, which is used on phones) lays the
  * actions out as an always-visible ≥44px column instead: there is no hover
@@ -200,6 +207,11 @@ function useInboxRowHoverCard() {
 const loadChatInboxHoverCard = () =>
   import('./ChatInboxHoverCard').then((module) => ({
     default: module.ChatInboxHoverCard,
+  }));
+
+const loadChatInboxDetailsSheet = () =>
+  import('./ChatInboxHoverCard').then((module) => ({
+    default: module.ChatInboxDetailsSheet,
   }));
 
 function SnoozeActions({
@@ -372,8 +384,19 @@ interface InboxRowProps {
   onSnoozeMenu?: (item: HomeWorkItem, trigger: HTMLButtonElement) => void;
   /** Home: the row's snooze lapsed recently. */
   isWoken?: boolean;
-  /** False for a host with no room or data for the metadata hover card. */
+  /**
+   * The metadata card: a tooltip on hover/focus under the `hover` chrome, a
+   * Details action that opens the same card as a sheet under `touch`. False
+   * only for a caller that renders the bare row.
+   */
   hoverCard?: boolean;
+  /**
+   * The row's status facts (`WorkFacts`), derived beside the item by the
+   * host from its session and chat records. Absent, the row says only what
+   * its lifecycle label says. Deliberately NOT `HomeWorkItem` fields, for
+   * the reason `gitLocation` is not.
+   */
+  facts?: WorkFacts;
   /** The focus-preservation key; defaults to the item id. */
   rowKey?: string;
 }
@@ -418,6 +441,7 @@ export function InboxRow({
   onSnoozeMenu,
   isWoken = false,
   hoverCard = true,
+  facts,
   rowKey,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
@@ -425,26 +449,33 @@ export function InboxRow({
   const hover = useInboxRowHoverCard();
   const hoverCardId = useId();
   const statusId = useId();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsTriggerRef = useRef<HTMLButtonElement>(null);
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
   // The ONE status read (#3042): the line here and the lane this row was
-  // filed under come from the same function.
-  const status = workStatus(item, now);
-  // The chat on screen is being read; marking it unread would be false.
-  const showUnread = status.unread && !isCurrent;
-  const chips = inboxRowChips(item, { hasUnsentDraft, isWoken });
+  // filed under come from the same function. The chat on screen is being
+  // read, so it is never unread.
+  const status = workStatus(item, now, { facts, current: isCurrent });
+  const chips = inboxRowChips(item, {
+    worktreeBranch: facts?.worktreeBranch,
+    hasUnsentDraft,
+    isWoken,
+  });
   const agentText =
     item.controlMode === 'read-only-attached'
       ? `Started in ${item.agentLabel}`
       : item.agentLabel;
   const hasTime = item.updatedAt > 0;
   const closable = Boolean(onCloseChat && isOpenChat && item.chatSessionId);
-  // A host that offers nothing else (the sidebar's open chats) gets no slot
-  // and no extra tab stop: the row is already its own open control.
+  const tooltip = hoverCard && chrome === 'hover';
+  const details = hoverCard && chrome === 'touch';
+  // A host that offers nothing (the sidebar's open chats) gets no slot and
+  // no extra tab stop: the row is already its own open control.
   const hasActions = Boolean(
-    onSnoozeWake || onSnoozeMenu || discardThreadId || closable,
+    details || onSnoozeWake || onSnoozeMenu || discardThreadId || closable,
   );
   const describedBy =
-    hoverCard && hover.anchor ? `${statusId} ${hoverCardId}` : statusId;
+    tooltip && hover.anchor ? `${statusId} ${hoverCardId}` : statusId;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus host for the metadata card; the keyboard paths are the row button (focus opens the card) and Escape (the card closes itself).
     <div
@@ -455,7 +486,7 @@ export function InboxRow({
         `inbox-row--${chrome}`,
         hasActions ? 'inbox-row--has-actions' : '',
         isCurrent ? 'is-current' : '',
-        showUnread ? 'is-unread' : '',
+        status.unread ? 'is-unread' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -463,18 +494,19 @@ export function InboxRow({
       data-row-key={rowKey ?? item.id}
       data-status-rung={status.rung}
       data-lane={status.lane}
-      onPointerEnter={hoverCard ? hover.onPointerEnter : undefined}
-      onPointerLeave={hoverCard ? hover.onPointerLeave : undefined}
-      onFocus={hoverCard ? hover.onFocus : undefined}
-      onBlur={hoverCard ? hover.onBlur : undefined}
+      onPointerEnter={tooltip ? hover.onPointerEnter : undefined}
+      onPointerLeave={tooltip ? hover.onPointerLeave : undefined}
+      onFocus={tooltip ? hover.onFocus : undefined}
+      onBlur={tooltip ? hover.onBlur : undefined}
     >
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
         aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
-        // The accessible name is the explicit label above, so the status line
-        // is offered as the description; otherwise a screen reader would
-        // never hear what state the row is in.
+        // The accessible name is the explicit label above, so the status
+        // (word, and any reason, in full) is offered as the description;
+        // otherwise a screen reader would never hear what state the row is
+        // in or why it failed.
         aria-describedby={describedBy}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
@@ -504,6 +536,11 @@ export function InboxRow({
               title={status.line}
             >
               {status.word}
+              {/* One line shows only the word; the reason behind it is
+                  still the row's description for a screen reader. */}
+              {status.detail && (
+                <span className="sr-only">{` · ${status.detail}`}</span>
+              )}
             </span>
             {hasTime && (
               <span className="inbox-row__time">
@@ -547,31 +584,27 @@ export function InboxRow({
             >
               {item.title}
             </strong>
-            <InboxRowStatusLine
-              id={statusId}
-              status={status}
-              now={now}
-              showUnread={showUnread}
-            />
+            <InboxRowStatusLine id={statusId} status={status} now={now} />
             <InboxRowChips chips={chips} />
           </>
         )}
       </button>
       {hasActions && (
         <div className="chat-dock-inbox__row-actions inbox-row__actions">
-          {/* The row itself is the open target; on a hover chrome the
-              explicit control is there for the pointer that is already over
-              the actions. A touch chrome omits it: a second 44px column for
-              the row's own action costs the title its width. */}
-          {chrome === 'hover' && (
+          {/* No separate "open" control: the row itself opens, and a second
+              one would be a redundant tab stop on every row. */}
+          {details && (
             <button
+              ref={detailsTriggerRef}
               type="button"
-              className="chat-dock-inbox__row-action inbox-row__action inbox-row__action--open"
-              title="Open"
-              aria-label={`Open ${item.title}`}
-              onClick={() => onActivate(item)}
+              className="chat-dock-inbox__row-action inbox-row__action"
+              title="Details"
+              aria-label={`Details for ${item.title}`}
+              aria-haspopup="dialog"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((open) => !open)}
             >
-              <ArrowRightGlyph />
+              <InfoGlyph />
             </button>
           )}
           {onSnoozeWake && (
@@ -619,17 +652,32 @@ export function InboxRow({
           )}
         </div>
       )}
-      {hoverCard && hover.anchor && (
+      {tooltip && hover.anchor && (
         <LazyBoundary
           load={loadChatInboxHoverCard}
           pending={null}
           componentProps={{
             item,
             now,
+            facts,
             gitLocation,
             anchor: hover.anchor,
             onClose: hover.close,
             id: hoverCardId,
+          }}
+        />
+      )}
+      {details && detailsOpen && (
+        <LazyBoundary
+          load={loadChatInboxDetailsSheet}
+          pending={null}
+          componentProps={{
+            item,
+            now,
+            facts,
+            gitLocation,
+            triggerRef: detailsTriggerRef,
+            onClose: () => setDetailsOpen(false),
           }}
         />
       )}
@@ -674,6 +722,11 @@ export interface InboxGroupListProps {
   snoozeMenuOnly?: boolean;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
+  /**
+   * Status facts by item id (`buildWorkFacts`), the host's session and chat
+   * records read once. Referentially stable, like the other shared props.
+   */
+  workFacts?: WorkFactsById;
 }
 
 /** Snoozed and settled ("Earlier") work renders as the slim one-line row. */
@@ -698,6 +751,7 @@ export function InboxGroupList({
   gitLocationByThreadId,
   snoozeMenuOnly,
   chrome,
+  workFacts,
 }: InboxGroupListProps) {
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
@@ -720,6 +774,7 @@ export function InboxGroupList({
       agents={agents}
       snoozeMenuOnly={snoozeMenuOnly}
       chrome={chrome}
+      facts={workFacts?.get(item.id)}
       size={SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
       gitLocation={
         gitLocationByThreadId?.get(

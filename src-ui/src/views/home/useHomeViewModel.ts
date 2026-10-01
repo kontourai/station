@@ -19,6 +19,8 @@ import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
+import { useWorkFacts } from './useWorkFacts';
+import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
   resolveWorkItemOpenAction,
@@ -43,6 +45,12 @@ interface HomeWorkData {
   >['defaultSelection'];
   actionsLoading: boolean;
   workItems: HomeWorkItem[];
+  /**
+   * Status facts by item id (`buildWorkFacts`), derived beside `workItems`
+   * from the same session, chat and Task records rather than carried on the
+   * items: `HomeWorkItem` is the Home role's projection surface.
+   */
+  workFacts?: WorkFactsById;
   workLoading: boolean;
   workDegraded: boolean;
   workError: boolean;
@@ -123,6 +131,11 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data,
     tasks.data,
   ]);
+  const factSources = useMemo(
+    () => ({ tasks: tasks.data ?? [], remoteEnvironments }),
+    [remoteEnvironments, tasks.data],
+  );
+  const workFacts = useWorkFacts(workItems, sessions.data ?? [], factSources);
   const workLoading =
     workItems.length === 0 &&
     (sessions.isLoading || tasks.isLoading || inventory.isLoading);
@@ -142,6 +155,7 @@ function useHomeWorkData(): HomeWorkData {
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
+    workFacts,
     workLoading,
     workDegraded: workQueryState === 'degraded',
     workError,

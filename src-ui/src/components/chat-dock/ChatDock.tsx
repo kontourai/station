@@ -89,6 +89,10 @@ import {
   chatTaskSessionId,
 } from '../../views/home/home-view-model';
 import {
+  useAcknowledgeDisplayedConversation,
+  useWorkFacts,
+} from '../../views/home/useWorkFacts';
+import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
@@ -764,6 +768,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
+  });
+
+  // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
+  // (never carried on them), and the acknowledgement of whichever
+  // conversation the open dock is showing, so a chat read here is not
+  // "unread" in the inbox the moment the user switches away.
+  const workFacts = useWorkFacts(taskItems, orchestrationSessions);
+  useAcknowledgeDisplayedConversation({
+    items: taskItems,
+    displayedChatSessionId: isPaneOpen
+      ? (importedSessionId ?? activeSessionId)
+      : null,
+    acknowledge: acknowledgeTaskConversation,
   });
 
   const rehydrateSessions = useRehydrateSessions(apiBase);
@@ -2478,6 +2495,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         items: taskItems,
                         agents,
                         gitLocationByThreadId,
+                        workFacts,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
@@ -2742,6 +2760,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 void inventory.refetch();
               },
               agents,
+              workFacts,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
