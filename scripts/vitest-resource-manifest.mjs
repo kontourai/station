@@ -1329,6 +1329,10 @@ export function discoverVitestFiles({
       encoding: 'utf8',
       windowsHide: true,
       timeout: 60_000,
+      // Discovery keeps its documented 1 MiB limit (docs/guides/testing.md);
+      // the listing is repo-relative and well under it. Stated rather than
+      // inherited, so crossing it is refused by name.
+      maxBuffer: 1024 * 1024,
     },
     { run: spawnSync },
   );
