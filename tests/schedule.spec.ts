@@ -1,5 +1,9 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
+import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { expect, type Page } from '@playwright/test';
+import { modelConnectionFixture } from './helpers/connection-fixtures';
 import { test } from './helpers/fixture-audit';
 
 type ScheduleJobRecord = {
@@ -315,6 +319,99 @@ test.describe('Schedule Page', () => {
     await expect(
       dialog.getByRole('button', { name: 'Add Job', exact: true }),
     ).toBeDisabled();
+  });
+
+  test('a phone-sized job repairs its existing agent and resumes the exact draft automatically', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedScheduleCrudApi(page);
+    let repaired = false;
+    let publishHealth!: () => void;
+    const healthPublished = new Promise<void>((resolve) => {
+      publishHealth = resolve;
+    });
+    // The fixture supplies the runtime health event emitted after a save;
+    // the real shell owns invalidation, readiness checking and route return.
+    await page.route('**/events', async (route) => {
+      await healthPublished;
+      await route.fulfill({
+        contentType: 'text/event-stream',
+        body: 'event: runtime:health-changed\ndata: {}\n\n',
+      });
+    });
+    let model = modelConnectionFixture({
+      id: 'existing-model',
+      name: 'My local model',
+      config: { baseUrl: 'http://127.0.0.1:11434' },
+    });
+    await page.route('**/api/connections/models', (route) =>
+      route.fulfill({ json: { success: true, data: [model] } }),
+    );
+    await page.route('**/api/connections/existing-model', async (route) => {
+      if (route.request().method() === 'PUT') {
+        model = route.request().postDataJSON() as ModelConnectionConfig;
+        repaired = true;
+        await route.fulfill({ json: { success: true, data: model } });
+        publishHealth();
+      } else await route.fulfill({ json: { success: true, data: model } });
+    });
+    const agent: EnrichedAgentProjection = {
+      slug: agentId('station'),
+      name: 'Station',
+      available: false,
+      unavailableReason: 'Connect a model before running this agent.',
+      unavailableFix: { kind: 'model-connection' },
+    };
+    await page.route('**/api/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              ...agent,
+              available: repaired,
+              unavailableReason: repaired ? undefined : agent.unavailableReason,
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto('/schedule');
+    await page.getByRole('button', { name: 'Add job', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add Job' });
+    await dialog.getByLabel('Name').fill('recovered-check');
+    await dialog
+      .getByLabel('Instructions')
+      .fill('Check the service without duplicating my agent');
+    await dialog.getByRole('button', { name: 'Exact interval' }).click();
+    await dialog.getByLabel('Interval value').fill('17');
+    await dialog.getByLabel('Interval unit').selectOption('minutes');
+    await dialog
+      .getByRole('button', { name: 'Repair this agent’s setup' })
+      .click();
+    await expect(page).toHaveURL(/\/connections\/models$/);
+    await expect(dialog).not.toBeVisible();
+    await page
+      .getByRole('button', { name: 'My local model', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/connections\/models\/existing-model$/);
+    await page
+      .getByRole('textbox', { name: 'Base URL', exact: true })
+      .fill('http://127.0.0.1:11435');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page).toHaveURL(/\/schedule$/);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('Name')).toHaveValue('recovered-check');
+    await expect(dialog.getByLabel('Instructions')).toHaveValue(
+      'Check the service without duplicating my agent',
+    );
+    await expect(dialog.getByLabel('Interval value')).toHaveValue('17');
+    await expect(dialog.getByLabel('Interval unit')).toHaveValue('minutes');
+    expect(model.id).toBe('existing-model');
+    expect(model.config.baseUrl).toBe('http://127.0.0.1:11435');
+    await dialog.getByRole('button', { name: 'Add Job', exact: true }).click();
+    await expect(page.getByTestId('job-row-recovered-check')).toBeVisible();
   });
 
   test('covers add, edit, duplicate, run, filter, toggle, and delete', async ({
