@@ -254,14 +254,12 @@ describe.skipIf(!chromiumAvailable)(
         viewport: { width: 1000, height: 2400 },
       });
       try {
-        await page.setContent(html);
-        await page.evaluate(({ theme, channel }) => {
-          const root = document.documentElement;
-          root.setAttribute('data-theme', theme);
-          if (channel === 'dev') root.classList.add('is-dev-build');
-          else if (channel !== 'release')
-            root.setAttribute('data-app-channel', channel);
-        }, preset);
+        await page.setContent(
+          html.replace(
+            '<html>',
+            `<html data-theme="${preset.theme}"${preset.channel === 'dev' ? ' class="is-dev-build"' : preset.channel === 'release' ? '' : ` data-app-channel="${preset.channel}"`}>`,
+          ),
+        );
         await page.addScriptTag({ path: AXE_PATH });
         const selectedRows = await page
           .locator('.split-pane__item--selected')
