@@ -1714,4 +1714,3 @@ describe('ChatInputArea send-failure notice', () => {
     expect(document.querySelector('.chat-input__send-failure')).toBeNull();
   });
 });
-
