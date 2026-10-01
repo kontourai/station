@@ -27,7 +27,10 @@ import type { ProjectMetadata } from '../contexts/ProjectsContext';
 vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+const screenSize = vi.hoisted(() => ({ mobile: false }));
+vi.mock('../hooks/useIsMobile', () => ({
+  useIsMobile: () => screenSize.mobile,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -197,6 +200,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  screenSize.mobile = false;
   authorityCurrent = true;
   readError = undefined;
   fetching = false;
@@ -213,6 +217,19 @@ afterEach(() => {
 });
 
 describe('New Chat repair and return', () => {
+  test('phone setup reveals its page and restores the original full chat on return', async () => {
+    screenSize.mobile = true;
+    act(() =>
+      navigationStore.navigate('/', { dock: 'open', maximize: 'true' }),
+    );
+    harness();
+    await openSetup();
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    await returnToChat();
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+  });
   test('retains intentional Project and Model through repair without selecting or sending', async () => {
     const view = harness();
     fireEvent.click(screen.getByRole('button', { name: 'Workspace: Alpha' }));

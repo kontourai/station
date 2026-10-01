@@ -5,6 +5,7 @@ import {
   type NavigationLocation,
   navigationStore,
 } from '../../contexts/navigation-store';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 export type NewChatSetupAuthority = ReturnType<
   typeof useHostRequestAuthorityScope
@@ -43,6 +44,7 @@ export function useNewChatSetupReturn({
   readyToResume?: boolean;
   allowedPaths?: readonly string[];
 }) {
+  const isMobile = useIsMobile();
   const id = `chrome:new-chat:setup-return:${useId()}`;
   const [journey, setJourney] = useState<SetupJourney | null>(null);
   const current = useRef<SetupJourney | null>(null);
@@ -200,7 +202,7 @@ export function useNewChatSetupReturn({
             prepare: async () => true,
             signal: journey.controller.signal,
           },
-          { maximize: null },
+          { maximize: null, ...(isMobile ? { dock: null } : {}) },
         )
         .then((committed) => {
           if (current.current !== journey) return;
@@ -214,7 +216,7 @@ export function useNewChatSetupReturn({
           }
         });
     }
-  }, [authority, cancel, id, journey, resume, workflowLabel]);
+  }, [authority, cancel, id, journey, resume, workflowLabel, isMobile]);
 
   useEffect(() => {
     const unsubscribe = navigationStore.subscribe(() => {
