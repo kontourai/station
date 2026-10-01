@@ -397,7 +397,7 @@ describe.skipIf(process.platform === 'win32')(
           `i=0; while :; do
              mv .git .git-real && mv .git-file .git
              mv .git .git-file && mv .git-real .git
-             i=$((i+1)); echo $i > '${flips}'
+             i=$((i+1)); echo $i > '${flips}.next' && mv '${flips}.next' '${flips}'
            done`,
         ],
         { cwd: folder, stdio: 'ignore' },
