@@ -533,6 +533,28 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       expect(toolRequestSessionGrant(request)).not.toBe('tool');
     });
 
+    test('claudeAskEscalates itself reads the three signals about a part', () => {
+      expect(claudeAskEscalates(compound())).toBe(false);
+      expect(
+        claudeAskEscalates(
+          compound({
+            claudeAsk: {
+              decisionReasonType: 'subcommandResults',
+              classifierApprovable: true,
+            },
+          }),
+        ),
+      ).toBe(true);
+      expect(
+        claudeAskEscalates(
+          compound({ matchedAskRule: { source: 'x', toolName: 'Bash' } }),
+        ),
+      ).toBe(true);
+      expect(claudeAskEscalates(compound({ decisionReason: 'warning' }))).toBe(
+        true,
+      );
+    });
+
     test('a read-rule suggestion from a part keeps the folder option and no tool grant', () => {
       expect(
         toolRequestSessionGrant(
