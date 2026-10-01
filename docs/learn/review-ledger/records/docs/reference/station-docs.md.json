@@ -1,0 +1,175 @@
+{
+  "path": "docs/reference/station-docs.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
+
+  "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
+
+  "document": {"digest":"9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+  "sources": [
+    {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"docs/learn/mcp-topics.json","digest":"e503d0ad447361bdedfecd35da6b1ac3c95b2cd3f95a93872146f02cef4d80e1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/agent-plugin.ts","digest":"65c2a7246e4083f7297878671dced18226b95f16486e794860d3d1430176af23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/fleet-contribution.ts","digest":"6a898f68b1e2c9796bcc0c62ee3688a9880b8e5634c001185c0bbcbc4aa24445","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/project-reference-integrity.ts","digest":"2c3bdd0c04c54bb4af6db209b7b81ab5fd0ebe26b150dc45d7c3c02e92ff4f0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/scheduler.ts","digest":"8d2dc7aaeeca2b4ea4a0763109edb7f792fb29ce6f6f1817c5a3e721cdc2e4f3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/task-graph.ts","digest":"8def2bec3d9730b94f6dcae14233c64f3043a02d47e8abf5a004699fd09451b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/workspace-pane.ts","digest":"30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/hooks/context.ts","digest":"7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"450af4fe4d55c49c64b64b858c38c7c81decb2df43c46e99940be9a0299c7140","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
+
+    {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
+
+    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/generate-station-docs.mjs","digest":"91bdbfd123dd1d24f58221e95e22e5edd50057a40f2142d3771268cb827e89e1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-validate-routes.ts","digest":"22e628993e930427de7679249466002699eb1819f8cfbe8728c12a27da9afdc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"1e8ca834f915e477e055a6bda36e08d6cc4375d9604345bd69ef726082596e9f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/native-engine-adoption.ts","digest":"553480ee2b76b8672f4a187a0680b30dc2576397644fdecb1aead79d1ef62b82","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/runtime/conversation/dispatch-model-policy.ts","digest":"3fe2e900fd33da1f883a02ee81c9ca8017cfe650390f772e4f7c65cea1e78387","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/inference/fleet-serve-receipt-log.ts","digest":"485c837417023935405deb8ca2d4f4b5479bf7ee5865e67fc3c5ac2ea9aeddea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
+
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
+
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"4ec510404c46aa8fd0bd0739e593acb214998048418fcac797cbc66a031cea8a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-output-module.ts","digest":"8e548f679e27457b848fd88dffaf11bf4e54fa775c6c5bd614462599b8f7a4d4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/tools/__tests__/station-docs-mcp-server.test.ts","digest":"5ae33f0d320b2f18b8a8ace8edb252fb0c85fb23263bb3a7c095d90119a27be2","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"},
+
+    {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-docs-content.ts","digest":"47e7ab1939ae8b015c9885d465c9deda5ac45543c8a1d67d2f2195a0017f5de9","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/agent-selection-policy.ts","digest":"e96d360cff1e8f5c32f70c99687d240b6707b7a5d3de781f8f4227f796fded12","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/monitoring/FleetRoutingReceipts.tsx","digest":"6fbaad9aca8523ce87fab5a8ccb20f2c9da40ab7b70f4e5a6bf965dfac4089bd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"}
+  ],
+
+  "checks": [
+    "Independent review caught exhaustive built-in count and universal receipt claims; corrected follow-up accepted.",
+
+    "All topic IDs and 17 anchors preserved; focused MCP suite passed 27/27.",
+
+    "Integration regenerated 97 topics from the merged manual and separately reviewed Browser/Device module additions.",
+
+    "Reviewed generated delta adding only the Keyboard shortcuts architecture topic and branch link; all 16 manual topic bodies remain unchanged. Total compiled topics: 98.",
+
+    "Reviewed source deltas: Removed unused guidance/count methods and redundant early exits; current filter still distinguishes absent versus explicit empty skill names and returns empty when none remain.",
+
+    "Reviewed source changes: The generator shares its four canonical input paths with documentation impact guidance. Static topic compilation, retrieval permissions and body limits are unchanged. The permission-boundary assertion now checks one coherent sentence rather than unrelated keywords. The shipped manual still distinguishes explaining Station from operating it. install_plugin remains a refusal directing the person to reviewed preview; it now marks that refusal as an MCP error. No installation was made available to an agent. Regenerated all99 static topics from the completed73-module caller review. Manual topic identifiers and retrieval contracts remain unchanged; compilation is content identity, not live runtime proof.",
+
+    "Reviewed source changes: Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims. Reviewed installation statements against audited module callers; paragraph-aware matching now catches soft-wrapped claims. Canonical docs/control sentence preserves the read-only docs boundary. Focused MCP suite passed. Regenerated99 topics after all73 module reviews and clearer docs-only capability wording; focused MCP and generator checks passed.",
+
+    "Reviewed the static docs/control capability distinction and regenerated actual shipped payload;27 MCP tests passed after updating the reviewed text guard.",
+
+    "Generated catalog includes the canonical walkthrough navigation and all reviewed modules; no new live-state capability.",
+
+    "Regenerated the same 99 shipped manual/architecture topics after Knowledge branch navigation additions; static read-only docs authority unchanged.",
+
+    "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
+
+    "Reviewed integration deltas: Updated canonical topic policy wording without granting mutation, filesystem or network authority to the docs server. packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/tools/station-docs-content.ts: Regenerated 100 shipped topics from reviewed canonical Markdown, including 74 module sections; generated identity does not independently prove prose. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Regenerated canonical MCP topics after the Concepts link correction; topic count and read-only authority unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Landing review through d0d9d33f7: Regenerated 101 static topics from reviewed canonical inputs; new native foundation text adds no runtime state access or execution capability.",
+
+    "Reviewed landing deltas through 111744681: Regenerated 102 static topics from reviewed canonical inputs, including the signaling-only module; retrieval gains no live-state, filesystem or network access.",
+
+    "Integration source review through d1e0facc2: Dispatch helpers and observer deadline are private; selection and timing behavior are unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: src-server/tools/station-docs-content.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: the generated station-docs-content.ts replaced the CollaborativeEditorPane architecture topic with ProjectTaskRoom and dropped PluginForegroundRuns (both from module-map, not this manual); native-engine-adoption inlined its suppression check with the same behavior; plugin install gained excludeGitMetadata for proposed installs. The manual's adoption, person-approved plugin install and topic-catalog claims still hold, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through c8bae67da: regenerated MCP content changes only the SharedWorkingState, ExtensionNotificationBindings and native notification feed module topics, carrying the reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 carries refusal `details` in dispatchOrchestrationCommand errors and records clientOrigin on task-dispatched starts in task-graph-service. It adds the confinement grantor, the grantor-current check and the device full-access revocation reset in orchestration-service. The manual topics make only explanatory claims. Among them: delivering a tool server grants no full access or operator authority; control calls stay subject to approval policy; Session, Task and dispatch are described at a general level. These remain consistent, and #2904 further restricts full access. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts. The document's statements about ACP as an external-engine protocol and about approval policy boundaries are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) made mcpUiToolCallDecision private and removed the isDistinctFrameOrigin re-export from MCPToolUIFrame.tsx without changing behavior. The sandboxed-frame and mcp-tool-ui renderer claims still hold. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

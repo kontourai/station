@@ -1,0 +1,141 @@
+{
+  "path": "docs/guides/deployment.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Operating paths for checkout/container deployments, hosted foundations, and the legacy macOS dogfood supervisor. Full 920-line baseline and parent working bytes read. Source checks cover Docker, CLI/proxy/auth, home archive/schema/migration, hosted preflight, channel homes, supervisor staging/timing/health and cleanup. Detailed installer rollback, tenant carriers and lifecycle journal failure matrices were not fully re-executed; runtime qualification is partial. Follow-up: Changed pre-provisioning paragraphs checked against real schema-gate/lifecycle/server/migration ordering. Windows issue-link addition preserves the already disclosed staging limitation.",
+
+  "limits": "No provisioning, installs, service control, network-policy changes, real credentials, Docker pull/build/run, VM, TLS issuance or live-host operations. Existing fixture tests and read-only configuration checks only. Full reading does not certify every deployment outcome.",
+
+  "document": {"digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":".dockerignore","digest":"cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"deploy/public-ingress/Caddyfile","digest":"8836c4eb1f900dbda0aed6f5365f0c3ffb309046224c9470024a6caae31f0598","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"deploy/public-ingress/compose.yaml","digest":"e586d1610427a92aab50e69175f7a86c491cd0ca76f52aa8d538473ffd49f44d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"deploy/public-ingress/smoke.mjs","digest":"5703b039d109226835106c01493893b2340b423d3d574574e571aa53a0d93a74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"monitoring/docker-compose.yml","digest":"d095a34bf788ab3ec13c1cc3d65edf8c485d4e5de00005219802ba402683963e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"ops/dogfood/install-macos.zsh","digest":"52671ad89501f9dd231630c17cf06c6d0b4065c47dd2b69d2f6be8e845f6201f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"ops/dogfood/io.kontourai.station-dogfood.plist.template","digest":"d74edf9283a35c4abf32c10f28870128faa98570bf8136938ad04c3b28165602","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/cli/src/commands/helpers.ts","digest":"f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/commands/lifecycle-code-root.ts","digest":"f6b5b71d277613daa02c3a46d45082e7f5fd460f8fc794e111483ba4167ad28f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+
+    {"path":"packages/cli/src/commands/service-windows.ts","digest":"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/tenancy.ts","digest":"0206fdcf4071f2fd5140a8f096cad83deaf801dd05b381840548c320bc25c8ef","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/cloud-move.ts","digest":"9c8c56f5c228b667fc13f583ae5b59117bd4026633984ac9fe7a27c0e1b5245a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/station-home-archive.ts","digest":"2d857da29eb1de501523692cb04839be37b3375b354456fe5b676ae53ef38294","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/__tests__/container-release.test.ts","digest":"6d3d44a1dd66636b28308a80a911107691f28b691584ffc02f5e612e6cdf1524","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"scripts/__tests__/gcp-bootstrap.test.ts","digest":"8fe171502e96c4c50c29cda4201f147b3ebefd709a5a197e8bd0da717642a7d0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/container-healthcheck.mjs","digest":"1c9fd19bf169ef722a2e33655fadd37602779d01c53ef4d9e89e1bdbe5e24daa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/container-release-metadata.mjs","digest":"a65c308b32ad9914e24bca36fc89c597c042ae48bffbe17c2a333d02c9e2c2af","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/station-dogfood-health.mjs","digest":"3b1eb70615e209fd13ac003b69188439dce353c7734fd0d06f4d2e371dac6285","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/station-dogfood-reconcile.mjs","digest":"0dd83ff4e12ecbaa68761e2a1da836b8d6f1d4612246580b2d30cdbc28dd96cd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/migration.ts","digest":"6e4de108890faf6ab1ce8de05bdecdc8640fbba8c90ff29bb2521e547487fb6e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts","digest":"a67abcae97b3b45a0a58b235eae5384682c4c921f32f118bade7ef5b51977c0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/hosted-persistence-boundary.ts","digest":"458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fc7da6652550d4fd602c451e02857293a6d8998"},
+
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"}
+  ],
+
+  "checks": [
+    "focused: 105PASS1FAIL/5files/37.74s",
+
+    "failedTest: hosted-persistence-boundary.test.ts rejects an insecure hosted home beforeEventStoreconstruction timeout20000ms; awaitstationRuntimeImport atline314 inside test302",
+
+    "failureDisposition: UNCHANGED source, no rerun-to-green. Fullruntime-order outcomeNOT_VERIFIED bythisrun;10other boundarytestsPASS and4other suitesPASS. No source/test mutation.",
+
+    "composeConfig: PASS actualdockercompose configonly --env-file=/dev/null inertvalues; nostationhostports andingress80/443",
+
+    "bashSyntax: PASS bash -n deploy/gcp-dev/bootstrap.sh",
+
+    "veritas: PASS: exit 0, zero failures/warnings; run veritas-1790475095630",
+
+    "Root follow-up traced schema admission before migration and reproduced markerless Project/layout refusal with the actual helper; initialized-home control passed. Added issue #2776 for candidate dependency staging. No server start or full recovery was exercised.",
+
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Upstream source review: Reviewed complete upstream diff: typed source/prebuilt code root; per-home lifecycle state, explicit home in stop/status, shared prebuilt builds never pruned per instance, build/upgrade refusal for prebuilt, generated ring mapping. Source-checkout deployment commands retain prior semantics. No live service execution.",
+
+    "Upstream source review: Reviewed stateHome/projectHome propagation through inspect/start-stop/rollback/Windows supervisor settlement/uninstall. Selected service home remains authority; current guides retain exact selectors. No actual platform service mutation.",
+
+    "Upstream source review: Upstream delta extracts plugin event relay gate; Starter, fleet inference, Project/delegation and deployment composition discussed by these owned guides unchanged. Accepted ONLY for listed owned-document claims; broader plugin gate semantics reviewed elsewhere.",
+
+    "Upstream source review: Reviewed source/runtime-home admission adds root-owned state directory to protected set; formatting elsewhere. Existing exact service manifest/probe contract retained; prebuilt state is not a runtime home.",
+
+    "Upstream source review: Reviewed Linux birth-fingerprint implementation inlined to keep installed helper import-free; same boot-id/start-time parsing and failure-null behavior. Deployment/health provenance explanations still hold; no live helper run.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
+
+    "Landing review through d0d9d33f7: Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: #2867 added prebuilt-archive service units (service-command.ts; `kind`/`installRoot` in the manifest; the Windows wrapper sets STATION_SERVICE_MANAGED=1). It also added installer-owned archive resolution in lifecycle-code-root.ts, and packaged upgrade now accepts a service running this install root's `current`. Corrected the Windows headless section: service install/removal is no longer checkout-only; it also runs from a prebuilt server archive's lifecycle CLI, with a pointer to the service reference. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 moves the local access verbs in environment.ts onto a shared loopback-proved operator channel and adds `access devices|scope|scopes`. Bare pairing errors now keep their code and status. device-pairing-service and environment-security-service gain `deviceHoldsScope` and `deviceHoldsFullAccess`, and runtime-routes appends revocation reports to the scope and revoke answers. The guide's statements about access list/approve/deny, the loopback proof, the Paired devices revoke path and environment reset are still true; the new verbs extend them without contradicting anything. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the unused parseGitSource/extractPluginName from packages/cli/src/commands/helpers.ts and un-exports contributorCommandMessage in distribution.ts; cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401; prose accurate: the guide does not describe those helpers or the 401/403 split, the distribution-boundary link still holds, and the unauthenticated `authentication_required` curl check is unchanged. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds createStationHomeUpdateBackup/restoreStationHomeUpdateBackup to station-home-archive.ts, moves packaged-release parsing from lifecycle-code-root.ts to shared prebuilt-archive, adds a hidden service update-home action, service status `update` output and the launcher install. #2914 removes the listeningPidsByPort alias and one tautological container-release assertion. home backup/restore, published-CLI service status|start|stop control, and install needing a checkout or prebuilt archive are unchanged; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

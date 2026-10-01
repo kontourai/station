@@ -16,19 +16,65 @@ where — see
 
 ---
 
+## Application channel request preparation
+
+The `/application-channel` entry exports `ApplicationChannel`,
+`ApplicationChannelRequestPreparation` and `ApplicationChannelPreparedHeaders`.
+A channel owner can implement optional `prepareRequest(request)` to add headers
+after its peer opens and before the request is sent. This permits per-peer
+preparation without changing the broker or application-frame protocol.
+
+`createApplicationChannelFetch` first reads and validates the bounded request
+body. The callback receives immutable method and path fields (including the
+query), independent body bytes of at most 16 KiB, copied original headers and
+the owned request signal. Mutating these copies cannot change the transmitted
+target, body or original headers. The callback returns additional header pairs;
+case-insensitive collisions with original headers or previous additions are
+refused, including attempts to replace caller-supplied proof or credential
+headers. Existing header-count, byte and frame limits still apply.
+
+The adapter checks endpoint trust, cancellation and caller authority before
+preparation and after its asynchronous result. Cancellation settles a hanging
+callback and closes the channel; a late result cannot dispatch. Preparation or
+framing failure after opening also closes without sending a request. Channels
+without the method keep their existing request behavior. No operation retries
+automatically.
+
+This is an opt-in transport contract. It exposes no native peer handles,
+signing keys or proof claims, and installs no signer. The native host signer
+and ordinary UI composition require separate integration and verification.
+The [application-channel tests](../../packages/connect/src/__tests__/applicationChannel.test.ts)
+exercise the Fetch adapter through frames and the server request boundary;
+they do not establish physical native-client or relay-only acceptance.
+
 ## Optional native application transport
 
 The `/native-application` source entry exports
-`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`.
-The host supplies v2 signaling and approved Station trust, including an
-authoritative asynchronous recheck. The client verifies the signed Station
-answer before setting the remote description and uses only the reliable,
-ordered `station-application-v1` DataChannel. It returns `fetch` and
-`openChannel`; abort or retired trust closes owned work. There is no direct
-HTTP fallback or grant-bearer exposure.
+`createNativeApplicationTransport({ signaling, origin, signal, trust, ... })`
+with an independent `NativeApplicationSignaling` contract. The host prepares an
+opaque peer handle, nonce and connection ID before SDP creation; the client
+opens and reads that same handle, verifies the signed Station answer before
+setting the remote description, and uses only the reliable, ordered
+`station-application-v1` DataChannel. After opening, the channel's
+`prepareRequest` calls the host signer with the exact bounded method, path and
+body and returns only the native Device-proof header. Caller-supplied
+Authorization, Cookie and Device-proof headers are refused. Abort, failed
+preparation or retired trust closes owned work. There is no direct HTTP
+fallback, grant-bearer exposure or signing-key exposure.
+
+Host transcripts and browser RTC connectivity are separate observations. The
+host permits one Device proof per handle; account proofs come from the separate
+structured provider and their complete exchange body is prepared before this
+transport freezes it. Host read expiry may shorten a prior deadline, while an
+extension or expired read is refused. The adapter retains bounded peer leases
+and retires cancellation, failed/late preparation and expired handles.
 
 This is an opt-in library surface, separate from ordinary saved-route selection.
-It does not approve a Device, authenticate an account or grant Project access.
+It does not enable a default UI route, enroll or activate a Device, authenticate
+an account or grant Project access. Account continuation proof remains a
+separate caller requirement. Focused source tests do not establish executed
+Tauri IPC, packaged-client, physical-device or complete authenticated
+Project-journey evidence.
 See the [package README](../../packages/connect/README.md#optional-native-application-transport)
 and [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the separate caller responsibilities. No physical native-client result is
