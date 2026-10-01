@@ -549,19 +549,10 @@ fn validate_read_target(request: &NativeAccountReadTarget) -> Result<()> {
             .map(|query| format!("?{query}"))
             .unwrap_or_default()
     );
-    let project = url
-        .path()
-        .strip_prefix("/api/projects/")
-        .is_some_and(|slug| {
-            !slug.is_empty()
-                && slug.len() <= 128
-                && slug
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        });
+
     if canonical != request.path
         || url.origin().ascii_serialization() != "https://request.invalid"
-        || (url.path() != "/api/projects" && !project)
+        || !crate::native_application_peer::native_member_read_path(url.path())
     {
         return refused();
     }

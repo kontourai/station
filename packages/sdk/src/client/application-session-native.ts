@@ -297,8 +297,16 @@ function localReadRequest(request: {
   const path = requestPath(request.path);
   const pathname = new URL(path, 'https://station.invalid').pathname;
   if (
-    pathname !== '/api/projects' &&
-    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}$/.test(pathname)
+    ![
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+    ].includes(pathname) &&
+    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}(?:\/shared-work(?:\/[A-Za-z0-9_-]{1,128}\/(?:document|history|publication))?)?$/.test(
+      pathname,
+    )
   )
     throw new Error('Native host account proof supports only Project reads.');
   return Object.freeze({ method: request.method, path });

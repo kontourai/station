@@ -1,4 +1,5 @@
 import type { NativeApplicationSessionContinuationV1 } from '@kontourai/station-contracts/application-session';
+import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeScopeV2,
@@ -85,6 +86,19 @@ const invitationPrepared = z
   .object({
     body: z.object({ token: opaque }).strict(),
     headers: accountHeaders,
+  })
+  .strict();
+const invitationAcceptance = z
+  .object({
+    scope: z
+      .object({
+        stationId: z.string().uuid(),
+        localProjectId: z.string().min(1).max(128),
+        localProjectSlug: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
+        portableProjectId: z.string().min(1).max(512),
+      })
+      .strict(),
+    grantsDeviceAccess: z.literal(false),
   })
   .strict();
 const INVITATION_PATH = '/api/account-auth/accept-invitation';
@@ -348,7 +362,9 @@ export async function createNativeAccountSessionBridge(input: {
         throw new Error('native_account_scope_retired');
       return result;
     },
-    async acceptInvitation(token: string): Promise<unknown> {
+    async acceptInvitation(
+      token: string,
+    ): Promise<ProjectInvitationAcceptance> {
       await assertCurrent();
       if (!continuation) throw new Error('native_account_login_required');
       const retained = continuation;
@@ -373,7 +389,13 @@ export async function createNativeAccountSessionBridge(input: {
       await assertCurrent();
       if (continuation !== retained)
         throw new Error('native_account_scope_retired');
-      return result;
+      const accepted = z
+        .object({ data: invitationAcceptance })
+        .strict()
+        .parse(result).data;
+      if (accepted.scope.stationId !== prepared.target.stationId)
+        throw new Error('native_account_membership_owner_mismatch');
+      return accepted;
     },
     retire,
   };
