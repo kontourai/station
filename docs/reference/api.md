@@ -2559,6 +2559,33 @@ admission does not replace authentication or scope. See
 ---
 
 
+## Engine accounts and usage
+
+`GET /api/connections/agent/:id/accounts` projects the default account plus saved
+profiles for Claude and Codex: opaque references, labels, CLI-verified auth state,
+observed login mechanism and the account in use. It requires `engine:login`,
+credential-management access or a verified operator. It returns no paths,
+commands, environment or CLI diagnostics.
+
+`GET /api/connections/agent/:id/account-usage?profileRef=<ref>` reads only the
+selected profile's provider quota. Omit the reference to inspect the connection's
+default account. This token-backed read requires `access:manage`; an engine-login
+grant alone does not admit it. The result is either normalized quota windows,
+plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+
+`GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
+an existing saved profile and `engine:login` or a verified operator. No default
+account login is admitted. POST `{}` starts the observed provider-owned login;
+POST `{code}` relays a Claude browser code to its CLI stdin. GET projects status;
+DELETE cancels. The server checks current authority before private work and
+publication. Credentials and private CLI output are never returned. Refused
+starts return a safe reason, with Codex outcomes when available.
+
+`GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
+for engine activity. Filtering precedes folding and pagination, while coverage
+remains explicit. This is Station engine history across accounts, not billing or
+per-profile attribution.
+
 ## Read engine sign-in profiles
 
 ```http

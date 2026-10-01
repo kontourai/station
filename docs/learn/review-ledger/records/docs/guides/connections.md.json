@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"eb8695fe3798e6a9d1fae889fa7200278604a892bb042ffacf716f13c4733f98","revision":"09b6047098252a25e8fd7f531f59c920ede4464f"},
+  "document": {"digest":"bf558a7cb1049871677922fc0a9970604922b51e3d4b519f1e0b934a475b7531","revision":"2b860862c3597fd2b9d7b1bc3b96b62f16022102"},
 
   "sources": [
     {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
@@ -94,7 +94,7 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e12a8e9c7c3120e32a859ae668138d6da2394f6c1d82d6aadb989ab58b88b7c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"c83bf9d2893ac0fad3a7b9ee8818cd4de26bb1ae7fa2020436b2fa457dec7673","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"9c900e018d86204dc4c868ae3c58a32870d46bf448648f1f5217a5abd543ef4d","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"bfb4210cc70ad838829c8e340b6c15536b93a6cb15ee3d26c0fd1b4b3f39981a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -136,7 +136,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
@@ -152,9 +152,9 @@
 
     {"path":"src-server/services/connections/connection-env.ts","digest":"80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
-    {"path":"src-server/services/connections/credential-enrolment.ts","digest":"f9cce55ccfe8c872ac19a1ae00c37fec39e4c5d6bd43412e23a1987737723d5b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/connections/credential-enrolment.ts","digest":"24aab7053e52c0795e3e2d9bb6c7d9f3ff0bdda5f6574419cfadc7bc5d610b19","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
-    {"path":"src-server/services/connections/device-code-login.ts","digest":"1a5c55d3745d516400be0fa77c2c465ca68e7866ec07bae639e017b630d0947f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/connections/device-code-login.ts","digest":"3e00fed7d285147cc71df82a7ad95e737552ab3c4ef1ecb99a1dc6490b23c213","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/services/connections/provider-service.ts","digest":"0992d08909fe9858120fb342b13700be1ec6361fa24f83154a2e855037b8e7cd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -218,7 +218,7 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"63486f4ca811d0b37f40377e11dc16d5388660c7c64248607b73c662e7c9763f","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -248,7 +248,17 @@
 
     {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"0a1a3797a6b1e3f5979d7add3b363b614cf6dc93cd2b656f77c722ee575fea3c","revision":"f23e56a8542924fc7269d9ef14645a82c9065f0c"},
+
+    {"path":"src-server/services/connections/browser-code-login.ts","digest":"ed975062b5c25d966b1da0cb9ab654b9c861b8d33b647075b3a7a8d2b5208a3a","revision":"4750f0dd4c17a766da91628dca97b2c7627ca0ed"},
+
+    {"path":"src-server/services/connections/credential-usage.ts","digest":"c945d4f4608383de1d716388deeba82423b46d8859cea14b0d9f4ed8dba6427c","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"616f25c83b780930f4297acd840a549a63a547189f83d6be087aae925d40dbc6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"b3a56e286c29d5d8ea623a7c9016494d4e6281543639c88762fc74d388d16fa0","revision":"a5618ff63f6feaccc8471d5f802b8f7a78cbd505"}
   ],
 
   "checks": [

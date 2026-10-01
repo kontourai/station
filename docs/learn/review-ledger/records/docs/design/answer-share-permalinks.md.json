@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/answer-share-channel.ts","digest":"0313c8b8740e8b0215b7313796f01f9ac1231cd40e93bd800a4610b2bd67535c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"packages/contracts/src/turn-provenance.ts","digest":"7580bf4f0199a83b65236ab55eade23391f940fa0c206a58545f0b86f3570193","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -26,7 +26,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
     {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
