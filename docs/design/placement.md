@@ -1417,6 +1417,10 @@ into from it.
   answer through `LayoutChatPlacementContext`
   ([chat-placement.ts](../../src-ui/src/app-shell/chat-placement.ts)), and the
   Coding host derives the same answer, so no frame mounts two Chat controllers.
+  Until the layout record is known — the layout query `isPending`, which
+  includes the idle frame while the persisted query cache restores — App
+  mounts no Chat anywhere: not the dock's, which the record could suspend a
+  frame later, and not a layout's, which has no layout yet.
 - **The ambient `chat` surface is suspended, not moved.** While the centre
   owns Chat, `RegionShells` and the toolbar wrap their readers in
   `SuspendRegionSurfaces` ([RegionModelContext.tsx](../../src-ui/src/contexts/RegionModelContext.tsx)):
