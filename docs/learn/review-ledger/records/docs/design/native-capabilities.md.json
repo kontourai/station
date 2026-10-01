@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"9aa6591d840851c6489047d054405a3afeb538dbb4c9a1d025b0f138a6cd6a04","revision":"ef78c0d0980e7dbbf2cf8b633de002f5abf305da"},
+  "document": {"digest":"e2ad224516d0ead3830c84bf3d48698698282cd28a917f1808c4dc0ea6d2a3dc","revision":"dd0b58c8b698d6af2b789e37b427d18e842acab4"},
 
   "sources": [
     {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
