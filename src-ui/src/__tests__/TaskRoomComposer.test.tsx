@@ -5,6 +5,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  brief: {
+    version: 'station.task-room-context/v1' as const,
+    digest: 'a'.repeat(64),
+    title: 'Shared objective',
+    description: '',
+    documentRevision: 'revision-1',
+    text: 'Agreed brief.',
+  },
   agent: vi.fn(),
   message: vi.fn(),
   scope: {
@@ -30,7 +38,11 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
     isPending: false,
   }),
   useTaskRoomAgentRequestsQuery: () => ({
-    data: { records: [] },
+    data: {
+      records: [],
+      contextVersion: 'station.task-room-context/v1',
+      context: mocks.brief,
+    },
     isError: false,
     isFetching: false,
     refetch: vi.fn(),
@@ -74,6 +86,14 @@ const props = {
 };
 beforeEach(() => {
   mocks.scope.authorityKey = 'home-a';
+  mocks.brief = {
+    version: 'station.task-room-context/v1',
+    digest: 'a'.repeat(64),
+    title: 'Shared objective',
+    description: '',
+    documentRevision: 'revision-1',
+    text: 'Agreed brief.',
+  };
   mocks.agent
     .mockReset()
     .mockImplementation(async (input: TaskRoomWorkInput) => ({
@@ -182,4 +202,31 @@ test('a filtered empty picker clears its lookup without deleting the surrounding
   expect(screen.getAllByRole('option')).toHaveLength(3);
   expect(screen.getByDisplayValue('Please @ investigate')).toBe(textbox);
   expect(mocks.agent).not.toHaveBeenCalled();
+});
+
+test('the previewed brief stays selected through background edits and request-only is explicit', async () => {
+  const view = render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  fireEvent.change(textbox, { target: { value: '@res', selectionStart: 4 } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  expect(screen.getByText('Agreed brief.')).toBeTruthy();
+  mocks.brief = {
+    ...mocks.brief,
+    digest: 'b'.repeat(64),
+    text: 'Edited brief.',
+  };
+  view.rerender(<TaskRoomComposer {...props} />);
+  expect(screen.queryByText('Edited brief.')).toBeNull();
+  fireEvent.change(textbox, { target: { value: 'Investigate' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledOnce());
+  expect(mocks.agent.mock.calls[0][0].context.digest).toBe('a'.repeat(64));
+  fireEvent.change(textbox, { target: { value: '@res', selectionStart: 4 } });
+  fireEvent.keyDown(textbox, { key: 'Enter' });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Include Task brief' }));
+  expect(screen.getByText('Only your request text will be sent.')).toBeTruthy();
+  fireEvent.change(textbox, { target: { value: 'Request only' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
+  expect(mocks.agent.mock.calls[1][0].context).toBeUndefined();
 });

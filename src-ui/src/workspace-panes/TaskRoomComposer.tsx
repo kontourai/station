@@ -1,5 +1,8 @@
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
-import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
+import type {
+  TaskRoomContextSnapshot,
+  TaskRoomWorkInput,
+} from '@kontourai/station-contracts/task-room-work';
 import {
   TaskRoomWorkNotSentError,
   useAppendProjectTaskRoomHumanMessageMutation,
@@ -57,6 +60,8 @@ export function TaskRoomComposer({
   const [composing, setComposing] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState<TaskRoomWorkInput>();
   const [notice, setNotice] = useState('');
+  const [includeBrief, setIncludeBrief] = useState(true);
+  const [brief, setBrief] = useState<TaskRoomContextSnapshot>();
   const [draftOwner, setDraftOwner] = useState<string>();
   const owner = JSON.stringify([
     scope?.apiBase,
@@ -64,6 +69,8 @@ export function TaskRoomComposer({
     taskId,
     taskCreatedAt,
   ]);
+  const currentOwner = useRef(owner);
+  currentOwner.current = owner;
   const connectionChanged = draftOwner !== undefined && draftOwner !== owner;
   const textarea = useRef<HTMLTextAreaElement>(null);
   const id = useId();
@@ -86,6 +93,11 @@ export function TaskRoomComposer({
     if (!agent?.ready || !mention) return;
     setDraftOwner(owner);
     setRecipient({ id: agent.id, name: agent.name });
+    setBrief(
+      !requests.isError && scope?.isCurrent()
+        ? (requests.data?.context ?? undefined)
+        : undefined,
+    );
     setDraft(draft.slice(0, mention.start) + draft.slice(mention.end));
     setMention(undefined);
     textarea.current?.focus();
@@ -116,10 +128,19 @@ export function TaskRoomComposer({
         );
         return;
       }
+      if (!unconfirmed && includeBrief && !brief) {
+        setNotice(
+          'Task brief is unavailable. Load it or explicitly send only this request.',
+        );
+        return;
+      }
       const input = unconfirmed ?? {
         operationId: randomCorrelationId(),
         agentId: recipient.id,
         prompt: draft.trim(),
+        ...(includeBrief && brief
+          ? { context: { version: brief.version, digest: brief.digest } }
+          : {}),
       };
       setUnconfirmed(input);
       try {
@@ -127,6 +148,8 @@ export function TaskRoomComposer({
         if (outcome.kind === 'recorded') {
           setDraft('');
           setRecipient(undefined);
+          setBrief(undefined);
+          setIncludeBrief(true);
           setUnconfirmed(undefined);
           setNotice(
             outcome.record.state === 'dispatched'
@@ -193,6 +216,19 @@ export function TaskRoomComposer({
                   </a>
                   <details>
                     <summary>Request details</summary>
+                    {record.context ? (
+                      <div className="task-room-brief-preview">
+                        <strong>{record.context.title}</strong>
+                        <p>{record.context.description}</p>
+                        <pre>{record.context.text}</pre>
+                        <p>
+                          Saved brief {record.context.digest.slice(0, 12)} ·
+                          document {record.context.documentRevision}
+                        </p>
+                      </div>
+                    ) : (
+                      <p>Request text only; no saved Task brief.</p>
+                    )}
                     <p>
                       Requested {record.createdAt} by {record.requesterId}.
                       Execution {record.sessionId}.
@@ -236,6 +272,64 @@ export function TaskRoomComposer({
           Ask an agent
         </Button>
       )}
+      {recipient && !connectionChanged ? (
+        <fieldset aria-label="Request context" disabled={locked}>
+          <label className="task-room-brief-choice">
+            <input
+              type="checkbox"
+              checked={includeBrief}
+              onChange={(event) => {
+                setIncludeBrief(event.target.checked);
+                if (event.target.checked)
+                  setBrief(
+                    !requests.isError
+                      ? (requests.data?.context ?? undefined)
+                      : undefined,
+                  );
+              }}
+            />
+            Include Task brief
+          </label>
+          {includeBrief ? (
+            <>
+              {brief ? (
+                <details className="task-room-brief-preview">
+                  <summary>
+                    Preview selected brief · {brief.digest.slice(0, 12)}
+                  </summary>
+                  <strong>{brief.title}</strong>
+                  <p>{brief.description}</p>
+                  <pre>{brief.text}</pre>
+                  <p>Document version {brief.documentRevision}</p>
+                </details>
+              ) : (
+                <p>Task brief is unavailable on this connection.</p>
+              )}
+              <Button
+                size="sm"
+                disabled={locked || requests.isFetching || requests.isError}
+                onClick={async () => {
+                  const result = await requests.refetch();
+                  if (
+                    scope?.isCurrent() &&
+                    currentOwner.current === owner &&
+                    !result.isError
+                  )
+                    setBrief(result.data?.context ?? undefined);
+                }}
+              >
+                Use latest brief
+              </Button>
+              <p>
+                This exact snapshot goes with the request. Later edits do not
+                change it.
+              </p>
+            </>
+          ) : (
+            <p>Only your request text will be sent.</p>
+          )}
+        </fieldset>
+      ) : null}
       <label htmlFor={`${id}-message`}>Message</label>
       <textarea
         id={`${id}-message`}
@@ -358,7 +452,10 @@ export function TaskRoomComposer({
           connectionChanged ||
           !scope ||
           !draft.trim() ||
-          (recipient && (!requests.data || requests.isError))
+          (recipient &&
+            (!requests.data ||
+              requests.isError ||
+              (!unconfirmed && includeBrief && !brief)))
         }
         onClick={() => void submit()}
       >
