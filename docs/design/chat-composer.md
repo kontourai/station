@@ -156,10 +156,14 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   blocked only by the attachments, that line carries **Remove attachments**,
   so the fix stays reachable in a short dock where the chat error may be out
   of view. The composer reserves room for a two-line draft; in a short dock
-  the failure banner and the transcript yield first (down to zero, and in a
-  dock too short even for their padding they step aside), the chip strip
-  drops to one scrolling row, and only then does the draft shrink below two
-  lines — scrolling, never overlapped, with Send always on screen.
+  the failure banner and the transcript yield first (down to zero; in a dock
+  too short even for their padding the banner steps aside, the transcript
+  gives up its padding and the composer repeats the latest send failure as
+  one line), the chip strip drops to one scrolling row, and only then does
+  the draft shrink below two lines — scrolling, never overlapped, with Send
+  always on screen. The transcript is never taken out of the layout, and the
+  composer re-measures whenever a sibling in the dock appears, leaves or
+  resizes.
 - A send the engine refuses because of its attachments
   (`attachment_input_unsupported`) is shown as one chat error with **Remove
   attachments** instead of Retry, because the same send would be refused
