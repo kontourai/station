@@ -118,6 +118,7 @@ export class BrokerIceService {
   readonly #db: DatabaseSync;
   readonly #policy: Readonly<BrokerIcePolicy>;
   readonly #abort = new AbortController();
+  readonly #cache = new Map<string, RelayIceConfigurationV1>();
   #active = 0;
   #closed = false;
   constructor(
@@ -180,9 +181,36 @@ export class BrokerIceService {
     if (this.#closed) throw new Error('ice_unavailable');
     callerSignal.throwIfAborted();
     authority.assertCurrent();
+    const issuedAt = this.now();
+    const usageKey = createHash('sha256')
+      .update(
+        JSON.stringify([
+          authority.subject,
+          authority.scope.stationId,
+          authority.scope.enrollmentId,
+          authority.scope.routingGeneration,
+          authority.surface?.kind,
+          authority.surface?.appIdentifier,
+          authority.surface?.channel,
+          authority.surface?.clientInstanceId,
+          authority.surface?.keyThumbprint,
+        ]),
+      )
+      .digest('hex');
+    for (const [key, value] of this.#cache) {
+      if (value.expiresAt < issuedAt + 120_000) this.#cache.delete(key);
+    }
+    const cached = this.#cache.get(usageKey);
+    if (
+      cached &&
+      (authority.grantExpiresAt === undefined ||
+        cached.expiresAt <= authority.grantExpiresAt)
+    ) {
+      authority.assertCurrent();
+      return parseRelayIceConfiguration(cached, authority, this.now());
+    }
     if (this.#active >= this.#policy.maxConcurrent)
       throw new Error('ice_issuance_limit');
-    const issuedAt = this.now();
     const ttlSeconds = Math.min(
       this.#policy.ttlSeconds,
       authority.grantExpiresAt === undefined
@@ -190,9 +218,7 @@ export class BrokerIceService {
         : Math.floor((authority.grantExpiresAt - issuedAt) / 1000),
     );
     if (ttlSeconds < 120) throw new Error('ice_authority_expiring');
-    const usageKey = createHash('sha256')
-      .update(authority.subject)
-      .digest('hex');
+
     this.#reserve(usageKey, issuedAt);
     this.#active++;
     const timeout = new AbortController();
@@ -228,7 +254,7 @@ export class BrokerIceService {
       );
       signal.throwIfAborted();
       authority.assertCurrent();
-      return parseRelayIceConfiguration(
+      const receipt = parseRelayIceConfiguration(
         {
           version: RELAY_ICE_CONFIGURATION_VERSION,
           scope: authority.scope,
@@ -241,6 +267,12 @@ export class BrokerIceService {
         authority,
         this.now(),
       );
+      if (this.#cache.size >= this.#policy.maxAttemptsPerDay) {
+        const oldest = this.#cache.keys().next().value;
+        if (oldest !== undefined) this.#cache.delete(oldest);
+      }
+      this.#cache.set(usageKey, receipt);
+      return receipt;
     } catch (error) {
       if (
         error instanceof Error &&
@@ -260,6 +292,7 @@ export class BrokerIceService {
     if (this.#closed) return;
     this.#closed = true;
     this.#abort.abort();
+    this.#cache.clear();
     this.#db.close();
   }
 }

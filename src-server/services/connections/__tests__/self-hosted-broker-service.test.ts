@@ -300,6 +300,9 @@ describe.runIf(process.platform !== 'win32')(
           'version',
         ]);
         expect((await postNative(proof)).status).toBe(409);
+        for (let index = 0; index < 6; index++)
+          expect((await postNative(await nativeProof())).status).toBe(200);
+        expect(provider.issue).toHaveBeenCalledOnce();
         service.revokeNativeClientGrant(
           scope,
           issued.routing,

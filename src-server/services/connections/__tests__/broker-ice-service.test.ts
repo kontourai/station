@@ -72,6 +72,68 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  test('seven configuration requests reuse one credential, but restart retains the issuance limit', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-ice-reuse-'));
+    const path = join(root, 'budget.sqlite');
+    const provider: BrokerTurnProvider = { issue: vi.fn(async () => servers) };
+    let current = true;
+    const owner: BrokerIceAuthority = {
+      ...authority(),
+      assertCurrent() {
+        if (!current) throw new Error('broker_credential_refused');
+      },
+    };
+    let service = new BrokerIceService(
+      path,
+      provider,
+      { maxAttemptsPerDay: 1 },
+      () => 1000,
+    );
+    try {
+      for (let index = 0; index < 7; index++)
+        expect((await service.issue(owner, signal())).issuedAt).toBe(1000);
+      expect(provider.issue).toHaveBeenCalledOnce();
+      current = false;
+      await expect(service.issue(owner, signal())).rejects.toThrow(
+        'broker_credential_refused',
+      );
+      current = true;
+      service.close();
+      service = new BrokerIceService(
+        path,
+        provider,
+        { maxAttemptsPerDay: 1 },
+        () => 1000,
+      );
+      await expect(service.issue(owner, signal())).rejects.toThrow(
+        'ice_issuance_limit',
+      );
+      expect(provider.issue).toHaveBeenCalledOnce();
+    } finally {
+      service.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('credentials below the minimum peer lifetime are refreshed rather than reused', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-ice-refresh-'));
+    let now = 1000;
+    const provider: BrokerTurnProvider = { issue: vi.fn(async () => servers) };
+    const service = new BrokerIceService(
+      join(root, 'budget.sqlite'),
+      provider,
+      {},
+      () => now,
+    );
+    try {
+      const first = await service.issue(authority(), signal());
+      now = first.expiresAt - 119_999;
+      expect((await service.issue(authority(), signal())).issuedAt).toBe(now);
+      expect(provider.issue).toHaveBeenCalledTimes(2);
+    } finally {
+      service.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test('cancelled provider work retains its concurrency slot and cannot publish a late result', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-ice-cancel-'));
     let complete!: (value: typeof servers) => void;
