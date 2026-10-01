@@ -946,7 +946,7 @@ restrictions and caller binding.
 
 ## ConversationSessionLineage
 
-A conversation is the continuing human thread; an execution Session is the engine instance serving part of it. [Lineage](../../src-server/services/orchestration/conversation-session-lineage.ts) records their immutable order. [Continuation policy](../../src-server/services/orchestration/conversation-lineage.ts) decides whether to reuse the current Session or reserve a successor.
+A conversation is the continuing human thread; an execution Session is the engine instance serving part of it. [Lineage](../../src-server/services/orchestration/conversation-session-lineage.ts) records their immutable order. [Continuation policy](../../src-server/services/orchestration/conversation-lineage.ts) decides whether to reuse the current Session or reserve a successor. When a model change reserves a successor for a Session that never ran a turn, the continuation names that predecessor so the start seam can stop its engine once the successor has started (best effort; a Session with turn facts is left as it was).
 
 **Interface.** `establishInitialSession` records the legacy root,
 `sessionsForConversation` returns immutable ordinal lineage, and
