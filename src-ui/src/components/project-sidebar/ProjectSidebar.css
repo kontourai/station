@@ -612,11 +612,12 @@
   padding: 3px 8px;
   background: var(--bg-tertiary);
   border: 1px solid transparent;
-  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme,
-     --text-muted (#707782) is 4.33:1 on the chip's own fill -- under the
-     4.5:1 text floor -- and 4.52:1 on the panel. --text-tertiary (#5b626b)
-     is 5.9:1 and 6.2:1. Scoped to the panel's rows rather than darkening
-     --text-muted's 500 consumers. */
+  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme
+     when this was chosen, --text-muted (#707782) was 4.33:1 on the chip's
+     own fill -- under the 4.5:1 text floor -- and 4.52:1 on the panel.
+     @kontourai/ui 1.17 retinted it to #6a707b, which is 4.77:1 and 4.98:1.
+     --text-tertiary (#5b626b) is 5.9:1 and 6.2:1. Scoped to the panel's rows
+     rather than darkening --text-muted's 500 consumers. */
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-sm);

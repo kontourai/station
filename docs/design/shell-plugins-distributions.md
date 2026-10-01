@@ -278,8 +278,9 @@ behavior.
 - The white-label theme applies five role tokens and refuses the whole theme
   (keeping defaults) on an unknown key, a non-hex value or a failed contrast
   check. Since #2952, which was re-checked after merging it, the check is
-  `@kontourai/ui` 1.16.0's `validateBrandOverride` plus two stricter Station
-  rules ([branding-theme.ts](../../src-ui/src/lib/branding-theme.ts);
+  `@kontourai/ui`'s `validateBrandOverride` plus Station's own stricter text
+  rules: two on 1.16.0, one (the action fill) since the 1.18.0 bump, whose
+  validator took over the brand rule ([branding-theme.ts](../../src-ui/src/lib/branding-theme.ts);
   [theming guide](../guides/theming.md#white-label-branding-theme)).
 - Operator-configured sign-in exists: an OIDC configuration file and an
   authentication module
@@ -594,9 +595,10 @@ The manifest adds no second path for any of these.
      separate from status colour.
    - When a manifest's tokens fail, the shell refuses the whole theme and
      keeps defaults, the rejection path `branding-theme.ts` already has.
-   - Since #2952, Station pins `@kontourai/ui` `^1.16.0` and validates
-     themes with that package's `validateBrandOverride`, plus two stricter
-     Station rules. A manifest's tokens pass through the same check.
+   - Since #2952, Station validates themes with `@kontourai/ui`'s
+     `validateBrandOverride` (pinned `^1.16.0` then, `^1.18.0` now), plus
+     Station's stricter text rule for the action fill. A manifest's tokens
+     pass through the same check.
    - The package's DESIGN.md (shipped in 1.16.0) states both rules this limit
      relies on. "White-label overrides" requires a runtime-applied theme to
      reject a pair that fails the AA text and non-text thresholds.

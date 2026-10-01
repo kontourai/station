@@ -1451,8 +1451,8 @@ describe('device pairing routes', () => {
     const identity = Buffer.from(
       JSON.stringify({
         provider: 'tailscale-serve',
-        login: 'brian@example.test',
-        displayName: 'Brian',
+        login: 'casey@example.test',
+        displayName: 'Casey',
       }),
     ).toString('base64url');
     const verified = await harness.request(
@@ -1481,8 +1481,8 @@ describe('device pairing routes', () => {
           source: 'tailnet',
           requester: {
             provider: 'tailscale-serve',
-            login: 'brian@example.test',
-            displayName: 'Brian',
+            login: 'casey@example.test',
+            displayName: 'Casey',
           },
         },
       ],
@@ -3205,7 +3205,7 @@ describe('local self-authorization grant exchange (station#1715)', () => {
     const identity = Buffer.from(
       JSON.stringify({
         provider: 'tailscale-serve',
-        login: 'brian@example.test',
+        login: 'casey@example.test',
       }),
     ).toString('base64url');
     const response = await harness.request(
@@ -3412,7 +3412,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
   test('requires a bearer to list and approve an off-box device from loopback', async () => {
     const harness = createHarness();
-    const access = await accessRequest(harness, DEVICE_PEER, 'Brian phone');
+    const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
 
     const bareInbox = await harness.request(
       '/api/pairing/requests',
@@ -3450,7 +3450,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     );
     expect(exchange.status).toBe(200);
     expect((await exchange.json()) as { device: PairedDevice }).toMatchObject({
-      device: { name: 'Brian phone', scope: DEFAULT_GRANT_PAIRING_SCOPE },
+      device: { name: 'Casey phone', scope: DEFAULT_GRANT_PAIRING_SCOPE },
     });
   });
 
@@ -3549,7 +3549,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('refuses bare loopback approval before recording a verified approval', async () => {
       const harness = createHarness();
       const addSpy = vi.spyOn(devicePairingRequests, 'add');
-      const access = await accessRequest(harness, DEVICE_PEER, 'Brian phone');
+      const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
 
       const bareApproval = await approve(harness, access.requestId);
       expect(bareApproval.status).toBe(401);
@@ -3583,7 +3583,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('records a bearer approval without retaining a caller identity in telemetry', async () => {
       const harness = createHarness();
       const addSpy = vi.spyOn(devicePairingRequests, 'add');
-      const access = await accessRequest(harness, DEVICE_PEER, 'Brian phone');
+      const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
 
       expect(
         (await approve(harness, access.requestId, MASTER_CREDENTIAL)).status,
@@ -3619,7 +3619,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // attested peer for a Serve request is always 127.0.0.1, and judging it by
     // address alone refused exactly the requests carrying the strongest
     // provenance Station has (archive#1490 delta review H2).
-    const serveIdentity = (login = 'brian@example.test') =>
+    const serveIdentity = (login = 'casey@example.test') =>
       Buffer.from(
         JSON.stringify({ provider: 'tailscale-serve', login }),
       ).toString('base64url');
@@ -3660,7 +3660,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
             source: 'tailnet',
             requester: expect.objectContaining({
               provider: 'tailscale-serve',
-              login: 'brian@example.test',
+              login: 'casey@example.test',
             }),
           }),
         ],

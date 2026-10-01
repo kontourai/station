@@ -165,7 +165,7 @@ describe('ProjectBindingsStore — writes (§3.5 path verbatim, remotes canonica
       path: '~/dev/github/kontourai/station',
       remotes: [
         'git@github.com:KontourAI/Station.git',
-        'https://user:token@github.com/brian/station/',
+        'https://user:token@github.com/casey/station/',
       ],
       verifiedAt: 1_754_000_000_000,
       state: 'bound',
@@ -174,7 +174,7 @@ describe('ProjectBindingsStore — writes (§3.5 path verbatim, remotes canonica
     expect(binding.path).toBe('~/dev/github/kontourai/station');
     expect(binding.remotes).toEqual([
       'github.com/kontourai/station',
-      'github.com/brian/station',
+      'github.com/casey/station',
     ]);
     // …and on disk, so a later reader sees the same two properties.
     const raw = readFileSync(projectBindingStorePath(home), 'utf-8');
@@ -434,7 +434,7 @@ describe('applyHostAlias (§3.3(a))', () => {
 
   test.each([
     ['git@github.com:kontourai/station.git'],
-    ['/Users/brian/dev/station'],
+    ['/Users/me/dev/station'],
     ['../sibling-checkout'],
   ])('leaves %s untouched when no alias matches', (input) => {
     expect(applyHostAlias(input, aliases)).toBe(input);

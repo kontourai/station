@@ -23,8 +23,8 @@ describe('the ssh target grammar', () => {
   test.each([
     ['mac-mini', { host: 'mac-mini' }],
     ['build.local', { host: 'build.local' }],
-    ['brian@mac-mini', { user: 'brian', host: 'mac-mini' }],
-    ['brian@10.0.0.7:2222', { user: 'brian', host: '10.0.0.7', port: 2222 }],
+    ['casey@mac-mini', { user: 'casey', host: 'mac-mini' }],
+    ['casey@10.0.0.7:2222', { user: 'casey', host: '10.0.0.7', port: 2222 }],
     ['linux-box:22', { host: 'linux-box', port: 22 }],
     ['me@[fe80::1]:2200', { user: 'me', host: 'fe80::1', port: 2200 }],
     ['[::1]', { host: '::1' }],
@@ -41,10 +41,10 @@ describe('the ssh target grammar', () => {
     'host -oProxyCommand=x',
     '-p22',
     '--',
-    'brian@-oProxyCommand=x',
-    '-brian@host',
-    'brian@host:-1',
-    'brian@host -L 1:2:3',
+    'casey@-oProxyCommand=x',
+    '-casey@host',
+    'casey@host:-1',
+    'casey@host -L 1:2:3',
     // Shell and ssh-token characters.
     'host;id',
     'host$(id)',
@@ -98,7 +98,7 @@ const endOfOptions = (args: readonly string[]) => args.indexOf('--');
 describe('ssh argument vectors', () => {
   test('a command session: fixed options, the target after `--`, a constant remote command', () => {
     const args = buildSshDeviceCommandArgs(
-      parseSshDeviceTarget('brian@10.0.0.7:2222'),
+      parseSshDeviceTarget('casey@10.0.0.7:2222'),
     );
     const end = endOfOptions(args);
     expect(end).toBeGreaterThan(0);
@@ -108,7 +108,7 @@ describe('ssh argument vectors', () => {
       '-o',
       'ClearAllForwardings=yes',
       '-l',
-      'brian',
+      'casey',
       '-p',
       '2222',
     ]);
@@ -278,7 +278,7 @@ describe('ssh failures are typed', () => {
   });
 
   test.each([
-    ['brian@localhost: Permission denied (publickey,password).', 'auth-failed'],
+    ['casey@localhost: Permission denied (publickey,password).', 'auth-failed'],
     [
       'Could not open a connection to your authentication agent.',
       'auth-failed',
