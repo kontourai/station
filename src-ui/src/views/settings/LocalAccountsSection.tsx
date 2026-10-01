@@ -8,10 +8,10 @@ import {
 } from '@kontourai/station-sdk/local-accounts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
-import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -58,6 +58,7 @@ function AccountControls({
     account: LocalAccountView;
     action: LocalAccountAction;
   }>();
+  const pendingName = pending?.account.name ?? 'this account';
   const [recovery, setRecovery] = useState<string>();
   const [error, setError] = useState<string>();
   const busy = mutation.isPending || query.isFetching;
@@ -110,35 +111,45 @@ function AccountControls({
                 {account.disabled ? 'Sign-in disabled' : 'Active'}
               </p>
             </div>
-            <ResponsiveSurfaceActions className="local-accounts__actions">
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  setPending({
-                    account,
-                    action: account.disabled ? 'enable' : 'disable',
-                  })
-                }
-              >
-                {account.disabled ? 'Enable sign-in' : 'Disable sign-in'}
-              </Button>
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  setPending({ account, action: 'revoke-sessions' })
-                }
-              >
-                Sign out all sessions
-              </Button>
-              <Button
-                disabled={busy || account.disabled}
-                onClick={() =>
-                  setPending({ account, action: 'create-recovery' })
-                }
-              >
-                Create recovery link
-              </Button>
-            </ResponsiveSurfaceActions>
+            {/* #3045: turning sign-in on or off is the row's action; the two
+                session commands fold into the menu. */}
+            <ActionRow
+              className="local-accounts__actions"
+              overflowLabel={`More actions for ${account.name}`}
+              primary={
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    setPending({
+                      account,
+                      action: account.disabled ? 'enable' : 'disable',
+                    })
+                  }
+                >
+                  {account.disabled ? 'Enable sign-in' : 'Disable sign-in'}
+                </Button>
+              }
+              overflow={[
+                {
+                  key: 'revoke-sessions',
+                  label: 'Sign out all sessions',
+                  tone: 'danger',
+                  disabled: busy,
+                  onSelect: () =>
+                    setPending({ account, action: 'revoke-sessions' }),
+                },
+                {
+                  key: 'create-recovery',
+                  label: 'Create recovery link',
+                  disabled: busy || account.disabled,
+                  ...(account.disabled
+                    ? { disabledReason: 'Sign-in is disabled' }
+                    : {}),
+                  onSelect: () =>
+                    setPending({ account, action: 'create-recovery' }),
+                },
+              ]}
+            />
           </div>
         ))
       )}
@@ -164,15 +175,22 @@ function AccountControls({
         isOpen={!!pending}
         pending={mutation.isPending}
         error={error}
+        // The confirm NAMES the action. These commands sit behind a menu
+        // now (#3045), so "Change account sign-in?" would be the only thing
+        // on screen saying which one was pressed — and it did not say.
         title={
           pending?.action === 'create-recovery'
             ? 'Create a password recovery link?'
-            : 'Change account sign-in?'
+            : pending?.action === 'revoke-sessions'
+              ? `Sign out all sessions for ${pendingName}?`
+              : pending?.action === 'disable'
+                ? `Disable sign-in for ${pendingName}?`
+                : `Enable sign-in for ${pendingName}?`
         }
         message={
           pending?.action === 'create-recovery'
             ? `Anyone with this link can reset ${pending.account.name}’s password. Confirm the recipient before sharing it.`
-            : `Apply this account action to ${pending?.account.name ?? 'this account'}? Project membership and device grants will remain recorded separately.`
+            : 'Project membership and device grants will remain recorded separately.'
         }
         onConfirm={() => void apply()}
         onCancel={() => setPending(undefined)}

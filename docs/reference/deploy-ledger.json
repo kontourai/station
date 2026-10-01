@@ -1,5 +1,79 @@
 [
   {
+    "timestampUtc": "2026-10-01T07:13:08Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2465",
+    "sha": "3b001e5e54358931bb4c090eec900d4ecb488620",
+    "artifactBuiltAt": "2026-10-01T06:01:31.378Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36819975981",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36819975981)"
+    ],
+    "changelog": {
+      "previousSha": "4dbf9acbcab04c4695c8ca9799bc1422526cd382",
+      "groups": {
+        "feat": [
+          "[#3037](https://github.com/kontourai/station/pull/3037) feat(tasks): show work on a board and lead with the shared workspace",
+          "[#2896](https://github.com/kontourai/station/pull/2896) feat(relay): add opt-in native Device proof pilot"
+        ],
+        "fix": [
+          "[#3032](https://github.com/kontourai/station/pull/3032) fix(connections): admit delegated sign-in profile reads",
+          "[#2987](https://github.com/kontourai/station/pull/2987) fix(server): say why a Station agent turn failed, and keep provider error text off Station's chat surfaces",
+          "[#2983](https://github.com/kontourai/station/pull/2983) fix(ui): accessible split-pane list rows (AA selection, keyboard, names, touch targets)",
+          "[#3031](https://github.com/kontourai/station/pull/3031) fix(mcp): reconnect built-in tool servers without false stale custody"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3033](https://github.com/kontourai/station/pull/3033) chore(release): publish Agent SDK 0.8 with verified release closure"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-10-01T07:13:05Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2465",
+    "sha": "3b001e5e54358931bb4c090eec900d4ecb488620",
+    "artifactBuiltAt": "2026-10-01T05:42:25.191Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36819975981",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36819975981)"
+    ],
+    "changelog": {
+      "previousSha": "4dbf9acbcab04c4695c8ca9799bc1422526cd382",
+      "groups": {
+        "feat": [
+          "[#3037](https://github.com/kontourai/station/pull/3037) feat(tasks): show work on a board and lead with the shared workspace",
+          "[#2896](https://github.com/kontourai/station/pull/2896) feat(relay): add opt-in native Device proof pilot"
+        ],
+        "fix": [
+          "[#3032](https://github.com/kontourai/station/pull/3032) fix(connections): admit delegated sign-in profile reads",
+          "[#2987](https://github.com/kontourai/station/pull/2987) fix(server): say why a Station agent turn failed, and keep provider error text off Station's chat surfaces",
+          "[#2983](https://github.com/kontourai/station/pull/2983) fix(ui): accessible split-pane list rows (AA selection, keyboard, names, touch targets)",
+          "[#3031](https://github.com/kontourai/station/pull/3031) fix(mcp): reconnect built-in tool servers without false stale custody"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3033](https://github.com/kontourai/station/pull/3033) chore(release): publish Agent SDK 0.8 with verified release closure"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-10-01T06:47:09Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2465.36819975981",

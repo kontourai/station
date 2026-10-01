@@ -110,7 +110,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -462,7 +462,7 @@
 
     {"path":"src-server/services/evidence/reviewed-source-session-inventory-adapter.ts","digest":"e9488fd7de95e431b5ecc11beb84cfa3e8f5d2e488bec6136fac2e9b01f1d62e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"2be66a9c634498f7b4e20e4a05b47f7b3893e56608b03d41c40838527e5985a6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"db14b46978051e775c9415ad7104054bb41892df40fe50a6be2da0c2ba5b1373","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
 
     {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

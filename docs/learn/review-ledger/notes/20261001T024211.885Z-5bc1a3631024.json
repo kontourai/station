@@ -1,0 +1,21 @@
+{
+  "revision": "03240cbbac3f4c9d20200582858c5b516be93912",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"docs/reference/cli.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"docs/reference/connect.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"docs/reference/session-api.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Fixture-only delta: the changed test inputs swap a developer home path and sample login for neutral placeholders, with the literals asserted against them. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged."}
+  ]
+}

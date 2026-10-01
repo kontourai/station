@@ -9,7 +9,7 @@
 
   "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
 
-  "document": {"digest":"ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"2f4089d72858c659210572db4b796e4c4102af8fb05a6671c93a7711f8ff78f0","revision":"61f31f5bade67ee3c6eb6f8d6ed20bbaf0e8c015"},
 
   "sources": [
     {"path":".github/workflows/ci-extended.yml","digest":"6cd65c4dae77a42df037641d1175f753185ad04e23e031f0dd5e26b9aefa3fd2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -60,7 +60,7 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"2dca267ed3cfe8b8283ae38ff62436b2620d258491b7c3fff4993eb0151ccc7f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
     {"path":"tests/mobile-chat-composer.spec.ts","digest":"42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
@@ -84,9 +84,9 @@
 
     {"path":"tests/schedule.spec.ts","digest":"c2110b9f298e82425969171e3246061c76e3588a828274ad5235288c7e059a26","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/skills.spec.ts","digest":"d73507be0f45a2eb3d52bca94b9505641cc2004e6661e46c76c4650b1f074736","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"1b2169b8e7a077f02f4668aacb7051929c50664e6bbb493601a45a619c264e21","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
+    {"path":"tests/task-first-home.spec.ts","digest":"0c8e1da38b6bd6cb5689e57b6596f5b2d5cb6bb390703c3d442e957e8f1baf4d","revision":"2dee75143bca994a270d7038965d1a825bbde516"},
 
     {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 

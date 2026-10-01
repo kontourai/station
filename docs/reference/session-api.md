@@ -185,7 +185,12 @@ or the inbox, the same answer is sent as `accept` and records nothing. A
 delegated answer for a task on a saved Environment reaches that Station as
 this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
-`ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916).
+`ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
+ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
+call or `ExitPlanMode`), which mints no grant and selects the agent's
+allow-once option (#2933). So an agent's `allow_always` option for a plan
+exit, such as "yes, and auto-accept edits", is not reachable from a session
+answer, as with Claude's own plan exit (#2916).
 
 The command records the decision: the adapter publishes `request.resolved`
 when Station records it, on every engine. Whether the engine then received it
