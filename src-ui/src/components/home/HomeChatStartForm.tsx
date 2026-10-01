@@ -33,6 +33,7 @@ export function HomeChatStartForm({ identity }: { identity?: string }) {
       }}
     >
       <textarea
+        className="editor-textarea"
         aria-label="What would you like done?"
         placeholder="Tell Station what you want done…"
         rows={3}

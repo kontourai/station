@@ -84,6 +84,12 @@ runs its own agent loop.
    External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
+For OpenAI's model service, supply its API key. A custom server may use another
+supported authentication method or need no key. **Create** saves a Model
+connection and checks it immediately; if its model list is unavailable, the
+check may send a small, potentially billable test prompt using the default
+model. Correct a refused check before expecting the connection to run work.
+
 Read the accompanying evidence too. A saved connection or a live model catalog
 does not prove that a chat turn completed. An explicit one-turn smoke supplies
 that narrower proof and can incur provider charges; opening Connections or

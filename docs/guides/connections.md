@@ -31,6 +31,12 @@ saved settings from a check that actually reached the provider:
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
 
+When adding a Model connection, **Create** saves it and immediately checks the
+provider. OpenAI's service requires an API key. For a custom endpoint, follow
+that server's authentication requirements; some permit anonymous access or
+host-managed credentials. Blank fields alone do not establish readiness. A
+refused check retains its reason so you can correct the settings and retry.
+
 **Test Connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not

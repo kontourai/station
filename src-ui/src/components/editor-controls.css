@@ -192,7 +192,6 @@
 
 .editor-field-hint {
   margin-top: 6px;
-  color: var(--text-muted);
   font-size: var(--text-sm);
 }
 
@@ -322,17 +321,14 @@
  */
 @media (max-width: 768px), (pointer: coarse) {
   .editor-input,
-  .editor-select {
-    min-height: 44px;
-  }
-
+  .editor-select,
   .editor-btn,
-  .editor-btn--small {
+  .editor-btn--small,
+  .editor-btn--icon {
     min-height: 44px;
   }
 
   .editor-btn--icon {
     min-width: 44px;
-    min-height: 44px;
   }
 }

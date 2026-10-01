@@ -582,6 +582,10 @@ export function ProviderConnectionForm({
                 onSetConfigField('apiKey', event.target.value)
               }
             />
+            <div className="editor-field-hint">
+              OpenAI requires an API key. For a custom server, follow its
+              authentication requirements; some servers need no key.
+            </div>
             {apiKeyConfigured && (
               <div className="editor-field-hint">
                 A secret is saved. Station never sends it back to this device.
@@ -810,6 +814,18 @@ export function ProviderConnectionForm({
           Enabled
         </label>
       </div>
+
+      {isNew ? (
+        <p
+          id="provider-create-disclosure"
+          className="provider-detail__disclosure"
+        >
+          Create saves this connection and checks its model list. If the service
+          cannot list models, Station may send a small test prompt using the
+          default model. Your provider may charge for that request. A saved
+          connection is ready only after its check succeeds.
+        </p>
+      ) : null}
 
       {!isNew && selectedProviderId && (
         <div
