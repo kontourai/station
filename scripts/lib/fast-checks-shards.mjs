@@ -244,12 +244,20 @@ function sameList(left, right) {
  * `planText` the downloaded plan (undefined when absent); `receipts` every
  * downloaded receipt file as `{ path, text }`. Returns findings; empty means
  * the required check may pass.
+ * @param {{
+ *   needs?: Record<string, { result?: string }>;
+ *   planText?: string;
+ *   receipts: Array<{ path: string; text: string }>;
+ *   shardCount?: number;
+ *   runId?: string;
+ *   headSha: string;
+ * }} options
  */
 export function verifyFastChecks({
   needs,
   planText,
   receipts,
-  shardCount,
+  shardCount = undefined,
   runId,
   headSha,
 }) {
