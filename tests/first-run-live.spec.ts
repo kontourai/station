@@ -125,7 +125,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   // `/api/usage-telemetry/disclosure/acknowledgements` on this home.
   const disclosure = page.getByTestId('first-run-disclosure');
   await expect(disclosure).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 1 of 4')).toBeVisible();
+  await expect(page.getByText('Step 1 of 1')).toBeVisible();
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
@@ -135,8 +135,13 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     .click();
 
   const chapter = page.getByTestId('first-run-engines');
+  await expect(chapter).toHaveCount(0);
+  await page
+    .getByTestId('first-run-home-card')
+    .getByRole('button', { name: 'Personalize Station' })
+    .click();
   await expect(chapter).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 2 of 4')).toBeVisible();
+  await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(page.getByRole('dialog').filter({ has: chapter })).toBeVisible();
 
   // Deferring is a decision, and it is written down: the chapter closes, Home
@@ -300,6 +305,11 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await expect(disclosure).toBeVisible();
       await disclosure
         .getByRole('button', { name: 'Keep usage telemetry on' })
+        .click();
+      await expect(chapter).toHaveCount(0);
+      await page
+        .getByTestId('first-run-home-card')
+        .getByRole('button', { name: 'Personalize Station' })
         .click();
       await expect(chapter).toBeVisible();
       await chapter.getByRole('button', { name: 'Not now' }).click();

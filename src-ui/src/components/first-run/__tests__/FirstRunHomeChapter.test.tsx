@@ -563,7 +563,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
 
     // Deferred is a snooze, not terminal completion: the still-pending run is
     // offered non-modally and can be resumed explicitly from where it stopped.
-    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Personalize Station' }),
+    );
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(firstRunStore.getSnapshot().chapter).not.toBe('done');
   });
@@ -590,7 +592,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Personalize Station' }),
+    );
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
   });
 
@@ -600,7 +604,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       skippedAt: '2026-01-01T00:00:00.000Z',
     };
     render(<FirstRunHomeChapter />);
-    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Personalize Station' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(recordFirstRunDecision).not.toHaveBeenCalled();
   });
@@ -660,7 +666,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     // chapter is re-openable inside that window — and closing it must not
     // write a deferral over the completion that just happened.
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Personalize Station' }),
+      );
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
@@ -1240,7 +1248,9 @@ describe('intent-first Home', () => {
   test('does not open optional configuration before the user asks for it', () => {
     render(<FirstRunHomeChapter intentFirst />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Personalize Station' }),
+    );
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
   });
   test('returns to the task after the usage decision without asking engine or profile questions', async () => {

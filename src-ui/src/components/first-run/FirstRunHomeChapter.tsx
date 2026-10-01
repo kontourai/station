@@ -143,16 +143,16 @@ function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
   return (
     <PageCallout
       calloutId="first-run-setup"
-      ariaLabel="Finish setting up Station"
+      ariaLabel="Personalize Station"
       data-testid="first-run-home-card"
-      title="Finish setting up Station"
+      title="Personalize Station"
       action={
         <Button variant="primary" onClick={onOpen}>
-          Set up Station
+          Personalize Station
         </Button>
       }
     >
-      Choose AI apps and answer preferences. You can return to this later.
+      Optional preferences and AI app management. Return whenever you need them.
     </PageCallout>
   );
 }

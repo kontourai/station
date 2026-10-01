@@ -118,7 +118,9 @@ is shown at the point where it is needed, without claiming preparation succeeded
 
 **Chat options** opens the full picker when you want a different app, Model,
 or workspace. **Explore agents** remains available for deliberate customization.
-Optional first-run preferences appear after the work entry rather than ahead of it.
+The usage disclosure ends after your usage decision. **Personalize Station**
+opens optional preferences after the work entry; it is not a prerequisite for a
+chat.
 Closing preparation prevents a late response from starting work. The request stays
 in the Home field while that Home view remains mounted and through the temporary
 setup-return flow; changing Stations or authorization ends that flow.

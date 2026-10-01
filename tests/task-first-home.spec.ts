@@ -1478,7 +1478,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // by scanning one button fewer.
       await expect(page.getByTestId('first-run-home-card')).toBeVisible();
       await expect(
-        page.getByRole('button', { name: 'Set up Station' }),
+        page.getByRole('button', { name: 'Personalize Station' }),
       ).toBeVisible();
       await expect(page.locator('.sidebar')).not.toBeVisible();
       await page.getByRole('button', { name: 'Toggle menu' }).click();

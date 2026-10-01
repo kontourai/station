@@ -472,6 +472,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
 
@@ -562,6 +566,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Set up 3' }).click();
@@ -677,6 +685,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Set up 3' }).click();
@@ -702,6 +714,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
 
@@ -753,6 +769,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Set up 3' }).click();
@@ -786,6 +806,10 @@ test.describe('First-run engines chapter (station#3027)', () => {
 
     await pinTelemetryDisclosure(page, { acknowledged: true });
     await page.goto('/');
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
     await chapter.getByRole('button', { name: 'Not now' }).click();
@@ -804,7 +828,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
       path: testInfo.outputPath('first-run-home-card.png'),
       fullPage: false,
     });
-    await card.getByRole('button', { name: 'Set up Station' }).click();
+    await card.getByRole('button', { name: 'Personalize Station' }).click();
     await expect(chapter).toBeVisible();
   });
 
@@ -963,7 +987,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByText('station_started')).toBeHidden();
     await disclosureStep(page).getByText('See exactly what is sent').click();
     await expect(page.getByText('station_started')).toBeVisible();
-    await expect(page.getByText('Step 1 of 4')).toBeVisible();
+    await expect(page.getByText('Step 1 of 1')).toBeVisible();
     // THE DEFECT THIS CLOSES: exactly one overlay, and the engines step is
     // behind the disclosure rather than beside it.
     await expect(standaloneModal(page)).toHaveCount(0);
@@ -983,7 +1007,12 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // only then does the run move on.
     await expect.poll(() => acknowledgements.length).toBe(1);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 2 of 4')).toBeVisible();
+    await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
     await expect(disclosureStep(page)).toHaveCount(0);
     await expect(standaloneModal(page)).toHaveCount(0);
   });
@@ -1032,7 +1061,12 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       .toEqual([{ telemetryEnabled: false }]);
     await expect.poll(() => acknowledgements.length).toBe(1);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 2 of 4')).toBeVisible();
+    await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
+    await page
+      .getByTestId('first-run-home-card')
+      .getByRole('button', { name: 'Personalize Station' })
+      .click();
+    await expect(page.getByText('Step 1 of 3')).toBeVisible();
     // Deciding the disclosure is not deciding the RUN.
     expect(firstRunWrites(configWrites)).toEqual([]);
   });
@@ -1167,7 +1201,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-home-card')).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByRole('button', { name: 'Set up Station' }).click();
+    await page.getByRole('button', { name: 'Personalize Station' }).click();
 
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(standaloneModal(page)).toHaveCount(0);

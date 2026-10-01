@@ -101,7 +101,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       .toBe(true);
 
     await page.goto(baseURL);
-    await page.getByRole('button', { name: 'Set up Station' }).click();
+    await page.getByRole('button', { name: 'Personalize Station' }).click();
     const resumedEngines = page.getByTestId('first-run-engines');
     await expect(resumedEngines).toBeVisible({ timeout: 20_000 });
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
