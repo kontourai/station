@@ -12,7 +12,7 @@
   "document": {"digest":"50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"fb70b5b67c507e121e1c8a03cbbe74ac88532effc67aeb3e503569ee817d15b1","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"c70b2df54af53b36560884e9dce5e4aa54343746d0dd9bf6ed7992ee920aa652","revision":"870fc1303b91c738a6849de24d801db1d3e08a18"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
