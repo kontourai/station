@@ -211,22 +211,41 @@ answered request leaves the inbox when the decision is recorded; an
 unacknowledged decision surfaces as a `runtime.warning` on its session, not
 as a reopened request.
 
-A request also closes, with no decision, when the turn that opened it is
-aborted. An adapter that aborts a live turn resolves that turn's open requests
-`cancelled` first. When Station restarts mid-turn there is no adapter left to
-do it, so
-[interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
-records `request.resolved` with status `expired` and `response.reason:
-'turn-interrupted'` before it aborts the turn, and the session reads
-`needs_input` with transition reason `runtime_exit`, not `review_pending`. A
-later decision on that request is refused. A log written before recovery did
-this holds the abort with the request still open; the session summary
-(`pendingReview`, `openRequestIds`), the attention inbox and the request's
-replayed outcome treat that request as settled all the same, through
-[`foldRequestTurnOwnership`](../../src-server/services/orchestration/session-lifecycle-service.ts).
-A client that folds raw events itself still sees it open there. A request
-opened while no turn was running belongs to no turn and stays open until it is
-answered, and an ordinary `turn.completed` settles nothing.
+A request also closes, with no decision, when the turn it belonged to is
+aborted. Two aborts count, and they settle different sets
+([`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts)):
+
+- **Station restarted mid-turn.**
+  [Interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+  records `request.resolved` with status `expired` and `response.reason:
+  'turn-interrupted'` for every request still open that was opened since the
+  dead turn started, then aborts the turn (`turn.aborted` with
+  `recoveryTerminal`). The session reads `needs_input` with transition reason
+  `runtime_exit`, not `review_pending`. A log written before recovery recorded
+  those resolutions holds the abort with the request still open; every server
+  read treats that request as settled all the same.
+- **A live turn was stopped**: `turn.aborted`, or the
+  `turn.completed` with `finishReason: 'cancelled'` an engine publishes to
+  confirm a stop. This settles only a request whose `request.opened` names
+  that turn in `turnId`. Claude Code stamps it on the main thread's requests,
+  and Muse and Station's own engine on their turn's; a request with no
+  `turnId` (Codex and ACP today, and a Claude Code subagent's) is left open,
+  because work that outlives the turn may still be waiting on it. Separately, the adapters read for this
+  change (Claude Code, Codex, ACP) resolve the requests they hold `cancelled`
+  when they stop a turn or session; that publication, not this rule, is what
+  normally closes them.
+
+A turn that fails without being aborted (`runtime.error` or `session.exited`
+alone) settles nothing, and neither does an ordinary `turn.completed` or a
+request opened before the turn started.
+
+A settled request is refused by Station itself: `respondToRequest` returns
+`409` with code `request_event_changed`, with or without
+`expectedRequestEventId`, and no adapter is called.
+[Request inspection](#inspect-an-exact-attention-request) reports it `resolved`. The session summary
+(`pendingReview`, `openRequestIds`), the attention inbox, the request's
+replayed outcome, and the CLI's `approvals list` and `operate` leave it out.
+A client that folds raw events without the shared rule still sees it open.
 
 ### Other command types
 

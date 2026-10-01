@@ -1321,6 +1321,16 @@ every thread for `--agent`'s provider when `--thread` is omitted) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
+A request is pending when it has no `request.resolved`, was not
+[settled by its turn's abort](session-api.md#respondtorequest), and, when the
+session summary carries `openRequestIds`, is still listed there. Each row
+carries `requestEventId`, the `request.opened` event it was read from.
+`respond` looks the request up first and, for an approval or permission this
+Station still lists, sends that id as `expectedRequestEventId`, so the server
+answers the request that was listed and refuses one that changed. A request
+the lookup does not find is posted without it and the server decides; nothing
+is refused client-side.
+
 ```
 station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
