@@ -58,7 +58,12 @@
 .workspace-file-preview__segmented button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  /* At least 44px wide: the invisible hit area below cannot grow a short
+     segment past its neighbour, so "File" at 390px with a coarse pointer
+     measured 40.5px until the box itself held the floor. */
+  min-width: 44px;
   height: 26px;
   padding: 0 10px;
   border: 0;
@@ -163,13 +168,27 @@
 .workspace-file-preview__code {
   margin: 0;
   font-family: var(--font-mono, monospace);
-  font-size: var(--text-sm);
+  /* The same type as the Changes view: the diff surface draws its lines at
+     `var(--diffs-font-size, 13px)` over `var(--diffs-line-height, 20px)`,
+     so File and Changes read at one size and the same tokens would move
+     both. */
+  font-size: var(--diffs-font-size, var(--text-md));
+  line-height: var(--diffs-line-height, 20px);
   color: var(--text-secondary);
   /* Horizontal scroll stays inside the code block, so an unwrapped long line
      scrolls the code, never the pane chrome above it. */
   overflow-x: auto;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
+}
+/* The text itself: `code` has the browser's own monospace rule, which would
+   otherwise replace the family and size set on the block above. */
+.workspace-file-preview__code code {
+  font: inherit;
+}
+/* The line's own number: a link to the line, drawn as a gutter, not a link. */
+.workspace-file-preview__code a {
+  text-decoration: none;
 }
 .workspace-file-preview__visually-hidden {
   position: absolute;
