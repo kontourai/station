@@ -67,6 +67,7 @@ vi.mock('../hooks/useIsMobile', () => ({
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
 }));
 
+import { AgentIcon } from '../components/icons/AgentIcon';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { StatusGlyph } from '../components/status/StatusGlyph';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -151,20 +152,21 @@ function fixtureRails(): string[] {
   ) => ({
     id,
     name: `SLOW refactor the chart module (${state})`,
-    icon: <span>RP</span>,
+    // The avatar SessionsView renders, not a stand-in: its initials sit on
+    // the icon's own chip, which is what a reader sees on a selected row.
+    icon: <AgentIcon agent={AGENTS[1]} size="small" />,
+    // Kept short on purpose: the row clamps this line to two, and text the
+    // clamp clips is text axe cannot judge. It must fit under any platform's
+    // fallback font, so the audit measures every node on every runner.
     subtitle: (
       <span className="activity-row-meta">
         <span className="activity-row-meta__state">
           <StatusGlyph state={state} /> <span>{state}</span>
         </span>
         {' · '}
-        <span className="activity-row-meta__detail">Stopped by request.</span>
+        <span className="activity-row-meta__detail">HTTP 500</span>
         {' · '}
-        <span data-segment="agent">Code Reviewer</span>
-        {' · '}
-        <span data-segment="project">demo</span>
-        {' · '}
-        <span data-segment="origin">CLI</span>
+        <span data-segment="agent">Reviewer</span>
       </span>
     ),
     trailing: (

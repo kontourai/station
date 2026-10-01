@@ -122,7 +122,7 @@ export function matchesActivityOrigin(
  * headings count this population, so filter option counts must too — a
  * three-turn chat is one row, not three.
  */
-export function foldedActivityPopulation(
+function foldedActivityPopulation(
   sessions: readonly OrchestrationSessionSummary[],
   pinnedThreadId: string | null = null,
 ): OrchestrationSessionSummary[] {
