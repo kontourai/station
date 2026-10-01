@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
 import { TaskRoomWorkNotSentError } from '@kontourai/station-sdk/project-task-rooms';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     documentRevision: 'revision-1',
     text: 'Agreed brief.',
   },
+  refetch: vi.fn(),
   agent: vi.fn(),
   message: vi.fn(),
   scope: {
@@ -45,7 +52,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
     },
     isError: false,
     isFetching: false,
-    refetch: vi.fn(),
+    refetch: mocks.refetch,
   }),
   useTaskRoomAgentOptionsQuery: () => ({
     data: {
@@ -101,6 +108,9 @@ beforeEach(() => {
       record: { ...input, state: 'dispatched' },
       replayed: false,
     }));
+  mocks.refetch
+    .mockReset()
+    .mockResolvedValue({ data: { context: mocks.brief }, isError: false });
   mocks.message.mockReset().mockResolvedValue({ kind: 'committed' });
 });
 
@@ -230,3 +240,74 @@ test('the previewed brief stays selected through background edits and request-on
   await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
   expect(mocks.agent.mock.calls[1][0].context).toBeUndefined();
 });
+
+test.each(['send', 'recipient'] as const)(
+  'a late brief refresh cannot replace the pinned preview after %s',
+  async (action) => {
+    let release!: (result: {
+      data: { context: typeof mocks.brief };
+      isError: boolean;
+    }) => void;
+    mocks.refetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    if (action === 'send')
+      mocks.agent.mockRejectedValueOnce(new Error('lost acknowledgement'));
+    const view = render(<TaskRoomComposer {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+    fireEvent.click(
+      screen.getByRole('option', { name: 'Researcher @researcher' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Use latest brief' }));
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledOnce());
+    if (action === 'send') {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+        target: { value: 'Investigate' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+      await screen.findByText(/Request acknowledgement is unavailable/);
+    } else {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove Researcher' }),
+      );
+      mocks.brief = {
+        ...mocks.brief,
+        digest: 'c'.repeat(64),
+        text: 'New recipient brief.',
+      };
+      view.rerender(<TaskRoomComposer {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+      fireEvent.click(screen.getByRole('option', { name: 'Builder @builder' }));
+    }
+    await act(async () =>
+      release({
+        data: {
+          context: {
+            ...mocks.brief,
+            digest: 'b'.repeat(64),
+            text: 'Late brief.',
+          },
+        },
+        isError: false,
+      }),
+    );
+    expect(screen.queryByText('Late brief.')).toBeNull();
+    expect(
+      screen.getByText(
+        action === 'send' ? 'Agreed brief.' : 'New recipient brief.',
+      ),
+    ).toBeTruthy();
+    if (action === 'send') {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Retry same agent request' }),
+      );
+      await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
+      expect(mocks.agent.mock.calls[1][0]).toEqual(
+        mocks.agent.mock.calls[0][0],
+      );
+    }
+  },
+);

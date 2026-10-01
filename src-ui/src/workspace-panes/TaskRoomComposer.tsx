@@ -62,6 +62,7 @@ export function TaskRoomComposer({
   const [notice, setNotice] = useState('');
   const [includeBrief, setIncludeBrief] = useState(true);
   const [brief, setBrief] = useState<TaskRoomContextSnapshot>();
+  const briefSelection = useRef(0);
   const [draftOwner, setDraftOwner] = useState<string>();
   const owner = JSON.stringify([
     scope?.apiBase,
@@ -92,6 +93,7 @@ export function TaskRoomComposer({
     const agent = candidates[index];
     if (!agent?.ready || !mention) return;
     setDraftOwner(owner);
+    briefSelection.current += 1;
     setRecipient({ id: agent.id, name: agent.name });
     setBrief(
       !requests.isError && scope?.isCurrent()
@@ -142,6 +144,7 @@ export function TaskRoomComposer({
           ? { context: { version: brief.version, digest: brief.digest } }
           : {}),
       };
+      if (!unconfirmed) briefSelection.current += 1;
       setUnconfirmed(input);
       try {
         const outcome = await request.mutateAsync(input);
@@ -253,7 +256,10 @@ export function TaskRoomComposer({
             size="sm"
             disabled={locked}
             aria-label={`Remove ${recipient.name}`}
-            onClick={() => setRecipient(undefined)}
+            onClick={() => {
+              briefSelection.current += 1;
+              setRecipient(undefined);
+            }}
           >
             Remove
           </Button>
@@ -279,6 +285,7 @@ export function TaskRoomComposer({
               type="checkbox"
               checked={includeBrief}
               onChange={(event) => {
+                briefSelection.current += 1;
                 setIncludeBrief(event.target.checked);
                 if (event.target.checked)
                   setBrief(
@@ -309,10 +316,12 @@ export function TaskRoomComposer({
                 size="sm"
                 disabled={locked || requests.isFetching || requests.isError}
                 onClick={async () => {
+                  const selection = ++briefSelection.current;
                   const result = await requests.refetch();
                   if (
                     scope?.isCurrent() &&
                     currentOwner.current === owner &&
+                    briefSelection.current === selection &&
                     !result.isError
                   )
                     setBrief(result.data?.context ?? undefined);
