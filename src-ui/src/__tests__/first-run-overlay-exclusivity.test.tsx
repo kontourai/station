@@ -426,7 +426,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       disclosure: 1,
     });
 
-    screen.getByRole('button', { name: 'Set up Station' }).click();
+    screen.getByRole('button', { name: 'Personalize Station' }).click();
     view.rerender(
       <OnboardingGate>
         <FirstRunHomeChapter />
