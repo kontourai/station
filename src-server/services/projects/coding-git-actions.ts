@@ -1,41 +1,16 @@
-/**
- * The coding toolbar's Commit and Push, run as the operator in a Project's
- * repository (#2363).
- *
- * The repository can be written by people other than the operator, so both
- * actions refuse before running anything when the repository's own config
- * would run a program or redirect the push (`git-repository-config.ts`),
- * and every git call goes through the hardened runner (`utils/git-exec.ts`)
- * with the repository named explicitly (`--git-dir`/`--work-tree`), never
- * discovered.
- *
- * Commit refuses secret-looking files (by name, or a PEM private-key block
- * in their content) among everything it would commit, and then adds exactly
- * the paths it inspected rather than `git add -A` over whatever is there by
- * then. Its `add` and `commit` run the repository's hooks, as they would
- * in the operator's terminal (owner decision on #2363); every other git
- * call here runs with hooks off (`utils/git-exec.ts`).
- *
- * Push resolves the remote the way git would, validates its configured URL
- * (https or ssh to a host other than this machine, no credentials in the
- * address), and pushes one commit to that URL rather than to the remote's
- * name, so repointing the NAMED remote between the check and the push has
- * no effect, and runs `pre-push` as a terminal push would. What it does
- * not survive: the repository's config rewritten between the check and the
- * push to add a URL rewrite (`insteadOf`) or a remote named by the
- * validated address. Both are refused before the push; a race inside that
- * window is accepted, and even then the push can only reach https or ssh
- * (`GIT_ALLOW_PROTOCOL`).
- */
-import type { Dirent } from 'node:fs';
-import { lstat, open, readdir, readFile, realpath } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import { lstat, open } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   execGit,
   type GitHardeningOptions,
   killGitProcessTree,
   spawnGit,
 } from '../../utils/git-exec.js';
+import {
+  type GitDirectoryVerdict,
+  gitDirectoryInsideProject,
+  repositoryArgs,
+} from './git-directory-confinement.js';
 import {
   type GitRemoteRefusal,
   privateKeyInContent,
@@ -57,186 +32,6 @@ export type CodingGitRefusal =
   | { code: 'invalid-remote-name' }
   | { code: 'remote-missing'; remote: string }
   | { code: `remote-${GitRemoteRefusal}`; remote: string; url: string };
-
-/**
- * Whether `target`'s git directory is the Project's own (#2363). A `.git`
- * FILE can point anywhere, and `--git-dir=<target>/.git` follows it, so a
- * member could otherwise make Commit or Push act on another repository of
- * the operator's. Both the git directory and the common directory must lie
- * inside `projectRoot` (both already symlink-resolved), except for a
- * genuine linked worktree: its git directory is `<common>/worktrees/<name>`
- * OUTSIDE the Project, whose `gitdir` back-pointer names `<target>/.git`.
- * A member cannot write that file, so they cannot forge the exception.
- * A symlinked `.git` is refused outright, and so is a real one whose OWN
- * entries lead elsewhere (`redirectedGitEntry`).
- */
-export type GitDirectoryVerdict =
-  | { verdict: 'inside' | 'linked-worktree' }
-  | { verdict: 'outside'; reason: string };
-
-async function gitDirectoryInsideProject(
-  target: string,
-  projectRoot: string,
-): Promise<GitDirectoryVerdict> {
-  const outside = (reason: string): GitDirectoryVerdict => ({
-    verdict: 'outside',
-    reason,
-  });
-  const dotGit = join(target, '.git');
-  try {
-    if ((await lstat(dotGit)).isSymbolicLink()) {
-      return outside('.git is a symbolic link');
-    }
-  } catch {
-    return outside('.git is missing');
-  }
-  let gitDir: string;
-  let commonDir: string;
-  try {
-    const { stdout } = await execGit(
-      [
-        ...repositoryArgs(target),
-        'rev-parse',
-        '--path-format=absolute',
-        '--git-dir',
-        '--git-common-dir',
-      ],
-      { cwd: target, encoding: 'utf-8', timeout: 10_000 },
-    );
-    const [rawGitDir, rawCommonDir] = stdout.trim().split('\n');
-    gitDir = await realpath(rawGitDir ?? '');
-    commonDir = await realpath(rawCommonDir ?? '');
-  } catch {
-    return outside('git could not locate its git directory');
-  }
-  const inside = (path: string) =>
-    path === projectRoot || path.startsWith(projectRoot + sep);
-  // A directory inside the Project is member-writable: its entries may be
-  // symlinks into, or alternates of, another repository.
-  for (const dir of new Set([gitDir, commonDir])) {
-    if (!inside(dir)) continue;
-    const redirected = await redirectedGitEntry(dir, inside);
-    if (redirected) return outside(redirected);
-  }
-  if (inside(gitDir) && inside(commonDir)) return { verdict: 'inside' };
-  if (inside(gitDir) || dirname(dirname(gitDir)) !== commonDir) {
-    return outside('.git points at a repository outside this Project');
-  }
-  try {
-    const backPointer = (
-      await readFile(join(gitDir, 'gitdir'), 'utf-8')
-    ).trim();
-    return (await realpath(backPointer)) === (await realpath(dotGit))
-      ? { verdict: 'linked-worktree' }
-      : outside(".git points at another checkout's worktree entry");
-  } catch {
-    return outside('.git points at a repository outside this Project');
-  }
-}
-
-/**
- * The most directory entries the symlink walk will examine in one git
- * directory before giving up. A repository past it is refused as
- * unverifiable rather than walked without bound; loose refs are normally
- * few (git packs them), so an ordinary repository is far below it.
- */
-const MAX_WALKED_ENTRIES = 50_000;
-
-class WalkLimitExceeded extends Error {}
-
-/**
- * True when `gitDir` borrows another repository's storage (#2363 review
- * rounds 2 and 3). Git never creates a symbolic link in a repository it
- * made (the legacy `core.preferSymlinkRefs` HEAD aside, which is refused
- * too), and it READS through one: a linked loose ref resolves a branch to
- * another repository's commit, a linked pack or fan-out directory serves
- * another repository's objects, and a push then sends them. So, rather
- * than naming the dangerous entries, ANY symbolic link is refused among:
- * - the git directory's top-level entries (HEAD, index, config, …);
- * - everything under `refs/` and `logs/`, recursively;
- * - `objects/`'s own entries (each fan-out directory by its own lstat,
- *   without descending into loose objects), and every entry of
- *   `objects/pack/` and `objects/info/`.
- * Alternates (`objects/info/alternates`, `http-alternates`) are refused
- * outright: they make git read another repository's objects.
- */
-async function redirectedGitEntry(
-  gitDir: string,
-  insideProject: (path: string) => boolean,
-): Promise<string | null> {
-  let walked = 0;
-  // Entries of `dir` by `readdir`'s own type (an lstat: a link is a link).
-  const entries = async (dir: string) => {
-    let list: Dirent[];
-    try {
-      list = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-    walked += list.length;
-    if (walked > MAX_WALKED_ENTRIES) throw new WalkLimitExceeded();
-    return list;
-  };
-  const named = (path: string) => `.git/${relative(gitDir, path)}`;
-  const linkBelow = async (dir: string): Promise<string | null> => {
-    for (const entry of await entries(dir)) {
-      const path = join(dir, entry.name);
-      if (entry.isSymbolicLink()) return path;
-      if (entry.isDirectory()) {
-        const found = await linkBelow(path);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-  const linkIn = async (
-    dir: string,
-    allowed: (path: string) => boolean | Promise<boolean>,
-  ) => {
-    for (const entry of await entries(dir)) {
-      const path = join(dir, entry.name);
-      if (entry.isSymbolicLink() && !(await allowed(path))) return path;
-    }
-    return null;
-  };
-  const never = () => false;
-  // `hooks` is the one entry a link is ordinary for (`.git/hooks ->
-  // ../scripts/hooks`), and it is not storage: hooks are off for every
-  // call but the operator's own Commit and Push, which run them as a
-  // terminal would. Allowed when it resolves inside the Project.
-  const hooksInsideProject = async (path: string) => {
-    if (relative(gitDir, path) !== 'hooks') return false;
-    try {
-      return insideProject(await realpath(path));
-    } catch {
-      return false;
-    }
-  };
-  try {
-    const found =
-      (await linkIn(gitDir, hooksInsideProject)) ??
-      (await linkBelow(join(gitDir, 'refs'))) ??
-      (await linkBelow(join(gitDir, 'logs'))) ??
-      (await linkIn(join(gitDir, 'objects'), never)) ??
-      (await linkIn(join(gitDir, 'objects', 'pack'), never)) ??
-      (await linkIn(join(gitDir, 'objects', 'info'), never));
-    if (found) return `${named(found)} is a symbolic link`;
-  } catch (error) {
-    if (error instanceof WalkLimitExceeded) {
-      return `.git holds more than ${MAX_WALKED_ENTRIES} entries to check`;
-    }
-    throw error;
-  }
-  for (const alternates of ['alternates', 'http-alternates']) {
-    try {
-      await lstat(join(gitDir, 'objects', 'info', alternates));
-      return `.git/objects/info/${alternates} borrows another repository's objects`;
-    } catch {
-      // Absent: the ordinary case.
-    }
-  }
-  return null;
-}
 
 export type CodingGitOutcome<T> =
   | { ok: true; value: T }
@@ -260,10 +55,6 @@ const MAX_DETAIL = 4000;
 // git allows `/` in a remote name (`team/fork`).
 const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 const BRANCH_NAME = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
-
-function repositoryArgs(root: string): string[] {
-  return [`--git-dir=${join(root, '.git')}`, `--work-tree=${root}`];
-}
 
 /** git's own words for a failure (its stderr), never the command line. */
 function failureDetail(error: unknown): string {
@@ -352,7 +143,13 @@ async function changedPaths(root: string): Promise<ChangedPath[]> {
       deleted: status[1] === 'D' || (status[0] === 'D' && status[1] === ' '),
     });
   }
-  return changes.filter((change) => change.path !== '');
+  // A path ending in `/` is an untracked folder git did not look inside: a
+  // nested repository. `git add` would record that repository's HEAD commit
+  // as a submodule entry, and a nested `.git` file can name any repository
+  // on this computer, so its commit id would be published. Never added.
+  return changes.filter(
+    (change) => change.path !== '' && !change.path.endsWith('/'),
+  );
 }
 
 async function containsPrivateKey(file: string): Promise<boolean> {
@@ -463,24 +260,46 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
 async function refuseByConfig(
   root: string,
   projectRoot: string | undefined,
-): Promise<CodingGitRefusal | null> {
+): Promise<
+  | { refusal: CodingGitRefusal }
+  | { location: Exclude<GitDirectoryVerdict, { verdict: 'outside' }> }
+> {
   if (typeof projectRoot !== 'string') {
-    return { code: 'git-dir-outside-project', reason: 'no Project folder' };
+    return {
+      refusal: { code: 'git-dir-outside-project', reason: 'no Project folder' },
+    };
   }
   const location = await gitDirectoryInsideProject(root, projectRoot);
   if (location.verdict === 'outside') {
-    return { code: 'git-dir-outside-project', reason: location.reason };
+    return {
+      refusal: { code: 'git-dir-outside-project', reason: location.reason },
+    };
   }
   const verdict = await checkRepositoryConfig(
     root,
     'write',
     repositoryArgs(root),
   );
-  if (verdict.ok) return null;
-  return verdict.code === 'repository-config-refused'
-    ? { code: verdict.code, keys: verdict.keys }
-    : { code: verdict.code };
+  if (verdict.ok) return { location };
+  return {
+    refusal:
+      verdict.code === 'repository-config-refused'
+        ? { code: verdict.code, keys: verdict.keys }
+        : { code: verdict.code },
+  };
 }
+
+/**
+ * What both actions answer when the repository is not the one that was
+ * checked any more. Asked immediately before the step that writes: the
+ * checks take several git calls, and a `.git` (or a folder above it)
+ * swapped meanwhile would otherwise be followed. A swap in the moment
+ * between this and git opening the path is still followed.
+ */
+const CHANGED_WHILE_CHECKING: CodingGitRefusal = {
+  code: 'git-dir-outside-project',
+  reason: '.git changed while Station was checking it',
+};
 
 /**
  * Commits every change in `root` with `message`, after the refusals in the
@@ -492,8 +311,8 @@ export async function commitRepository(
   /** The Project's folder, symlink-resolved; `root` is it or inside it. */
   scope: { projectRoot: string },
 ): Promise<CodingGitOutcome<{ sha: string }>> {
-  const configRefusal = await refuseByConfig(root, scope?.projectRoot);
-  if (configRefusal) return { ok: false, refusal: configRefusal };
+  const checked = await refuseByConfig(root, scope?.projectRoot);
+  if ('refusal' in checked) return { ok: false, refusal: checked.refusal };
 
   const changes = await changedPaths(root);
   if (changes.length === 0) {
@@ -507,10 +326,18 @@ export async function commitRepository(
     return { ok: false, refusal: { code: 'secrets', files: secrets } };
   }
 
+  if (!(await checked.location.unchanged())) {
+    return { ok: false, refusal: CHANGED_WHILE_CHECKING };
+  }
   await addPaths(
     root,
     changes.map((change) => change.path),
   );
+  // `add` changed the index and the object store; what must still hold is
+  // that they are the same files.
+  if (!(await checked.location.sameIdentity())) {
+    return { ok: false, refusal: CHANGED_WHILE_CHECKING };
+  }
   await git(root, ['commit', '-q', '-m', message], {
     timeout: 120_000,
     // As in the operator's terminal: the repository's hooks run, and the
@@ -543,8 +370,8 @@ export async function pushRepository(
     allowFileProtocol?: boolean;
   },
 ): Promise<CodingGitOutcome<{ output: string; remote: string }>> {
-  const configRefusal = await refuseByConfig(root, options?.projectRoot);
-  if (configRefusal) return { ok: false, refusal: configRefusal };
+  const checked = await refuseByConfig(root, options?.projectRoot);
+  if ('refusal' in checked) return { ok: false, refusal: checked.refusal };
 
   let branch = request.branch;
   if (branch === undefined) {
@@ -609,6 +436,9 @@ export async function pushRepository(
     };
   }
 
+  if (!(await checked.location.unchanged())) {
+    return { ok: false, refusal: CHANGED_WHILE_CHECKING };
+  }
   const output = await git(
     root,
     ['push', '--porcelain', '--', url, `${commit}:refs/heads/${branch}`],
