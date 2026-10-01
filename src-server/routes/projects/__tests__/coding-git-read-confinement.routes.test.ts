@@ -29,6 +29,8 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
+import { readProjectRepository } from '../../../services/projects/git-read-repository.js';
+import { execGit } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
 
 const SECRET = 'TOP-SECRET-OUTSIDE-CONTENT';
@@ -939,3 +941,137 @@ describe('coding git reads: repositories that are the Project’s own', () => {
     await expectReads(mono, expected);
   });
 });
+
+describe.skipIf(process.platform === 'win32')(
+  'readProjectRepository: the repository changes while it is read',
+  () => {
+    /** The member's own repository in `<project>/sub`, and the outside one. */
+    function ownRepository(): { folder: string; outside: string } {
+      const outside = outsideRepository();
+      repo(project, { 'README.md': '# project\n' });
+      const folder = repo(
+        join(project, 'sub'),
+        { 'own.txt': 'own\n' },
+        { subject: 'member work' },
+      );
+      return { folder, outside };
+    }
+
+    const subject = async (repository: { top: string; repoArgs: string[] }) =>
+      (
+        await execGit([...repository.repoArgs, 'log', '-1', '--format=%s'], {
+          cwd: repository.top,
+        })
+      ).stdout.trim();
+
+    test('a .git swapped for a link during the read and put back afterwards: the output is discarded', async () => {
+      const { folder, outside } = ownRepository();
+      writeFileSync(
+        join(folder, '.git-file'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      const seen: string[] = [];
+
+      const result = await readProjectRepository(
+        project,
+        folder,
+        {},
+        async (repository) => {
+          renameSync(join(folder, '.git'), join(folder, '.git-real'));
+          renameSync(join(folder, '.git-file'), join(folder, '.git'));
+          try {
+            const read = await subject(repository);
+            seen.push(read);
+            return read;
+          } finally {
+            renameSync(join(folder, '.git'), join(folder, '.git-file'));
+            renameSync(join(folder, '.git-real'), join(folder, '.git'));
+          }
+        },
+      );
+
+      // Live: every read went through the link, to the outside repository.
+      expect(seen).toEqual([OUTSIDE_SUBJECT, OUTSIDE_SUBJECT, OUTSIDE_SUBJECT]);
+      expect(result).toEqual({
+        ok: false,
+        state: 'refused',
+        reason: '.git kept changing while Station read it',
+      });
+    });
+
+    test('alternates planted during the read and removed afterwards: the output is discarded', async () => {
+      const { folder, outside } = ownRepository();
+      const outsideHead = git(outside, ['rev-parse', 'HEAD']);
+      const alternates = join(folder, '.git', 'objects', 'info', 'alternates');
+      const seen: string[] = [];
+
+      const result = await readProjectRepository(
+        project,
+        folder,
+        {},
+        async (repository) => {
+          writeFileSync(alternates, `${join(outside, '.git', 'objects')}\n`);
+          try {
+            const read = (
+              await execGit(
+                [
+                  ...repository.repoArgs,
+                  'cat-file',
+                  '-p',
+                  `${outsideHead}:secret.txt`,
+                ],
+                { cwd: repository.top },
+              )
+            ).stdout.trim();
+            seen.push(read);
+            return read;
+          } finally {
+            rmSync(alternates);
+          }
+        },
+      );
+
+      expect(seen).toEqual([SECRET, SECRET, SECRET]);
+      expect(result.ok).toBe(false);
+    });
+
+    test('a change during the first read only: the read is repeated and the second answer is returned', async () => {
+      const { folder } = ownRepository();
+      let reads = 0;
+
+      const result = await readProjectRepository(
+        project,
+        folder,
+        {},
+        async (repository) => {
+          reads += 1;
+          if (reads === 1) {
+            git(folder, ['commit', '-q', '--allow-empty', '-m', 'second']);
+          }
+          return subject(repository);
+        },
+      );
+
+      expect(reads).toBe(2);
+      expect(result).toEqual({ ok: true, top: folder, value: 'second' });
+    });
+
+    test('nothing changes: one read, returned', async () => {
+      const { folder } = ownRepository();
+      let reads = 0;
+
+      const result = await readProjectRepository(
+        project,
+        folder,
+        {},
+        async (repository) => {
+          reads += 1;
+          return subject(repository);
+        },
+      );
+
+      expect(reads).toBe(1);
+      expect(result).toEqual({ ok: true, top: folder, value: 'member work' });
+    });
+  },
+);

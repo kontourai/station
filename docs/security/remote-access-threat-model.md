@@ -408,45 +408,64 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The one exception is `GET /api/coding/repos` without a Project, which the
   New Project form uses to ask about a folder that is not a Project yet: it
   answers the operator in person only.
-- **A git read acts on the Project's own repository, never one a folder
-  points at.** A Project's folders are member-writable, and git picks its
+- **git acts on the Project's own repository, never one a folder points
+  at.** A Project's folders are member-writable, and git picks its
   repository from the folder it runs in. A `.git` file naming another
   repository, a symlinked `.git`, a git directory whose entries are links
   into another repository (down to a single linked loose object) or that
   borrows its objects (`objects/info/alternates`), and a git directory whose
-  `core.worktree` names a folder above the Project would each make
-  status, log, diff, branches or the repository listing report another
-  repository on the host. So those routes run one discovery, check the pair
+  `core.worktree` names a folder above the Project would each make status,
+  log, diff, branches or the repository listing report another repository on
+  the host, and make checkout move that repository's branch and write its
+  files into the Project. So those routes run one discovery, check the pair
   it reports with
   [the same verdict Commit and Push require](../../src-server/services/projects/git-directory-confinement.ts),
   and name that pair (`--git-dir`/`--work-tree`) on every later call
   ([`git-read-repository.ts`](../../src-server/services/projects/git-read-repository.ts)).
-  The repository that contains the Project from above is read only when the
+  The repository that contains the Project from above is used only when the
   folder above reports the same pair itself. A refused folder answers `409
   git-dir-outside-project` with a reason that names no host path; the
-  repository listing still lists it, without a branch. Because git opens the
-  named path when it runs, the check is repeated after the read and the
-  output is discarded if the `.git` entry, any directory the check listed,
-  or the `commondir` pointer changed identity or change time; a repository
-  that keeps changing is refused. That is a detection, not an atomic open:
-  it relies on the file system recording change times, and it does not cover
-  a hard link to another repository's object, which takes an account that
-  can already read it. `POST /api/coding/git/checkout` still lets git
-  discover its repository from the folder; it is a write route and takes the
-  `write` reach above.
+  repository listing still lists it, without a branch.
+- **A read is checked again after it ran.** git opens the named path when it
+  runs, so a `.git` swapped after the check would still be followed. After a
+  read the routes compare the identity and change times of the `.git` entry,
+  every directory the check listed and the `commondir` pointer with what they
+  were before, discard the output on any difference and read again; a
+  repository that keeps changing is refused. This is a detection, not an
+  atomic open: it relies on the file system recording change times, and it
+  does not cover a hard link to another repository's object, which takes an
+  account that can already read it. Checkout, Commit and Push are checked
+  before they run and not after: a write cannot be discarded, so a `.git`
+  swapped between the check and the write is not noticed.
+- **A Project has worktrees only when its repository is its own.** The
+  registered-worktree reach above is git's worktree list as seen from the
+  Project's folder. A `.git` planted at the Project's root naming another
+  repository would make that repository's checkouts "worktrees of the
+  Project", so
+  [the listing](../../src-server/services/projects/verified-worktrees.ts)
+  answers only when the Project's own repository passes the verdict above;
+  otherwise the Project has none, and every route (file reads and edits,
+  `/exec`, checkout, git reads, a session's workspace directory) answers
+  `403 outside-project` for them.
 - **No git read fetches, and none runs a repository's credential helper.**
   A repository can declare itself a partial clone with an object missing;
-  any read that touches the object would then fetch it from the repository's
-  own remote and run its own `credential.helper` as the operator.
-  [The git runner](../../src-server/utils/git-exec.ts) gives every command
-  that is not itself a network command no transport
+  any command that touches the object would then fetch it from the
+  repository's own remote and run its own `credential.helper` as the
+  operator. [The git runner](../../src-server/utils/git-exec.ts) gives every
+  command that is not itself a network command no transport
   (`GIT_ALLOW_PROTOCOL`), no lazy fetch (`GIT_NO_LAZY_FETCH`) and no
-  credential helper, and the coding reads, Commit, Push, checkpoints and
-  worktree provisioning refuse a repository whose own configuration declares
-  a partial clone, an unrecognised `extensions.*`, or a key naming a program
-  or a network target
-  ([the list and its basis](../../src-server/services/projects/git-repository-config.ts)).
-  A genuine partial clone (`--filter=blob:none`) is refused the same way.
+  credential helper. A genuine partial clone (`--filter=blob:none`) is
+  therefore read like any other repository, and a read that needs an object
+  it has not fetched answers `409 object-not-available` instead of fetching.
+  The coding reads, checkout, checkpoints and worktree provisioning also
+  refuse a repository whose own configuration sets an unrecognised
+  `extensions.*` or a key naming a program or a network target
+  ([the list and its basis](../../src-server/services/projects/git-repository-config.ts));
+  Commit and Push, which are network commands, refuse a partial clone as
+  well. Measured on git 2.50.1, 2.54.0 and 2.55.0. NOT_VERIFIED on older
+  git: `GIT_NO_LAZY_FETCH` is ignored before git 2.45, where the refused
+  transport and the cleared helper are what is relied on, and no older git
+  was available to run the tests against.
 - **Choosing a Project's folder takes the same authority as running
   commands.** The folder is what every route above is confined to, so setting
   `workingDirectory` on `POST /api/projects` or changing it on `PUT
