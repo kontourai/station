@@ -1,37 +1,29 @@
 {
   "path": "tests/tauri-shell/native-fresh-relay-fixture.md",
+
   "kind": "fixture",
+
   "state": "classified",
+
   "summary": "Owned source fixture prepares an unpaired real Station, private immutable scope/artifact inputs, normal local-account/sharing/native-enrollment runtime opt-ins, registry-backed targeted native invitations and real operator approval/Project-invitation APIs. Receiver harness uses default production Tauri clients and actual active-profile host authorization. Documents genuine provider and independent account/Device/Project stages, nondefault private listener, small text budget, bounded cleanup and outstanding TURN TTL.",
+
   "limits": "Public broker/runtime/Pion deployment, real fresh host ceremony, ordinary UI user-action driver, shared-task publication, physical iOS Nightly and Zach acceptance are NOT_VERIFIED. A Project-only helper and keeper tests do not establish those journeys. Pion digest comparison does not prove its build origin, Node guard is not an OS sandbox, and routing revocation is not instantaneous TURN credential revocation or a financial spend cap.",
-  "document": {
-    "digest": "f7d8f892f89b0fc161f67e840507c516225f895b2ca36f2718db78c4cbb80063",
-    "revision": "a4941debef212ed3d0bff88049ad06051be8f80b"
-  },
+
+  "document": {"digest":"f7d8f892f89b0fc161f67e840507c516225f895b2ca36f2718db78c4cbb80063","revision":"a4941debef212ed3d0bff88049ad06051be8f80b"},
+
   "sources": [
-    {
-      "path": "scripts/lib/native-fresh-relay-fixture.ts",
-      "digest": "fa6c9d7dacaf0d5a878982529f40530c717ac430aff92cf887f80d01ad15e102",
-      "revision": "a4941debef212ed3d0bff88049ad06051be8f80b"
-    },
-    {
-      "path": "scripts/native-fresh-relay-fixture.ts",
-      "digest": "d263a2a7ee1cdcdae242be25115475e87114b3f9e26ad8611d91ef9d3aeb9b56",
-      "revision": "a4941debef212ed3d0bff88049ad06051be8f80b"
-    },
-    {
-      "path": "scripts/__tests__/native-fresh-relay-fixture.test.ts",
-      "digest": "2d5cb796a4bc7c0421954d5a427618b169c08f15842e70ab7c7bfea7e9ae6195",
-      "revision": "a4941debef212ed3d0bff88049ad06051be8f80b"
-    },
-    {
-      "path": "tests/tauri-shell/native-fresh-relay-acceptance-webview.ts",
-      "digest": "349ef0c6b430baf11cd088e27e4df05cd19c3e19c83c892266574a4a3bd0cbab",
-      "revision": "a4941debef212ed3d0bff88049ad06051be8f80b"
-    }
+    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"bb89924c9be15b4837d21a1a23204455d8d78497d5ca0704a4853dac8c0144b5","revision":"45f47546db95c798a0333e8e164c8ddc4378daf4"},
+
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"d263a2a7ee1cdcdae242be25115475e87114b3f9e26ad8611d91ef9d3aeb9b56","revision":"a4941debef212ed3d0bff88049ad06051be8f80b"},
+
+    {"path":"scripts/__tests__/native-fresh-relay-fixture.test.ts","digest":"2d5cb796a4bc7c0421954d5a427618b169c08f15842e70ab7c7bfea7e9ae6195","revision":"a4941debef212ed3d0bff88049ad06051be8f80b"},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"349ef0c6b430baf11cd088e27e4df05cd19c3e19c83c892266574a4a3bd0cbab","revision":"a4941debef212ed3d0bff88049ad06051be8f80b"}
   ],
+
   "checks": [
     "Executed 2 focused keeper tests: genuine empty Device registry/private custody and real owned local TCP guard controls. Permission-fence mutation RED 1/2 then exact restoration GREEN 2/2.",
+
     "Executed scripts typecheck (385 compiled, 56 inherited deferred), E2E typecheck, full read-only lint, and fixture-policy guard (33 tests). Source inspection of normal entrypoint/connector/provider/enrollment/operator owners; no deployment or physical lifecycle proof."
   ]
 }
