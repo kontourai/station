@@ -1,0 +1,49 @@
+{
+  "path": "packages/sdk/AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
+
+  "document": {"digest":"b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"docs/reference/sdk.md","digest":"690b8587ab798617108cf1b62e2f9b0a102b3bd52df148da5be3f12027a2892c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+
+    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
+
+    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"}
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
+
+    "Advanced SDK reference correction reviewed; package instruction route still names the canonical reference.",
+
+    "Reviewed documentation-only dependency correction: docs/reference/sdk.md. The linked owner and purpose remain; no new runtime proof is inferred.",
+
+    "Reviewed source changes: Full documented-claim review completed across the public SDK and actual default-host callers; contributor instructions still route edits to that canonical reference.",
+
+    "Reviewed integration deltas: docs/reference/sdk.md: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits.",
+
+    "Reviewed landing deltas through 111744681: Reconciled typed refusal fields, actual Error inheritance/constructors, shape-only stationEnvelope classification and opaque status-0/cancellation behavior. Preserved prior helper truthiness, data-validation and host-action indeterminate caveats.",
+
+    "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain; reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/reference/sdk.md, packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through c8bae67da: docs/reference/sdk.md gained the proposed-install gitMetadata consent echo. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through ed05e6f6c: docs/reference/sdk.md extended the gitMetadata consent echo to recorded proposal-staged sources. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) rewrites the boot paragraph in docs/reference/sdk.md. fetchBootPayloadAt and seedBootPayloadGuarded are now described as coming from the SDK's internal boot module, not a published @kontourai/station-sdk/boot export, and the ambient legacy boot helper sentence is removed. The AGENTS.md routes to that reference, forbids app-internal imports by plugins and keeps its cache-plus-waiting-caller race guidance. It names no boot export, so it stays consistent. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/sdk.md gains one paragraph on archive/archive-service status, serviceUpdate and requestServiceUpdateProgress/useServiceUpdateProgressQuery. It auto-merged once, with no duplicate. AGENTS.md only routes to that reference and asks for public changes to be documented there, which #2881 did; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

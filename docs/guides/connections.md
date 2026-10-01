@@ -40,6 +40,50 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ---
 
+## Sign an engine profile in from a device
+
+Open **Connections → Engines → Codex** or **Claude**. The account picker shows
+saved accounts and marks the account currently in use. Picking an account changes
+what you view; it does not change the account used by runs. Existing account
+application controls remain under **Advanced**.
+
+Choose **Add account**, name it, and select **Sign in**. Codex displays a code:
+open the OpenAI page, enter the code, and approve access. Claude opens its
+subscription sign-in page: finish there, paste the returned code into Station,
+and select **Finish sign-in**. Station reports completion only after the engine
+confirms authentication. **Cancel** stops a pending login. Returning to the
+account resumes status checks. Login capabilities come from the installed CLI;
+unsupported or unreadable installations remain unavailable.
+
+Relayed login applies to saved credential profiles. The default account follows
+the connection's configured home and environment and is managed by the host CLI;
+Station does not replace it through this page. A paired device needs **Start
+engine sign-in** (`engine:login`), granted under **Change access**. That grant
+permits existing profile names and login status, not account creation, manual
+commands or token-backed allowance reads. These require credential-management
+access. Refused starts retain their reason; after a transport failure, check
+status before starting again because the server may still be running the login.
+
+**Allowance** shows the selected account's provider-reported limits and reset
+times. Failed or unrecognized readings say unavailable, never zero. **Refresh**
+requests a new reading; there is no continuous quota polling. Claude credentials
+may be read from its selected macOS Keychain namespace when no credential file
+exists. Tokens remain on the server.
+
+**Activity** shows 7 or 30 days of this engine's runs on this Station, across all
+accounts. Receipts do not identify the credential profile, so this is not
+per-account history. Reported cost and estimates remain separate. The daily chart uses reported cost
+when available, estimates when only estimates are available, and otherwise
+tokens. Missing days keep their place and are marked unreported. Missing costs
+are shown as unavailable, and partial coverage is disclosed. Subscription
+allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
+even when the page requests only this Station.
+
+The component/transport tests exercise both account pages and the login relay
+with controlled provider responses. An isolated Claude CLI probe confirmed the
+browser-code prompt on macOS; these checks do not prove a completed live OAuth
+exchange, every provider plan or Windows secure-store behavior.
+
 ## Saved Station addresses
 
 Open **Manage Stations** in the header to inspect the computers this client
@@ -453,6 +497,12 @@ scope along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
 never granted this way.
+
+An operator can separately grant **Approve pairing requests** (`access:approve`).
+This allows that Device to list, approve, or deny pending requests, without
+Device-management access. A pairing notification opens the exact request in
+**Notifications**; opening it does not approve it. Devices without approval
+authority see the trusted-Station remedy instead of decision controls.
 
 The current terminal and voice listeners retain a separate direct-loopback
 path without credential verification. Browser-shaped upgrades on that path

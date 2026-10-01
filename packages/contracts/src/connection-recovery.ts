@@ -58,8 +58,18 @@ export function resolveCredentialProfileApplicationCapability(
 /** Non-secret registry metadata; the opaque ref is the only runtime identity. */
 export interface CredentialProfile {
   ref: string;
-  /** Optional management-only display label. Never use as account identity. */
+  /** Optional display label. Never use as account identity. */
   label?: string;
+}
+
+/** Minimal profile metadata for an explicitly delegated engine sign-in. */
+export interface EngineLoginProfile extends CredentialProfile {
+  authState: 'authenticated' | 'unauthenticated' | 'unknown';
+  mechanisms: Array<'device-code'>;
+}
+
+export interface EngineLoginProfiles {
+  profiles: EngineLoginProfile[];
 }
 
 /** Explicit membership required before a profile can be automatically selected. */

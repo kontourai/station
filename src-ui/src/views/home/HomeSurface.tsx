@@ -1,6 +1,6 @@
 import { HomeActionSection } from '../../components/home/HomeActionSection';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
-import { useShowSurface } from '../../contexts/useShowSurface';
+import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import type { NavigationView } from '../../types';
 import {
   ActivityBars,
@@ -50,14 +50,17 @@ export function HomeSurface({
   // snooze snapshot, so the counts and the list they caption could disagree
   // about what is snoozed.
   const lanes = useHomeWorkLanes(model.workItems);
-  // #928: Activity is a region surface with no standalone placement, so
-  // "View Activity" reveals it rather than navigating to a retired route.
-  const showSurface = useShowSurface();
+  // #928: Activity is a region surface with no standalone placement. "View
+  // Activity" goes to its PAGE — Activity takes `main` in Home's place, the
+  // same verb as the sidebar row — rather than docking it beside Home.
+  const showSurfacePage = useShowSurfacePage();
   // Lanes, not raw `workItems`: `partitionHomeWorkItems` hides a snoozed
   // item, and reading `workItems` directly here would put every snoozed row
   // back into the chart the counts beside it say is empty.
   const visible = [
-    ...lanes.active,
+    ...lanes.needsYou,
+    ...lanes.running,
+    ...lanes.idle,
     ...lanes.recentlyFinished,
     ...lanes.settled,
   ];
@@ -111,7 +114,7 @@ export function HomeSurface({
             : null
         }
         onOpen={model.continueWork}
-        onViewActivity={() => showSurface('activity')}
+        onViewActivity={() => showSurfacePage('activity')}
         onRetry={model.retryWork}
       />
     </>

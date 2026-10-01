@@ -38,7 +38,7 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | --- | --- | --- |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
-| `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
+| `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
 | `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. The invocation is unconditional here, while Veritas uses changed scope to select rules and routed checks. Selected commands may inspect repository-wide state. Readiness also evaluates standards and protected-policy authority; it is not identical to the governance proof |
@@ -46,16 +46,19 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
 The transfer check has a finite capture **liveness timeout**, which only bounds
-a hung subprocess; it is not a performance score or a product budget. Prepare
-its independent baseline before pushing a scoped change:
+a hung subprocess; it is not a performance score or a product budget. It
+measures against a baseline at the merge base of `origin/main` and the
+candidate, and finds a verified one by itself; when none exists, its refusal
+prints the one command that prepares it (see the
+[testing guide](testing.md#pre-push-orchestration-transfer-gate)):
 
 ```bash
 npm run transfer:gate -- --prepare-baseline \
-  --baseline-root ../station-worktrees/4294-transfer-baseline-<main-sha> \
-  --base origin/main
-(cd ../station-worktrees/4294-transfer-baseline-<main-sha> && npm run dependencies:ci)
-STATION_TRANSFER_BASELINE_ROOT=../station-worktrees/4294-transfer-baseline-<main-sha> \
-  npm run transfer:gate
+  --baseline-root ../station-worktrees/4294-transfer-baseline-<merge-base-sha> \
+  --base <merge-base-sha> \
+  && (cd ../station-worktrees/4294-transfer-baseline-<merge-base-sha> \
+      && npm run dependencies:ci && npm run dependencies:verify)
+npm run transfer:gate      # or push; STATION_TRANSFER_BASELINE_ROOT overrides the discovery
 ```
 
 The capture reports are diagnostic transfer evidence, not completion evidence.

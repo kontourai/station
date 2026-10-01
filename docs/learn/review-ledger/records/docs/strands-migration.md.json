@@ -1,0 +1,17 @@
+{
+  "path": "docs/strands-migration.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "document": {"digest":"3176c7fd9362a81089e5938d5cd6149495f87cfbba72098845e0fe5edf1302d4","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

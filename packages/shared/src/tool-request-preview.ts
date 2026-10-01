@@ -259,7 +259,8 @@ const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
  *   session answer forwards only the engine's directory suggestions (read
  *   rules; or a working directory / file-edit rules). Station grants nothing.
  * - `none`: the session answer is a one-call accept, so none is offered. A
- *   plan exit (#2916); an escalation or read with no directory to forward
+ *   plan exit (#2916); a sandbox network-host ask or an ask flagged
+ *   `suppressAlwaysAllowRule` (#2932); an escalation or read with no directory to forward
  *   (an ask rule, a read safety check, a read of `/`); or a file edit with
  *   no mode change to forward (a sensitive-file safety check once the
  *   session is already in `acceptEdits`, an ask rule) or asked in plan mode
@@ -280,10 +281,53 @@ export type ToolRequestGrantInput = {
   matchedAskRule?: unknown;
   /** The engine's permission mode when it asked (Claude: `plan`, …). */
   permissionMode?: unknown;
+  /**
+   * The engine's kind for the tool call, where it reports one (ACP's
+   * `toolCall.kind`; `switch_mode` is a mode change such as leaving plan
+   * mode).
+   */
+  toolKind?: unknown;
+  /** The call's arguments; `dangerouslyDisableSandbox` is read from them. */
+  toolInput?: unknown;
+  /** Claude's `canUseTool` `decisionReason` text, matched only exactly. */
+  decisionReason?: unknown;
+  /**
+   * Ask flags the Claude CLI sends on `can_use_tool`. Agent SDK 0.3.278
+   * forwards `suppressAlwaysAllowRule` and `defaultToNo` to `canUseTool`
+   * and still drops `requiresUserInteraction`. Read when present.
+   */
+  suppressAlwaysAllowRule?: unknown;
+  defaultToNo?: unknown;
+  requiresUserInteraction?: unknown;
 };
 
+/** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
+const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
+/**
+ * Tools whose request gets no standing answer: a plan exit and a harness
+ * question, which are addressed to a person, and Claude Code's sandbox
+ * network ask (#2932; input `{host}`). The engine remembers an allowed host
+ * for the session itself, and a Station grant on that tool would answer
+ * every later host (see `toolRequestNeedsPerson`).
+ */
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
-  'exitplanmode',
+  'askuserquestion',
+  'sandboxnetworkaccess',
+  ...PLAN_EXIT_TOOLS,
+]);
+/**
+ * #2932: `decisionReason` texts Claude Code sends verbatim (read in 2.1.261,
+ * byte-identical in 2.1.278) for an ask
+ * that is an escalation or a policy floor, not a plain call: the sandbox
+ * override, a tool whose approval card is the user's interaction surface,
+ * and the MCP organization ceiling (`effectiveMaxPermission: 'ask'`). The
+ * engine's other reasons (Bash safety prose, the working-directory text) are
+ * not matched here: their wording is not a stable contract.
+ */
+const ESCALATION_DECISION_REASONS: ReadonlySet<string> = new Set([
+  'dangerouslyDisableSandbox',
+  'requiresUserInteraction',
+  'Your organization requires approval for this tool',
 ]);
 /**
  * Claude Code's read-only tools. The engine allows reads inside the session's
@@ -397,22 +441,69 @@ export function sessionGrantPermissionUpdates<T>(
  * - `blockedPath`: the Bash/PowerShell path checks (and a few other tools).
  * - `matchedAskRule`: a user-configured `permissions.ask` rule forced the
  *   prompt; the SDK asks host-side auto-approval to leave it to a human.
+ * - #2932: a call that runs outside the sandbox
+ *   (`dangerouslyDisableSandbox: true` in its input), a `decisionReason` in
+ *   `ESCALATION_DECISION_REASONS`, or any of the ask flags
+ *   `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`.
  */
 export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
   return (
     request.blockedPath != null ||
     request.matchedAskRule != null ||
+    (isRecord(request.toolInput) &&
+      request.toolInput.dangerouslyDisableSandbox === true) ||
+    (typeof request.decisionReason === 'string' &&
+      ESCALATION_DECISION_REASONS.has(request.decisionReason)) ||
+    request.suppressAlwaysAllowRule === true ||
+    request.defaultToNo === true ||
+    request.requiresUserInteraction === true ||
     suggestionList(request.suggestions).some(
       (update) => directoryPermissionUpdateKind(update) !== undefined,
     )
   );
 }
 
+/**
+ * #2916, #2933: whether the request leaves plan mode: Claude's
+ * `ExitPlanMode` (matched in any casing or separator), or a call the engine
+ * reports with ACP's `switch_mode` tool kind. A plan exit is a request for a
+ * person's review of the plan, so no tool-level allowance answers it.
+ */
+export function toolRequestIsPlanExit(
+  toolName: string | null | undefined,
+  toolKind?: unknown,
+): boolean {
+  if (toolKind === 'switch_mode') return true;
+  const trimmed = toolName?.trim();
+  return !!trimmed && PLAN_EXIT_TOOLS.has(canonicalKey(trimmed));
+}
+
+/**
+ * Whether the request is addressed to a person, so nothing standing answers
+ * it: no session grant is offered or honoured and no `tools.autoApprove`
+ * pattern covers it. True for a plan exit (`toolRequestIsPlanExit`), for
+ * a harness question (Claude's `AskUserQuestion`, #3021), whose answer is
+ * the person's own input, and for Claude's sandbox network-host ask
+ * (`SandboxNetworkAccess`, #2932), which is asked per host.
+ */
+export function toolRequestNeedsPerson(
+  toolName: string | null | undefined,
+  toolKind?: unknown,
+): boolean {
+  if (toolRequestIsPlanExit(toolName, toolKind)) return true;
+  const trimmed = toolName?.trim();
+  return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
+}
+
 export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestSessionGrant {
   const toolName = request.toolName?.trim();
-  if (toolName && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(toolName)))
+  if (
+    toolRequestNeedsPerson(toolName, request.toolKind) ||
+    // The engine says no standing allowance may answer this ask.
+    request.suppressAlwaysAllowRule === true
+  )
     return 'none';
   const readOnly =
     toolName !== undefined && CLAUDE_READ_ONLY_TOOLS.has(toolName);
@@ -438,16 +529,45 @@ export function toolRequestSessionGrant(
   return kinds.every((kind) => kind === 'read') ? 'read-folder' : 'folder';
 }
 
+/**
+ * #2933: whether a tool-level allowance, such as an agent's
+ * `tools.autoApprove` pattern, may answer this request without a person. It
+ * covers a plain call to the tool (`tool`, or a plain file edit's
+ * `edit-mode`), never an escalation or a plan exit: the rule #2911 and #2915
+ * set for session grants. So an escalation (`toolRequestEscalates`), any
+ * Claude Read, Glob, Grep or LSP ask (the engine allows reads inside the
+ * working directories itself), `ExitPlanMode`, and a file edit asked in plan
+ * mode, under full access or with no `acceptEdits` suggestion (a safety
+ * check once the session is in `acceptEdits`) all reach a person, as do a
+ * sandbox network-host ask and the #2932 escalation signals. A
+ * sensitive-file safety check asked in default mode carries the same
+ * suggestion as a plain edit, and a Bash safety check or a plain ask rule
+ * carries no signal the SDK forwards, so neither can be told apart (#2932).
+ */
+export function toolRequestIsPlainCall(
+  request: ToolRequestGrantInput,
+): boolean {
+  const grant = toolRequestSessionGrant(request);
+  return grant === 'tool' || grant === 'edit-mode';
+}
+
 /** `toolRequestSessionGrant` over a whole `request.opened` payload. */
 export function toolRequestSessionGrantFromPayload(
   payload: Record<string, unknown> | undefined,
 ): ToolRequestSessionGrant {
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
   return toolRequestSessionGrant({
-    toolName: toolRequestFromPayload(payload).toolName,
+    toolName,
+    toolInput,
+    decisionReason: payload?.decisionReason,
+    suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
+    defaultToNo: payload?.defaultToNo,
+    requiresUserInteraction: payload?.requiresUserInteraction,
     suggestions: payload?.suggestions,
     blockedPath: payload?.blockedPath,
     matchedAskRule: payload?.matchedAskRule,
     permissionMode: payload?.permissionMode,
+    toolKind: payload?.toolKind,
   });
 }
 

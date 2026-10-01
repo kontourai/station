@@ -21,6 +21,7 @@ import { openChatsStore } from '../contexts/open-chats-store';
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 // #928 C2a: the Home row's active state reads `main`'s occupant. `null`
 // is the no-provider mount every other test here uses.
@@ -679,7 +680,7 @@ describe('project row identity (#2150)', () => {
  * archive#3202. The per-project badge used to fold the conversation INVENTORY
  * inline in `ProjectSidebar` and count, among other things, unseen finished
  * runs (archive#1781). It now counts one thing — this project's LIVE work,
- * the Sessions list's own "Needs you" + "Active now" lanes scoped to the
+ * the Sessions list's own live lanes (Needs you, Running, Idle) scoped to the
  * project (`project-live-work-model.ts`) — because that is exactly what the
  * project page's Live work section lists, and a badge whose destination shows
  * a different set is the defect archive#3202 was filed about.
@@ -723,7 +724,7 @@ describe('ProjectSidebar live-work badge', () => {
     ).toBeTruthy();
   });
 
-  test('counts a mid-flight turn under Active now, and says which is which', () => {
+  test('counts a mid-flight turn under Running, and says which is which', () => {
     resetState();
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
     sessions.push(
@@ -747,14 +748,14 @@ describe('ProjectSidebar live-work badge', () => {
     ).toBe('2');
     expect(
       screen.getByRole('button', {
-        name: /station.*needs you: 1 · active now: 1/i,
+        name: /station.*needs you: 1 · running: 1/i,
       }),
     ).toBeTruthy();
   });
 
   /**
    * archive#1781's narrowing survives the move: `answerability` still demotes
-   * an open request nothing can answer. It lands in Active now as
+   * an open request nothing can answer. It lands in Idle as
    * 'Unanswerable' rather than claiming to be yours to act on, which is the
    * Sessions lane model's own rule.
    */
@@ -778,7 +779,7 @@ describe('ProjectSidebar live-work badge', () => {
     renderSidebar(<ProjectSidebar />);
     expect(screen.queryByText(/needs you: /i)).toBeNull();
     expect(
-      screen.getByRole('button', { name: /station.*active now: 1/i }),
+      screen.getByRole('button', { name: /station.*idle: 1/i }),
     ).toBeTruthy();
   });
 

@@ -122,7 +122,15 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
+  // Starts a nested Vitest run of its probe under a simulated merge-queue env.
+  'scripts/__tests__/ci-event-environment.test.ts',
+  // Builds disposable Git repositories to prove the real-ledger freshness
+  // check keeps the job's event mode through the worker env scrub.
+  'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
+  // Runs the token helper as a child against a loopback GitHub and a fake `security`.
+  'scripts/__tests__/gh-app-token.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.
@@ -354,6 +362,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the lazy-boundary ratchet against this repository as one bounded
   // single-shot node child.
   'scripts/__tests__/lazy-boundary-ratchet.test.ts',
+  // #3045: same shape — the button-cap ratchet runs as bounded single-shot
+  // node children against small fixture trees, so its refusal path's EXIT
+  // STATUS and the row it names are proven, plus one run on this repository.
+  'scripts/__tests__/button-cap-ratchet.test.ts',
   // station 2026-08-28: same shape again — the commit-subject gate's CLI and
   // its .githooks/commit-msg wrapper run as bounded single-shot children so
   // the refusal path's exit STATUS is proven, not just the pure validator;
@@ -880,8 +892,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and plain git as the control for every planted config.
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
   // The File Preview's per-file Changes read over real repositories, with
-  // plain git as the control for the planted diff driver it refuses.
+  // plain git as the control for every planted `.git` and config it refuses.
   'src-server/routes/projects/__tests__/workspace-file-changes.routes.test.ts',
+  // The coding git read routes over real repositories, with plain git as the
+  // control for every planted `.git`.
+  'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
+  // Checkpoint capture and restore over real repositories, with a `.git`
+  // swapped or a config rewritten at a chosen git call.
+  'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.
@@ -998,6 +1016,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
+  // #90: owns Chromium to measure the held page-dialog card's action row
+  // (the icon-only Open in pane beside OK and Cancel) against the real
+  // cascade, in the float's compact card and the pane's card.
+  'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPageDialog.touch-target.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
@@ -1068,10 +1090,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `playwright-core`, so the classification is the only thing that keeps a
   // browser launch out of the ordinary four-worker lane.
   'src-ui/src/__tests__/ChatDockHeaderMoreMenu.layering.test.tsx',
-  // #1582 E7: same shape again — launches a real Chromium to measure whether
-  // an Activity row's project chip gets a width a reader can identify a
-  // project from.
-  'src-ui/src/__tests__/SessionsView.projectPill.overflow.test.tsx',
   // #1582 D10, classified late: this one launches Chromium too and was the
   // only file in the class that never got an entry. Found by grepping
   // `chromium.launch` across the tree rather than by any gate — the note above
@@ -1086,6 +1104,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
   'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #3045: same shape — loads small fixtures and the real ActionRow into one
+  // Chromium to prove the rendered action count rejects a row of three and
+  // follows the cascade rather than the markup.
+  'src-ui/src/__tests__/visible-action-count.rendered.test.tsx',
+  // #3045 review M2/M3: bundles a small React entry with esbuild (in memory)
+  // and runs it in one Chromium to hit-test an overflow menu opened from
+  // inside a dialog, a system-layer dialog and surfaces portalled out of a
+  // dialog. The menu's layer comes from computed style, which jsdom lacks.
+  'src-ui/src/__tests__/ActionOverflowMenu.dialog-layering.test.tsx',
   // #2112: same shape again — launches a real Chromium to hit-test each header
   // and dock menu's dismiss backdrop against the chrome control that opens it.
   // jsdom returns nothing useful from `elementFromPoint`, and a computed-style

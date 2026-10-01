@@ -5,10 +5,16 @@ import {
   sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
   toolRequestDisplayName,
+  toolRequestEscalates,
   toolRequestFromPayload,
+  toolRequestGrantLabel,
+  toolRequestIsPlainCall,
+  toolRequestIsPlanExit,
+  toolRequestNeedsPerson,
   toolRequestPreview,
   toolRequestPreviewFromPayload,
   toolRequestSessionGrant,
+  toolRequestSessionGrantFromPayload,
 } from '../tool-request-preview.js';
 
 describe('#2915: directory permission updates', () => {
@@ -183,6 +189,225 @@ describe('#2915/#2916: what a session answer grants', () => {
     expect(sessionGrantPermissionUpdates(grant, [acceptEdits, addDir])).toEqual(
       forwarded,
     );
+  });
+});
+
+describe('#2933: what a tool-level allowance may answer', () => {
+  const acceptEdits = {
+    type: 'setMode',
+    mode: 'acceptEdits',
+    destination: 'session',
+  };
+  const readRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+
+  test('a plan exit is ExitPlanMode in any spelling, or an ACP switch_mode call', () => {
+    expect(toolRequestIsPlanExit('ExitPlanMode')).toBe(true);
+    expect(toolRequestIsPlanExit(' exit_plan_mode ')).toBe(true);
+    expect(toolRequestIsPlanExit('mcp__tools__anything', 'switch_mode')).toBe(
+      true,
+    );
+    expect(toolRequestIsPlanExit(undefined, 'switch_mode')).toBe(true);
+    expect(toolRequestIsPlanExit('EnterPlanMode')).toBe(false);
+    expect(toolRequestIsPlanExit('Bash', 'execute')).toBe(false);
+    expect(toolRequestIsPlanExit(undefined)).toBe(false);
+    expect(toolRequestIsPlanExit(null)).toBe(false);
+    // A harness question needs a person but leaves no mode.
+    expect(toolRequestIsPlanExit('AskUserQuestion')).toBe(false);
+  });
+
+  test('a request addressed to a person: a plan exit or a harness question', () => {
+    expect(toolRequestNeedsPerson('AskUserQuestion')).toBe(true);
+    expect(toolRequestNeedsPerson('ask_user_question')).toBe(true);
+    expect(toolRequestNeedsPerson('ExitPlanMode')).toBe(true);
+    expect(toolRequestNeedsPerson('anything', 'switch_mode')).toBe(true);
+    expect(toolRequestNeedsPerson('Bash', 'execute')).toBe(false);
+    expect(toolRequestNeedsPerson(undefined)).toBe(false);
+    // Neither a session grant nor a tool-level allowance answers a question.
+    expect(toolRequestSessionGrant({ toolName: 'AskUserQuestion' })).toBe(
+      'none',
+    );
+    expect(toolRequestIsPlainCall({ toolName: 'AskUserQuestion' })).toBe(false);
+  });
+
+  test('plain calls: a tool call without escalation, and a plain file edit', () => {
+    expect(toolRequestIsPlainCall({ toolName: 'Bash' })).toBe(true);
+    expect(
+      toolRequestIsPlainCall({
+        toolName: 'mcp__github__get_issue',
+        suggestions: [],
+      }),
+    ).toBe(true);
+    expect(
+      toolRequestIsPlainCall({ toolName: 'Edit', suggestions: [acceptEdits] }),
+    ).toBe(true);
+  });
+
+  test('never an escalation, a Claude read ask, a plan exit or an unforwardable edit', () => {
+    for (const request of [
+      { toolName: 'Read', suggestions: [readRule] },
+      { toolName: 'Read' },
+      { toolName: 'Grep' },
+      { toolName: 'Bash', blockedPath: '/etc/hosts' },
+      { toolName: 'Bash', matchedAskRule: { toolName: 'Bash' } },
+      {
+        toolName: 'Edit',
+        suggestions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+          acceptEdits,
+        ],
+      },
+      { toolName: 'ExitPlanMode', suggestions: [acceptEdits] },
+      { toolName: 'anything', toolKind: 'switch_mode' },
+      { toolName: 'Edit', suggestions: [] },
+      { toolName: 'Edit', suggestions: [acceptEdits], permissionMode: 'plan' },
+      {
+        toolName: 'Write',
+        suggestions: [acceptEdits],
+        permissionMode: 'bypassPermissions',
+      },
+    ])
+      expect(toolRequestIsPlainCall(request), JSON.stringify(request)).toBe(
+        false,
+      );
+  });
+
+  test('an ACP switch_mode payload offers no session answer', () => {
+    const payload = { rawInput: { plan: 'Step 1' }, toolKind: 'switch_mode' };
+    expect(toolRequestSessionGrantFromPayload(payload)).toBe('none');
+    expect(toolRequestGrantLabel(undefined, 'none')).toBeUndefined();
+    // Positive control: the same payload without the kind still offers one.
+    expect(
+      toolRequestSessionGrantFromPayload({ rawInput: { plan: 'x' } }),
+    ).toBe('tool');
+  });
+});
+
+describe('#2932: escalation signals the engine forwards', () => {
+  const localRule = (toolName: string, ruleContent?: string) => ({
+    type: 'addRules',
+    rules: [{ toolName, ...(ruleContent ? { ruleContent } : {}) }],
+    behavior: 'allow',
+    destination: 'localSettings',
+  });
+
+  test('a sandbox network-host ask is never a plain call and offers no session option', () => {
+    const request = {
+      toolName: 'SandboxNetworkAccess',
+      toolInput: { host: 'api.example.com' },
+      suggestions: [localRule('WebFetch', 'domain:api.example.com')],
+    };
+    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestIsPlainCall(request)).toBe(false);
+    expect(
+      toolRequestSessionGrantFromPayload({
+        toolName: 'SandboxNetworkAccess',
+        toolInput: { host: 'api.example.com' },
+        suggestions: request.suggestions,
+      }),
+    ).toBe('none');
+    // It gets no standing answer, and it is not a plan exit.
+    expect(toolRequestNeedsPerson('SandboxNetworkAccess')).toBe(true);
+    expect(toolRequestIsPlanExit('SandboxNetworkAccess')).toBe(false);
+  });
+
+  test.each<[string, Record<string, unknown>]>([
+    [
+      'the sandbox override input alone',
+      { toolInput: { command: 'curl x', dangerouslyDisableSandbox: true } },
+    ],
+    [
+      'the sandbox override reason alone',
+      { decisionReason: 'dangerouslyDisableSandbox' },
+    ],
+    [
+      'the user-interaction reason',
+      { decisionReason: 'requiresUserInteraction' },
+    ],
+    [
+      'the MCP organization ceiling',
+      { decisionReason: 'Your organization requires approval for this tool' },
+    ],
+    ['suppressAlwaysAllowRule', { suppressAlwaysAllowRule: true }],
+    ['defaultToNo', { defaultToNo: true }],
+    ['requiresUserInteraction', { requiresUserInteraction: true }],
+  ])('%s escalates: no tool grant, not a plain call', (_case, signal) => {
+    const request = { toolName: 'Bash', ...signal };
+    expect(toolRequestEscalates(request)).toBe(true);
+    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestIsPlainCall(request)).toBe(false);
+    // The surfaces read the same signals from a request.opened payload.
+    const { toolInput, ...rest } = signal;
+    expect(
+      toolRequestSessionGrantFromPayload({
+        toolName: 'Bash',
+        toolInput: toolInput ?? { command: 'curl x' },
+        ...rest,
+      }),
+    ).toBe('none');
+  });
+
+  test('an escalation keeps a directory grant, except under suppressAlwaysAllowRule', () => {
+    const addDir = {
+      type: 'addDirectories',
+      directories: ['/work/b'],
+      destination: 'session',
+    };
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: 'requiresUserInteraction',
+        suggestions: [addDir],
+      }),
+    ).toBe('folder');
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        suppressAlwaysAllowRule: true,
+        suggestions: [addDir],
+      }),
+    ).toBe('none');
+  });
+
+  test.each<[string, Record<string, unknown>]>([
+    ['a plain Bash call', {}],
+    [
+      'a sandbox override flag that is not true',
+      { toolInput: { dangerouslyDisableSandbox: 'true' } },
+    ],
+    [
+      'flags that are false',
+      {
+        suppressAlwaysAllowRule: false,
+        defaultToNo: false,
+        requiresUserInteraction: false,
+      },
+    ],
+    // Reasons match exactly; prose is part 2's job.
+    [
+      'a reason that only mentions the override',
+      { decisionReason: 'Uses dangerouslyDisableSandbox' },
+    ],
+    [
+      'a Bash safety-check reason',
+      { decisionReason: 'Command contains a sensitive path' },
+    ],
+    [
+      'a reason with a trailing period',
+      { decisionReason: 'Your organization requires approval for this tool.' },
+    ],
+  ])('positive control: %s is still a plain tool call', (_case, extra) => {
+    const request = { toolName: 'Bash', ...extra };
+    expect(toolRequestSessionGrant(request)).toBe('tool');
+    expect(toolRequestIsPlainCall(request)).toBe(true);
   });
 });
 

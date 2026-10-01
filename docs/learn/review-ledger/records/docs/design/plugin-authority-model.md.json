@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/plugin-authority-model.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "August threat analysis preserved with current same-origin nonce-free vs cross-origin inline behavior, managed-update installer path, legacy grant rebinding and still-limited derived permissions.",
+
+  "limits": "Not a fresh exploit report, comparison of external products, every contribution authority, or live native/browser/provider isolation audit. Entire original body preserved.",
+
+  "document": {"digest":"c93950f30b3f48e8bb9030debab5ccc9838ab3d2ba3edb5257f58db6690543ac","revision":"5aa5a00ce0147c5344f5da916b2441329b3fae89"},
+
+  "sources": [
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-server/services/plugins/__tests__/plugin-install-consent.test.ts","digest":"3264a198b19d8e61986e10466443046846262569ea64384719a5186f13990282","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-server/services/plugins/__tests__/plugin-permissions.test.ts","digest":"a4bf38d311db90edce974642aedd129eaa6baef998356a853d297ff1d9cce958","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-ui/src/__tests__/PluginRegistry.csp.test.ts","digest":"f635d4e2688ecf45b48d23d272c27642e95a60db9fc7713b9c541f66c37c655b","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+  ],
+
+  "checks": [
+    "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
+
+    "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
+
+    "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged."
+  ]
+}

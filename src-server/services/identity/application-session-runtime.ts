@@ -42,6 +42,9 @@ export function createApplicationSessionRuntime(
     undefined,
   adoption?: ApplicationSessionCookieAdoptionCallbacks,
   readNativeRequest?: ReadVerifiedNativeApplicationRequest,
+  resolveNativeProofDevice?: (
+    request: Request,
+  ) => { readonly device: PairedDevice } | undefined,
 ) {
   if (!authentication.service.sessionReferenceCapabilities().verify)
     return undefined;
@@ -63,6 +66,7 @@ export function createApplicationSessionRuntime(
       credentialAliasId,
       adoption,
       readNativeRequest,
+      resolveNativeProofDevice,
     );
     authentication.service.installContinuationResolver(service);
     return service;

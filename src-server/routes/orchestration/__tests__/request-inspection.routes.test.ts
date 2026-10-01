@@ -586,3 +586,71 @@ test('selected pending request survives another request opening and resolving', 
     ((await (await f.app.request(READ)).json()) as any).data.canRespond,
   ).toBe(true);
 });
+
+test('the command route retains structured question answers and refuses a bare approval before adapter dispatch', async () => {
+  const f = await fixture();
+  f.store.appendEvent({
+    ...opened('question-event'),
+    requestType: 'approval',
+    payload: {
+      questionnaire: {
+        questions: [
+          {
+            id: 'choice',
+            header: 'Choice',
+            prompt: 'Which choice?',
+            options: [{ id: 'a', label: 'Option A', description: 'First' }],
+            multiple: false,
+            allowCustom: true,
+            secret: false,
+          },
+        ],
+      },
+    },
+  });
+  const inspection = await f.app.request(
+    '/sessions/session-a/requests/request-a?eventId=question-event',
+  );
+  expect(await inspection.json()).toMatchObject({
+    success: true,
+    data: { state: 'open', requiresAnswers: true },
+  });
+  const command = {
+    type: 'respondToRequest',
+    threadId: 'session-a',
+    requestId: 'request-a',
+    expectedRequestEventId: 'question-event',
+    decision: 'accept',
+  };
+  const post = (body: unknown) =>
+    f.app.request('/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect((await post(command)).status).toBeGreaterThanOrEqual(400);
+  expect(f.respond).not.toHaveBeenCalled();
+  // #3071: what the CLI sends for a question. It binds a decision to the
+  // listed event only for a plain approval, so a question still arrives
+  // unbound and this guard still refuses to close it unseen.
+  for (const decision of ['decline', 'cancel']) {
+    const { expectedRequestEventId: _unbound, ...unbound } = command;
+    const refused = await post({ ...unbound, decision });
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(await refused.json())).toContain(
+      'Inspect the current question before answering it.',
+    );
+  }
+  expect(f.respond).not.toHaveBeenCalled();
+  const answers = { choice: { optionIds: ['a'] } };
+  expect((await post({ ...command, answers })).status).toBe(200);
+  expect(f.respond).toHaveBeenCalledWith(
+    'session-a',
+    'request-a',
+    'accept',
+    expect.objectContaining({
+      answers,
+      expectedRequestEventId: 'question-event',
+    }),
+  );
+});

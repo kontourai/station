@@ -1,0 +1,85 @@
+{
+  "path": "docs/contexts/operations/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Definitions reconciled with actual storage, scheduling, notification, telemetry, review and governance interfaces; receipts and declarations distinguished from evaluated proof.",
+
+  "limits": "Source and caller review; local fixtures do not establish live provider, device, deployed service or production workload behavior.",
+
+  "document": {"digest":"ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/release-sboms.mjs","digest":"22a283e108c25da5ae116b2e6782520dec564a7263e7991673bdb3ed4f9ce5b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/verification-admission.mjs","digest":"751718b28118e916eece0283e5a22e2606e9df9ca38816826864528adfaf87c8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/verification-lease-ownership.mjs","digest":"0b808e1ead25286b125f913323dd28d0dd0fca966c11886e7aff4f71d18efc2d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/verification-request-context.mjs","digest":"95f066f98b4f5bba441115a9bcbbbf175f994e14a4cc01c57e9405ebb616a5bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/verification-request-identity.mjs","digest":"407273adb9efbaca0efafead8b45e5b03c28e9b5b0428bd319c9eaa689f536ca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/config-loader-agents.ts","digest":"e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/scheduler.ts","digest":"54d753dc983ec8f5736c4ae750e1da2749976a237ac1eba83071d4be63b1f59a","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
+    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+
+    {"path":"src-server/services/flow/flow-readiness-bridge.ts","digest":"28fe60cf8c343aa08fef0c8a2f425ca1105c2eeff3b447aaaa2f0fbec2719c53","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+
+    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
+
+    {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/MonitoringContext.tsx","digest":"65fc125213795d0077de6bc5fa6c68a665c71d3527cd7baf519313c97bb93b3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "703 focused tests passed; one coordinator waiter-cap test timed out at 30 seconds. No assertion failure or passing rerun is claimed.",
+
+    "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
+
+    "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: service.ts gained archive service units (#2867), and plugin-install-transaction.ts gained excludeGitMetadata staging for proposed installs (#2840). Neither changes the storage, scheduling, notification, telemetry or governance definitions, which remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added reads to event-store for approval-decision actors and start-confinement grantors, used by resetFullAccessGrantedBy. The startSession receipt now records clientOrigin, orchestration-service gained full-access reset logic, and runtime-routes gained the revocation and refusal wiring. The glossary definitions (receipts versus evaluated proof, notification versus approval request, scheduled-job outputs) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. No storage, scheduling, notification, telemetry, review or governance definition in the document is affected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

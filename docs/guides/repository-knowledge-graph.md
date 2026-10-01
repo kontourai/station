@@ -79,6 +79,19 @@ not published by this audit. Station still uses its own adapters and public SDK;
 the check imported only the installed Kit's manifest-declared consumer entries,
 not sibling source as Station runtime authority.
 
+On 2026-09-30, [Flow Agents 6.5.0](https://github.com/kontourai/flow-agents/releases/tag/v6.5.0)
+published these Knowledge consumer fixes. Its npm tarball matched the registry's
+integrity metadata, and the checked packaged sources matched the release tag.
+An isolated install passed 30 tests covering the manifest-declared store and
+provider entries, historical YAML compatibility, and malformed-input refusals.
+Updating an installed 6.4.0 Kit to 6.5.0 through the public CLI preserved the
+external test store's canonical bytes, original record provenance, link labels
+and reported matching recorded and observed Kit artifact hashes. This was a
+macOS/Node 24 consumer check, not a new
+live projection-service, model or cross-platform qualification. Registry integrity
+matching was not independent npm attestation verification. Station's own adapters
+and public SDK remain its runtime boundary.
+
 Follow [documentation maintenance](documentation.md) for source review and
 downstream document updates. The graph and any dependency report are review
 leads; neither grants semantic approval or refreshes evidence hashes for you.

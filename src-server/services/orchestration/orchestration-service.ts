@@ -106,6 +106,11 @@ import {
 import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflow';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
+import {
+  readHarnessQuestionnaire,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
@@ -298,6 +303,7 @@ import {
 } from './native-memory-continuity.js';
 import {
   projectRequestAnswerability,
+  REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE,
   type RequestReplayOutcome,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
@@ -4558,6 +4564,23 @@ export class OrchestrationService {
     if (inspected.state !== 'open') return inspected;
     let answerability: ReturnType<typeof projectRequestAnswerability>;
     try {
+      const events =
+        this.options.eventStore
+          ?.listSessionProjectionEvents(reference.threadId, {
+            requestId: reference.requestId,
+          })
+          .map((event) => event.payload) ?? [];
+      // #3071: the request's own row still reads `request.opened` when its
+      // turn was aborted without a resolution being recorded (a log from
+      // before recovery wrote one). The same rule the summary and the
+      // attention feed apply decides it here, so no surface offers Allow/Deny
+      // for a request the others already call settled.
+      if (requestIdsSettledByTurnAbort(events).has(reference.requestId))
+        return {
+          state: 'resolved',
+          reference,
+          message: REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE,
+        };
       answerability = projectRequestAnswerability({
         ...this.observeAnswerability(
           reference.threadId,
@@ -4566,12 +4589,7 @@ export class OrchestrationService {
         ),
         lifecycleState: projectSessionLifecycle({
           session,
-          events:
-            this.options.eventStore
-              ?.listSessionProjectionEvents(reference.threadId, {
-                requestId: reference.requestId,
-              })
-              .map((event) => event.payload) ?? [],
+          events,
         }).lifecycleState,
       });
     } catch {
@@ -4598,6 +4616,50 @@ export class OrchestrationService {
     requestId: string,
   ): RequestReplayOutcome {
     return this.sessionEventReads.readRequestOutcome(threadId, requestId);
+  }
+
+  /**
+   * #3071: why a decision on this request must be refused before any adapter
+   * sees it, or `undefined` when nothing recorded says so.
+   *
+   * A request that is already resolved, or that its turn's abort settled,
+   * has nothing waiting on an answer. Refusing here, rather than leaving it
+   * to whichever adapter holds the thread, is what makes the refusal the
+   * same on every engine and with or without `expectedRequestEventId`: an
+   * adapter restarted since the request was opened does not know the id at
+   * all, and one that still did would be answering for a turn that is gone.
+   *
+   * A request the log has never heard of, or a store that cannot be read,
+   * returns `undefined`: that is not evidence the request ended, and the
+   * existing guards and the adapter still decide.
+   */
+  private settledRequestRefusal(
+    threadId: string,
+    requestId: string,
+  ): string | undefined {
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return undefined;
+    try {
+      const current = eventStore.readCurrentRequestEvent(threadId, requestId);
+      if (current.state !== 'found') return undefined;
+      // A row whose stored method and payload disagree is not evidence of
+      // anything; `inspectRequestEvent` reports it unavailable, and that
+      // guard keeps the decision.
+      const method = current.event.payload.method;
+      if (method !== current.event.method) return undefined;
+      if (method === 'request.resolved')
+        return 'This request has already been resolved.';
+      if (method !== 'request.opened') return undefined;
+      return requestIdsSettledByTurnAbort(
+        eventStore
+          .listSessionProjectionEvents(threadId)
+          .map((event) => event.payload),
+      ).has(requestId)
+        ? REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async readSessionEventPage(
@@ -7181,6 +7243,17 @@ export class OrchestrationService {
           return { receipt, result };
         }
         case 'respondToRequest': {
+          // #3071: before adapter resolution, so a settled request is
+          // refused by Station with one code whatever holds the thread.
+          const settledRefusal = this.settledRequestRefusal(
+            command.threadId,
+            command.requestId,
+          );
+          if (settledRefusal)
+            throw new RequestEventGuardError(
+              'request_event_changed',
+              settledRefusal,
+            );
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.threadId,
             threadProviders: this.threadProviders,
@@ -7188,6 +7261,33 @@ export class OrchestrationService {
             adapters: this.options.adapterRegistry.list(),
           });
           this.assertAdapterCurrent(adapter);
+          const currentQuestionRequest =
+            this.options.eventStore?.readCurrentRequestEvent(
+              command.threadId,
+              command.requestId,
+            );
+          const questionnaire = readHarnessQuestionnaire(
+            currentQuestionRequest?.state === 'found' &&
+              currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload.payload?.questionnaire
+              : undefined,
+          );
+          if (questionnaire || command.answers !== undefined) {
+            if (
+              !questionnaire ||
+              !command.expectedRequestEventId ||
+              command.decision === 'acceptForSession'
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Inspect the current question before answering it.',
+              );
+            if (command.decision === 'accept')
+              validateHarnessQuestionAnswers(questionnaire, command.answers);
+            else if (command.answers !== undefined)
+              throw new Error('A cancelled question cannot carry answers.');
+          }
+
           if (command.expectedRequestEventId !== undefined) {
             if (context?.requestCurrent && !context.requestCurrent())
               throw new RequestEventGuardError(
@@ -7307,12 +7407,24 @@ export class OrchestrationService {
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
-          await (context?.clientOrigin
+          const requestContext =
+            questionnaire || context?.clientOrigin
+              ? {
+                  ...(context?.clientOrigin
+                    ? { clientOrigin: context.clientOrigin }
+                    : {}),
+                  ...(command.answers ? { answers: command.answers } : {}),
+                  ...(questionnaire && command.expectedRequestEventId
+                    ? { expectedRequestEventId: command.expectedRequestEventId }
+                    : {}),
+                }
+              : undefined;
+          await (requestContext
             ? adapter.respondToRequest(
                 command.threadId,
                 command.requestId,
                 decision,
-                { clientOrigin: context.clientOrigin },
+                requestContext,
               )
             : adapter.respondToRequest(
                 command.threadId,

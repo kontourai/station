@@ -93,6 +93,12 @@ export function createAnalyticsRoutes(
       );
     }
     const groupBy = c.req.query('groupBy');
+    const provider = c.req.query('provider');
+    if (provider !== undefined && !['claude', 'codex'].includes(provider))
+      return c.json(
+        { success: false, error: 'Unsupported engine usage filter.' },
+        400,
+      );
     const allowed = new Set([
       'provider',
       'model',
@@ -179,6 +185,7 @@ export function createAnalyticsRoutes(
         {
           from,
           to,
+          provider,
           groupBy: groupBy as
             | 'provider'
             | 'model'

@@ -1,0 +1,27 @@
+{
+  "path": "examples/coding-starter/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide, two components, own-plugin host action declaration and Agent definition checked; sample file/diff data stays distinct from real repository access.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "document": {"digest":"c65026bdf950ad7944f1e8322fd0aa63546600cba9ec593bfd927c5e8ae549b3","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+  "sources": [
+    {"path":"examples/coding-starter/agents/coding-starter-assistant/agent.json","digest":"bf8a1781e6667c12239abf51ec6c0eb17704429620a78cb55febd989ae14d231","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+    {"path":"examples/coding-starter/plugin.json","digest":"161a7c81d1e42b5d6ed75428cd0b8f773c872da3c0b4e4efe5cfd706b8a42fcf","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+    {"path":"examples/coding-starter/src/index.tsx","digest":"09ec6e2364368f445605fa8139c16c74a760adab51969ffe40c9427354dae76d","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/vision/ai-ui-bridge.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "document": {"digest":"5e6c1644145fa66042695ec9b856621246a180560593f2efb2010af5b13894ac","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

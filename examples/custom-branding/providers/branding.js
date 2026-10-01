@@ -10,8 +10,8 @@ module.exports = () => ({
   async getTheme() {
     // White-label overrides, per mode. Station applies only the brand-slot
     // properties below, only as #rgb/#rrggbb colours, and only when the
-    // whole theme passes its contrast checks against each mode's page and
-    // panel. If anything is rejected, nothing is applied and the reasons are
+    // whole theme passes its contrast checks against each mode's page, panel
+    // and raised panel. If anything is rejected, nothing is applied and the reasons are
     // logged in the browser console. Return null to keep the defaults. A
     // flat { '--k-brand': '#…' } object is also accepted and is expanded
     // into both modes before checking. See README.md.

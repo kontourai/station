@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/mobile-device-inspection.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"cec64fe786be5604c5ec0cc90a0dd29ee469cbbc6982b15a4f26c6138ce0f19a","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

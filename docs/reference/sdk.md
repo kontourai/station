@@ -12,6 +12,33 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Agent development entry
+
+`@kontourai/station-sdk/agent` is the React-free Agent authoring and execution
+entry. The SDK root and owning UI subpaths remain the plug-in UI surface;
+`/client` remains the broader React-free Station API entry. See
+[Agent development](../guides/agent-development.md) for the complete journey and
+[ADR 0021](../adr/0021-separate-plugin-and-agent-sdk-surfaces.md) for the boundary.
+This source addition requires a published version that exports `/agent`.
+
+| Group | Exports |
+| --- | --- |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `environmentId`, `ClientRequestOptions` |
+| Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
+| Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
+| Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
+| Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
+| Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
+
+These are explicit re-exports of the existing clients, with unchanged arguments,
+return values, and errors. Every operation receives an explicit `apiBase` and
+per-call authority options. The [entry source](../../packages/sdk/src/agent/index.ts)
+owns the exact export list; operation documentation below and the
+[Session API](session-api.md) own behavior details. There is no automatic create
+retry, credential singleton, engine loop, or new Agent definition schema.
+
 ---
 
 ## Setup
@@ -53,12 +80,87 @@ and default-Agent migration remain separately tracked by #1372.
 
 ---
 
+## Credential-profile device-code login
+
+The `@kontourai/station-sdk/device-code-login` subpath exports
+`useEngineLoginProfilesQuery(connectionId, requestScope)`,
+`useDeviceCodeLoginQuery(target, enabled)`, `useStartDeviceCodeLoginMutation()`
+and `useCancelDeviceCodeLoginMutation()`. A target contains `connectionId`,
+`profileRef` and an explicit `requestScope` (`apiBase`, `authorityKey`). Hooks
+use the authenticated transport and partition status by that authority and
+profile. A host Query Client and a matching current SDK transport authority
+are required.
+
+`useEngineLoginProfilesQuery` returns `EngineLoginProfiles`: profile references,
+optional display labels, authentication states and observed device-code support.
+It uses the dedicated sign-in read, never the credential-management or manual
+enrolment endpoints. Its cache is partitioned by current request authority;
+failed reads stay visible and are not retried automatically. `EngineLoginProfiles`
+is exported from the same subpath.
+The profile-index hook and DTO are available in repository source and
+scheduled for the next minor package release.
+
+The status query treats an absent login as `null` and polls every two seconds
+only while starting, awaiting approval or verifying. Mutations are never
+retried automatically; after settlement they re-read status so an indeterminate
+request does not imply that nothing started. `DeviceCodeLoginRefusal` preserves
+the server's message, named outcome when present and HTTP status. Verification
+links must use HTTPS without embedded credentials. The device's `engine:login`
+grant is required by the server; hosts should observe current authority before
+offering the action. See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+
 ## Hooks
 
 Use hooks inside the host's React provider tree. Query hooks return a React
 Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
+
+### Task room agent requests
+
+`@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
+`submitTaskRoomAgentRequest`, `TaskRoomWorkProtocolError` and
+`TaskRoomWorkNotSentError`. Submission takes `(apiBase, taskId, projectSlug,
+taskCreatedAt, input, options?)`; input contains `operationId`, `agentId` and
+`prompt`. A fresh versioned request-list read precedes the additive delegation
+create field, so an older Station never silently receives an ordinary
+delegation instead. The response must match the Task and submitted intent.
+The server also checks the expected Task incarnation.
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`useTaskRoomAgentOptionsQuery(projectSlug, scope, enabled?)`,
+`useTaskRoomAgentRequestsQuery(taskId, taskCreatedAt, scope, enabled?)` and
+`useSubmitTaskRoomAgentRequestMutation(taskId, taskCreatedAt, projectSlug, scope)`.
+The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
+or stale scope never falls back to the ambient connection. Request caches
+include connection authority, Task identity and incarnation. Request cards
+poll every five seconds and can be refreshed explicitly; journal changes are
+not currently published through room SSE. Mutation retries are disabled.
+Send refreshes Project-scoped delegation options and requires the selected
+agent to be ready before the version negotiation and create.
+
+`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent.
+After the create starts, an error can mean the execution already exists.
+Retain the exact operation and intent for an explicit retry or inspection;
+never generate a replacement operation automatically. A retry preflight failure
+proves only that retry was not sent; it does not resolve a prior unknown create. Server non-success
+envelopes throw HTTP errors rather than returning every refusal union arm.
+`dispatched` records acknowledgement, not result quality, Task completion or
+customer acceptance.
+
+The existing `useAppendProjectTaskRoomHumanMessageMutation(taskId, config?)`
+accepts an explicit `{ requestScope, taskCreatedAt }` config for the mounted
+Task composer. When provided, it sends through the checked JSON transport,
+includes `expectedTaskCreatedAt` in the message body, refuses missing/stale
+scope and rejects late success after authority loss. The server checks the
+expected incarnation at the history grant's commit admission. Legacy callers
+omitting config still use the ambient API base; other room read/edit hooks
+retain their existing contracts. An old receiver that rejects the additive
+message field cannot silently accept it for a different Task.
+
+These personal-Station clients do not establish invited,
+remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
+
 
 ### Default host bindings and custom hosts
 
@@ -1417,7 +1519,7 @@ consumes the `station.application-session-native/v1` contract and a
 (`NativeApplicationSessionTransportV1`); the client itself never opens an HTTP
 connection, never touches cookies, and never holds a broker bearer. The account
 proof key must be independent of the native broker route proof key. The client
-accepts `ApplicationSessionSigner`, including a host-owned signing facade;
+accepts the portable `ApplicationSessionSigner`;
 `createApplicationSessionKey()` supplies a non-extractable WebCrypto P-256 key.
 Signer custody is a caller responsibility, not attested by the facade. The
 caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
@@ -1432,6 +1534,27 @@ proofs bind method, path, audience, surface, device, continuation nonce and
 credential hash with a one-use JTI. Provider, Device, and Project authority
 remain separate: the continuation is not a bearer or Device grant, and this
 client implements no provider/Device/Project authority.
+
+The constructor also accepts `NativeApplicationSessionProofProvider`, identified
+by `kind: station-native-host-proof-provider/v1`. Its `prepareExchange` operation
+takes only opaque challenge data and local username/password credentials and
+returns the complete host-prepared exchange body plus matching proof header.
+`requestHeaders` takes opaque continuation data and a canonical GET/HEAD Project
+target. The client checks the returned signature, public key, target, nonce,
+hashes, body order and headers before dispatch. The ordered host credentials
+body is retained: its hash must match Node's `JSON.stringify` of the credentials
+the server parses, including Unicode. Other provider credential shapes are
+unsupported by this native provider path.
+
+Prepare the account exchange body before application-channel body freezing;
+the later Device proof binds that complete body, including the account proof.
+Native IPC uses these structured operations, never an adapter for `sign(bytes)`.
+The Desktop account operation handle is bounded, owner/epoch-fenced and allows
+one exchange. An unknown exchange outcome requires an explicit new context and
+challenge; it is not retried automatically. Expiry hints cannot extend host
+lifetimes. Provider sessions, replay, Device binding and Project membership are
+still verified by the server. This source interface does not enable ordinary
+native sign-in or qualify a packaged/native IPC journey.
 
 ```ts
 import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
@@ -1478,6 +1601,29 @@ expect the same secret bundle to be returned: Station discards that inert
 attempt and the client starts a fresh enrollment. Activation ACK may be retried
 only with the same signed proof; Station returns the stored receipt only when
 its digest matches the committed ACK.
+
+### Native Device request proof (protocol foundation)
+
+`@kontourai/station-sdk/native-device-proof` exports
+`createNativeDeviceRequestProof`. It accepts a caller-supplied signer whose
+private P-256 Device key remains in native host custody, a trusted approved
+Device binding, and the exact method, path with query, and transmitted body
+bytes. Its compact ES256 JWS binds that request to the Station audience, Device
+and binding IDs, native route surface, **separate** Device-key thumbprint,
+unique Pion peer nonce, one-use JTI and a 30-second expiry. The route key in
+`surface.keyThumbprint` is not the Device key. The 16 KiB body limit matches
+the current application-channel pilot. The helper never receives a Device
+bearer, account continuation, broker secret or provider credential.
+The canonical path may contain up to 2,048 characters, but the complete compact
+JWS must fit 4,096 characters. A combination of long path and surface fields
+can exceed that aggregate bound; the helper refuses it before invoking the signer.
+
+The source-opt-in server pilot under #2893 stores operator-approved bindings,
+verifies the JWS and exact body against private native peer provenance, consumes
+replay state before dispatch, and applies independent current Device, account
+and Project authorization. Its protected surface is limited to native account
+challenge/exchange and Project reads. No product UI or Tauri signing command
+consumes this helper yet; it does not establish a packaged native journey.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project
@@ -3646,3 +3792,28 @@ uncertain dispatched mutation must not be retried automatically.
 The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
+
+## Harness question answers
+
+`respondToRequest` from `@kontourai/station-sdk/client` accepts a structured
+`answers` batch alongside `decision: 'accept'` and `expectedRequestEventId`.
+Capture the request's thread, request and opened-event IDs, and pass the
+current explicit `requestScope`; the server validates the exact pending
+question before forwarding it. See the [Session API](session-api.md#respondtorequest)
+for the wire shape and limits. Inspection preserves `requiresAnswers` for
+clients that must direct the user to the inline question card.
+
+
+## Engine account queries
+
+The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
+selected quota and live login queries, explicit login/account-create mutations,
+and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
+keys partition API base, authority, engine connection and profile. Login retries
+are disabled and live status polls only while a login is pending. Quota refresh
+is explicit. Strict contracts live in
+`@kontourai/station-contracts/engine-accounts`.
+
+These exports require a release containing this change; current source presence
+is not evidence of npm publication. The Connections guide owns account-viewing,
+sign-in, permission and cost-attribution limits.

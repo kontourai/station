@@ -5,12 +5,10 @@ import {
   compileDocumentationReviews,
   reviewInputs,
 } from './documentation-review.mjs';
-import {
-  captureInputs,
-  compileLearningMedia,
-  LEARNING_MEDIA_MANIFEST,
-} from './learning-media.mjs';
+import { captureInputs, compileLearningMedia } from './learning-media.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
+import { bindingFile } from './review-binding.mjs';
+import { readReviewState, readReviewStateAt } from './review-ledger-store.mjs';
 
 /**
  * One owner decides when a stale recorded review or capture blocks (#2923).
@@ -31,7 +29,6 @@ export const DOCS_FRESHNESS_MODE_ENV = 'STATION_DOCS_FRESHNESS';
 const DOCS_FRESHNESS_BASE_ENV = 'STATION_DOCS_FRESHNESS_BASE';
 /** ci:fast's base; the PR check sets it to the pull request's base SHA. */
 const CI_FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
-export const REVIEW_LEDGER = 'docs/learn/review-ledger.json';
 const MODES = new Set(['scoped', 'advisory', 'strict']);
 /** Every environment variable the mode and scope are derived from. */
 export const DOCS_FRESHNESS_ENV_KEYS = Object.freeze([
@@ -85,32 +82,87 @@ export function documentationFreshnessMode(env = process.env) {
   return { mode: 'scoped', reason: 'stale entries this change touches block' };
 }
 
-/** Entry paths added or edited since `mergeBase` in a `{ [key]: [{ path }] }` manifest. */
-function changedEntries(root, mergeBase, file, key, current) {
-  let previous = [];
-  try {
-    previous = JSON.parse(git(root, ['show', `${mergeBase}:${file}`]))[key];
-  } catch (error) {
-    // A manifest absent at the base makes every current entry new.
-    const stderr = String(error?.stderr ?? '');
-    if (!/does not exist|exists on disk, but not in/.test(stderr)) throw error;
-  }
-  const before = new Map(
-    (Array.isArray(previous) ? previous : []).map((entry) => [
-      entry?.path,
-      JSON.stringify(entry),
-    ]),
-  );
+/** JSON with sorted keys, so key order never reads as an edit. */
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value)
+      .sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`;
+  return JSON.stringify(value);
+}
+
+const byPath = (entries) =>
+  new Map((entries ?? []).map((entry) => [entry.path, entry]));
+
+/**
+ * Entries added or edited since the merge base, compared in compiled form so
+ * a storage-layout change alone never puts an entry in scope.
+ */
+function changedEntries(before, current) {
   return new Set(
-    (current ?? [])
-      .filter((entry) => before.get(entry?.path) !== JSON.stringify(entry))
-      .map((entry) => entry?.path),
+    [...current]
+      .filter(
+        ([path, entry]) =>
+          !before.has(path) ||
+          stableJson(before.get(path)) !== stableJson(entry),
+      )
+      .map(([path]) => path),
   );
 }
 
 /**
+ * #2936 D5: a change must not escape re-review by editing a source and
+ * deleting its citation. When a record or capture loses a source that this
+ * change also modifies, the change must add a review note to that entry
+ * (which `docs:review:record --drop-source` does). Removing the whole record
+ * while its document remains and a cited source changed is refused outright.
+ */
+function unreviewedSourceDrops(kind, before, current, changedPaths, exists) {
+  const problems = [];
+  const inputs = kind === 'review' ? reviewInputs : captureInputs;
+  for (const [path, previous] of before) {
+    const touched = previous.sources
+      .map((source) => source.path)
+      .filter((source) => changedPaths.has(bindingFile(source)));
+    const now = current.get(path);
+    if (!now) {
+      if (touched.length && exists(path))
+        problems.push({
+          kind,
+          path,
+          inputs: inputs(previous),
+          changed: touched,
+          rule: 'record-removed',
+          problem: `record removed while this change modifies its cited sources: ${touched.join(', ')}; keep the record and review it`,
+        });
+      continue;
+    }
+    const dropped = touched.filter(
+      (source) => !now.sources.some((entry) => entry.path === source),
+    );
+    if (!dropped.length) continue;
+    const earlier = new Set(previous.notes.map((note) => note.file));
+    if (now.notes.some((note) => !earlier.has(note.file))) continue;
+    problems.push({
+      kind,
+      path,
+      inputs: inputs(now),
+      changed: dropped,
+      rule: 'unreviewed-drop',
+      problem: `dropped cited sources this change modifies without a review note: ${dropped.join(', ')}; record the review with npm run docs:review:record -- ${path} --note "<what you checked>" --drop-source <path>`,
+    });
+  }
+  return problems;
+}
+
+/**
  * Resolve the freshness policy for a checkout.
- * @param {{ root?: string, env?: NodeJS.ProcessEnv, ledger?: { records?: { path: string }[] }, media?: { captures?: { path: string }[] } }} [input]
+ * @param {{ root?: string, env?: NodeJS.ProcessEnv, ledger?: { records: any[] }, media?: { captures: any[] } }} [input]
+ * `ledger` and `media` are the compiled working-tree state from
+ * `readReviewState`; they are read when omitted.
  */
 export function resolveDocumentationFreshness({
   root = process.cwd(),
@@ -136,36 +188,32 @@ export function resolveDocumentationFreshness({
       reason: `cannot compute this change's scope against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`,
     };
   }
+  const current = ledger ? { ledger, media } : readReviewState(root);
+  const previous = readReviewStateAt(root, selection.mergeBase);
   const reader = createLearningSourceReader(root);
-  const read = (file) => JSON.parse(reader.read(file).toString('utf8'));
-  const currentLedger = ledger ?? read(REVIEW_LEDGER);
-  const currentMedia =
-    media ??
-    (reader.exists(LEARNING_MEDIA_MANIFEST)
-      ? read(LEARNING_MEDIA_MANIFEST)
-      : { captures: [] });
+  const changedPaths = new Set(selection.paths);
+  const entries = {
+    review: [byPath(previous.ledger?.records), byPath(current.ledger?.records)],
+    capture: [
+      byPath(previous.media?.captures),
+      byPath(current.media?.captures),
+    ],
+  };
   return {
     mode,
     reason: `${reason} (base ${base}, merge base ${selection.mergeBase})`,
     base,
     mergeBase: selection.mergeBase,
-    changedPaths: new Set(selection.paths),
+    changedPaths,
     changedEntries: {
-      review: changedEntries(
-        root,
-        selection.mergeBase,
-        REVIEW_LEDGER,
-        'records',
-        currentLedger.records,
-      ),
-      capture: changedEntries(
-        root,
-        selection.mergeBase,
-        LEARNING_MEDIA_MANIFEST,
-        'captures',
-        currentMedia.captures,
-      ),
+      review: changedEntries(...entries.review),
+      capture: changedEntries(...entries.capture),
     },
+    sourceDrops: Object.entries(entries).flatMap(([kind, [before, now]]) =>
+      unreviewedSourceDrops(kind, before, now, changedPaths, (path) =>
+        reader.exists(path),
+      ),
+    ),
   };
 }
 
@@ -182,7 +230,7 @@ export function freshnessBlocks(policy, { kind, path, inputs }) {
   return (
     Boolean(policy.changedEntries?.[kind]?.has(path)) ||
     policy.changedPaths.has(path) ||
-    inputs.some((input) => policy.changedPaths.has(input))
+    inputs.some((input) => policy.changedPaths.has(bindingFile(input)))
   );
 }
 
@@ -217,9 +265,7 @@ export function createRepositorySnapshot(root) {
     if (!captured.has(file)) captured.set(file, reader.read(file));
     return captured.get(file);
   };
-  /** Replace a path's bytes after the caller rewrote it (the record command). */
-  const replace = (file, bytes) => captured.set(file, bytes);
-  return { tracked, read, replace };
+  return { tracked, read };
 }
 
 /**
@@ -234,10 +280,7 @@ export async function checkDocumentationFreshness({
   policy,
 } = {}) {
   const { tracked, read } = createRepositorySnapshot(root);
-  const ledger = JSON.parse((await read(REVIEW_LEDGER)).toString('utf8'));
-  const media = tracked.has(LEARNING_MEDIA_MANIFEST)
-    ? JSON.parse((await read(LEARNING_MEDIA_MANIFEST)).toString('utf8'))
-    : undefined;
+  const { ledger, media } = readReviewState(root);
   const resolved =
     policy ?? resolveDocumentationFreshness({ root, env, ledger, media });
   const documents = new Map();
@@ -270,6 +313,7 @@ export async function checkDocumentationFreshness({
         path: review.path,
         inputs: reviewInputs(review),
         changed: review.changed,
+        rule: 'stale',
       })),
     ...[...captures.values()]
       .filter((capture) => capture.changed.length)
@@ -278,9 +322,13 @@ export async function checkDocumentationFreshness({
         path: capture.path,
         inputs: captureInputs(capture),
         changed: capture.changed,
+        rule: 'stale',
       })),
   ];
-  const blocking = stale.filter((entry) => freshnessBlocks(resolved, entry));
+  const blocking = [
+    ...stale.filter((entry) => freshnessBlocks(resolved, entry)),
+    ...(resolved.sourceDrops ?? []),
+  ];
   return {
     policy: resolved,
     reviews,
@@ -297,7 +345,7 @@ export function assertDocumentationFresh(result) {
       `Documentation review needs refresh (${result.policy.mode}: ${result.policy.reason}):`,
       ...result.blocking.map(
         (entry) =>
-          `  ${entry.kind} ${entry.path}; changed: ${entry.changed.join(', ')}`,
+          `  ${entry.kind} ${entry.path}; ${entry.problem ?? `changed: ${entry.changed.join(', ')}`}`,
       ),
       'Review the changed claims, then record them with npm run docs:review:record -- <path> --note "<what you checked>".',
     ].join('\n'),

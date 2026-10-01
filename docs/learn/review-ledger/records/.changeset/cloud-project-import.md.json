@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/cloud-project-import.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"a00714c7d1e45483e10ee63e43ee221be998591382bbf0875175ea94e0d6cab4","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

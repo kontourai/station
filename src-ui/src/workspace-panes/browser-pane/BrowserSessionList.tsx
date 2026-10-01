@@ -64,6 +64,7 @@ const ACTION_TEXT: Record<string, string> = {
   'viewport-changed': 'changed the viewport',
   'page-navigated': 'navigated on its own to',
   'dialog-handled': 'showed a dialog Station answered',
+  'dialog-answered': "answered the page's dialog",
   'link-followed': 'navigated to',
   'navigation-blocked': 'tried to open',
   // An agent's browser tool actions (#90 #122/#123).
@@ -87,6 +88,7 @@ const ACTION_TEXT: Record<string, string> = {
  */
 const REFUSAL_TEXT: Record<string, string> = {
   'human-controlling': 'a person was in control',
+  'dialog-open': 'a dialog was waiting for a person',
   'held-by-other': 'another agent was driving',
   interrupted: 'a person took over mid-action',
   'not-permitted': 'not allowed for agents in this Project',

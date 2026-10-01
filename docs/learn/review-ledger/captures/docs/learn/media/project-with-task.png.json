@@ -1,0 +1,21 @@
+{
+  "path": "docs/learn/media/project-with-task.png",
+
+  "sources": [
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
+
+    {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"}
+  ],
+
+  "reviewNotes": []
+}

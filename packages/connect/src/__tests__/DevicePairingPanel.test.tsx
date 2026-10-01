@@ -1238,8 +1238,8 @@ describe('device pairing panels', () => {
       source: 'tailnet',
       requester: {
         provider: 'tailscale-serve',
-        login: 'brian@example.test',
-        displayName: 'Brian',
+        login: 'casey@example.test',
+        displayName: 'Casey',
       },
       status: 'pending',
     };
@@ -1261,8 +1261,8 @@ describe('device pairing panels', () => {
     );
 
     expect(await screen.findByText('Laptop browser')).toBeTruthy();
-    expect(screen.getByText('Verified by Tailscale · Brian')).toBeTruthy();
-    expect(screen.getByText('brian@example.test')).toBeTruthy();
+    expect(screen.getByText('Verified by Tailscale · Casey')).toBeTruthy();
+    expect(screen.getByText('casey@example.test')).toBeTruthy();
   });
 
   function directPairingFetch(

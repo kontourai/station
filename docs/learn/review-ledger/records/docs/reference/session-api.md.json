@@ -1,0 +1,99 @@
+{
+  "path": "docs/reference/session-api.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
+
+  "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
+
+  "document": {"digest":"98a7a7b54005e4738d3cecb6098369ee0d86e8f4247179b628388d920b68654e","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
+
+  "sources": [
+    {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
+
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"d41be01dbad45c51d1acee14c2120e55ea7ef0a7101a9824590ff45a9bd76fc0","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
+
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-server/services/orchestration/attached-session-follow-service.ts","digest":"2af62de4e6e4414dd204b33bd4724d382daf5b147946be6a4a2744619e6f563c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+
+    {"path":"src-ui/src/components/attention/AttentionCard.tsx","digest":"ed07cb944c1f39922d56fe2e35938f6b57ab8130f5093861460156787d097558","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"0d2fe916d5a7818714950c763ab11ee67d325b0779b55c8221c377a0a1239801","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"db14b46978051e775c9415ad7104054bb41892df40fe50a6be2da0c2ba5b1373","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
+
+    {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"f198dc43900198c9f803f64173dcf911d3a76c831a1ec659e28d63542279cddf","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/providers/__tests__/codex-adapter-rpc-id.test.ts","digest":"b34f7500b2f83fccbe853cf600614dc88c93bdde1d6287d8e3ad5a444191bf4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","digest":"311cb357976129526312eddafdaea13d78f1bdb9f96b28adfdf0187388bc1769","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"b7561d3b1d39b4cd9ae541ef6048f7e9648a86ad"}
+  ],
+
+  "checks": [
+    "Independent final source delta accepted at document digest 90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c.",
+
+    "Session roundtrip diagnostic fixtures: 8 tests passed.",
+
+    "Codex source/follower and request-inspection route selection: 40 tests across 3 files passed.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing delta 622565ef7: Added the canonical-to-Codex-wire ID distinction and retained the numeric-versus-string regression rationale; public requestId remains a string. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
+
+    "Reviewed landing deltas through 111744681:  Read the changed document in context; its purpose and prior evidence limits remain.",
+
+    "Integration source review through e0314c727: claude-adapter.ts removed the unused mintStationControlCallerToken stdio fallback, so revocation now covers only the in-process credential. The reference does not describe that fallback, and its foreground, receipt, history and authority claims remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 makes attached-session-adoption stamp the grant's grantor beside `host` confinement. session-command-module adds `clientOrigin` to the `startSession` receipt. In useActiveChatSessionMessaging, a full-access-refused send now returns the chat to idle with the draft restored and a structured refusal card. The documented command set, setApprovalMode basis, adoption idempotency, receipt envelope fields and retry guidance are unchanged. startSession is not in the documented envelope's command list, and the documented shape never listed clientOrigin. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added the recorded-vs-acknowledged respondToRequest paragraph (approvalAcknowledgement engine/in-process/none, request.delivery, closed-by-engine), added approvalAcknowledgement metadata and acknowledgement stamping to the Codex/Claude/ACP adapters, routed Codex replies through transport.replyToApproval, and moved the rpc-id test fakes into codex-adapter-wire-harness.ts. The auto-merged main paragraph sits coherently after the branch's #562 wire-ID text. The rpc-id suite still covers accept/decline, session grants, interrupt cancellation (#2316) and unsupported requests over a simulated FakeCodexProcess stream; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

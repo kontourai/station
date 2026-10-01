@@ -234,21 +234,25 @@ describe('buildPlugin', () => {
     SUBPROCESS_TEST_TIMEOUT_MS,
   );
 
-  test('externalizes the supported SDK client entry point', async () => {
-    const pluginDir = createPluginRoot();
-    writeFileSync(
-      join(pluginDir, 'index.ts'),
-      'import { listKnowledgeRoots } from "@kontourai/station-sdk/client"; export default listKnowledgeRoots;',
-    );
-    writePluginManifest(pluginDir, 'sdk-client-plugin');
+  test.each([
+    ['client', 'listKnowledgeRoots'],
+    ['agent', 'delegateTask'],
+  ])(
+    'externalizes the supported SDK %s entry point',
+    async (entry, operation) => {
+      const pluginDir = createPluginRoot();
+      const specifier = `@kontourai/station-sdk/${entry}`;
+      writeFileSync(
+        join(pluginDir, 'index.ts'),
+        `import { ${operation} } from "${specifier}"; export default ${operation};`,
+      );
+      writePluginManifest(pluginDir, `sdk-${entry}-plugin`);
 
-    const result = await buildPlugin(pluginDir);
-    const bundle = readFileSync(result.bundlePath as string, 'utf8');
-
-    expect(bundle).toMatch(
-      /require\(["']@kontourai\/station-sdk\/client["']\)/,
-    );
-  });
+      const result = await buildPlugin(pluginDir);
+      const bundle = readFileSync(result.bundlePath as string, 'utf8');
+      expect(bundle).toMatch(new RegExp(`require\\(["']${specifier}["']\\)`));
+    },
+  );
 
   // Nested fixture for workspace-boundary tests: everything — including the
   // "outside the workspace" areas — stays inside one mkdtemp cleanup root, so

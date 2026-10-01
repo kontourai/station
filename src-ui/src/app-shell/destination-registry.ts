@@ -66,7 +66,7 @@ export interface DestinationDefinition {
   icon?: DestinationIconId;
   previewFlag?: string;
   hiddenFromNav?: boolean;
-  /** When set, the palette calls `showSurface(regionSurface)` and `params` are not applied. */
+  /** When set, the palette and the sidebar row open that surface as the page (`useShowSurfacePage`) and `params` are not applied. */
   regionSurface?: string;
   /**
    * A row in the left panel. #2059 (design record D3): the panel lists PLACES
@@ -503,7 +503,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // `activityDeepLink` builder the server-side producers use, it is where
     // `/activity` and `/sessions` now redirect and it really does open this
     // surface. `regionSurface` short-circuits both advertised entry points
-    // (the palette and the sidebar row call `showSurface`), so the field is
+    // (the palette and the sidebar row open it as the page), so the field is
     // only read when something asks this surface for a path — and what it
     // hands back has to be one that works.
     //

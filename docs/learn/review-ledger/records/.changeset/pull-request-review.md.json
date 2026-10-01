@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/pull-request-review.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"1ceb5dce41cc1712aa129d9c8da0a97f0b98fa25b10036c2ddc6648077047e66","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}
