@@ -1,0 +1,7 @@
+{
+  "revision": "64afbffd54fe70c4a2c79ba901fd99a13d3a6014",
+
+  "notes": [
+    {"path":"docs/design/collaborative-editor-pane.md","note":"Reviewed retained-controller status and TaskWorkspaceView delta: still routes to existing ProjectTaskRoom, with no reintroduced controller or authority. UI composition/order and sizing do not change the historical design status."}
+  ]
+}

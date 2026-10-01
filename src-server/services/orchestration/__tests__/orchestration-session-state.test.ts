@@ -2557,7 +2557,7 @@ describe('orchestration-session-state', () => {
             method: 'runtime.error',
             turnId: 'turn-1',
             severity: 'error',
-            message: 'Station agent turn failed',
+            message: 'The response stream failed.',
             code: 'station_agent_turn_failed',
             retriable: true,
           } as any,
