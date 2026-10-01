@@ -65,16 +65,17 @@ export interface NativeVerifiedPeerSignaling {
     offerSdp: string,
     signal: AbortSignal,
   ): Promise<number>;
-  read(
-    peerHandle: string,
-    signal: AbortSignal,
-  ): Promise<NativeApplicationPeerAnswer>;
+  read(peerHandle: string, signal: AbortSignal): Promise<unknown>;
   close(peerHandle: string): Promise<void>;
 }
 
 export interface NativeApplicationSignaling
   extends NativeVerifiedPeerSignaling {
   prepare(signal: AbortSignal): Promise<NativeApplicationPeer>;
+  read(
+    peerHandle: string,
+    signal: AbortSignal,
+  ): Promise<NativeApplicationPeerAnswer>;
   sign(
     peerHandle: string,
     method: string,
