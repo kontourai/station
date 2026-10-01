@@ -51,8 +51,12 @@ reconciles lifecycle history and agent presence; it never retries provider execu
 Local persistence tests at `9f8b407fa` exercised the real journal, SQLite binding
 and room history; the old lifecycle implementation failed the independent-agent
 case and the restored implementation passed. Scope-check repairs at `5a3d5b4e5`
-have independent source review; mounted race controls remain to add. These are
-local implementation receipts, not shipped, browser or actual-provider proof.
+have independent source review. Mounted controls at `97a988b2e` cover credential
+revocation, Task replacement and same-slug Project replacement at final publication
+authority. The pre-fix route leaked the request view in all three cases; removing
+only the final canonical Project check committed a stale agent record. Restoring
+the checks passed all 11 mounted principal-suite tests. These are local
+implementation receipts, not shipped, browser or actual-provider proof.
 
 This publishes lifecycle facts and agent presence, not an accepted result. Agent
 document edits still use the lead Task/session association. Shared brief context,
