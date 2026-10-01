@@ -12,11 +12,11 @@
   "document": {"digest":"3e059dd4826272938ae5312a05969db0217074a7592bba4c2edd8586ed35b616","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
   "sources": [
-    {"path":"src-ui/src/App.tsx","digest":"6ef4c426651d75c5154177265ef355c68a17c1deb19b08a4da6764e9364481a6","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
     {"path":"src-ui/src/views/DeveloperView.tsx","digest":"bcac66d9b3e4be2b6be74ca3a1dc7b968f99ddf352f0f1c8ec6bc2cc9f669bf8","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 

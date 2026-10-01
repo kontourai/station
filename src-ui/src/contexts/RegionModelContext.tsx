@@ -47,6 +47,7 @@ import {
   removeRegionPane,
   resolveRegionSurface,
   restorePhonePaneLayer,
+  restoreSuspendedPanes,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -55,6 +56,7 @@ import {
   syncRegionArrangementFromDock,
   toggleSurface as toggleSurfaceInArrangement,
   updateRegion,
+  withSuspendedSurfaces,
 } from '../regions/region-model';
 import { normalizeDockMode } from '../types';
 import {
@@ -133,7 +135,7 @@ function withoutSurfaceIntent(
   );
 }
 
-interface RegionModelValue {
+export interface RegionModelValue {
   regions: RegionArrangement;
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
@@ -227,6 +229,14 @@ interface RegionModelValue {
    * minted between the render that read the record and this call.
    */
   consumeSurfaceIntent(surfaceId: string, token: number): void;
+  /**
+   * Put an intent in the outbox WITHOUT placing or revealing anything: for a
+   * placement the region model does not own — Chat in the Coding layout's
+   * centre (`resolveLayoutChatPlacement`) — which consumes `surfaceIntents`
+   * the same way a region-hosted placement does. `showSurface` is the reveal
+   * plus this; calling it there would open Chat's (suspended) dock region.
+   */
+  deliverSurfaceIntent(surfaceId: string, intent: SurfaceIntent): void;
   /**
    * Whether a region surface host is mounted, i.e. whether `showSurface` can
    * produce anything the reader will see. Not a predicate re-derived from the
@@ -918,6 +928,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     return () => setMountedSurfaceHosts((count) => count - 1);
   }, []);
 
+  const deliverSurfaceIntent = useCallback(
+    (surfaceId: string, intent: SurfaceIntent) => {
+      const token = ++surfaceIntentTokenRef.current;
+      setSurfaceIntents((current) => ({
+        ...current,
+        [surfaceId]: { ...intent, token },
+      }));
+    },
+    [],
+  );
+
   const consumeSurfaceIntent = useCallback(
     (surfaceId: string, token: number) => {
       setSurfaceIntents((current) => {
@@ -1370,6 +1391,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
+      deliverSurfaceIntent,
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
       phoneLayer: phoneLayerView,
@@ -1388,6 +1410,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
+      deliverSurfaceIntent,
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
       phoneLayerView,
@@ -1401,8 +1424,84 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const NO_SUSPENDED_SURFACES: readonly string[] = [];
+
+/**
+ * The surfaces suspended for the subtree below (`SuspendRegionSurfaces`):
+ * rendered by an owner outside the region model, so the shells in that
+ * subtree must neither render them nor act as their host.
+ */
+const SuspendedRegionSurfacesContext = createContext<readonly string[]>(
+  NO_SUSPENDED_SURFACES,
+);
+
+/**
+ * Suspends `surfaces` for every region-model reader below it (#928 coding
+ * stack): `RegionShells` wraps its hosts in this while the Coding layout's
+ * centre owns Chat, so `RegionPaneHost`, `DockShell`, `useDockShellChrome`
+ * and the toolbar all read the arrangement WITHOUT Chat — a region holding
+ * only Chat mounts nothing, one holding Chat and Terminal shows Terminal —
+ * and nothing there claims Chat's `#chat-dock` or its chords. The provider's
+ * own state and the persisted record are untouched; see
+ * `withSuspendedSurfaces`.
+ */
+export function SuspendRegionSurfaces({
+  surfaces,
+  children,
+}: {
+  surfaces: readonly string[];
+  children: ReactNode;
+}) {
+  return (
+    <SuspendedRegionSurfacesContext.Provider value={surfaces}>
+      {children}
+    </SuspendedRegionSurfacesContext.Provider>
+  );
+}
+
+/**
+ * A region model as seen through the enclosing suspension: `regions` is the
+ * suspended read view, and a tab-order write computed from that view puts the
+ * suspended panes back where they were (`restoreSuspendedPanes`), so no write
+ * made through it can drop a suspended pane from the record. Every other
+ * command is the model's own — they are keyed by surface, never derived from
+ * the suspended `regions`.
+ *
+ * Exported for tests that supply their own model to App (the source of the
+ * model is replaced; the suspension a reader sees is still this one).
+ */
+// Also called by AppHomeRoute.test.tsx through a `vi.mock` importOriginal that fallow cannot trace.
+// fallow-ignore-next-line unused-export
+export function useSuspendedRegionModel<T extends RegionModelValue>(
+  model: T | null,
+): T | null {
+  const suspended = useContext(SuspendedRegionSurfacesContext);
+  return useMemo(() => {
+    if (!model || suspended.length === 0) return model;
+    const setRegion = model.setRegion;
+    return {
+      ...model,
+      regions: withSuspendedSurfaces(model.regions, suspended),
+      setRegion: (id: RegionId, patch: Partial<RegionState>) =>
+        setRegion(
+          id,
+          patch.panes === undefined
+            ? patch
+            : {
+                ...patch,
+                panes: restoreSuspendedPanes(
+                  model.regions[id].panes,
+                  patch.panes,
+                  suspended,
+                ),
+              },
+        ),
+    };
+  }, [model, suspended]);
+}
+
 export function useRegionModelOptional(): RegionModelValue | null {
-  return useContext(RegionModelContext);
+  return useSuspendedRegionModel(useContext(RegionModelContext));
 }
 
 export function useRegionModel(): RegionModelValue {

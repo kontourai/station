@@ -1,0 +1,344 @@
+/* The Coding layout's navigation stack (CodingWorkbench.tsx): a stack bar over
+   two pages that share one grid cell, so the inactive page keeps its size, its
+   scroll and its mounted state while it is hidden. */
+.coding-workbench {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.coding-workbench__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The bar is the breadcrumb and nothing else: Inbox / conversation / pane. */
+.coding-workbench__bar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.coding-workbench__crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-md);
+}
+
+.coding-workbench__crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.coding-workbench__crumb + .coding-workbench__crumb::before {
+  content: "/";
+  flex: none;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.coding-workbench__crumb-link,
+.coding-workbench__crumb-current {
+  overflow: hidden;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coding-workbench__crumb-link {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* A 44px-tall target without growing the bar or asking the pointer. */
+.coding-workbench__crumb-link::after {
+  content: "";
+  position: absolute;
+  inset: -12px -2px;
+}
+
+.coding-workbench__crumb-link:hover {
+  background: color-mix(in srgb, var(--k-text) 7%, transparent);
+  color: var(--text-primary);
+}
+
+.coding-workbench__crumb-current {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.coding-workbench__crumb-link:focus-visible,
+.coding-workbench__crumb-current:focus-visible,
+.coding-workbench__rail-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.coding-workbench__bar {
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
+.coding-workbench__more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.coding-workbench__more-notice,
+.coding-workbench__notice {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.coding-workbench__notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+  background: color-mix(
+    in srgb,
+    var(--k-caution, var(--accent-yellow)) 10%,
+    transparent
+  );
+}
+
+.coding-workbench__more-menu {
+  position: absolute;
+  z-index: var(--layer-popover);
+  top: calc(100% + var(--space-2));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+}
+
+.coding-workbench__more-item {
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.coding-workbench__more-item:hover,
+.coding-workbench__more-item:focus-visible {
+  background: var(--bg-hover);
+}
+
+/* The drill-ins: a slim icon rail on the trailing edge. Round ghost icons
+   with an accent wash on hover (Contour); the drill-in on screen is a solid
+   accent fill with the on-accent colour, so "where am I" reads at a glance. */
+.coding-workbench__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  width: 44px;
+  padding: var(--space-2) 0;
+  border-left: 1px solid var(--border-primary);
+  overflow-y: auto;
+}
+
+.coding-workbench__rail-slot {
+  position: relative;
+}
+
+.coding-workbench__rail-item {
+  /* A 44px target on every pointer, drawn as a 32px round icon (the circle
+     is the ::before), so the touch floor needs no pointer query. */
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xl);
+  cursor: pointer;
+}
+
+.coding-workbench__rail-item::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.coding-workbench__rail-item:hover {
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-item:hover::before,
+.coding-workbench__rail-item[aria-expanded="true"]::before {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+}
+
+.coding-workbench__rail-item[aria-current="page"] {
+  color: var(--text-on-accent);
+}
+
+.coding-workbench__rail-item[aria-current="page"]::before {
+  background: var(--accent-primary);
+}
+
+.coding-workbench__rail-item[aria-expanded="true"] {
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-count {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.coding-workbench__rail-item[aria-current="page"]
+  .coding-workbench__rail-count {
+  background: var(--text-on-accent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__rail-panel {
+  position: absolute;
+  z-index: var(--layer-popover);
+  top: 0;
+  right: calc(100% + var(--space-4));
+  width: min(22rem, 70vw);
+  padding: var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+}
+
+.coding-workbench__pages {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.coding-workbench__page {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Hidden, not unmounted and not `display: none`: the page keeps its box, so a
+   transcript's scroll offset and a terminal's measured size survive. `inert`
+   and `aria-hidden` (set in the component) take it out of focus and the
+   accessibility tree; `visibility` takes it out of paint and hit testing. */
+.coding-workbench__page[data-active="false"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Entering page only. A push slides in from the trailing edge, a pop from the
+   leading edge; both fade. Small distance, base duration, the shared easing:
+   a hint of direction, not a flourish. CSS rather than the View Transitions
+   API, which WebKitGTK (the Linux desktop app) does not provide. */
+.coding-workbench__page[data-enter="push"] {
+  animation: coding-stack-enter-push var(--motion-base) var(--ease-out);
+}
+
+.coding-workbench__page[data-enter="pop"] {
+  animation: coding-stack-enter-pop var(--motion-base) var(--ease-out);
+}
+
+@keyframes coding-stack-enter-push {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes coding-stack-enter-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Reduced motion needs no rule of its own here: the global one in
+   tokens.css shortens every animation to 0.01ms and one iteration, and the
+   motion tokens above resolve to 0.01ms under it, so no frame of the slide
+   is seen. */
+
+/* Read by assistive technology, not drawn. */
+.coding-workbench__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.coding-workbench__state {
+  flex: none;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-primary);
+}
