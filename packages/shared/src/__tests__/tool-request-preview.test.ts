@@ -314,7 +314,8 @@ describe('#2932: escalation signals the engine forwards', () => {
         suggestions: request.suggestions,
       }),
     ).toBe('none');
-    // It is not a plan exit.
+    // It gets no standing answer, and it is not a plan exit.
+    expect(toolRequestNeedsPerson('SandboxNetworkAccess')).toBe(true);
     expect(toolRequestIsPlanExit('SandboxNetworkAccess')).toBe(false);
   });
 
