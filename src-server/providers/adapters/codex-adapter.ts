@@ -63,6 +63,7 @@ import {
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import {
+  CredentialProfileEnvironmentError,
   type ResolvedAppHome,
   usageCredentialAccountKey,
 } from '../app-home/app-home-profiles.js';
@@ -2228,10 +2229,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,

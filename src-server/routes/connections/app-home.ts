@@ -388,6 +388,7 @@ export function createAppHomeRoutes(deps?: {
   });
   app.get('/agent/:id/account-usage', async (c) => {
     if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const requestStartedAt = new Date().toISOString();
     try {
       const target = await accountTarget(
         param(c, 'id'),
@@ -422,6 +423,7 @@ export function createAppHomeRoutes(deps?: {
         },
         data,
         {
+          requestStartedAt,
           beforeCommit: () => {
             if (!currentAccountRequest(c.req.raw))
               throw new Error('Account read authority changed.');

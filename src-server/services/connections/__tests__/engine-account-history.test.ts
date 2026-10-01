@@ -118,6 +118,32 @@ test('history persists hourly observations, isolates profile/source/engine, expi
   }
 });
 
+test('a delayed response cannot restore the previous account identity after a newer request observed a new account', async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), 'allowance-history-order-'));
+  try {
+    await recordEngineAccountUsage(
+      target,
+      usage('2026-10-01T10:00:00Z', 10, 'account-a'),
+      { homeDir, requestStartedAt: '2026-10-01T09:00:00Z' },
+    );
+    await recordEngineAccountUsage(
+      target,
+      usage('2026-10-01T10:30:00Z', 20, 'account-b'),
+      { homeDir, requestStartedAt: '2026-10-01T10:00:00Z' },
+    );
+    const result = await recordEngineAccountUsage(
+      target,
+      usage('2026-10-01T11:00:00Z', 99, 'account-a'),
+      { homeDir, requestStartedAt: '2026-10-01T09:15:00Z' },
+    );
+    expect(
+      result.observations.map((item) => item.windows[0]?.usedPercent),
+    ).toEqual([20]);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
 test('concurrent captures retain both hours and corrupt history remains observable without rewriting it', async () => {
   const homeDir = await mkdtemp(join(tmpdir(), 'allowance-history-'));
   try {

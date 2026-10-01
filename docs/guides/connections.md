@@ -94,9 +94,11 @@ unmapped values. This bounded shape audit excludes null/empty fields, value
 validation, credential stores and other endpoints; “none in this response” does
 not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
-It saves the latest observation per UTC hour for 30 days, at most 720 observations
+It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
-Identity values, credits, spending, raw responses and credentials are not stored
+The window is pruned on capture; closed or deleted profiles are not automatically
+purged. Each profile file is bounded, while the number of files follows the
+profiles/config homes observed. Identity values, credits, spending, raw responses and credentials are not stored
 in that history. History is partitioned by engine, connection, profile and config
 home. A changed reported account identity clears that profile's history; when a
 provider does not report identity, observations describe the credential profile

@@ -61,6 +61,13 @@ export function usageCredentialAccountKey(
     .digest('hex');
 }
 
+export class CredentialProfileEnvironmentError extends Error {
+  constructor() {
+    super('Credential profile environment could not be prepared.');
+    this.name = 'CredentialProfileEnvironmentError';
+  }
+}
+
 export interface ResolvedAppHome {
   env?: Record<string, string>;
   profileRef: string | null;

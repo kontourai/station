@@ -12,6 +12,10 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
+  CredentialProfileEnvironmentError,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
+import {
   deriveConfigHomeAffinity,
   resolveConfigHomeAffinity,
 } from '../sessions/transcript-file-io.js';
@@ -7020,7 +7024,7 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const getAppHomeEnv = vi.fn().mockResolvedValue({
         env: { CLAUDE_CONFIG_DIR: '/station/app-homes/opaque' },
-        profileRef: 'canary-profile-ref',
+        profileRef: 'applied-profile',
       });
       const adapter = new ClaudeAdapter({ getAppHomeEnv });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -7037,9 +7041,33 @@ describe('ClaudeAdapter', () => {
       expect(JSON.stringify([started.value, configured.value])).not.toContain(
         'canary-profile-ref',
       );
-      expect(configured.value.metadata.usageAccountKey).toMatch(
-        /^[a-f0-9]{64}$/,
+      expect(configured.value.metadata.usageAccountKey).toBe(
+        usageCredentialAccountKey('claude', 'applied-profile'),
       );
+      expect(mockQuery.mock.calls.at(-1)?.[0]?.options.env).toMatchObject({
+        CLAUDE_CONFIG_DIR: '/station/app-homes/opaque',
+      });
+    });
+
+    test('a configured-profile preparation failure blocks a start with no explicit ref', async () => {
+      const warn = vi.fn();
+      const priorQueries = mockQuery.mock.calls.length;
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => {
+          throw new CredentialProfileEnvironmentError();
+        },
+        logger: { warn },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'configured-profile-failure',
+        }),
+      ).rejects.toThrow(
+        'Credential profile environment could not be prepared.',
+      );
+      expect(mockQuery.mock.calls.length).toBe(priorQueries);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     test('fails closed without logging a profile resolver error', async () => {

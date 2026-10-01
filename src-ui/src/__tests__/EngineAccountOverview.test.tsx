@@ -391,9 +391,7 @@ test.each([
       );
     }
     expect(
-      screen.getByText(
-        'This Station · selected credential profile · attributed runs only',
-      ),
+      screen.getByText('This Station · selected profile · attributed runs'),
     ).toBeTruthy();
     fireEvent.change(screen.getByRole('combobox', { name: 'Activity for' }), {
       target: { value: 'engine' },

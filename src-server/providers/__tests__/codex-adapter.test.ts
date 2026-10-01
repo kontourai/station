@@ -27,6 +27,10 @@ import {
   createCodexSessionRecord,
 } from '../adapters/codex-adapter-transport.js';
 import { markCodexTurnTerminal } from '../adapters/codex-adapter-types.js';
+import {
+  CredentialProfileEnvironmentError,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
@@ -5178,17 +5182,40 @@ describe('CodexAdapter', () => {
   });
 
   describe('#896 wave 2: app-home profile env layering', () => {
+    test('a configured-profile preparation failure blocks a start with no explicit ref', async () => {
+      const processFactory = vi.fn(() => new FakeCodexProcess());
+      const warn = vi.fn();
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => {
+          throw new CredentialProfileEnvironmentError();
+        },
+        logger: { warn },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'codex',
+          threadId: 'configured-profile-failure',
+        }),
+      ).rejects.toThrow(
+        'Credential profile environment could not be prepared.',
+      );
+      expect(processFactory).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     test('uses the server-only credential profile ref for app-home lookup without emitting it in canonical events', async () => {
       processHandle = new FakeCodexProcess();
       const getAppHomeEnv = vi.fn(async (ref?: string) => {
         expect(ref).toBe('canary-profile-ref');
         return {
           env: { CODEX_HOME: '/private/station/canary-profile-home' },
-          profileRef: ref ?? null,
+          profileRef: 'applied-profile',
         };
       });
+      const processFactory = vi.fn(() => processHandle!);
       const adapter = new CodexAdapter({
-        processFactory: () => processHandle!,
+        processFactory,
         getAppHomeEnv,
       });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -5225,6 +5252,15 @@ describe('CodexAdapter', () => {
       expect(getAppHomeEnv).toHaveBeenCalledWith('canary-profile-ref');
       expect(canonicalEvents).not.toContain('canary-profile-ref');
       expect(canonicalEvents).not.toContain('/private/station');
+      expect(configured.metadata.usageAccountKey).toBe(
+        usageCredentialAccountKey('codex', 'applied-profile'),
+      );
+      expect(processFactory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          CODEX_HOME: '/private/station/canary-profile-home',
+        }),
+        expect.any(Array),
+      );
       await adapter.stopAll();
     });
 

@@ -378,7 +378,7 @@ function AccountPage({
         <small>
           {activityScope === 'engine'
             ? 'This Station · this engine · all accounts'
-            : 'This Station · selected credential profile · attributed runs only'}
+            : 'This Station · selected profile · attributed runs'}
         </small>
         {!canReadActivity ? (
           <p>Activity requires credential-management permission.</p>
@@ -990,7 +990,10 @@ function AllowanceHistory({
             {tableOpen && (
               <div className="engine-account-overview__history-table">
                 <table>
-                  <caption>Latest observation in each UTC hour</caption>
+                  <caption>
+                    Last {history.retentionDays} days at capture. Gaps are
+                    unreported; closed profiles are not automatically purged.
+                  </caption>
                   <thead>
                     <tr>
                       <th>Observed</th>
@@ -1031,11 +1034,7 @@ function AllowanceHistory({
           </details>
         </>
       )}
-      <small>
-        Selected profile · captured while this page refreshes · retained for{' '}
-        {history.retentionDays} days. Earlier usage and time between
-        observations are not available.
-      </small>
+      <small>Hourly snapshots · captured on page refresh</small>
     </section>
   );
 }
@@ -1202,11 +1201,7 @@ function Activity({ data, engine }: { data: UsageRollup; engine: string }) {
         <figcaption>
           Daily {costAvailable ? `${costSource} cost` : 'tokens'}
         </figcaption>
-        {costAvailable && (
-          <small>
-            {chartCurrency} · currencies are never converted or combined
-          </small>
-        )}
+        {costAvailable && <small>{chartCurrency}</small>}
         <div
           className="engine-account-overview__chart"
           role="img"

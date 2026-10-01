@@ -35,6 +35,7 @@ const storeSchema = z
   .object({
     version: z.literal(1),
     identity: z.string().nullable(),
+    lastRequestStartedAt: z.string().datetime({ offset: true }),
     observations: z.array(observationSchema).max(720),
   })
   .strict();
@@ -50,7 +51,11 @@ export async function recordEngineAccountUsage(
     dir: string;
   },
   usage: EngineAccountUsage,
-  options: { homeDir?: string; beforeCommit?: () => void } = {},
+  options: {
+    homeDir?: string;
+    requestStartedAt?: string;
+    beforeCommit?: () => void;
+  } = {},
 ): Promise<EngineAccountUsageHistory> {
   const key = digest([
     target.engine,
@@ -84,7 +89,13 @@ export async function recordEngineAccountUsage(
         : [],
   });
   const cutoff = Date.parse(usage.fetchedAt) - retentionDays * 86400000;
-  const fallback = { version: 1, identity: null, observations: [] };
+  const requestStartedAt = options.requestStartedAt ?? usage.fetchedAt;
+  const fallback = {
+    version: 1,
+    identity: null,
+    lastRequestStartedAt: requestStartedAt,
+    observations: [],
+  };
   const bounds = {
     maxBytes: 2 * 1024 * 1024,
     label: 'Engine allowance history',
@@ -95,6 +106,13 @@ export async function recordEngineAccountUsage(
     async () => readJsonFile<unknown>(path, fallback, bounds),
     (value) => {
       const current = storeSchema.parse(value);
+      if (
+        identityKey &&
+        current.identity &&
+        identityKey !== current.identity &&
+        Date.parse(requestStartedAt) <= Date.parse(current.lastRequestStartedAt)
+      )
+        return current;
       const previous =
         identityKey && current.identity && identityKey !== current.identity
           ? []
@@ -118,6 +136,11 @@ export async function recordEngineAccountUsage(
       return {
         version: 1,
         identity: identityKey ?? current.identity,
+        lastRequestStartedAt:
+          Date.parse(requestStartedAt) >
+          Date.parse(current.lastRequestStartedAt)
+            ? requestStartedAt
+            : current.lastRequestStartedAt,
         observations: observations.slice(-720),
       };
     },
