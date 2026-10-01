@@ -27,6 +27,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
+import '../ProjectPage.css';
 
 /** Human-readable label for a claim actor (roadmap archive#584, part of epic
  * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
