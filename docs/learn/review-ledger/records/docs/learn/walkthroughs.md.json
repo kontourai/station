@@ -94,7 +94,7 @@
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"b54a36284f48f932623028d791005687cdb7643136798572909f53faaaeea532","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

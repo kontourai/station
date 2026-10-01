@@ -77,7 +77,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     subtitle: 'The knowledge store and its attached namespaces.',
     width: 'narrow',
   },
-  'connections-computers': SPLIT_PANE,
+  'connections-computers': { width: 'full', body: 'flow', flush: true },
 
   plugins: SPLIT_PANE,
   registry: {

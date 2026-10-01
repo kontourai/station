@@ -148,9 +148,9 @@
 
     {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"531ad6208755dc723e632d2405099689ff32b94fc99beb2e5fcd918957d8f7ef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/BrowserRelayRoutes.test.tsx","digest":"535f103f058eded562dd92ff5178fe7abf736dbfd5568c0a3234b07f9422031b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/BrowserRelayRoutes.test.tsx","digest":"640043b02ab76074f83a414d7c1ba9ffc660b2675d9e8d2628f8dbcf19ce662b","revision":"aee61ec2b806703d8531ba68086ea46f37145f31"},
 
     {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

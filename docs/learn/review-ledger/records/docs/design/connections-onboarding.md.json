@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/views/ConnectionsHub.tsx","digest":"5c0aa36c80d1c78197030068ba0151e39fbe2bf4566dc492e3555b0ce3046567","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"e98d62efbf392040c5a52522440698e6d285fd23d9563ee1c1ce4106c81f18f0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"17a37fa100b2b48f145ddc98798fa5bdbc326bf65701f92a597bee9f9c9ce12c","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
