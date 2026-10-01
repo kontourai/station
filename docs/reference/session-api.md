@@ -67,6 +67,10 @@ Calls made by a station-control Agent also pass the
 owner and Project scope constrain local work, and remote reach requires a bound
 operator caller. These checks also cover input replies and follow-ups. They do
 not replace the operator UI or paired Device's own request authorization.
+For a new Session, Station repeats the folder decision immediately before it
+starts the engine. If the folder no longer resolves to the admitted canonical
+path, or the directory the engine would start in belongs to another scope, the
+request returns the same typed `403` and no engine starts.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
