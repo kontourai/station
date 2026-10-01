@@ -29,6 +29,7 @@ import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { ReservedAgentIdentityError } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { ConversationRecord } from '../../domain/storage-adapter.js';
@@ -37,6 +38,7 @@ import {
   getTenantRequestContext,
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import { scrubChatErrorMarkers } from '../../runtime/conversation/chat-error-marker.js';
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { sanitizeConversationMessagesUIBlockProvenance } from '../../runtime/conversation/ui-block-provenance.js';
@@ -631,7 +633,11 @@ export function createConversationRoutes(
     relatedEvidenceObservations: readonly SummaryRelatedEvidenceObservation[] = [],
   ) =>
     summarySource.read({
-      messages,
+      // Model-bound: the summary's messages AND its rendered transcript both
+      // come from here, so the failed-turn marker (a UI record) is excluded
+      // before the source reads. Every summary read (staleness, generation,
+      // pre-write revision check) goes through this one function.
+      messages: excludeChatErrorMarkers(messages),
       ...(window ? { watermark: window.watermark } : {}),
       relatedEvidenceObservations,
       consumedBoundaries: (window?.contextBoundaries ?? [])
@@ -1354,7 +1360,11 @@ export function createConversationRoutes(
           );
         }
         if (!runtimeContext) throw new Error('Title generation unavailable');
-        const messages = await adapter.getMessages(getUserId(), conversationId);
+        // Model-bound: the title prompt quotes every user message, so the
+        // failed-turn marker (a UI record) is excluded, not just scrubbed.
+        const messages = excludeChatErrorMarkers(
+          await adapter.getMessages(getUserId(), conversationId),
+        );
         const textFor = (role: string) =>
           messages
             .filter((message) => message.role === role)
@@ -1534,8 +1544,11 @@ export function createConversationRoutes(
   const sanitizeServedMessages = (
     messages: ConversationMessage[],
   ): ConversationMessage[] =>
-    sanitizeConversationMessagesUIBlockProvenance(messages, (message, meta) =>
-      logger.warn(message, meta),
+    sanitizeConversationMessagesUIBlockProvenance(
+      // A failed-turn marker persisted before its text was made
+      // outward-safe may hold a provider's error body; serve the generic.
+      scrubChatErrorMarkers(messages),
+      (message, meta) => logger.warn(message, meta),
     );
 
   /**

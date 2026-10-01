@@ -350,6 +350,96 @@ describe('chat-model-override helpers', () => {
     );
   });
 
+  test('a model provider error while creating the override agent is returned as outward text', async () => {
+    const { APICallError } = await import('@ai-sdk/provider');
+    const { RetryError } = await import('ai');
+    const secret = 'sk-live-SECRET-2b1a0f';
+    const result = await resolveChatAgentModelOverride({
+      ctx: {
+        activeAgents: new Map(),
+        agentSpecs: new Map([['writer', {}]]),
+        agentTools: new Map([['writer', []]]),
+        appConfig: {},
+        getAgentConfigurationRevision: () => 0,
+        configLoader: {
+          getProjectHomeDir: () => '/home',
+          getLaunchabilityRevision: () => 0,
+        },
+        providerService: {
+          resolveModelForProvider: vi.fn().mockResolvedValue('m-1'),
+          listProviderConnections: () => [],
+          getLaunchabilityRevision: () => 3,
+        },
+        framework: {
+          // Wrapped the way ai-sdk's retry wrapper reports it.
+          createModel: vi.fn().mockRejectedValue(
+            new RetryError({
+              message: `Failed after 2 attempts. Last error: refused ${secret}`,
+              reason: 'maxRetriesExceeded',
+              errors: [
+                new APICallError({
+                  message: `refused ${secret}`,
+                  url: `https://provider.example.test/?key=${secret}`,
+                  requestBodyValues: {},
+                  statusCode: 401,
+                  responseBody: secret,
+                }),
+              ],
+            }),
+          ),
+          createTempAgent: vi.fn(),
+        },
+        logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+      } as any,
+      slug: 'writer',
+      modelOverride: 'm-1',
+      agent: { id: 'writer' },
+      providerConnection: { id: 'ollama-main', type: 'ollama' } as any,
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.error).toBe(
+      'Failed to switch to model m-1: The model provider rejected the credentials (HTTP 401).',
+    );
+  });
+
+  test('a Station-authored error while creating the override agent keeps its own text', async () => {
+    const result = await resolveChatAgentModelOverride({
+      ctx: {
+        activeAgents: new Map(),
+        agentSpecs: new Map([['writer', {}]]),
+        agentTools: new Map([['writer', []]]),
+        appConfig: {},
+        getAgentConfigurationRevision: () => 0,
+        configLoader: {
+          getProjectHomeDir: () => '/home',
+          getLaunchabilityRevision: () => 0,
+        },
+        providerService: {
+          resolveModelForProvider: vi.fn().mockResolvedValue('m-1'),
+          listProviderConnections: () => [],
+          getLaunchabilityRevision: () => 3,
+        },
+        framework: {
+          createModel: vi
+            .fn()
+            .mockRejectedValue(new Error('Agent tool registry is not loaded')),
+          createTempAgent: vi.fn(),
+        },
+        logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+      } as any,
+      slug: 'writer',
+      modelOverride: 'm-1',
+      agent: { id: 'writer' },
+      providerConnection: { id: 'ollama-main', type: 'ollama' } as any,
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.error).toBe(
+      'Failed to switch to model m-1: Agent tool registry is not loaded',
+    );
+  });
+
   test('uses provider-owned exact validation for non-Bedrock overrides', async () => {
     const resolveModelForProvider = vi
       .fn()
