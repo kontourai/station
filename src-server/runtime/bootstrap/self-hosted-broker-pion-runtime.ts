@@ -20,6 +20,10 @@ import {
   createResolvedNativeV2PionApplicationAdapter,
 } from '../../services/connections/native-v2-pion-application-adapter.js';
 import { startPionApplicationAdapter } from '../../services/connections/pion-application-adapter.js';
+import {
+  capturePionTurn,
+  type PionTurnSource,
+} from '../../services/connections/relay-ice-consumer.js';
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
 import type {
   BrokerNativeOfferAdapter,
@@ -72,7 +76,9 @@ export interface SelfHostedBrokerPionRuntimeInput {
   executable: string;
   certificatePem: string;
   privateKeyPem: string;
-  turn: { url: string; username: string; password: string };
+  turn:
+    | { url: string; username: string; password: string }
+    | { source: 'broker' };
   trust: {
     current(): ApprovedStationConnectionTrust | null;
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
@@ -150,7 +156,7 @@ export function createSelfHostedBrokerPionRuntime(
   const executable = input.executable;
   const certificatePem = input.certificatePem;
   const privateKeyPem = input.privateKeyPem;
-  const turn = Object.freeze(structuredClone(input.turn));
+  const configuredTurn = Object.freeze(structuredClone(input.turn));
   const trustOwner = input.trust;
   const issuerOwner = input.issuer;
   const candidateIssuer = input.candidateIssuer;
@@ -321,6 +327,14 @@ export function createSelfHostedBrokerPionRuntime(
   // Explicit opt-in native application lane. Composition happens exactly
   // once against the SAME VirtualApplication, trust owner, and issuer as the
   // browser path; there is no separate authority and no fabricated Origin.
+  const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
+  const turn: PionTurnSource =
+    'source' in configuredTurn
+      ? Object.freeze({
+          source: 'broker' as const,
+          capture: (signal: AbortSignal) => client.iceConfiguration(signal),
+        })
+      : configuredTurn;
   const nativeConfig = input.native;
   let nativeOwned:
     | ReturnType<typeof createNativeV2PionApplicationAdapter>
@@ -422,7 +436,6 @@ export function createSelfHostedBrokerPionRuntime(
     }
   }
 
-  const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
   const connector = new SelfHostedBrokerConnector(
     scope,
     client,
@@ -449,6 +462,15 @@ export function createSelfHostedBrokerPionRuntime(
         signal.throwIfAborted();
         if (!trustOwner.isCurrent(captured))
           throw new Error('broker_runtime_trust_retired');
+        const peerTurn = await capturePionTurn(
+          turn,
+          scope,
+          signal,
+          maxPeerLifetimeMs,
+        );
+        signal.throwIfAborted();
+        if (!trustOwner.isCurrent(captured))
+          throw new Error('broker_runtime_trust_retired');
         adapter = await dependencies.startAdapter({
           executable,
           profile: 'application',
@@ -456,7 +478,7 @@ export function createSelfHostedBrokerPionRuntime(
           offer: { type: 'offer', sdp: offer.offerSdp },
           certificatePem,
           privateKeyPem,
-          turn,
+          ...peerTurn,
           accept: (channel) => {
             const current: Adapter | undefined = adapter;
             const entry =
@@ -506,7 +528,6 @@ export function createSelfHostedBrokerPionRuntime(
             entry.serverCloses.add(closeServer);
           },
           signal,
-          maxLifetimeMs: maxPeerLifetimeMs,
         });
         if (!trustOwner.isCurrent(captured))
           throw new Error('broker_runtime_trust_retired');

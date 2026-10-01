@@ -190,6 +190,7 @@ async function fixture(
   return {
     input,
     dependencies,
+    stopApplication: () => ingress.stop(),
     adapter,
     offer,
     surface,
@@ -232,6 +233,85 @@ class FakeChannel {
 }
 
 describe('native v2 Pion application adapter', () => {
+  test('native per-offer ICE uses fresh credentials and shortens its 90-second peer ceiling', async () => {
+    const f = await fixture();
+    const capture = vi.fn(async () => ({
+      version: 'station-relay-ice-configuration/v1' as const,
+      scope: f.offer.scope,
+      iceTransportPolicy: 'relay' as const,
+      issuedAt: Date.now(),
+      expiresAt: Date.now() + 50_000,
+      iceServers: [
+        {
+          urls: ['turns:turn.example:443?transport=tcp'],
+          username: 'native-issued-user',
+          credential: 'native-issued-secret',
+        },
+      ],
+    }));
+    const adapter = createNativeV2PionApplicationAdapter(
+      { ...f.input, turn: { source: 'broker', capture } },
+      f.dependencies,
+    );
+    try {
+      await adapter.adapter.answer(
+        f.offer,
+        f.trust,
+        new AbortController().signal,
+      );
+      expect(capture).toHaveBeenCalledOnce();
+      expect(f.startAdapter.mock.calls[0]![0].turn.username).toBe(
+        'native-issued-user',
+      );
+      expect(
+        f.startAdapter.mock.calls[0]![0].maxLifetimeMs,
+      ).toBeLessThanOrEqual(45_000);
+    } finally {
+      await adapter.close();
+      await f.adapter.close();
+      f.stopApplication();
+    }
+  });
+  test('native owner retirement during ICE capture refuses before Pion startup', async () => {
+    const f = await fixture();
+    const adapter = createNativeV2PionApplicationAdapter(
+      {
+        ...f.input,
+        turn: {
+          source: 'broker',
+          capture: async () => {
+            f.trustOwner.retire();
+            return {
+              version: 'station-relay-ice-configuration/v1',
+              scope: f.offer.scope,
+              iceTransportPolicy: 'relay',
+              issuedAt: Date.now(),
+              expiresAt: Date.now() + 600_000,
+              iceServers: [
+                {
+                  urls: ['turns:turn.example:443?transport=tcp'],
+                  username: 'issued-user',
+                  credential: 'issued-secret',
+                },
+              ],
+            };
+          },
+        },
+      },
+      f.dependencies,
+    );
+    try {
+      await expect(
+        adapter.adapter.answer(f.offer, f.trust, new AbortController().signal),
+      ).rejects.toThrow('native_pion_application_trust_retired');
+      expect(f.startAdapter).not.toHaveBeenCalled();
+    } finally {
+      await adapter.close();
+      await f.adapter.close();
+      f.stopApplication();
+    }
+  });
+
   test('resolved approved surface reaches application bytes and revocation fences the captured peer', async () => {
     const h = await fixture();
     const home = mkdtempSync(join(tmpdir(), 'native-resolved-peer-'));
