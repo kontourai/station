@@ -1961,11 +1961,13 @@ describe('append-only review notes and Git history (#3101)', () => {
 
   it('copied notes from outside the PR range do not cover a change; genuine notes do', () => {
     const f = pathOnlyFixture();
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'main source review context');
     reviewShared(f, 'Existing main review.');
     commit(f.root, 'main review');
     const old = notesFiles(f.root);
     git(f.root, ['switch', '-qc', 'pr']);
-    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 3'));
     commit(f.root, 'PR source');
     for (const file of old)
       f.write(
