@@ -48,7 +48,7 @@
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"}
+    {"path":"docs/learn/media.json#/captures/2","digest":"f2a946d384b5a3a18d0c1711604b220f6435ec6e2b0b484a5e2ed03ba6966018","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"}
   ],
 
   "checks": [
