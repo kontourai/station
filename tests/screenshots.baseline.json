@@ -89,7 +89,7 @@
       "name": "mobile-activity-compact",
       "width": 390,
       "height": 844,
-      "sha256": "ab050f3626466ea31693ab88f96e3b0403ffa18461518c156eded7510f813b5a"
+      "sha256": "60fb305f943d245c8e75cc6d593bcc2af62464b434523f6416b89917d2797131"
     },
     {
       "name": "mobile-agent-editor",
@@ -299,13 +299,13 @@
       "name": "sessions",
       "width": 1440,
       "height": 900,
-      "sha256": "c67f340071ecadd87c12bbc20b96953e56168b4a9908816bc8413a88e0a53b19"
+      "sha256": "7650b64e1f5ea0139b8d596f111543db2980c90b9bbec5be7b171c6f58c0b38e"
     },
     {
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "18164df48092a5739d6165d2c3de6b5fbfbbe1ff81e47eb97e11b6370aaef2f8"
+      "sha256": "566a4c5158ce69d11b42549b6f9c7b8c68c0e76e3bd982d92cd4c2a881ccf4ca"
     },
     {
       "name": "settings",
