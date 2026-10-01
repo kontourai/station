@@ -21,6 +21,7 @@ import { openChatsStore } from '../contexts/open-chats-store';
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 // #928 C2a: the Home row's active state reads `main`'s occupant. `null`
 // is the no-provider mount every other test here uses.

@@ -68,7 +68,11 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;
-absence means that server did not report this projection.
+absence means that server did not report this projection. A request settled
+by its turn's abort is not listed, and does not set `pendingReview`, whether
+or not a `request.resolved` was recorded for it; the
+[Session API](session-api.md#respondtorequest) says which aborts settle which
+requests.
 
 `OrchestrationSessionSummary.currentSessionId` names the current durable
 execution child for the row's conversation, including when no turn is open.
