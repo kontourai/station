@@ -549,7 +549,10 @@ async function mockTaskFirstHome(
 }
 
 async function startProjectTask(page: Page) {
-  await page.getByRole('button', { name: /Start a chat/i }).click();
+  await page
+    .locator('.home-view__actions')
+    .getByRole('button', { name: /Start a chat/i })
+    .click();
   const dialog = page.getByRole('dialog', { name: 'New Chat' });
   await dialog.getByRole('button', { name: 'Workspace: No workspace' }).click();
   await dialog.locator('[data-context-value="station"]').click();
@@ -706,7 +709,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // effect of the removed dispatch. Every downstream assertion below is
     // unchanged; only the entry step and the order of the first maximize
     // assertion (now after an explicit click, not implicit) moved.
-    await page.getByRole('button', { name: /Start a chat/i }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Start a chat/i })
+      .click();
     const newChat = page.getByRole('dialog', { name: 'New Chat' });
     await expect(newChat).toBeVisible();
     await expect(
@@ -810,7 +816,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     });
     await expect(continuation).toContainText('Codex · gpt-5.3-codex');
     await expect(
-      page.getByRole('button', { name: /Start a chat/i }),
+      page
+        .locator('.home-view__actions')
+        .getByRole('button', { name: /Start a chat/i }),
     ).toContainText('Codex · gpt-5.3-codex');
     await expect(
       page.getByRole('button', { name: /Open local project/i }),
@@ -843,10 +851,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(page.getByText('No chat open')).toBeVisible();
 
     const advertisedIdentity = await page
+      .locator('.home-view__actions')
       .getByRole('button', { name: /Start a chat/i })
       .locator('small')
       .textContent();
-    await page.getByRole('button', { name: /Start a chat/i }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Start a chat/i })
+      .click();
     const selectedAgent = page.locator('.new-chat-modal__agent--selected');
     await expect(selectedAgent).toContainText('Codex');
     await expect(selectedAgent).not.toContainText('gpt-5.3-codex');
@@ -910,7 +922,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.getByRole('button', { name: 'Task context' }),
     ).toHaveCount(0);
 
-    await page.getByRole('button', { name: /Start a chat/i }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Start a chat/i })
+      .click();
     await selectNoWorkspace(page);
     await page.locator('.new-chat-modal__agent--selected').click();
     await expect(page.locator('.chat-dock')).toBeVisible();
@@ -1416,7 +1431,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       ).toBeVisible();
       await page.getByRole('button', { name: 'Home', exact: true }).click();
 
-      await page.getByRole('button', { name: /Start a chat/i }).click();
+      await page
+        .locator('.home-view__actions')
+        .getByRole('button', { name: /Start a chat/i })
+        .click();
       await page.locator('.new-chat-modal__agent--selected').click();
       await expect(page.locator('.chat-dock')).toBeVisible();
       await page.getByRole('button', { name: 'Chat actions' }).click();

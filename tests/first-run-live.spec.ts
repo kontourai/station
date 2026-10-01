@@ -185,9 +185,11 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   });
   await expect(startAgent).toBeVisible();
   await expect(startAgent).toBeEnabled();
-  await expect(page.getByRole('button', { name: /Start a chat/i })).toHaveCount(
-    0,
-  );
+  await expect(
+    page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Start a chat/i }),
+  ).toHaveCount(0);
   await expect(openLocalProject).toBeVisible();
   await expect(openLocalProject).toBeEnabled();
 
