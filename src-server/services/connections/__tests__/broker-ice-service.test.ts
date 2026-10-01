@@ -148,7 +148,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     const provider: BrokerTurnProvider = {
       issue: vi.fn(
         () =>
-          new Promise((resolve) => {
+          new Promise<typeof servers>((resolve) => {
             complete = resolve;
           }),
       ),
