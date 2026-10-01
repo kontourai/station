@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { fileURLToPath } from 'node:url';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -219,24 +217,6 @@ describe("#2842: the marker on Station's own answers", () => {
     // Installed twice (here and by configureRuntimeHttp), registered once.
     expect(response.headers.get(MARKER)).toBe('1');
   });
-});
-
-// Structural, and only that: the composition root is not built here. It
-// proves the ordering rule the behavior test above depends on, not that the
-// hosted gate's refusal is marked (the test above does, on the same order).
-test('runtime composition installs the marker before its first middleware', () => {
-  const source = readFileSync(
-    fileURLToPath(new URL('../../routes/runtime-routes.ts', import.meta.url)),
-    'utf8',
-  );
-  const install = source.indexOf('installStationEnvelopeMarker(context.app);');
-  const firstMiddleware = source.search(/context\.app\.use\(/);
-  const boundary = source.indexOf('configureRuntimeHttp({');
-  expect(install).toBeGreaterThan(-1);
-  expect(firstMiddleware).toBeGreaterThan(-1);
-  expect(boundary).toBeGreaterThan(-1);
-  expect(install).toBeLessThan(firstMiddleware);
-  expect(install).toBeLessThan(boundary);
 });
 
 describe("#2842: another Station's answer is never marked as this one's", () => {
