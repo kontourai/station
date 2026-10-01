@@ -70,7 +70,7 @@
 
     {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"df1cbb07e89d8e7e4b486a9b5e15a0ec059325bff603b93f9ecbee05d0140b21","revision":"3776fa57d13e3e8510939221d17e2745ad5dfa49"},
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
@@ -198,7 +198,7 @@
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-ui/src/index.css","digest":"db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d","revision":"64d397c368d647a4e61afdfd799e4f88a19fe29a"},
 
     {"path":"src-ui/src/lib/browserRelayEnrollmentController.ts","digest":"fa5b8a6212f796c4302346dbd82370ab0d8fae95d76ad58db584080c4086b7bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

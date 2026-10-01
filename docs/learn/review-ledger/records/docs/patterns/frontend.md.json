@@ -64,7 +64,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/index.css","digest":"db53168634ee3c957212c709edbe1fe3a3be29380e93a093e07f40aa2eeda14d","revision":"64d397c368d647a4e61afdfd799e4f88a19fe29a"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
@@ -76,7 +76,7 @@
 
     {"path":"src-ui/src/slashCommands/tools.ts","digest":"a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/tokens.css","digest":"18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/tokens.css","digest":"482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c","revision":"de4d8ae141f5831213eacd90dee84bcdc45d87ba"},
 
     {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
