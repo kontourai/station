@@ -19,14 +19,25 @@ function SchedulerJobDialog({
   const agents = useAgentsQuery();
   const [ready, setReady] = useState(false);
   const [setupError, setSetupError] = useState<unknown>();
+  const checkingSetup =
+    agents.isFetching || agents.catalogState === 'reconciling';
+  useEffect(() => {
+    if (!checkingSetup && agents.isSuccess) setSetupError(undefined);
+  }, [checkingSetup, agents.isSuccess]);
   const close = () => schedulerJobDialogStore.close(request);
   const setup = useNewChatSetupReturn({
     authority: request.authority,
     onCancel: close,
     onResume: setSetupError,
-    revalidate: () => agents.refetch({ throwOnError: true }),
+    revalidate: async () => {
+      const result = await agents.refetch({ throwOnError: true });
+      if (result.data?.catalogState === 'reconciling')
+        throw new Error(
+          'Could not verify current agent setup while Station updates its catalog.',
+        );
+    },
     workflowLabel: request.job ? 'Edit Job' : 'Add Job',
-    readyToResume: ready && !agents.isFetching && !agents.isError,
+    readyToResume: ready && !checkingSetup && !agents.isError,
     allowedPaths: SETUP_PATHS,
   });
   return (
@@ -37,7 +48,7 @@ function SchedulerJobDialog({
       onClose={close}
       hidden={setup.suspended}
       setupError={setupError}
-      checkingSetup={agents.isFetching}
+      checkingSetup={checkingSetup}
       onReadinessChange={setReady}
       onSetupAgent={(target) => {
         setSetupError(undefined);

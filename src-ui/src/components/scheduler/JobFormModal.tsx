@@ -429,6 +429,7 @@ export function JobFormModal({
             pending={pending}
             pendingLabel="Saving…"
             disabled={
+              checkingSetup ||
               !scheduleValid ||
               !monitorValid ||
               // A new job is refused while it names an Agent that cannot run

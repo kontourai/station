@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import type { useAgentsQuery } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -15,8 +16,14 @@ import { bannerStore } from '../contexts/banner-store';
 import { navigationStore } from '../contexts/navigation-store';
 import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
 
+type RefetchCatalogResult = Pick<
+  Awaited<ReturnType<ReturnType<typeof useAgentsQuery>['refetch']>>,
+  'data'
+>;
+
 const inputs = vi.hoisted(() => ({
   agents: [] as EnrichedAgentProjection[],
+  reconciling: false,
   authority: {
     apiBase: 'https://station-a.example',
     authorityKey: 'a',
@@ -24,7 +31,9 @@ const inputs = vi.hoisted(() => ({
   },
   add: vi.fn(),
   edit: vi.fn(),
-  refetch: vi.fn(async () => undefined),
+  refetch: vi.fn(
+    async (): Promise<RefetchCatalogResult> => ({ data: { agents: [] } }),
+  ),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => ({
@@ -32,6 +41,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: true,
     isError: false,
     isFetching: false,
+    catalogState: inputs.reconciling ? 'reconciling' : undefined,
     refetch: inputs.refetch,
   }),
 }));
@@ -69,6 +79,7 @@ const broken = {
 } as EnrichedAgentProjection;
 beforeEach(() => {
   inputs.agents = [ready];
+  inputs.reconciling = false;
   inputs.authority = {
     apiBase: 'https://station-a.example',
     authorityKey: 'a',
@@ -77,6 +88,9 @@ beforeEach(() => {
   inputs.add.mockReset();
   inputs.edit.mockReset();
   inputs.refetch.mockClear();
+  inputs.refetch.mockImplementation(async () => ({
+    data: { agents: inputs.agents },
+  }));
   navigationStore.navigate('/schedule', { dock: null, maximize: null });
 });
 afterEach(() => {
@@ -154,6 +168,13 @@ test('editing broken A stays in repair while ready B exists, then restores A and
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(inputs.refetch).not.toHaveBeenCalled();
   inputs.agents = [{ ...broken, available: true }, ready];
+  inputs.reconciling = true;
+  view.rerender(<SchedulerJobDialogHost />);
+  await act(async () => {});
+  expect(navigationStore.getSnapshot().pathname).toBe('/connections/models');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(inputs.refetch).not.toHaveBeenCalled();
+  inputs.reconciling = false;
   view.rerender(<SchedulerJobDialogHost />);
   await screen.findByRole('button', { name: 'Save Changes' });
   expect(navigationStore.getSnapshot().pathname).toBe('/schedule');
@@ -167,4 +188,45 @@ test('editing broken A stays in repair while ready B exists, then restores A and
     target: 'edit-a',
     prompt: 'edited instructions',
   });
+});
+
+test('a reconciling final read keeps a new job unsaved until a current catalog arrives', async () => {
+  inputs.agents = [broken];
+  schedulerJobDialogStore.open({
+    authority: inputs.authority,
+    prefill: { name: 'new-a', prompt: 'retained instructions' },
+  });
+  const view = render(<SchedulerJobDialogHost />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Repair this agent’s setup' }),
+  );
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+  );
+  inputs.refetch.mockImplementationOnce(async () => {
+    inputs.reconciling = true;
+    return { data: { agents: inputs.agents, catalogState: 'reconciling' } };
+  });
+  inputs.agents = [{ ...broken, available: true }];
+  view.rerender(<SchedulerJobDialogHost />);
+  await screen.findByRole('button', { name: 'Add Job' });
+  expect(screen.getByRole('alert').textContent).toContain(
+    'current agent setup',
+  );
+  expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  expect(screen.getByLabelText('Instructions')).toHaveProperty(
+    'value',
+    'retained instructions',
+  );
+  expect(inputs.add).not.toHaveBeenCalled();
+  inputs.reconciling = false;
+  view.rerender(<SchedulerJobDialogHost />);
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Add Job' })).toHaveProperty(
+    'disabled',
+    false,
+  );
 });

@@ -170,10 +170,11 @@ existing eligible agent's model connection or configuration; it offers agent
 creation when none exists. The dialog keeps its name, instructions, schedule,
 provider and other fields while the setup page is open. Browser Back or the
 return action restores that draft; verified readiness returns automatically.
+An existing job waits for its selected agent to be ready before returning.
 The job is saved only when you submit it. Changing Station or access, cancelling
 the return, or reloading ends this temporary draft journey.
 
-Opening a different page through app navigation reveals that page instead of
+Opening a page through app navigation reveals that page instead of
 leaving it under maximized chat. On a phone, chat collapses so the destination
 can use the screen. Explicit maximized conversation links still
 open chat at their requested size, and the prior chat size remains available
