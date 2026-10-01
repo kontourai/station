@@ -34,12 +34,12 @@
     {
       "path": "docs/learn/media/connections-models.png",
       "kind": "image",
-      "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9",
+      "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
         "docs/learn/walkthroughs.md",
