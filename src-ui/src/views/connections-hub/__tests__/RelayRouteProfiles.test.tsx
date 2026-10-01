@@ -1924,35 +1924,39 @@ describe('RelayRouteProfiles', () => {
       name: 'Candidate from native verification',
     });
     const routeDetails = candidateRegion.querySelector('details');
-    const operatorCode = screen.getByLabelText('Operator comparison code');
-    const operatorKeyId = screen.getByLabelText(
-      'Full key ID confirmed by operator',
-    );
-    const separateChannelAttestation = screen.getByLabelText(
-      /I got these values from the Station operator through a separate channel/,
-    );
+    const operatorCode = screen.getByRole('textbox', {
+      name: 'Operator comparison code',
+    });
+    const operatorKeyId = screen.getByRole('textbox', {
+      name: 'Full key ID confirmed by operator',
+    });
+    const separateChannelAttestation = screen.getByRole('checkbox', {
+      name: /I got these values from the Station operator through a separate channel/,
+    });
     const approveButton = screen.getByRole('button', {
       name: 'Approve Station key',
     });
     expect(routeDetails).not.toBeNull();
     expect(routeDetails?.open).toBe(false);
     expect(
-      within(candidateRegion).getByText('Untrusted candidate'),
-    ).toBeVisible();
+      within(candidateRegion)
+        .getByText('Untrusted candidate')
+        .closest('details'),
+    ).toBeNull();
     expect(
-      within(candidateRegion).getByText('sha256:full-station-key-id'),
-    ).toBeVisible();
+      within(candidateRegion)
+        .getByText('sha256:full-station-key-id')
+        .closest('details'),
+    ).toBeNull();
     expect(
-      within(candidateRegion).getByText('ABCD-1234-EFGH-5678'),
-    ).toBeVisible();
+      within(candidateRegion)
+        .getByText('ABCD-1234-EFGH-5678')
+        .closest('details'),
+    ).toBeNull();
     expect(
       within(candidateRegion).getByText(stationId).closest('details'),
     ).toBe(routeDetails);
-    expect(operatorCode).toBeVisible();
-    expect(operatorKeyId).toBeVisible();
-    expect(separateChannelAttestation).toBeVisible();
-    expect(approveButton).toBeVisible();
-    expect(approveButton).toBeDisabled();
+    expect(approveButton.hasAttribute('disabled')).toBe(true);
     expect(
       approveButton.compareDocumentPosition(routeDetails!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -1965,12 +1969,12 @@ describe('RelayRouteProfiles', () => {
       target: { value: candidate.keyId },
     });
     fireEvent.click(separateChannelAttestation);
-    expect(approveButton).toBeDisabled();
+    expect(approveButton.hasAttribute('disabled')).toBe(true);
     expect(mocks.approveKey).not.toHaveBeenCalled();
     fireEvent.change(operatorCode, {
       target: { value: 'abcd-1234-efgh-5678' },
     });
-    expect(approveButton).toBeEnabled();
+    expect(approveButton.hasAttribute('disabled')).toBe(false);
     fireEvent.click(approveButton);
     await waitFor(() =>
       expect(mocks.approveKey).toHaveBeenCalledWith({
