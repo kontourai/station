@@ -77,11 +77,10 @@ describe('derivedConversationTitle', () => {
   );
 
   test('a long prompt whose words start after the bound derives no title from them', () => {
-    expect(
-      derivedConversationTitle(
-        `${' '.repeat(TITLE_SOURCE_MAX_CODE_POINTS)}late`,
-      ),
-    ).toBeUndefined();
+    // The literal 1000, next to the constant it pins.
+    expect(TITLE_SOURCE_MAX_CODE_POINTS).toBe(1000);
+    expect(derivedConversationTitle(`${' '.repeat(1000)}late`)).toBeUndefined();
+    expect(derivedConversationTitle(`${' '.repeat(999)}late`)).toBe('late');
   });
 
   test('the bound counts code points, not UTF-16 units', () => {
