@@ -45,7 +45,7 @@ const pullRequest = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   title: 'Ship repository PR actions',
   body: null,
   state: 'open',
-  author: { login: 'brian' },
+  author: { login: 'casey' },
   sourceBranch: 'feat/prs',
   targetBranch: 'main',
   commits: 2,
