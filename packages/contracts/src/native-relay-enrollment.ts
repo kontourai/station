@@ -1,5 +1,8 @@
 import type { ApprovedStationConnectionTrust } from './connection-proof.js';
-import type { NativeDeviceBindingCandidateV1 } from './native-device-proof.js';
+import type {
+  NativeDeviceBindingCandidateV1,
+  NativeDeviceProofSelfReceiptV1,
+} from './native-device-proof.js';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeScopeV2,
@@ -24,6 +27,15 @@ export const NATIVE_RELAY_ENROLLMENT_CANCEL_PATH =
   `${NATIVE_RELAY_ENROLLMENT_BASE_PATH}/cancel` as const;
 export const NATIVE_RELAY_ENROLLMENT_STATUS_PATH =
   `${NATIVE_RELAY_ENROLLMENT_BASE_PATH}/status` as const;
+export const NATIVE_RELAY_ENROLLMENT_PATHS = [
+  NATIVE_RELAY_ENROLLMENT_BEGIN_PATH,
+  NATIVE_RELAY_ENROLLMENT_LOGIN_PATH,
+  NATIVE_RELAY_ENROLLMENT_REGISTER_PATH,
+  NATIVE_RELAY_ENROLLMENT_FINALIZE_PATH,
+  NATIVE_RELAY_ENROLLMENT_ACTIVATE_PATH,
+  NATIVE_RELAY_ENROLLMENT_STATUS_PATH,
+  NATIVE_RELAY_ENROLLMENT_CANCEL_PATH,
+] as const;
 export const NATIVE_RELAY_ENROLLMENT_CHALLENGE_TYPE =
   'station-native-relay-enrollment-challenge+jws' as const;
 export const NATIVE_RELAY_ENROLLMENT_RECEIPT_TYPE =
@@ -60,6 +72,7 @@ export interface NativeRelayEnrollmentBeginRequest {
   readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
   /** Host-owned idempotence identity; retained before the first request can leave the host. */
   readonly clientAttemptId: string;
+  readonly peerNonce: string;
   readonly recipient: NativeRelayEnrollmentRecipient;
 }
 
@@ -109,6 +122,8 @@ export interface NativeRelayEnrollmentDelivery {
   readonly activationNonce: string;
   readonly bundleDigest: string;
   readonly expiresAt: number;
+  readonly responsePeerNonce: string;
+  readonly stationSigningGeneration: number;
   readonly enc: string;
   readonly ciphertext: string;
   readonly stationProof: string;
@@ -137,15 +152,41 @@ export interface NativeRelayEnrollmentActivated {
   readonly receiptExpiresAt: number;
   readonly binding: NativeRelayEnrollmentBinding;
   readonly candidate: NativeDeviceBindingCandidateV1;
+  readonly deviceReceipt: NativeDeviceProofSelfReceiptV1;
   readonly responsePeerNonce: string;
   readonly stationSigningGeneration: number;
   readonly stationProof: string;
+}
+
+export interface NativeRelayEnrollmentHostChallengeAccepted {
+  readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
+  readonly enrollmentHandle: string;
+  readonly candidate: NativeDeviceBindingCandidateV1;
+  readonly registrationAvailable: boolean;
+}
+export interface NativeRelayEnrollmentHostDeliveryAccepted {
+  readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
+  readonly enrollmentHandle: string;
+  readonly state: 'staged';
+}
+export interface NativeRelayEnrollmentHostActivationAccepted {
+  readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
+  readonly enrollmentHandle: string;
+  readonly state: 'active';
+  readonly profileRevision: number;
+  readonly transitionHandle: string;
+}
+export interface NativeRelayEnrollmentHostInactiveAccepted {
+  readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
+  readonly enrollmentHandle: string;
+  readonly state: 'pending' | 'cancelled' | 'expired' | 'revoked';
 }
 
 /** Signed only through fixed host operations after validating the exact challenge. */
 export interface NativeRelayEnrollmentProofClaims
   extends NativeRelayEnrollmentBinding {
   readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
+  readonly requestedScope: 'orchestration:read';
   readonly purpose:
     | 'login'
     | 'register'
@@ -180,7 +221,6 @@ export interface NativeRelayEnrollmentHostPrepared {
 export interface NativeRelayEnrollmentCancelled {
   readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
   readonly state: 'cancelled';
-  readonly enrollmentId: string;
   readonly binding: NativeRelayEnrollmentBinding;
   readonly candidate: NativeDeviceBindingCandidateV1;
   readonly responsePeerNonce: string;
@@ -188,9 +228,7 @@ export interface NativeRelayEnrollmentCancelled {
   readonly stationSigningGeneration: number;
   readonly stationProof: string;
 }
-
-export type NativeRelayEnrollmentStatus =
-  | NativeRelayEnrollmentActivated
+export type NativeRelayEnrollmentInactiveStatus =
   | NativeRelayEnrollmentCancelled
   | {
       readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
@@ -202,6 +240,10 @@ export type NativeRelayEnrollmentStatus =
       readonly stationSigningGeneration: number;
       readonly stationProof: string;
     };
+
+export type NativeRelayEnrollmentStatus =
+  | NativeRelayEnrollmentActivated
+  | NativeRelayEnrollmentInactiveStatus;
 
 export type NativeRelayEnrollmentRequestPath =
   | typeof NATIVE_RELAY_ENROLLMENT_BEGIN_PATH
