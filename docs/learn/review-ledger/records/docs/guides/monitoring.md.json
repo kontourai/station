@@ -12,7 +12,7 @@
   "document": {"digest":"5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -22,7 +22,7 @@
 
     {"path":"src-server/monitoring/schema.ts","digest":"81b50a785e36009c3929cb6b9718944f293225ac1d6d015eb916c34a7a01f406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/routes/chat/chat-lifecycle.ts","digest":"afca720b097f5326b1b8a393136fe0924876f4847ab577d08eaf26fd966dd86a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/routes/chat/chat-lifecycle.ts","digest":"9b8c9f752c22eb9d3986331263f5ce25f5c86f91466fb8fbd1f65cd4db36efb8","revision":"50d1e9a2b4e524d2b761122376f79f976bf90798"},
 
     {"path":"src-server/routes/operations/insights.ts","digest":"7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

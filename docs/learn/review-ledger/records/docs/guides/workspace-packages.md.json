@@ -24,7 +24,7 @@
 
     {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
 
     {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -66,13 +66,13 @@
 
     {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
 
     {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -88,17 +88,17 @@
 
     {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
     {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx","digest":"511e0ac91b3e0c2b744ffe1da6967e1741aa9d2d99f9daa10f39d1b2e78e8494","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
-
-    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
     {"path":"tests/container-self-host.spec.ts","digest":"35a9f2abca5519fa980137f32f8011bb6a88311f2bc3bacd3e9cca830f5379f6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
   ],

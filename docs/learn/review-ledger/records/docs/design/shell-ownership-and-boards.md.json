@@ -9,7 +9,7 @@
 
   "limits": "Personal route/service/view/sidebar lineage checked. Shared Boards, all promotion rules, Review placement, presence, plugin visibility, and cross-device persistence not comprehensively audited.",
 
-  "document": {"digest":"881b4eee190ccb5b32b47d2743cdbbcb27d705380f67d0ce0cd758aae10c4360","revision":"426153191586e330abfdfca99debbeab43855d09"},
+  "document": {"digest":"dcc2b9157d8a4fc2a8aec7a5fea6ec6618931bb2dfab1a403f5acf76daad24e5","revision":"335893e0b2f5e87d0ccd02115fd0cfa760b215c1"},
 
   "sources": [
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
@@ -18,7 +18,7 @@
 
     {"path":"src-server/services/layouts/personal-layout-service.ts","digest":"8eb0ce41fa821ca92d56f36224fb1e0e09485274315148a1e37971e9195055c7","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"56a42c10b34d7e2830bf3ccc47b47ed16a256ac3d4b8165609b9e0137da49b8b","revision":"426153191586e330abfdfca99debbeab43855d09"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"515dd447483a0ceaf679ce64ac253e6053466838b9a026fdb13f84d8a38d44a4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
     {"path":"src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","digest":"df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 

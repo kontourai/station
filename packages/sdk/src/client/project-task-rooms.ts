@@ -20,6 +20,7 @@ import {
   type ClientRequestOptions,
   type FetchSseConnection,
   fetchSSE,
+  mutateJson,
 } from './http';
 import { rethrowDeadline } from './request-deadline';
 
@@ -386,6 +387,7 @@ export async function appendProjectTaskRoomHumanMessage(
     proposalId: string;
     text: string;
     occurredAt?: string;
+    expectedTaskCreatedAt?: string;
   },
   opts?: ClientRequestOptions,
 ) {
@@ -393,17 +395,17 @@ export async function appendProjectTaskRoomHumanMessage(
     throw new ProjectTaskRoomProtocolError('Room message intent is invalid');
   return parseAppend(
     await envelope(
-      await authenticatedFetch(
+      await mutateJson(
         `${apiBase}${roomPath(input.taskId, '/messages')}`,
+        'POST',
+        opts,
         {
-          ...opts,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...opts?.headers },
-          body: JSON.stringify({
-            proposalId: input.proposalId,
-            text: input.text,
-            ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
-          }),
+          proposalId: input.proposalId,
+          text: input.text,
+          ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
+          ...(input.expectedTaskCreatedAt
+            ? { expectedTaskCreatedAt: input.expectedTaskCreatedAt }
+            : {}),
         },
       ),
     ),

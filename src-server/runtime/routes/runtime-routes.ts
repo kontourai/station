@@ -526,6 +526,10 @@ import { createTaskBasisAppReadModule } from '../../services/projects/task-basis
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import {
+  TaskRoomWorkModule,
+  type TaskRoomWorkScope,
+} from '../../services/projects/task-room-work-module.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
@@ -1183,6 +1187,39 @@ export function configureRuntimeRoutes(
     focus: focusPresence,
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
+  const taskRoomWork = new TaskRoomWorkModule(
+    join(context.configLoader.getProjectHomeDir(), 'task-room-work.json'),
+  );
+  const authorizeTaskRoomWork = async (
+    taskId: string,
+    request: Request,
+    principal: PrincipalRef,
+  ): Promise<TaskRoomWorkScope | undefined> => {
+    if (!projectTaskRoomRuntime || !isRequestPrincipalCurrent(request))
+      return undefined;
+    roomRequestPrincipals.set(request, principal);
+    const room = await projectTaskRoomRuntime.discover({ taskId, request });
+    if (
+      (room.kind !== 'opened' && room.kind !== 'existing') ||
+      !isRequestPrincipalCurrent(request)
+    )
+      return undefined;
+    const task = context.taskGraphService.readTaskView(taskId);
+    const project =
+      task &&
+      context.projectService
+        .listProjects()
+        .find((p) => p.id === task.projectId || p.slug === task.projectId);
+    return task && project
+      ? {
+          projectId: project.id,
+          projectSlug: project.slug,
+          roomProjectId: room.scope.projectId,
+          taskCreatedAt: task.createdAt,
+          requesterId: principal.id,
+        }
+      : undefined;
+  };
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
@@ -3549,6 +3586,61 @@ export function configureRuntimeRoutes(
             : { kind: 'revoked' as const };
         },
       },
+      readAgentRequests: async (taskId) => {
+        const task = context.taskGraphService.readTaskView(taskId);
+        const project =
+          task &&
+          context.projectService
+            .listProjects()
+            .find(
+              (candidate) =>
+                candidate.id === task.projectId ||
+                candidate.slug === task.projectId,
+            );
+        if (!task || !project) return [];
+        const incarnation = {
+          taskCreatedAt: task.createdAt,
+          roomProjectId: task.projectId,
+          projectId: project.id,
+          projectSlug: project.slug,
+        };
+        const requests = await taskRoomWork.readPublicationRequests({
+          taskId,
+          projectId: project.id,
+          taskCreatedAt: task.createdAt,
+          roomProjectId: task.projectId,
+          readBinding: (sessionId) =>
+            context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+              sessionId,
+            ),
+        });
+        const currentTask = context.taskGraphService.readTaskView(taskId);
+        const currentProject =
+          currentTask &&
+          context.projectService
+            .listProjects()
+            .find(
+              (candidate) =>
+                candidate.id === currentTask.projectId ||
+                candidate.slug === currentTask.projectId,
+            );
+        if (
+          !currentTask ||
+          !currentProject ||
+          currentTask.createdAt !== incarnation.taskCreatedAt ||
+          currentTask.projectId !== incarnation.roomProjectId ||
+          currentProject.id !== incarnation.projectId ||
+          currentProject.slug !== incarnation.projectSlug
+        )
+          return [];
+        return requests.map((record) => ({
+          sessionId: record.sessionId,
+          agentId: record.agentId,
+          ownerOperatorId: record.ownerId,
+          taskCreatedAt: record.taskCreatedAt,
+          createdAt: record.createdAt,
+        }));
+      },
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -3562,6 +3654,8 @@ export function configureRuntimeRoutes(
         const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
+          createdAt: detail.session.createdAt,
+          updatedAt: detail.session.updatedAt,
           ...(outcome ? { outcome } : {}),
         };
       },
@@ -3631,7 +3725,35 @@ export function configureRuntimeRoutes(
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
-    context.app.route('/api/tasks', createProjectTaskRoomRoutes(roomRuntime));
+    context.app.route(
+      '/api/tasks',
+      createProjectTaskRoomRoutes(roomRuntime, {
+        listAgentRequests: async (taskId, request) => {
+          const principal = roomRequestPrincipals.get(request);
+          const initial =
+            principal &&
+            (await authorizeTaskRoomWork(taskId, request, principal));
+          const authorize = async () => {
+            const current =
+              principal &&
+              (await authorizeTaskRoomWork(taskId, request, principal));
+            return initial &&
+              current &&
+              current.projectId === initial.projectId &&
+              current.projectSlug === initial.projectSlug &&
+              current.roomProjectId === initial.roomProjectId &&
+              current.taskCreatedAt === initial.taskCreatedAt &&
+              current.requesterId === initial.requesterId
+              ? current
+              : undefined;
+          };
+          const result = await taskRoomWork.list(taskId, authorize);
+          if (result.kind !== 'available') return result;
+          await roomRuntime.reconcileAgentLifecycles([taskId]);
+          return (await authorize()) ? result : { kind: 'refused' as const };
+        },
+      }),
+    );
   }
   context.app.route(
     '/api/home-authority/rooms',
@@ -3839,6 +3961,7 @@ export function configureRuntimeRoutes(
           remoteStations,
         ),
       ),
+      taskRoomWork: { module: taskRoomWork, authorize: authorizeTaskRoomWork },
       // #485: the receiver's durable attempt-claim owner, threaded through
       // the route seam into the tool's receiver-local path.
       delegationAttemptClaimStore: context.delegationAttemptClaims,
@@ -4862,6 +4985,11 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/connections',
     createAppHomeRoutes({
+      isLoginReadCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
       // #896 wave 2: the DELETE clear route's 409-while-enabled guard reads
       // the connection's SAVED config directly — never the in-memory
       // adapter state — same source of truth `runtimeDefaultConfig`/

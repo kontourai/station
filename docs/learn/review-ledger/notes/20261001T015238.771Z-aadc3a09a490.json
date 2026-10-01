@@ -1,0 +1,7 @@
+{
+  "revision": "42019764437469e865189dfd8ad8b1762b77a97a",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Merge of origin/main into feat/activity-detail: packages/contracts/src/orchestration.ts changed in this branch by doc comments only (event windows use the global sequence, the same space as the watermark; the event page uses per-thread sequence/nextSequence). The document makes no claim about event sequence numbering or watermarks; claims remain accurate."}
+  ]
+}

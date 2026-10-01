@@ -15,6 +15,46 @@ const authority = sessionReadAuthorityFromRequest(
 
 describe('UsageRollupService (station#4135)', () => {
   afterEach(() => vi.useRealTimers());
+  test('an engine filter excludes other provider receipts and aggregate costs', async () => {
+    const receipts = [
+      {
+        id: 'claude-1',
+        occurredAt: '2026-08-10T00:00:00Z',
+        observedAt: '2026-08-10T00:00:00Z',
+        stationId: 'local',
+        provider: 'claude',
+        inputTokens: 10,
+        reportedCost: { amount: 2, currency: 'USD' },
+        pricing: { status: 'unpriced' as const },
+      },
+      {
+        id: 'codex-1',
+        occurredAt: '2026-08-10T00:00:00Z',
+        observedAt: '2026-08-10T00:00:00Z',
+        stationId: 'local',
+        provider: 'codex',
+        inputTokens: 99,
+        reportedCost: { amount: 50, currency: 'USD' },
+        pricing: { status: 'unpriced' as const },
+      },
+    ];
+    const source: UsageReceiptSource = {
+      stationId: 'local',
+      read: async () => ({
+        receipts,
+        aggregateReceipts: receipts,
+        coverage: { stationId: 'local', state: 'complete', window: request },
+      }),
+    };
+    const result = await new UsageRollupService([source]).read(
+      { ...request, provider: 'claude' },
+      authority,
+    );
+    expect(result.receipts.map((r) => r.provider)).toEqual(['claude']);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].inputTokens).toBe(10);
+    expect(result.rows[0].reportedCost?.amount).toBe(2);
+  });
 
   test('converts a peer read failure into offline coverage while retaining local receipts', async () => {
     const local: UsageReceiptSource = {

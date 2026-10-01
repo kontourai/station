@@ -1,0 +1,45 @@
+/* The row's "⋯" trigger. Its coarse-pointer hit area is the list primitive's
+   (`SplitPaneLayout`'s trailing slot), not a page-local media query. */
+.activity-row-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.activity-row-menu__trigger:hover,
+.activity-row-menu__trigger[aria-expanded="true"] {
+  border-color: var(--border-primary);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.activity-row-menu__trigger:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Placement only: the surface and its rows are the shared `.menu-surface` /
+   `.menu-row` primitives (including their coarse-pointer 44px row floor). */
+.activity-row-menu__panel {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  /* Twin of `MENU_MIN_WIDTH_PX` in ActivityRowMenu.tsx. */
+  min-width: 200px;
+}
+
+.activity-row-menu__item--danger.menu-row,
+.activity-row-menu__item--danger.menu-row:hover,
+.activity-row-menu__item--danger.menu-row:focus-visible {
+  color: var(--error-text);
+}

@@ -99,9 +99,9 @@ Station to copy specific files. Allowlist (top-level entries of the global confi
 only): `settings.json`, `CLAUDE.md`, `skills/`, `agents/`, `commands/`. `.credentials.json`
 copies only when the caller sets `includeCredentials: true` (a separate, explicit checkbox
 in the UI) — on macOS, Claude Code's OAuth credentials actually live in the system
-Keychain, config-dir-independent, so a profile without imported credentials can still
-authenticate there; the status endpoint and UI surface this rather than presenting a
-"failed" state. Always refused, never on any allowlist: `projects/`, `todos/`,
+Keychain. Current saved-profile launches and enrolment bind its secure-store
+namespace to the profile config directory; file absence alone does not establish
+authentication. The engine-account page asks the CLI for status. Always refused, never on any allowlist: `projects/`, `todos/`,
 `statsig/`, `shell-snapshots/`, anything not listed above, any symlink anywhere in a
 copied tree (refuse, never follow — same posture as the skills-materialization module
 below), and a file whose opened descriptor reports more than 5 MiB before reading.
@@ -216,8 +216,10 @@ failure mode instead of an adapter-level design choice.
 
 Credential profiles extend the app-home boundary without turning it into a second
 credential vault. The persisted connection record carries only an opaque profile `ref`,
-an optional **management-only** label, explicit group/enrollment metadata, default-off
-automatic policy, and the current non-secret application projection. Credential material
+an optional display label, explicit group/enrollment metadata, default-off
+automatic policy, and the current non-secret application projection. The dedicated
+engine sign-in read exposes only refs, labels, auth state and observed device-code
+support to an explicitly granted device; management metadata stays restricted. Credential material
 stays in the selected engine credential owner rather than the recovery registry; it is never copied into
 the connection registry, response, CLI output, receipt, log, or metric. A ref is not an
 account selector or an account identity.

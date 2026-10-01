@@ -132,14 +132,40 @@ export function isPairingApprovalLeaf(request: {
   );
 }
 
+function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/accounts$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/api\/connections\/agent\/[^/]+\/account-login$/.test(path)) ||
+    (request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/device-code-profiles$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
+        path,
+      ))
+  );
+}
+
 /** Scope satisfaction only; credential authority must be checked first. */
 export function pairingScopeSatisfiesHttpRoute(
   grantedScope: string,
   requiredScope: PairingScope,
   request: { method: string; path: string },
+  verifiedOperator = false,
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/accounts$/.test(
+        request.path.split('?')[0] ?? request.path,
+      ) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_MANAGE)) ||
+    (verifiedOperator &&
+      requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      isEngineLoginLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
       isPairingApprovalLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
@@ -328,6 +354,20 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/connections/agent/:id/account-usage:manage',
+    method: '*',
+    prefix: '/api/connections/agent/:id/account-usage',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  ...['accounts', 'account-login'].map((leaf) => ({
+    id: `/api/connections/agent/:id/${leaf}:engine-login`,
+    method: '*' as const,
+    prefix: `/api/connections/agent/:id/${leaf}`,
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit' as const,
+  })),
   {
     id: '/api/home-authority/control-sessions/open:home-control',
     method: 'POST',
@@ -1283,6 +1323,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/api/connections/agent/:id/enrolment',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/connections/agent/:id/device-code-profiles:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/device-code-profiles',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
     origin: 'explicit',
   },
   // The device-code leaves, which START the engine's own login as a child
@@ -2297,6 +2344,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },
     // Task Output bytes remain the paired operator's local Task projection;
     // reads use the family read tier and promotion/deletion use operate.
     { method: 'GET', path: '/api/tasks/:taskId/outputs' },

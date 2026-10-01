@@ -1,24 +1,30 @@
 # Shell ownership scopes and Boards
 
-> **Reading status: accepted design with staged implementation history.** The
-> “no project-less view” problem, first-batch shipping status, and references to
-> unmerged Board slices describe the recorded stages below. Current personal
-> Boards have an authenticated [layout route](../../src-server/routes/me/personal-layouts.ts),
+> **Reading status: accepted design; all nine delivery slices landed.** Epic
+> #2058's slices shipped in three pull requests: slices 1, 2 and 6 in #2080;
+> 3, 5 and 8 in #2084; 4, 7 and 9 in #2095. Personal Boards have an
+> authenticated [layout route](../../src-server/routes/me/personal-layouts.ts),
 > [service](../../src-server/services/layouts/personal-layout-service.ts), and
 > [view](../../src-ui/src/views/PersonalBoardView.tsx); the
 > [sidebar](../../src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx)
-> consumes that surface. This does not establish every proposed shared-Board,
-> promotion, Review-placement, presence, or plugin-visibility behavior. Use the
-> [pane authoring guide](../guides/workspace-pane-authoring.md) for the current pane contract.
+> consumes that surface. Still unbuilt: instance-shared Boards (storage only,
+> no route or UI), placing the Review layout kind on a Board, adding panes to
+> a Board from the UI, Board reorder and clone. Use the
+> [pane authoring guide](../guides/workspace-pane-authoring.md) for the
+> current pane contract.
+>
+> **Amended 2026-09-29.** [shell-plugins-distributions.md](shell-plugins-distributions.md)
+> extends D1 with a layout *subject* (personal project layouts and personal
+> templates), clone, and a per-project personal-layout policy, adds a personal
+> hide/disable layer on top of D2, and replaces the open question about Home
+> becoming a Board with Home as a required kernel slot.
 
-Status: **accepted direction, shipping in slices** (owner decisions
+Status: **accepted direction, slices landed** (owner decisions
 2026-09-13, recorded from a design session). This record owns the reasoning
 for the next shape of the left panel and for the ownership model that makes
-project-less, user-owned views possible. As of the first batch (slices 1, 2
-and 6 of epic #2058) the places-only panel with its footer, the polymorphic
-layout owner, and the widened attention inbox are shipped; the remaining
-slices are tracked on the epic, and this record describes the target shape,
-not necessarily what a given commit renders.
+project-less, user-owned views possible. All nine slices of epic #2058 have
+landed (see the reading status above for what remains unbuilt); the problem
+statement below describes the panel before them.
 
 Vocabulary follows [the glossary](../glossary.md). Where this record
 introduces a term (**Board**, **personal scope**, **attention inbox**) it
@@ -192,11 +198,11 @@ answers "no layout by that slug" for `review`, `ProjectLayoutRenderer`
 resolves the builtin definition instead, and writes nothing — so the
 project's layout chips still list only what someone actually added. Scoped to
 `review` alone: `coding` and `tasks` read persisted configuration, where an
-absent record is not an empty one. Board placement is **deferred** and not implemented — the slice-7 state mapping
-recorded on [#2065](https://github.com/kontourai/station/issues/2065) scopes
-the layout kind to a project because slices 1-4 are unmerged, so there is no
-Board owner to place one, and `ReviewLayout` requires a `projectSlug` today
-with no Board-owned test behind it. The global `/review-queue` destination
+absent record is not an empty one. Board placement is **deferred** and not implemented. When the slice-7 state
+mapping was recorded on [#2065](https://github.com/kontourai/station/issues/2065),
+slices 1-4 had not merged, so there was no Board owner to place one. They have
+since landed (#2080, #2084, #2095), but `ReviewLayout` still requires a
+`projectSlug` and no Board-owned test exists, so the deferral stands. The global `/review-queue` destination
 retired once the inbox and
 the layout kind both shipped (#2064, #2065): the route is gone, its
 `NavigationView` member and sidebar destination with it, and
@@ -211,9 +217,9 @@ guessing a Project.
 Decision: the footer shows an avatar stack and a count of people present on
 projects the viewer shares. Opening it lists people (with a message action)
 and agent workers (with a follow action) together. Data comes from the
-collaborator summary the Activity surface already renders
-(`src-ui/src/components/live-activity/LiveCollaboratorsSection.tsx`) and the
-task-room presence authority. Direct messaging requires the membership
+host-wide live-activity projection (`useLiveActivityQuery`) and the task-room
+presence authority. Activity no longer renders its own collaborator section;
+the footer tray is where presence is shown. Direct messaging requires the membership
 admission work tracked on the membership record and is not part of the panel
 change.
 
@@ -261,7 +267,7 @@ the existing registry seams so the panel can move one section at a time.
    Notifications; footer bell and per-project counts.
 7. **Review as a layout kind**, then retire `/review-queue`. *(Shipped
    project-scoped: the layout kind and the retirement both landed; Board
-   placement is deferred with Boards themselves.)*
+   placement is still deferred although Boards themselves have landed.)*
 8. **Presence tray.** Read-only people and workers; message action gated on
    membership admission.
 9. **Per-principal plugin visibility.** Required before a Board built from

@@ -1587,7 +1587,7 @@ describe('orchestration-session-state', () => {
         provider: 'codex',
         threadId: 'title-thread',
         status: 'ready',
-        cwd: '/Users/brian/dev/github/kontourai/station',
+        cwd: '/Users/me/dev/github/kontourai/station',
         createdAt: '2026-07-30T00:00:00.000Z',
         updatedAt: '2026-07-30T00:00:00.000Z',
       },
@@ -1614,7 +1614,7 @@ describe('orchestration-session-state', () => {
     });
 
     expect(summary.displayTitle).toBe('Ship the Home history fix');
-    expect(summary.cwd).toBe('/Users/brian/dev/github/kontourai/station');
+    expect(summary.cwd).toBe('/Users/me/dev/github/kontourai/station');
   });
 
   test('skips timezone-only prompts, bounds long titles, and remains compatible with promptless history', () => {
@@ -2557,7 +2557,7 @@ describe('orchestration-session-state', () => {
             method: 'runtime.error',
             turnId: 'turn-1',
             severity: 'error',
-            message: 'Station agent turn failed',
+            message: 'The response stream failed.',
             code: 'station_agent_turn_failed',
             retriable: true,
           } as any,
