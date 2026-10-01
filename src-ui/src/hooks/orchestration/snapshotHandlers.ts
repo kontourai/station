@@ -673,9 +673,12 @@ export function applyOrchestrationSnapshot(
     // entry chunk).
     if (!replayId && options?.apiBase && placeholders.size > 0) {
       const { apiBase } = options;
-      void import('./hydrateOpenApprovalToasts').then((module) =>
-        module.hydrateOpenApprovalToasts(apiBase, threadId, placeholders),
-      );
+      // A failed chunk load leaves the placeholder in place.
+      void import('./hydrateOpenApprovalToasts')
+        .then((module) =>
+          module.hydrateOpenApprovalToasts(apiBase, threadId, placeholders),
+        )
+        .catch(() => {});
     }
   }
 

@@ -966,22 +966,18 @@ export async function executeForegroundMessage(
       throw error;
     }
     if (continuation?.retirePredecessorSessionId) {
-      try {
-        await deps.retireSession?.(
-          resolved.access,
-          continuation.retirePredecessorSessionId,
-        );
-      } catch (error) {
-        // The successor is running; a predecessor that stays resident until
-        // the idle park is a cost, not a reason to fail the user's send.
-        const message = `Could not stop the never-used predecessor session: ${errorMessage(error)}`;
-        logger.warn(message, {
-          sessionId: continuation.retirePredecessorSessionId,
+      // Detached: a stop waits on the predecessor's engine teardown (and any
+      // in-flight start), and the user's send must not wait on that. The
+      // successor is already running, so a predecessor that stays resident
+      // until the idle park is a cost, not a reason to fail or delay the send.
+      const predecessorId = continuation.retirePredecessorSessionId;
+      void Promise.resolve()
+        .then(() => deps.retireSession?.(resolved.access, predecessorId))
+        .catch((error: unknown) => {
+          const message = `Could not stop the never-used predecessor session: ${errorMessage(error)}`;
+          logger.warn(message, { sessionId: predecessorId });
+          deps.warn?.(message, { sessionId: predecessorId });
         });
-        deps.warn?.(message, {
-          sessionId: continuation.retirePredecessorSessionId,
-        });
-      }
     }
   }
   const effectiveClientTurnId = requestedHandoff

@@ -173,8 +173,9 @@ not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
 blocking interpretation. A snapshot carries ids only, so after a reload a
 client reads the conversation's newest turn to rebuild each open approval's
-tool, preview and grant label, and keeps a generic placeholder when the host
-cannot supply it. Request inspection sets `requiresAnswers` so clients
+tool, preview and grant label. It keeps a generic placeholder when the host
+cannot supply it, including a request opened in a turn older than the newest
+(the read covers the newest turn only). Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
 
 `acceptForSession` also grants later calls to the same tool in that Session.

@@ -2285,6 +2285,64 @@ describe('OrchestrationService', () => {
     ).toBe('conversation-idle');
   });
 
+  test('a model change on a session that never ran a turn names it for retirement through the real service', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        model: 'claude-sonnet',
+        createdAt: '2026-08-24T00:00:00.000Z',
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-unused',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-unused-configured',
+      provider: 'claude',
+      threadId: 'conversation-unused',
+      sessionId: 'conversation-unused',
+      method: 'session.configured',
+      metadata: {
+        userId: 'owner-user',
+        agentSlug: 'station',
+        connectionId: 'connection-a',
+      },
+      createdAt: '2026-08-24T00:00:00.500Z',
+    });
+    claude.metadata.modelLaunch = {
+      ...claude.metadata.modelLaunch!,
+      overridePerTurn: false,
+    };
+    await expect(
+      service.resolveConversationContinuation(
+        'conversation-unused',
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          provider: 'claude',
+          connectionId: 'connection-a',
+          modelOverride: 'claude-opus',
+        },
+      ),
+    ).resolves.toMatchObject({
+      startRequired: true,
+      retirePredecessorSessionId: 'conversation-unused',
+    });
+  });
+
   // #2540 slice 4: an idle engine nobody is using is parked — the process
   // stops, the Session stays dormant (never `closed`, never "ended"), and the
   // next turn restarts it in place. Nothing that listens for an ending may see

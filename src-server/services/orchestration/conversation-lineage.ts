@@ -97,7 +97,13 @@ export function isConversationContinuationPending(
   });
 }
 
-/** Whether the session ever started a turn (any `turn.*` event on record). */
+/**
+ * Whether the session ever started a turn (any `turn.*` event on record).
+ * Known gap: a second send that resolves in the instant between a first turn's
+ * dispatch and its `turn.started` write sees no turn and may stop the
+ * predecessor mid-start; the window is a single event write and the stop is
+ * best effort, so it is accepted rather than guarded.
+ */
 function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
   return detail.events.some((event) => event.method.startsWith('turn.'));
 }

@@ -138,6 +138,33 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
     );
   });
 
+  test('a failed hydration leaves the placeholder and raises no unhandled rejection', async () => {
+    hydrateOpenApprovalToasts.mockClear();
+    hydrateOpenApprovalToasts.mockRejectedValueOnce(
+      new Error('Failed to fetch dynamically imported module'),
+    );
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'ready',
+            hasActiveTurn: false,
+            openRequestIds: ['req-1'],
+            blockingOpenRequestIds: ['req-1'],
+          },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    await vi.waitFor(() =>
+      expect(hydrateOpenApprovalToasts).toHaveBeenCalled(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(chats['thread-1'].approvalToasts.get('req-1')).toBe('new-toast');
+  });
+
   test('reload keeps nonblocking questions out of pending approvals', () => {
     applyOrchestrationSnapshot(
       {

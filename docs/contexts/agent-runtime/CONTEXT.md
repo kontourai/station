@@ -46,8 +46,8 @@ per-turn model switch, or explicit handoff can require a reserved successor.
 The [lineage owner](../../../src-server/services/orchestration/conversation-session-lineage.ts)
 records that relationship. Reserving a child does not prove its engine started.
 A model change on a Session that never ran a turn stops that predecessor's engine
-once the successor has started; a failed stop does not fail the send, and a
-Session with turns is never stopped this way.
+once the successor has started. The stop runs detached, so it neither delays
+nor fails the send, and a Session with turns is never stopped this way.
 
 Keep the records distinct: a Task records durable work; a command receipt records
 acceptance and its durability; a provider boundary records possible execution;

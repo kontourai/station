@@ -293,10 +293,20 @@ describe('executeForegroundMessage', () => {
         order.push(`retire:${sessionId}`);
       });
       await send(deps);
-      expect(order).toEqual([
-        'start:conversation:test:successor',
-        'retire:conversation:test',
-      ]);
+      await vi.waitFor(() =>
+        expect(order).toEqual([
+          'start:conversation:test:successor',
+          'retire:conversation:test',
+        ]),
+      );
+    });
+
+    test('a stop that never settles does not delay the send', async () => {
+      const deps = restartDependencies();
+      deps.retireSession = vi.fn(() => new Promise<void>(() => {}));
+      await send(deps);
+      expect(deps.retireSession).toHaveBeenCalledOnce();
+      expect(deps.sendTurn).toHaveBeenCalledOnce();
     });
 
     test('a failed successor start stops nothing', async () => {
@@ -316,12 +326,14 @@ describe('executeForegroundMessage', () => {
       });
       deps.warn = vi.fn();
       await send(deps);
-      expect(deps.retireSession).toHaveBeenCalledOnce();
       expect(deps.sendTurn).toHaveBeenCalledOnce();
-      expect(deps.warn).toHaveBeenCalledWith(
-        expect.stringContaining('stop timed out'),
-        expect.anything(),
+      await vi.waitFor(() =>
+        expect(deps.warn).toHaveBeenCalledWith(
+          expect.stringContaining('stop timed out'),
+          expect.anything(),
+        ),
       );
+      expect(deps.retireSession).toHaveBeenCalledOnce();
     });
 
     test('a continuation that names no predecessor stops nothing', async () => {
