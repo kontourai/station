@@ -12,9 +12,9 @@
   "document": {"digest":"2590a6e3c1723f7c66b04ce9333756755f25750762b271480dcffe17d1d04b69","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
   "sources": [
-    {"path":"packages/connect/src/core/types.ts","digest":"1e4b1904628f0f00a704c81c4f7cd8c4f26c8988b99aa7aabb833e4d9f89dc81","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"packages/connect/src/core/types.ts","digest":"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-desktop/src/lib.rs","digest":"aee5c0f359f3db35ffcddf1ccbe01113bdb6272692842bc1027ceb40155cf144","revision":"3a136e6f4d3361984c84553b962b1fa5b8a63c62"},
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
