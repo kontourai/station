@@ -759,16 +759,22 @@ pairing, manual endpoint add, and provider-backed connection suggestions.
 **selected props**
 
 ```ts
+import type { ReactNode } from 'react';
+
 interface ConnectionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   checkHealth: (url: string, credential?: string) => Promise<ConnectionHealthCheckResult>;
   initialPanel?: 'list' | 'add' | 'request-access' | 'pair-device' | 'pair-code' | 'pair-host' | 'devices' | 'discover';
   initialPairingPayload?: string;
+  listFooterContent?: ReactNode;
 }
 ```
 
 Must be rendered inside `ConnectionsProvider`.
+`listFooterContent` lets a host render optional, host-owned setup content in the
+Stations list footer. It appears only on the list panel; the connection manager
+does not interpret the content or change pairing and address flows.
 
 **example**
 
