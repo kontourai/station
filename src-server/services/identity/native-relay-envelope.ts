@@ -19,7 +19,7 @@ const suite = new CipherSuite({
 });
 const encoder = new TextEncoder();
 const MAX_BUNDLE_BYTES = 16 * 1024;
-export const NATIVE_ENROLLMENT_DELIVERY_PROOF_TYPE =
+const NATIVE_ENROLLMENT_DELIVERY_PROOF_TYPE =
   'station-native-relay-enrollment-delivery+jws';
 
 /** Private server plaintext. The renderer-facing delivery contract contains only ciphertext. */

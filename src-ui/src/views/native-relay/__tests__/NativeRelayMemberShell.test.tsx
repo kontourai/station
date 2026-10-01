@@ -31,6 +31,7 @@ const state = vi.hoisted(() => ({
   connection: null as SavedConnection | null,
   transport: vi.fn<typeof fetch>(),
   profile: null as StationProfile | null,
+  profiles: [] as readonly StationProfile[],
   panel: false,
   invitation: vi.fn<(token: string) => Promise<ProjectInvitationAcceptance>>(),
 }));
@@ -64,6 +65,43 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
     retireAccount: async () => {},
   }),
 }));
+vi.mock('../../../platform/PlatformProfileContext', () => {
+  const repository = {
+    getRelayRouteProfiles: () => state.profiles,
+    subscribeRelayRouteProfiles: () => () => {},
+  };
+  return {
+    usePlatformProfile: () => ({ isTauri: true }),
+    nativeProfileRepository: () => repository,
+  };
+});
+vi.mock('../../../platform/native/nativeRelayGrantAdapter', () => ({
+  nativeRelayGrantAdapter: {
+    status: async () => ({
+      profileName: state.profile?.name,
+      profileRevision: 7,
+      stationId: state.profile?.relayRoute?.stationId,
+      enrollmentId: state.profile?.relayRoute?.enrollmentId,
+      grants: [],
+      cleanups: [],
+    }),
+  },
+}));
+vi.mock('../../../platform/native/relayKeyApproval', () => ({
+  nativeRelayKeyApproval: {
+    status: async () => ({
+      profileName: state.profile?.name,
+      brokerOrigin: state.profile?.relayRoute?.brokerOrigin,
+      stationId: state.profile?.relayRoute?.stationId,
+      enrollmentId: state.profile?.relayRoute?.enrollmentId,
+      generation: null,
+      keyId: null,
+      status: 'untrusted',
+      trustRevision: 0,
+    }),
+    pending: async () => null,
+  },
+}));
 vi.mock('../../connections-hub/RelayRouteProfiles', async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -71,16 +109,11 @@ vi.mock('../../connections-hub/RelayRouteProfiles', async (importOriginal) => {
     >();
   return {
     ...actual,
-    RelayRouteProfiles: (props: {
-      onInvitationAccepted?: Parameters<
-        typeof actual.NativeRelayAccountSessionPanel
-      >[0]['onInvitationAccepted'];
-    }) =>
-      state.panel && state.profile ? (
-        <actual.NativeRelayAccountSessionPanel
-          profile={state.profile}
-          onInvitationAccepted={props.onInvitationAccepted}
-        />
+    RelayRouteProfiles: (
+      props: Parameters<typeof actual.RelayRouteProfiles>[0],
+    ) =>
+      state.panel ? (
+        <actual.RelayRouteProfiles {...props} />
       ) : (
         <div>Native account recovery</div>
       ),
@@ -165,6 +198,7 @@ beforeEach(() => {
     createdAt: 1,
     updatedAt: 1,
   };
+  state.profiles = [state.profile];
   state.connection = savedConnectionFromStationProfile(state.profile, 7);
   state.transport.mockReset().mockImplementation(async (input) => {
     const path = new URL(
@@ -395,10 +429,9 @@ it('the real invitation panel refreshes an already-empty member catalog in its s
   });
   render(<NativeRelayMemberShell />);
   await screen.findByText('Nothing is shared with this account yet.');
-  fireEvent.change(
-    screen.getByRole('textbox', { name: 'Account invitation token' }),
-    { target: { value: 'i'.repeat(43) } },
-  );
+  fireEvent.change(screen.getByLabelText('Account invitation token'), {
+    target: { value: 'i'.repeat(43) },
+  });
   fireEvent.click(
     screen.getByRole('button', { name: 'Accept account invitation' }),
   );

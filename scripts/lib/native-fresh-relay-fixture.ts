@@ -21,8 +21,8 @@ import { loadSelfHostedBrokerConnectorConfig } from '../../src-server/runtime/bo
 import { ConnectionSigningKeyStore } from '../../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../src-server/services/ssh/environment-security-service.js';
 
-export const NATIVE_FRESH_PUBLIC_BROKER = 'https://relay-test.kontourai.com';
-export const NATIVE_FRESH_LIFETIME_MS = 30 * 60 * 1000;
+const NATIVE_FRESH_PUBLIC_BROKER = 'https://relay-test.kontourai.com';
+const NATIVE_FRESH_LIFETIME_MS = 30 * 60 * 1000;
 const opaque = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 const origin = z
   .string()

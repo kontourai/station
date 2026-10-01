@@ -352,7 +352,7 @@ function NativeRelayGrantControls({
   );
 }
 
-export function NativeRelayAccountSessionPanel({
+function NativeRelayAccountSessionPanel({
   profile,
   onInvitationAccepted,
 }: {

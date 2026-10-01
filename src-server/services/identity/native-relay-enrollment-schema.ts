@@ -26,7 +26,7 @@ export const nativeEnrollmentScopeSchema = z
     routingGeneration: integer.positive(),
   })
   .strict();
-export const nativeEnrollmentPublicKeySchema = z
+const nativeEnrollmentPublicKeySchema = z
   .object({
     kty: z.literal('EC'),
     crv: z.literal('P-256'),
@@ -110,19 +110,6 @@ export const nativeEnrollmentChallengeSchema = nativeEnrollmentBindingSchema
     responsePeerNonce: nativeEnrollmentOpaque,
     requestedScope: z.literal('orchestration:read'),
     registrationAvailable: z.boolean(),
-    stationSigningGeneration: integer.positive(),
-  })
-  .strict();
-export const nativeEnrollmentDeliveryMetadataSchema = z
-  .object({
-    version: z.literal(NATIVE_RELAY_ENROLLMENT_VERSION),
-    state: z.literal('delivered'),
-    binding: nativeEnrollmentBindingSchema,
-    candidate: nativeEnrollmentCandidateSchema,
-    activationNonce: nativeEnrollmentOpaque,
-    bundleDigest: nativeEnrollmentOpaque,
-    expiresAt: integer.positive(),
-    responsePeerNonce: nativeEnrollmentOpaque,
     stationSigningGeneration: integer.positive(),
   })
   .strict();
