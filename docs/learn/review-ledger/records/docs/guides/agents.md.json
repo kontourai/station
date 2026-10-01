@@ -9,7 +9,7 @@
 
   "limits": "Local source/fixture review. Native provider compatibility, physical UI, real approvals, and platform/runtime setup are not established by this record.",
 
-  "document": {"digest":"0289876b2d4676c45d030933cfabe4c05830c52952a87585a542473ba223b1b4","revision":"754e48394b02f670894b419807274752fd9676d4"},
+  "document": {"digest":"de02381c3d85d1d853278a8bd3bae821ba0bf6f56e6196bf814985f0a1c79f28","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
 
   "sources": [
     {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -36,9 +36,9 @@
 
     {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"754e48394b02f670894b419807274752fd9676d4"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
@@ -62,9 +62,9 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e12a8e9c7c3120e32a859ae668138d6da2394f6c1d82d6aadb989ab58b88b7c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"ff7c778d975c7ed813ee07c5ee8cecefea35ff02e3007312f6267b94748c67c6","revision":"c30f672bd6ad608be52490ae20dcd1786989f0c2"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"754e48394b02f670894b419807274752fd9676d4"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"c83bf9d2893ac0fad3a7b9ee8818cd4de26bb1ae7fa2020436b2fa457dec7673","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
 
     {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/runtime/agents/delegation.ts","digest":"68f406b4334bf5b4ed0bb64efc3a7149199fa6b8dcbab9aca17213dba5c3e363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
 
     {"path":"src-server/runtime/agents/request-delegation.ts","digest":"4580434538f5c94c90ecf3217bb8a4bef4fad2c4681a56d9de99b6241826c34f","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -88,7 +88,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-startup.ts","digest":"80cf34735ed30ab3bf64a9be2f23b724189266d74e5eb5073c3ebf60af1a0a4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"754e48394b02f670894b419807274752fd9676d4"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -162,7 +162,7 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/kontour/station-tones.ts","digest":"1eeb2a838deac029d076e722339d6e84bca165b9dc3dc428219f767cd8587d46","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
+    {"path":"src-ui/src/components/kontour/station-tones.ts","digest":"aa02747ff27196bbfeddd883bbe2b68423c4b8e00a19ef15964f210813256179","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
 
     {"path":"src-ui/src/components/chat/HarnessQuestionCard.tsx","digest":"911b4c62834e21d948842f9f2b9762d0a943b97593f62635d226436045c1df42","revision":"754e48394b02f670894b419807274752fd9676d4"},
 

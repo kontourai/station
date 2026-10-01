@@ -9,10 +9,10 @@
 
   "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
 
-  "document": {"digest":"7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"a2971c46c0cd8f8f7d8d315da79f4cb22faf67389e354e563f5c957411645d11","revision":"d7f3dc8591b9993d2fbf1d8156cbc27a3219af11"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"fb70b5b67c507e121e1c8a03cbbe74ac88532effc67aeb3e503569ee817d15b1","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"6d03366389fac284ff94b9d2d108dbd6836ee84aa117b06e90a7fad0be5ab66d","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -38,13 +38,13 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b3d6cc66077eb50e31ec87f9f31fedd69e8d9aa164badf377061b1e748e5c27f","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -54,9 +54,9 @@
 
     {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -76,7 +76,15 @@
 
     {"path":"src-ui/src/tokens.css","digest":"18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/button-cap-ratchet.mjs","digest":"8bb9cc8484f0e930609dd015c9b2d85e307449a46700fdae2ff59e1ac56792c4","revision":"593652a1d2869e383d77238e69227735ab2b4bc5"},
+
+    {"path":"src-ui/src/components/ActionRow.tsx","digest":"ef0435148ae876bb76c336e0140d9b64cebbd4a6003a658bd40a6dad6afbb8a5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
+
+    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"abf2213fe224cd34badca2fad09f4b73fdad9e278fc07297de3146c5ebf39bf5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
+
+    {"path":"tests/helpers/visible-action-count.ts","digest":"b598b668d2fad8e2b6076100868eb5f9bc446b01487f1a761415b5fcc25ed412","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"}
   ],
 
   "checks": [

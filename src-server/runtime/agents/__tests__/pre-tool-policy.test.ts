@@ -51,7 +51,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
 
     await expect(
       evaluator(tool, invocation, { interaction: 'external' }),
-    ).resolves.toEqual({ behavior: 'allow' });
+    ).resolves.toEqual({ behavior: 'allow', toolGrant: true });
     expect(isGranted).toHaveBeenCalledWith(tool);
     expect(toolDenials.add).not.toHaveBeenCalled();
   });
