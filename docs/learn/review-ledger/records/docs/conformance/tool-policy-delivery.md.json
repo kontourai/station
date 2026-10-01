@@ -26,11 +26,11 @@
 
     {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"c5a0f69ce957324c82e2248c3122b1116d3d2778fdc73a7d1e8056b0347d43a8","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"fb928de8f3c7528ef50907f913c4ddc2abd7da87e3bce314ebe9ae739966b6cf","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
     {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"a194c76e9d176303a57fb46953fb0c32b874994a9073888eba4a585de57d6b25","revision":"593ba7779013fc65c6136152fcfb948e1ba91ce9"},
 
