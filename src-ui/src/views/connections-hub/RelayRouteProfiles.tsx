@@ -309,13 +309,24 @@ function NativeRelayGrantControls({
       />
       <label>
         One-time routing invitation
-        <textarea
+        <input
           aria-label="One-time routing invitation"
+          type="password"
+          className="editor-input"
           autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
           spellCheck={false}
           value={invitation}
           onChange={(event) => setInvitation(event.target.value)}
-          rows={4}
+          onPaste={(event) => {
+            const text =
+              event.clipboardData.getData('text/plain') ||
+              event.clipboardData.getData('text');
+            if (!text) return;
+            event.preventDefault();
+            setInvitation(text.replace(/\r\n?/gu, ' '));
+          }}
         />
       </label>
       <Button
