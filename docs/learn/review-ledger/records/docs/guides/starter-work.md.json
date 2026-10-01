@@ -34,7 +34,7 @@
 
     {"path":"src-server/routes/starter-work.ts","digest":"8e05baa625f020f66702b7b8504b2484da1d1ae49bd267de73ff84c6cda93d7d","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"77f46a216c9ad5c485fb7bf0d9f5ecccc9412ffecf65b81b34afaf5b593176b5","revision":"03b056a7b1a87aaea941b8e56a75a4496cd35832"},
 
     {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
@@ -88,7 +88,7 @@
 
     {"path":"src-ui/src/components/session-detail/AttachedSessionDetail.tsx","digest":"6b3b49f8f6404fcd87c738dac4ae70e49ebb1a86682cdb050d5c40641e4f66ce","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-ui/src/index.css","digest":"3516071aa3393c90a4f451f89257742c701cf5f7054502d4107ee4dda9ef6bae","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
 
     {"path":"src-ui/src/lib/starter-work-operation-store.ts","digest":"d3c5ace0dae590debb023c5954ae91564e94d343fc08a19da311522f340daf68","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
