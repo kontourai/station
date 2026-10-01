@@ -33,22 +33,59 @@ const EMPHASIS = [
 ];
 
 /**
- * Where a link destination that opens at `start` (just past its `(`) ends: the
- * `)` that balances it, because a URL may contain balanced parentheses
- * (`https://en.wikipedia.org/wiki/A_(b)`). A destination whose parentheses
- * never balance ends at its first `)`, as a destination always did.
+ * How much of the text a title is derived from. A title is 80 code points, and
+ * markdown stripping only ever shrinks text, so the first thousand are far more
+ * than it can use; deriving from a whole prompt (callers pass user prompts of
+ * any size) made the scans below quadratic.
+ */
+export const TITLE_SOURCE_MAX_CODE_POINTS = 1000;
+/** A link label or destination longer than this is plain text, not a link. */
+const LINK_LABEL_MAX = 200;
+const LINK_DESTINATION_MAX = 500;
+
+function leadingCodePoints(text: string, max: number): string {
+  let end = 0;
+  let count = 0;
+  for (const point of text) {
+    if (count === max) break;
+    end += point.length;
+    count += 1;
+  }
+  return end === text.length ? text : text.slice(0, end);
+}
+
+/**
+ * Where the link destination that opens at `start` (just past its `(`) ends,
+ * or -1. A URL holds no spaces and may hold balanced parentheses
+ * (`https://en.wikipedia.org/wiki/A_(b)`), so the first run up to whitespace is
+ * scanned with a depth counter. Failing that (a title after the URL, or
+ * parentheses that never balance) the destination ends at its first `)`, as it
+ * always did, so `[x](u(b) and (later) text)` keeps its text. Every scan stops
+ * LINK_DESTINATION_MAX characters in: past that it is not a link.
  */
 function linkDestinationEnd(text: string, start: number): number {
+  const limit = Math.min(text.length, start + LINK_DESTINATION_MAX);
   let depth = 1;
-  for (let index = start; index < text.length; index += 1) {
+  let firstClose = -1;
+  let inRun = true;
+  for (let index = start; index < limit; index += 1) {
     const char = text[index];
-    if (char === '(') depth += 1;
-    else if (char === ')') {
-      depth -= 1;
-      if (depth === 0) return index;
+    if (char === ')') {
+      if (firstClose === -1) firstClose = index;
+      if (inRun) {
+        depth -= 1;
+        if (depth === 0) return index;
+      }
+    } else if (inRun && char === '(') {
+      depth += 1;
+    } else if (inRun && /\s/.test(char)) {
+      inRun = false;
     }
+    // Once the run is over only the first `)` matters, and it may already be
+    // behind us.
+    if (!inRun && firstClose !== -1) return firstClose;
   }
-  return text.indexOf(')', start);
+  return firstClose;
 }
 
 /** `[label](destination)` and `![alt](destination)` become their label. */
@@ -59,7 +96,11 @@ function withoutLinks(text: string): string {
     const open = text[index] === '!' ? index + 1 : index;
     if (text[open] === '[') {
       const labelEnd = text.indexOf(']', open + 1);
-      if (labelEnd !== -1 && text[labelEnd + 1] === '(') {
+      if (
+        labelEnd !== -1 &&
+        labelEnd - open <= LINK_LABEL_MAX &&
+        text[labelEnd + 1] === '('
+      ) {
         const end = linkDestinationEnd(text, labelEnd + 2);
         if (end !== -1) {
           plain += text.slice(open + 1, labelEnd);
@@ -97,6 +138,8 @@ function boundedTitle(text: string): string {
 export function derivedConversationTitle(
   text: string | undefined,
 ): string | undefined {
-  const plain = text ? plainTitleText(text) : '';
+  const plain = text
+    ? plainTitleText(leadingCodePoints(text, TITLE_SOURCE_MAX_CODE_POINTS))
+    : '';
   return plain ? boundedTitle(plain) : undefined;
 }
