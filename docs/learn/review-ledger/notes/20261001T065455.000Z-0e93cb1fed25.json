@@ -1,0 +1,7 @@
+{
+  "revision": "569b2089287d33b204561dbc9b7c416a6f323459",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the new engine-account action inventory entry against shared ResponsiveSurfaceActions, intrinsic wrapping and measured390px browser controls. Inventory entry preserves the guide contract; no new modal, breakpoint exemption or native-device certification."}
+  ]
+}

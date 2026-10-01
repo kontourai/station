@@ -1,0 +1,7 @@
+{
+  "revision": "a5618ff63f6feaccc8471d5f802b8f7a78cbd505",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Final chart and selection delta: estimated-only costs now produce a clearly labelled daily estimate; reported costs retain precedence and currencies remain separate. Inclusive date slots retain unreported days. Deleting the viewed account returns inspection to the active/default account instead of showing stale quota. The primary four-case UI journey catches these pre-fix failures and passes after; UI typecheck passed. Prior live/provider/native/billing limits remain."}
+  ]
+}

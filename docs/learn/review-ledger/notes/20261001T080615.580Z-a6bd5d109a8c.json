@@ -1,0 +1,7 @@
+{
+  "revision": "f23e56a8542924fc7269d9ef14645a82c9065f0c",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-reviewed the account/login card against merged main. Login controls now occupy a shared action row separate from code entry, preserving the new two-labelled-action floor; the four-case UI journey remains green. No login lifecycle, permission, cost or profile behavior changed."}
+  ]
+}

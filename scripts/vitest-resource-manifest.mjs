@@ -122,6 +122,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
   'scripts/__tests__/ci-event-environment.test.ts',
@@ -1079,10 +1080,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `playwright-core`, so the classification is the only thing that keeps a
   // browser launch out of the ordinary four-worker lane.
   'src-ui/src/__tests__/ChatDockHeaderMoreMenu.layering.test.tsx',
-  // #1582 E7: same shape again — launches a real Chromium to measure whether
-  // an Activity row's project chip gets a width a reader can identify a
-  // project from.
-  'src-ui/src/__tests__/SessionsView.projectPill.overflow.test.tsx',
   // #1582 D10, classified late: this one launches Chromium too and was the
   // only file in the class that never got an entry. Found by grepping
   // `chromium.launch` across the tree rather than by any gate — the note above

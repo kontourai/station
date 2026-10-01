@@ -216,9 +216,9 @@ guessing a Project.
 Decision: the footer shows an avatar stack and a count of people present on
 projects the viewer shares. Opening it lists people (with a message action)
 and agent workers (with a follow action) together. Data comes from the
-collaborator summary the Activity surface already renders
-(`src-ui/src/components/live-activity/LiveCollaboratorsSection.tsx`) and the
-task-room presence authority. Direct messaging requires the membership
+host-wide live-activity projection (`useLiveActivityQuery`) and the task-room
+presence authority. Activity no longer renders its own collaborator section;
+the footer tray is where presence is shown. Direct messaging requires the membership
 admission work tracked on the membership record and is not part of the panel
 change.
 

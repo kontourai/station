@@ -17,13 +17,13 @@ describe('PrincipalRef — human', () => {
   it('builds a kind-prefixed human id from provider + subject, never the display', () => {
     const principal = humanPrincipal(
       'tailscale-serve',
-      'brian@example.test',
-      'Brian',
+      'casey@example.test',
+      'Casey',
     );
     expect(principal).toEqual({
-      id: 'human:tailscale-serve:brian@example.test',
+      id: 'human:tailscale-serve:casey@example.test',
       kind: 'human',
-      display: 'Brian',
+      display: 'Casey',
     });
   });
 
@@ -32,8 +32,8 @@ describe('PrincipalRef — human', () => {
     expect(principal.id).toBe('human:a:b:c');
     expect(principalIdMatchesKind(principal.id, 'human')).toBe(true);
 
-    const unicode = humanPrincipal('a', 'Brián', 'Display');
-    expect(unicode.id).toBe('human:a:Brián');
+    const unicode = humanPrincipal('a', 'Zoë', 'Display');
+    expect(unicode.id).toBe('human:a:Zoë');
     expect(principalIdMatchesKind(unicode.id, 'human')).toBe(true);
   });
 
@@ -46,19 +46,19 @@ describe('PrincipalRef — human', () => {
   });
 
   it('rejects an empty provider or subject rather than fabricating an id', () => {
-    expect(() => humanPrincipal('', 'brian', 'Brian')).toThrow(
+    expect(() => humanPrincipal('', 'casey', 'Casey')).toThrow(
       InvalidPrincipalComponentError,
     );
-    expect(() => humanPrincipal('tailscale-serve', '', 'Brian')).toThrow(
+    expect(() => humanPrincipal('tailscale-serve', '', 'Casey')).toThrow(
       InvalidPrincipalComponentError,
     );
   });
 
   it('N5 (round 2): rejects a whitespace-only subject — it names nobody', () => {
-    expect(() => humanPrincipal('tailscale-serve', '   ', 'Brian')).toThrow(
+    expect(() => humanPrincipal('tailscale-serve', '   ', 'Casey')).toThrow(
       InvalidPrincipalComponentError,
     );
-    expect(() => humanPrincipal('tailscale-serve', '\t\n', 'Brian')).toThrow(
+    expect(() => humanPrincipal('tailscale-serve', '\t\n', 'Casey')).toThrow(
       InvalidPrincipalComponentError,
     );
     // principalIdMatchesKind (and therefore isPrincipalRef) independently
@@ -85,7 +85,7 @@ describe('PrincipalRef — human', () => {
     let minted: unknown;
     let thrown: unknown;
     try {
-      minted = humanPrincipal('tailscale-serve', nul, 'Brian');
+      minted = humanPrincipal('tailscale-serve', nul, 'Casey');
     } catch (error) {
       thrown = error;
     }
@@ -100,7 +100,7 @@ describe('PrincipalRef — human', () => {
     let minted: unknown;
     let thrown: unknown;
     try {
-      minted = humanPrincipal('tailscale-serve', embedded, 'Brian');
+      minted = humanPrincipal('tailscale-serve', embedded, 'Casey');
     } catch (error) {
       thrown = error;
     }
@@ -110,16 +110,16 @@ describe('PrincipalRef — human', () => {
   });
 
   it('N5 (round 3, discriminating control): a genuinely printable unicode subject still passes', () => {
-    const principal = humanPrincipal('tailscale-serve', 'Brián', 'Brian');
-    expect(principal.id).toBe('human:tailscale-serve:Brián');
+    const principal = humanPrincipal('tailscale-serve', 'Zoë', 'Casey');
+    expect(principal.id).toBe('human:tailscale-serve:Zoë');
     expect(principalIdMatchesKind(principal.id, 'human')).toBe(true);
   });
 
   it('N2: rejects an empty or whitespace-only display', () => {
-    expect(() => humanPrincipal('tailscale-serve', 'brian', '')).toThrow(
+    expect(() => humanPrincipal('tailscale-serve', 'casey', '')).toThrow(
       InvalidPrincipalComponentError,
     );
-    expect(() => humanPrincipal('tailscale-serve', 'brian', '   ')).toThrow(
+    expect(() => humanPrincipal('tailscale-serve', 'casey', '   ')).toThrow(
       InvalidPrincipalComponentError,
     );
   });

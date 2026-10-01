@@ -9,12 +9,12 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"567afc97bab92ac5857e0c4b089b3099f569b6a7db226539922d8730b6266bf7","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"},
+  "document": {"digest":"2c3df0843e83cd4fbee320fdae3fc706c8ca5e09490d97c8d2868c7721eb1b33","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
   "sources": [
     {"path":"examples/custom-branding/plugin.json","digest":"78690c5c0506027f8eae7ecb150cd2b9586d9cac9ce046e3c461e2ae037513c0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"examples/custom-branding/providers/branding.js","digest":"ecb6f912d0f16a799db6deba4e36af5715771b076ec50bb9b326476ae6b6da47","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"examples/custom-branding/providers/branding.js","digest":"e2aeda943c29d64d2d14cef6dd72eb71d33da13ab8f7a3c9b4988ca8ad99cd6d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"162ec5e3b295d947cfcc37b8a942a86c294f855bb9b43ab072db01129477e7a4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"208d80c42ee243bf8f477e1a6f0f1d14be23e76c7a569082c2eecf5775498ce4","revision":"0ab770c4ca2daf9114d8d08a1ad7ca6c9a3ea059"},
 
-    {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"}
+    {"path":"src-ui/src/lib/branding-theme.ts","digest":"6b0a440ba723e5af74ff8230c50b2f268a87a85aa3dadce7f12a1de13257cd9d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"}
   ],
 
   "checks": [

@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"ad2e708fcb650ea156d50cbf5fb564705e1aeffda5dcc37ca01d5744b15777a5","revision":"4ce4b63ea7c1eb235990079a5eb2b5b62470185a"},
+    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

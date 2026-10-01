@@ -114,8 +114,8 @@ describe('new-chat-modal-utils', () => {
       separator: '/',
       leaf: 'kontourai',
     });
-    expect(splitCwdBreadcrumb('/Users/brian/dev/github/kontourai/')).toEqual({
-      parent: '/Users/brian/dev/github',
+    expect(splitCwdBreadcrumb('/Users/me/dev/github/kontourai/')).toEqual({
+      parent: '/Users/me/dev/github',
       separator: '/',
       leaf: 'kontourai',
     });

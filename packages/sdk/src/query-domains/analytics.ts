@@ -84,6 +84,8 @@ export function useUsageRollupQuery(
       'analytics',
       'usage-rollup',
       query.days,
+      query.provider ?? '',
+      query.localOnly ? 1 : 0,
       query.groupBy ?? 'provider',
       query.cursor ?? '',
       query.pageSize ?? 50,

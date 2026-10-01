@@ -367,7 +367,8 @@
  * never sees.
  *
  * The one colour a tint does push below AA is the faintest text step
- * (--text-muted is --k-text-faint, 4.6:1 on the light panel), so the selected
+ * (--text-muted is --k-text-faint, 4.98:1 on the light panel from
+ * @kontourai/ui 1.17, 4.52:1 before), so the selected
  * row re-points that token at --text-secondary for its whole subtree —
  * descendants that read --text-muted follow without knowing they are selected.
  * Selection is also shown by shape (the inset bar), not colour alone.

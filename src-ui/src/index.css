@@ -35,9 +35,9 @@
 
    The brand is also painted as text: the sidebar channel badge and the kit's
    `.eyebrow` read it directly. So every channel value passes the same rules
-   a white-label theme has to (lib/branding-theme.ts), per mode: brand and
-   action as text at 4.5:1 on page and panel, each fill with its text at
-   4.5:1, focus at 3:1. `branding-role-cascade.test.ts` checks those rules
+   a white-label theme has to (lib/branding-theme.ts), per mode: brand as
+   text at 4.5:1 on page, panel and raised panel, action as text at 4.5:1 on
+   page and panel, each fill with its text at 4.5:1, focus at 3:1. `branding-role-cascade.test.ts` checks those rules
    and `channel-text-contrast.test.tsx` measures the rendered text on its
    real surfaces, including the raised rows the panel links sit on and the
    sidebar home button's hover fill behind the badge. Where a channel's

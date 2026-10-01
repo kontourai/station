@@ -10,7 +10,8 @@
    dropped onto — measured identically on every host backdrop (page, panel,
    panel-raised, elevated, modal) in both themes.
 
-   `--text-muted` measured 4.38:1 dark / 4.33:1 light on that fill. `--text-xs`
+   `--text-muted` measured 4.38:1 dark / 4.33:1 light on that fill when this
+   was chosen (@kontourai/ui 1.17 retinted it: 4.51:1 / 4.77:1 now). `--text-xs`
    is 10px, which is normal text under WCAG 1.4.3 (the 18.66px/14px-bold large
    text threshold is nowhere near), so it needs 4.5:1 and missed in both
    themes. This is one of the most repeated labels in the product — it names

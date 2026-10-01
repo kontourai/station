@@ -32,8 +32,13 @@
  * percentage. A locally recomputed threshold that disagrees with the provider
  * is a label nothing derives.
  */
+
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 
 /** One quota window, as the page renders it. */
 export interface CredentialUsageWindow {
@@ -62,13 +67,55 @@ export interface UsageFetchDeps {
   fetch: typeof globalThis.fetch;
   now: () => Date;
   readTextFile: (path: string) => Promise<string>;
+  readClaudeSecureCredentials?: (
+    configDir: string,
+  ) => Promise<string | undefined>;
 }
 
-export function defaultUsageFetchDeps(): UsageFetchDeps {
+const execFileAsync = promisify(execFile);
+async function readClaudeSecureCredentials(
+  configDir: string,
+  defaultNamespace = configDir === join(homedir(), '.claude') &&
+    !process.env.CLAUDE_CONFIG_DIR &&
+    !process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR,
+) {
+  if (process.platform !== 'darwin') return undefined;
+  const account = process.env.USER || userInfo().username;
+  if (!/^[a-zA-Z0-9._-]+$/.test(account)) return undefined;
+  const suffix = createHash('sha256')
+    .update(configDir.normalize('NFC'))
+    .digest('hex')
+    .slice(0, 8);
+  const services = defaultNamespace
+    ? ['Claude Code-credentials']
+    : [`Claude Code-credentials-${suffix}`];
+  for (const service of services) {
+    try {
+      const { stdout } = await execFileAsync(
+        '/usr/bin/security',
+        ['find-generic-password', '-a', account, '-w', '-s', service],
+        { timeout: 5000, maxBuffer: 65536, windowsHide: true },
+      );
+      return stdout;
+    } catch {
+      /* This namespace has no readable Keychain entry. */
+    }
+  }
+  return undefined;
+}
+
+export function defaultUsageFetchDeps(namespace?: {
+  dir: string;
+  defaultNamespace: boolean;
+}): UsageFetchDeps {
   return {
     fetch: (...args) => globalThis.fetch(...args),
     now: () => new Date(),
     readTextFile: (path) => readFile(path, 'utf8'),
+    readClaudeSecureCredentials: (dir) =>
+      namespace
+        ? readClaudeSecureCredentials(namespace.dir, namespace.defaultNamespace)
+        : readClaudeSecureCredentials(dir),
   };
 }
 
@@ -157,10 +204,17 @@ async function claudeAccessToken(
   deps: UsageFetchDeps,
   configDir: string,
 ): Promise<string | undefined> {
+  let contents: string | undefined;
   try {
-    const parsed = JSON.parse(
-      await deps.readTextFile(join(configDir, '.credentials.json')),
-    ) as { claudeAiOauth?: { accessToken?: unknown } };
+    contents = await deps.readTextFile(join(configDir, '.credentials.json'));
+  } catch {
+    contents = await deps.readClaudeSecureCredentials?.(configDir);
+  }
+  try {
+    if (!contents) return undefined;
+    const parsed = JSON.parse(contents) as {
+      claudeAiOauth?: { accessToken?: unknown };
+    };
     const token = parsed.claudeAiOauth?.accessToken;
     return typeof token === 'string' && token ? token : undefined;
   } catch {
@@ -182,7 +236,10 @@ async function codexAuth(
       ?.access_token;
     const token = typeof direct === 'string' && direct ? direct : nested;
     if (typeof token !== 'string' || !token) return undefined;
-    const accountId = parsed.account_id;
+    const nestedAccountId = (
+      parsed.tokens as { account_id?: unknown } | undefined
+    )?.account_id;
+    const accountId = parsed.account_id ?? nestedAccountId;
     return {
       token,
       ...(typeof accountId === 'string' && accountId ? { accountId } : {}),
