@@ -181,27 +181,30 @@ async function getJson(
   }
 }
 
-/**
- * `<configDir>/.credentials.json` — the same file `detectClaudeAuthState`
- * reads. Station only ever READS it; the global config stays read-only.
- */
+/** On macOS the CLI's selected Keychain namespace wins over a legacy file. */
 async function claudeAccessToken(
   deps: UsageFetchDeps,
   configDir: string,
-): Promise<string | undefined> {
-  let contents: string | undefined;
+): Promise<{ token: string; storage: 'secure-store' | 'file' } | undefined> {
+  const decode = (contents: string | undefined): string | undefined => {
+    try {
+      if (!contents) return undefined;
+      const parsed = JSON.parse(contents) as {
+        claudeAiOauth?: { accessToken?: unknown };
+      };
+      const token = parsed.claudeAiOauth?.accessToken;
+      return typeof token === 'string' && token ? token : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const secure = decode(await deps.readClaudeSecureCredentials?.(configDir));
+  if (secure) return { token: secure, storage: 'secure-store' };
   try {
-    contents = await deps.readTextFile(join(configDir, '.credentials.json'));
-  } catch {
-    contents = await deps.readClaudeSecureCredentials?.(configDir);
-  }
-  try {
-    if (!contents) return undefined;
-    const parsed = JSON.parse(contents) as {
-      claudeAiOauth?: { accessToken?: unknown };
-    };
-    const token = parsed.claudeAiOauth?.accessToken;
-    return typeof token === 'string' && token ? token : undefined;
+    const token = decode(
+      await deps.readTextFile(join(configDir, '.credentials.json')),
+    );
+    return token ? { token, storage: 'file' } : undefined;
   } catch {
     return undefined;
   }
@@ -268,23 +271,41 @@ async function normalizedOrUnknown(
   }
 }
 
+function withCredentialStorage(
+  usage: CredentialUsage,
+  storage: 'secure-store' | 'file',
+): CredentialUsage {
+  return usage.metadata
+    ? {
+        ...usage,
+        metadata: {
+          ...usage.metadata,
+          capture: { ...usage.metadata.capture, credentialStorage: storage },
+        },
+      }
+    : usage;
+}
+
 export async function readClaudeUsage(
   configDir: string,
   deps: UsageFetchDeps = defaultUsageFetchDeps(),
 ): Promise<CredentialUsage> {
-  const token = await claudeAccessToken(deps, configDir);
-  if (!token) {
+  const auth = await claudeAccessToken(deps, configDir);
+  if (!auth) {
     return unknown(deps, 'No signed-in credential was found for this account.');
   }
   const result = await getJson(deps, CLAUDE_USAGE_URL, {
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${auth.token}`,
     // The OAuth-scoped read requires the beta opt-in; it is a capability
     // header, not a client identity, and is the only header sent beyond auth.
     'anthropic-beta': 'oauth-2025-04-20',
     Accept: 'application/json',
   });
   if (!result.ok) return unknown(deps, result.reason);
-  return normalizedOrUnknown(deps, () => normalizeClaude(deps, result.body));
+  return withCredentialStorage(
+    await normalizedOrUnknown(deps, () => normalizeClaude(deps, result.body)),
+    auth.storage,
+  );
 }
 
 function normalizeClaude(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
@@ -422,7 +443,10 @@ export async function readCodexUsage(
     Accept: 'application/json',
   });
   if (!result.ok) return unknown(deps, result.reason);
-  return normalizedOrUnknown(deps, () => normalizeCodex(deps, result.body));
+  return withCredentialStorage(
+    await normalizedOrUnknown(deps, () => normalizeCodex(deps, result.body)),
+    'file',
+  );
 }
 
 function durationLabel(seconds: unknown, fallback: string): string {

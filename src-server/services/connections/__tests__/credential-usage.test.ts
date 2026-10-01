@@ -354,9 +354,8 @@ test('Claude quota borrows only the selected secure-store credential without exp
   const usage = await readClaudeUsage(
     '/selected-account',
     deps({
-      readTextFile: async () => {
-        throw new Error('ENOENT');
-      },
+      readTextFile: async () =>
+        JSON.stringify({ claudeAiOauth: { accessToken: 'stale-file-token' } }),
       readClaudeSecureCredentials: secure,
       fetch,
     }),
@@ -527,6 +526,7 @@ test('preserves weekly-only Codex buckets, account credits and model metadata wi
     ],
     capture: {
       source: 'codex-wham-usage',
+      credentialStorage: 'file',
       unhandledFields: ['future.token'],
       excludedFields: ['promo.secret', 'spend_control.individual_limit'],
       truncated: false,
@@ -628,4 +628,88 @@ test('reports omitted models and unhandled nested availability as incomplete cap
   expect(usage.metadata?.capture.unhandledFields).toEqual([
     'model_usage[].future.available',
   ]);
+});
+
+// Sanitized field shape from the successful macOS secure-store probe on 2026-10-01.
+test('captures Claude spending units, weekly breakdown and active limit details from the live shape', async () => {
+  const usage = await readClaudeUsage(
+    '/selected',
+    deps({
+      readClaudeSecureCredentials: async () => CLAUDE_CREDS,
+      fetch: jsonFetch({
+        five_hour: { utilization: 20, resets_at: AT },
+        extra_usage: {
+          is_enabled: false,
+          user_disabled: true,
+          spend_limit_reached: false,
+          credits_ever_enabled: true,
+        },
+        limits: [
+          {
+            kind: 'session',
+            group: 'included',
+            percent: 20,
+            severity: 'normal',
+            resets_at: AT,
+            is_active: true,
+            scope: null,
+          },
+        ],
+        spend: {
+          used: { amount_minor: 1234, currency: 'USD', exponent: 2 },
+          enabled: false,
+          percent: 0,
+          severity: 'normal',
+          can_purchase_credits: true,
+          can_toggle: false,
+          disclaimer: 'Provider spending information',
+        },
+        member_dashboard_available: true,
+        seven_day_breakdown: {
+          as_of: AT,
+          window_started_at: AT,
+          rows: [{ key: 'code', display_name: 'Claude Code', percent: 12.5 }],
+        },
+      }),
+    }),
+  );
+  expect(usage.status).toBe('ok');
+  expect(usage.metadata?.spending).toMatchObject({
+    used: { amountMinor: 1234, currency: 'USD', exponent: 2 },
+    enabled: false,
+    usedPercent: 0,
+    canPurchaseCredits: true,
+    canToggle: false,
+    disclaimer: 'Provider spending information',
+  });
+  expect(usage.metadata?.extraUsage).toMatchObject({
+    userDisabled: true,
+    everEnabled: true,
+  });
+  expect(usage.metadata?.limitDetails).toEqual([
+    {
+      kind: 'session',
+      group: 'included',
+      usedPercent: 20,
+      severity: 'normal',
+      resetsAt: AT,
+      active: true,
+      model: undefined,
+      modelId: undefined,
+      surface: undefined,
+    },
+  ]);
+  expect(usage.metadata?.weeklyBreakdown).toEqual({
+    asOf: AT,
+    windowStartedAt: AT,
+    rows: [{ key: 'code', label: 'Claude Code', usedPercent: 12.5 }],
+  });
+  expect(usage.metadata?.memberDashboardAvailable).toBe(true);
+  expect(usage.metadata?.capture).toEqual({
+    source: 'claude-oauth-usage',
+    credentialStorage: 'secure-store',
+    unhandledFields: [],
+    excludedFields: [],
+    truncated: false,
+  });
 });

@@ -1,4 +1,7 @@
-import type { EngineAccountUsageMetadata } from '@kontourai/station-contracts/engine-accounts';
+import type {
+  EngineAccountProviderMoney,
+  EngineAccountUsageMetadata,
+} from '@kontourai/station-contracts/engine-accounts';
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
 import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
@@ -583,6 +586,18 @@ function Facts({ rows }: { rows: FactRow[] }) {
     </dl>
   );
 }
+function providerMoney(
+  value: EngineAccountProviderMoney | undefined,
+): string | undefined {
+  return value
+    ? new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: value.currency,
+        minimumFractionDigits: value.exponent,
+        maximumFractionDigits: value.exponent,
+      }).format(value.amountMinor / 10 ** value.exponent)
+    : undefined;
+}
 const yesNo = (value: boolean | undefined) =>
   value === undefined ? undefined : value ? 'Yes' : 'No';
 
@@ -591,8 +606,18 @@ function AccountMetadata({
 }: {
   metadata: EngineAccountUsageMetadata;
 }) {
-  const { identity, credits, extraUsage, resetCredits, models, capture } =
-    metadata;
+  const {
+    identity,
+    credits,
+    extraUsage,
+    resetCredits,
+    models,
+    spending,
+    limitDetails,
+    weeklyBreakdown,
+    memberDashboardAvailable,
+    capture,
+  } = metadata;
   return (
     <>
       {identity?.email && <small>{identity.email}</small>}
@@ -643,13 +668,52 @@ function AccountMetadata({
                       : `${extraUsage.usedPercent}%`,
                   ],
                   ['Extra usage limit reached', yesNo(extraUsage.limitReached)],
+                  [
+                    'Extra usage disabled by user',
+                    yesNo(extraUsage.userDisabled),
+                  ],
+                  ['Credits previously enabled', yesNo(extraUsage.everEnabled)],
+                  ['Extra usage currency', extraUsage.currency],
+                  ['Extra usage decimal places', extraUsage.decimalPlaces],
+                  ['Extra usage disabled reason', extraUsage.disabledReason],
+                ] satisfies FactRow[])
+              : []),
+            ...(spending
+              ? ([
+                  ['Provider spend', providerMoney(spending.used)],
+                  ['Spend limit', providerMoney(spending.limit)],
+                  ['Spending balance', providerMoney(spending.balance)],
+                  ['Spending cap', providerMoney(spending.cap)],
+                  [
+                    'Spending used',
+                    spending.usedPercent === undefined
+                      ? undefined
+                      : `${spending.usedPercent}%`,
+                  ],
+                  ['Spending enabled', yesNo(spending.enabled)],
+                  ['Spend severity', spending.severity],
+                  [
+                    'Credit purchase available',
+                    yesNo(spending.canPurchaseCredits),
+                  ],
+                  ['Spending setting can change', yesNo(spending.canToggle)],
+                  ['Spending disabled reason', spending.disabledReason],
+                ] satisfies FactRow[])
+              : []),
+            ...(memberDashboardAvailable !== undefined
+              ? ([
+                  [
+                    'Provider member dashboard',
+                    yesNo(memberDashboardAvailable),
+                  ],
                 ] satisfies FactRow[])
               : []),
           ]}
         />
-        {!identity && !credits && !extraUsage && !resetCredits && (
+        {!identity && !credits && !extraUsage && !resetCredits && !spending && (
           <Empty variant="compact" label="Account details unavailable" />
         )}
+        {spending?.disclaimer && <small>{spending.disclaimer}</small>}
         {!!models?.length && (
           <Facts
             rows={models.map((model) => [
@@ -671,6 +735,66 @@ function AccountMetadata({
           />
         )}
       </details>
+      {!!weeklyBreakdown?.rows.length && (
+        <details>
+          <summary>Weekly usage breakdown</summary>
+          <Facts
+            rows={[
+              [
+                'As of',
+                weeklyBreakdown.asOf
+                  ? new Date(weeklyBreakdown.asOf).toLocaleString()
+                  : undefined,
+              ],
+              [
+                'Window started',
+                weeklyBreakdown.windowStartedAt
+                  ? new Date(weeklyBreakdown.windowStartedAt).toLocaleString()
+                  : undefined,
+              ],
+              ...weeklyBreakdown.rows.map(
+                (row): FactRow => [
+                  row.label,
+                  row.usedPercent === undefined
+                    ? undefined
+                    : `${row.usedPercent}%`,
+                ],
+              ),
+            ]}
+          />
+        </details>
+      )}
+      {!!limitDetails?.length && (
+        <details>
+          <summary>Provider limit details</summary>
+          {limitDetails.map((limit, index) => (
+            <Facts
+              key={index}
+              rows={[
+                ['Limit kind', limit.kind],
+                ['Group', limit.group],
+                ['Active', yesNo(limit.active)],
+                [
+                  'Used',
+                  limit.usedPercent === undefined
+                    ? undefined
+                    : `${limit.usedPercent}%`,
+                ],
+                ['Severity', limit.severity],
+                [
+                  'Reset time',
+                  limit.resetsAt
+                    ? new Date(limit.resetsAt).toLocaleString()
+                    : undefined,
+                ],
+                ['Model', limit.model],
+                ['Model ID', limit.modelId],
+                ['Surface', limit.surface],
+              ]}
+            />
+          ))}
+        </details>
+      )}
       <details>
         <summary>
           Data captured
@@ -685,6 +809,14 @@ function AccountMetadata({
               capture.source === 'codex-wham-usage'
                 ? 'OpenAI account usage'
                 : 'Anthropic OAuth usage',
+            ],
+            [
+              'Credential source',
+              capture.credentialStorage === 'secure-store'
+                ? 'Selected secure-store namespace'
+                : capture.credentialStorage === 'file'
+                  ? 'Selected credential file'
+                  : undefined,
             ],
             ['Storage', 'Live reading; no quota history stored'],
             [

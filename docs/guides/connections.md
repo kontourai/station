@@ -67,8 +67,9 @@ status before starting again because the server may still be running the login.
 **Allowance** shows the selected account's provider-reported limits and reset
 times. Failed or unrecognized readings say unavailable, never zero. **Refresh**
 requests a new reading; there is no continuous quota polling. Claude credentials
-may be read from its selected macOS Keychain namespace when no credential file
-exists. Tokens remain on the server.
+are read from the selected macOS Keychain namespace first, with a credential
+file fallback when that namespace has no usable entry. A stale legacy file does
+not override the current secure-store login. Tokens remain on the server.
 
 Codex window labels use the provider's reported duration. A primary window is
 not necessarily five hours; absent durations are labeled primary or secondary.
@@ -77,12 +78,17 @@ Passing a reset time does not clear the captured quota; refresh for a new readin
 
 **Account & credits** expands account identity, credit balances, approximate
 local/cloud message ranges, reset credits and model availability when Codex
-returns them. Claude extra usage shows enabled state, utilization and amounts
+returns them. Claude extra usage shows enabled/user-disabled state, prior credit
+enablement, utilization, currency/decimal metadata and amounts
 in provider units; Station does not assume those amounts are dollars.
+Claude provider spending uses explicit minor-unit/currency/exponent data for
+formatted amounts and exposes provider severity and credit/settings capability
+flags. **Weekly usage breakdown** and **Provider limit details** retain the
+provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, storage policy, unmapped non-null
+**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
 field paths and deliberate exclusions. Only field names leave the server for
 unmapped values. This bounded shape audit excludes null/empty fields, value
 validation, credential stores and other endpoints; “none in this response” does
@@ -100,15 +106,19 @@ The current projection inventory is:
 | Codex `rate_limit_reset_credits` | Available and applicable counts | Live |
 | Codex `spend_control.reached` | Account exhaustion verdict | Live; individual spend-limit policy, promo and limit-reached type deliberately excluded |
 | Claude `five_hour`, `seven_day`, model/OAuth/Cowork weekly windows and scoped `limits` | Percentage, reset and provider exhaustion verdict | Live; not all accounts return each window |
-| Claude `extra_usage` | Enabled state, used amount, monthly limit, utilization, spend-limit verdict | Live; amounts stay in provider units |
+| Claude `extra_usage` | Enabled/user-disabled state, prior credit enablement, used amount, monthly limit, utilization, spend-limit verdict and declared units | Live; raw amounts stay in provider units |
+| Claude `spend` | Declared-currency amounts, severity, enabled state, capability flags and provider disclaimer | Live; explicit minor units/exponent required for currency formatting; no purchase or setting mutation |
+| Claude `limits`, `seven_day_breakdown`, `member_dashboard_available` | Active/group/model/surface annotations, dated weekly percentage breakdown and dashboard availability | Live; detail/breakdown arrays capped at 32; shape audit marks truncation |
 | Station usage rollup | Input/output/cache tokens, receipts, reported/estimated costs, pricing sources/snapshots, coverage/freshness/observed turns | Persisted receipts; all engine accounts on this Station, not provider-wide billing |
 | Non-null unrecognized response leaves | Unmapped paths, never their values | No raw-response storage; audit capped at depth 8, 2048 visited nodes, 256 leaves, 64 keys/object and 32 items/array |
 
 On 2026-10-01 a read-only Codex account probe confirmed the weekly-primary,
 reserve, model availability, credit, chat-pass and reset-credit response shapes.
-The then-stored Claude credential returned 401; Claude additions are validated
-against controlled response fixtures and are **not live-verified** for that
-account. Other plans and provider endpoints remain outside this observation.
+The legacy Claude credential file returned 401, while its selected macOS
+secure-store credential returned 200. After correcting credential-source
+precedence, both readers reported no unmapped non-null field paths or audit
+truncation for those account responses. Claude spending, breakdown, active-limit
+and extra-usage shapes are live-observed as well as fixture-validated. Other plans and provider endpoints remain outside this observation.
 
 **Activity** shows 7 or 30 days of this engine's runs on this Station, across all
 accounts. Receipts do not identify the credential profile, so this is not

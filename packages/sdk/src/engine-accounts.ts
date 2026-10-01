@@ -18,6 +18,13 @@ const engineAccountsSchema = z
     ),
   })
   .strict();
+const providerMoneySchema = z
+  .object({
+    amountMinor: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    exponent: z.number().int().min(0).max(6),
+  })
+  .strict();
 const usageMetadataSchema = z
   .object({
     identity: z
@@ -52,9 +59,64 @@ const usageMetadataSchema = z
         monthlyLimit: z.number().nonnegative().optional(),
         usedPercent: z.number().nonnegative().optional(),
         limitReached: z.boolean().optional(),
+        userDisabled: z.boolean().optional(),
+        everEnabled: z.boolean().optional(),
+        currency: z.string().optional(),
+        decimalPlaces: z.number().int().min(0).max(6).optional(),
+        disabledReason: z.string().optional(),
       })
       .strict()
       .optional(),
+    spending: z
+      .object({
+        used: providerMoneySchema.optional(),
+        limit: providerMoneySchema.optional(),
+        balance: providerMoneySchema.optional(),
+        cap: providerMoneySchema.optional(),
+        usedPercent: z.number().nonnegative().optional(),
+        severity: z.string().optional(),
+        enabled: z.boolean().optional(),
+        disabledReason: z.string().optional(),
+        disclaimer: z.string().optional(),
+        canPurchaseCredits: z.boolean().optional(),
+        canToggle: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    limitDetails: z
+      .array(
+        z
+          .object({
+            kind: z.string().optional(),
+            group: z.string().optional(),
+            usedPercent: z.number().nonnegative().optional(),
+            severity: z.string().optional(),
+            resetsAt: z.string().optional(),
+            active: z.boolean().optional(),
+            model: z.string().optional(),
+            modelId: z.string().optional(),
+            surface: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    weeklyBreakdown: z
+      .object({
+        asOf: z.string().optional(),
+        windowStartedAt: z.string().optional(),
+        rows: z.array(
+          z
+            .object({
+              key: z.string(),
+              label: z.string(),
+              usedPercent: z.number().nonnegative().optional(),
+            })
+            .strict(),
+        ),
+      })
+      .strict()
+      .optional(),
+    memberDashboardAvailable: z.boolean().optional(),
     resetCredits: z
       .object({
         available: z.number().nonnegative().optional(),
@@ -77,6 +139,7 @@ const usageMetadataSchema = z
     capture: z
       .object({
         source: z.enum(['claude-oauth-usage', 'codex-wham-usage']),
+        credentialStorage: z.enum(['secure-store', 'file']).optional(),
         unhandledFields: z.array(z.string()),
         excludedFields: z.array(z.string()),
         truncated: z.boolean(),

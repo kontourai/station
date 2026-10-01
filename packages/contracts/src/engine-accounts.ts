@@ -25,6 +25,11 @@ export interface EngineAccountUsageWindow {
   limitReached?: boolean;
   model?: string;
 }
+export interface EngineAccountProviderMoney {
+  amountMinor: number;
+  currency: string;
+  exponent: number;
+}
 /** Safe projection of a live provider response; never credential material. */
 export interface EngineAccountUsageMetadata {
   identity?: { email?: string; accountId?: string; userId?: string };
@@ -42,7 +47,42 @@ export interface EngineAccountUsageMetadata {
     monthlyLimit?: number;
     usedPercent?: number;
     limitReached?: boolean;
+    userDisabled?: boolean;
+    everEnabled?: boolean;
+    currency?: string;
+    decimalPlaces?: number;
+    disabledReason?: string;
   };
+  spending?: {
+    used?: EngineAccountProviderMoney;
+    limit?: EngineAccountProviderMoney;
+    balance?: EngineAccountProviderMoney;
+    cap?: EngineAccountProviderMoney;
+    usedPercent?: number;
+    severity?: string;
+    enabled?: boolean;
+    disabledReason?: string;
+    disclaimer?: string;
+    canPurchaseCredits?: boolean;
+    canToggle?: boolean;
+  };
+  limitDetails?: Array<{
+    kind?: string;
+    group?: string;
+    usedPercent?: number;
+    severity?: string;
+    resetsAt?: string;
+    active?: boolean;
+    model?: string;
+    modelId?: string;
+    surface?: string;
+  }>;
+  weeklyBreakdown?: {
+    asOf?: string;
+    windowStartedAt?: string;
+    rows: Array<{ key: string; label: string; usedPercent?: number }>;
+  };
+  memberDashboardAvailable?: boolean;
   resetCredits?: { available?: number; applicable?: number };
   models?: Array<{
     id: string;
@@ -53,6 +93,7 @@ export interface EngineAccountUsageMetadata {
   /** Shape audit only: no unrecognized response values leave the server. */
   capture: {
     source: 'claude-oauth-usage' | 'codex-wham-usage';
+    credentialStorage?: 'secure-store' | 'file';
     unhandledFields: string[];
     excludedFields: string[];
     truncated: boolean;

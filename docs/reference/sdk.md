@@ -3813,7 +3813,8 @@ keys partition API base, authority, engine connection and profile. Login retries
 are disabled and live status polls only while a login is pending. Quota refresh
 is explicit. Strict contracts live in
 `@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
-optional account/credit/model metadata and response-shape audit fields on both
+optional account/credit/model, Claude spending/breakdown/limit metadata and
+response-shape audit fields on both
 known and unknown quota variants. Consumers must not treat unknown quota as zero
 or credit balances as dollars. Window durations come from the provider, rather
 than inferring five hours from the primary position.

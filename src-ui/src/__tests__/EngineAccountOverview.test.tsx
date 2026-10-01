@@ -115,6 +115,37 @@ test.each([
                     creditsWouldEnable: true,
                   },
                 ],
+                ...(engine === 'claude'
+                  ? {
+                      extraUsage: { userDisabled: false, everEnabled: true },
+                      spending: {
+                        used: {
+                          amountMinor: 1234,
+                          currency: 'USD',
+                          exponent: 2,
+                        },
+                        enabled: false,
+                      },
+                      weeklyBreakdown: {
+                        asOf: '2026-10-01T12:00:00Z',
+                        rows: [
+                          {
+                            key: 'code',
+                            label: 'Claude Code',
+                            usedPercent: 12.5,
+                          },
+                        ],
+                      },
+                      limitDetails: [
+                        {
+                          kind: 'session',
+                          group: 'included',
+                          active: true,
+                          usedPercent: 20,
+                        },
+                      ],
+                    }
+                  : {}),
                 capture: {
                   source:
                     engine === 'codex'
@@ -223,6 +254,18 @@ test.each([
       expect(screen.getByText('viewer@example.test')).toBeTruthy();
       fireEvent.click(screen.getByText('Account & credits'));
       expect(screen.getByText('12.5')).toBeTruthy();
+      if (engine === 'claude') {
+        expect(screen.getByText('$12.34')).toBeTruthy();
+        expect(
+          screen
+            .getByText('Extra usage disabled by user')
+            .parentElement?.querySelector('dd')?.textContent,
+        ).toBe('No');
+        fireEvent.click(screen.getByText('Weekly usage breakdown'));
+        expect(screen.getByText('12.5%')).toBeTruthy();
+        fireEvent.click(screen.getByText('Provider limit details'));
+        expect(screen.getByText('included')).toBeTruthy();
+      }
       expect(
         screen.getByText('Unavailable · Credits would enable'),
       ).toBeTruthy();
