@@ -310,7 +310,7 @@ Custom-host state slot; currently unbound in Station's default adapter.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout on desktop), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
