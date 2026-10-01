@@ -1327,9 +1327,11 @@ session summary carries `openRequestIds`, is still listed there. Each row
 carries `requestEventId`, the `request.opened` event it was read from.
 `respond` looks the request up first and, for an approval or permission this
 Station still lists, sends that id as `expectedRequestEventId`, so the server
-answers the request that was listed and refuses one that changed. A request
-the lookup does not find is posted without it and the server decides; nothing
-is refused client-side.
+answers the request that was listed and refuses one that changed. A question
+(a request carrying a questionnaire) is never bound this way, so the server
+still refuses to close one that was not inspected. A request the lookup does
+not find is posted without the id and the server decides; nothing is refused
+client-side.
 
 ```
 station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
@@ -1392,8 +1394,8 @@ continuously refresh every owner projection.
 The approvals pane lists a `request.opened` with no `request.resolved` that
 was not [settled by its turn's abort](session-api.md#respondtorequest), by the
 same shared rule the server applies, over the events this screen holds. A
-keypress decision on an approval or permission is sent with the listed
-request's event id as `expectedRequestEventId`.
+keypress decision on an approval or permission that is not a question is
+sent with the listed request's event id as `expectedRequestEventId`.
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent

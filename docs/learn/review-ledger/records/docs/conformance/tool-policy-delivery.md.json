@@ -26,7 +26,7 @@
 
     {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"85d63368cf85a2e69e1be1c02e532fa3cb7caab68cea05770a9bf7555b17e30c","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"19eead240760f530655001568f8a5153feac0594213ead5ba749cb0c3acbaa31","revision":"c5364f269c1fa068755974e957adba21c461a6fa"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -34,7 +34,7 @@
 
     {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"62628f377e3b3ec1ed3bb134c58ab9cfd1aaf287508fdc9a3c559c1efe8d5ad7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"98088eb96be6e5a253a55778fad939ce55cc1447d58a47195cbe81cb7fa821cd","revision":"c5364f269c1fa068755974e957adba21c461a6fa"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

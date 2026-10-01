@@ -9,7 +9,7 @@
 
   "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof.",
 
-  "document": {"digest":"badb7717a17d02e3abbc0d07a7644aa924c1f5edff68b410f7ac97f88d0bb2bb","revision":"b03622e2007e22ff75c7280a41396526c75a7b6e"},
+  "document": {"digest":"ee577b0133e7f8e0392ce2bd02daff1f86f4f1e16f5466779a7448d6f811b5bb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},

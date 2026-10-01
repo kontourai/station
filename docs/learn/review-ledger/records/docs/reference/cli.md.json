@@ -9,7 +9,7 @@
 
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
-  "document": {"digest":"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
+  "document": {"digest":"2956e925977c7292b0b38c03fcb2b38058d5243fe9ef0c818c2fb1b910c4ac2a","revision":"2980b5579fb5a90ba37cd95a14c40065c0b57917"},
 
   "sources": [
     {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
@@ -72,15 +72,15 @@
 
     {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/operate/derive.ts","digest":"baa850f8697788c0838fdd4f91444105b23cd641ac3b41bf35833dbddb51be68","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/operate/derive.ts","digest":"25ee621853ce35ad9d4c03deeb4307cf5b7963fea4c6a81c3d79dac883e6712e","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"packages/cli/src/commands/operate/index.ts","digest":"bbb3600be4fd61c890fbbd4ad44bfbbb2ae3c40284811fbe1c41ab61dab5c761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"packages/cli/src/commands/operate/render.ts","digest":"432ff905abc0f165fc6ed2603de62abf6ada7cdce842d3259cb28cb8c4fdabaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/operate/shell.ts","digest":"84077a6fc13d36cc6ceee65af89bb6961f2ddc75118b8cff474640586f0d422e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/operate/shell.ts","digest":"1cbd71620acac3790d27463b708ced0bd6f07f1a54a85a43cfb66e4773723ee4","revision":"95701d07650e3601d9f5a2f5744fc005b9880f63"},
 
-    {"path":"packages/cli/src/commands/operate/state.ts","digest":"f7835d5a9bb6e48f6b135c2102f1d59288e7ae29cd135629642c7a6a15a88bdb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/operate/state.ts","digest":"e8e55fa0625791363d7b798ec14121bcca6894a179777c59c89b0e67d1e06483","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"packages/cli/src/commands/portability-io.ts","digest":"bfdfb01ce86fef0f5906b05485fc1857adc514bc186510475480ac981db31b97","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

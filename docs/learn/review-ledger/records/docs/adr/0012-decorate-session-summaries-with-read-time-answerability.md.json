@@ -9,7 +9,7 @@
 
   "limits": "The historical 37 folds,30 decisions,21 client sites and12 injected failures are not a current inventory. All notification/CLI/UI consumers, residual slice completion and cross-instance user journeys were not re-audited.",
 
-  "document": {"digest":"b5e894d0a25641321af5303f2e4219e4eed76d03941f8ce5b413822d467e5034","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+  "document": {"digest":"ea5a4cfd61eef661cd2e50d189f1b61ea276413804fb29a4ea2f4d5301d1c6e7","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
   "sources": [
     {"path":"packages/contracts/src/__tests__/orchestration-answerability.test.ts","digest":"e99338dcd3d28fa85a96b56c8a5d1f1bae01b08b8de45e70760698b005144a59","revision":"fcd4407178cb5509ea47a958714603034fe20004"},

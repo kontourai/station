@@ -24,7 +24,7 @@
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"98088eb96be6e5a253a55778fad939ce55cc1447d58a47195cbe81cb7fa821cd","revision":"c5364f269c1fa068755974e957adba21c461a6fa"},
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-server/services/orchestration/external-session-continuation-context.ts","digest":"47e2d4410f67d284b580de70aedb5cc6cb631fda2fd879efbcc73246e697c87f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
