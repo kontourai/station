@@ -11,6 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkChangesets } from '../check-changesets.mjs';
+import {
+  CI_FAST_STEP_MARKER_PATTERN,
+  ciFastStepMarker,
+} from '../lib/ci-fast-step-marker.mjs';
 import { CHANGED_DEADLINE_ENV as SELECTOR_DEADLINE_ENV } from '../run-changed-verification.mjs';
 import {
   CHANGED_DEADLINE_ENV,
@@ -304,19 +308,21 @@ describe('bounded ci:fast runner', () => {
       process.execPath,
       ...FAST_STATIC_COMMANDS.map(([command]) => command),
     ]);
-    // One timing line per command, in order, plus the deferral notice
-    // immediately after the selector's own timing line.
+    // Each command is announced by its step marker and followed by one
+    // timing line, in order; the deferral notice follows the selector's own
+    // timing line.
     const [selectorCommand, selectorArgs] = [
       process.execPath,
       ['scripts/run-changed-verification.mjs', '--base=base-sha'],
     ];
     expect(reports).toEqual([
+      ciFastStepMarker(selectorCommand, selectorArgs),
       `[ci:fast] ${describeCiFastCommand(selectorCommand, selectorArgs)} 1.5s\n`,
       SELECTOR_DEFERRED_MESSAGE,
-      ...FAST_STATIC_COMMANDS.map(
-        ([command, args]) =>
-          `[ci:fast] ${describeCiFastCommand(command, args)} 1.5s\n`,
-      ),
+      ...FAST_STATIC_COMMANDS.flatMap(([command, args]) => [
+        ciFastStepMarker(command, [...args]),
+        `[ci:fast] ${describeCiFastCommand(command, args)} 1.5s\n`,
+      ]),
     ]);
   });
 
@@ -334,15 +340,47 @@ describe('bounded ci:fast runner', () => {
         reports.push(message);
       },
     });
-    expect(reports[0]).toBe(
+    const timings = reports.filter(
+      (line) => !CI_FAST_STEP_MARKER_PATTERN.test(line.trimEnd()),
+    );
+    expect(timings[0]).toBe(
       `[ci:fast] ${describeCiFastCommand(process.execPath, [
         'scripts/run-changed-verification.mjs',
         '--base=base-sha',
       ])} 2.3s\n`,
     );
-    expect(reports).toHaveLength(1 + FAST_STATIC_COMMANDS.length);
-    for (const line of reports)
+    expect(timings).toHaveLength(1 + FAST_STATIC_COMMANDS.length);
+    for (const line of timings)
       expect(line).toMatch(/^\[ci:fast\] .+ \d+\.\ds\n$/);
+  });
+
+  it('announces each step before running it, so a failing direct node step is attributable', () => {
+    const events: string[] = [];
+    const failing = FAST_STATIC_COMMANDS.findIndex(([, args]) =>
+      args.includes('scripts/code-health-gate.mjs'),
+    );
+    expect(failing).toBeGreaterThan(0);
+    const status = runCiFast({
+      env: { STATION_CI_FAST_BASE: 'base-sha' },
+      execute(command, args) {
+        events.push(`run ${describeCiFastCommand(command, args)}`);
+        return events.filter((event) => event.startsWith('run ')).length ===
+          failing + 2
+          ? 1
+          : 0;
+      },
+      report(message) {
+        if (CI_FAST_STEP_MARKER_PATTERN.test(message.trimEnd()))
+          events.push(message.trimEnd());
+      },
+    });
+    expect(status).toBe(1);
+    // The last announcement before the failing run names that step.
+    const lastRun = events.findLastIndex((event) => event.startsWith('run '));
+    expect(events[lastRun - 1]).toBe(
+      '[ci:fast] step scripts/code-health-gate.mjs',
+    );
+    expect(events[lastRun]).toContain('scripts/code-health-gate.mjs');
   });
 
   it('formats a command label and elapsed seconds', () => {

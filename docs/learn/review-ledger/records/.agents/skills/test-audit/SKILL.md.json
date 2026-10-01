@@ -1,0 +1,17 @@
+{
+  "path": ".agents/skills/test-audit/SKILL.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "document": {"digest":"6fee7772c3fafa51488cb3d229a519b921dd0dbb47c3cef858bd88806de43c3c","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

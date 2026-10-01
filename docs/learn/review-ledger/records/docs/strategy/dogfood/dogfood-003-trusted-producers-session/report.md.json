@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/dogfood/dogfood-003-trusted-producers-session/report.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+
+  "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+
+  "document": {"digest":"8ba17a5bab9905da2b459ea7f205d8a595cdb0588aa1661fde138500c2ed7c27","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

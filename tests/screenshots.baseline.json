@@ -11,7 +11,7 @@
       "name": "agent-editor-not-runnable",
       "width": 1440,
       "height": 900,
-      "sha256": "dd5a8776756bd8531e511aa82c3541ca9ce2d671bfd29c58c00f07361509bc9c"
+      "sha256": "1ae40cc5ffa416324f924046df950f320cd8a18cb6517e0e9d0fce7a4c45e8c3"
     },
     {
       "name": "agents",
@@ -197,7 +197,7 @@
       "name": "overlay-agent-actions-menu",
       "width": 1440,
       "height": 900,
-      "sha256": "b73510afde4caa35df57526906c7abf993d06009be33076212480351c5ff80d5"
+      "sha256": "8f1873a5374078cea50d2b3fe295b8ebd48bda9c57cb550969109fabdd64dfaf"
     },
     {
       "name": "overlay-command-palette-results",
@@ -227,7 +227,7 @@
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "637a38967906034798b78cd3e264e84026d869026c3e2aca66f855ac493a31c0"
+      "sha256": "406c0b701efe1c6bdf9f4d2b4682695ffe2caf0101639f254091107eea884cca"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -305,7 +305,7 @@
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "78e2b6058e080f00420219bed6ac354f51ccca52f806c3b1cc0bf108eb9eabcf"
+      "sha256": "18164df48092a5739d6165d2c3de6b5fbfbbe1ff81e47eb97e11b6370aaef2f8"
     },
     {
       "name": "settings",

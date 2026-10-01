@@ -326,6 +326,80 @@ last 100 non-merge `origin/main` subjects still pass and that every merge
 subject in the last 3000 commits is exempt or conforming, so a vocabulary
 that stops fitting the repo fails a gate rather than its contributors.
 
+## GitHub automation token
+
+Agent sessions and tools that arm auto-merge, confirm the merge queue or poll
+checks must not spend the owner's personal GitHub quota: during #2886 the
+shared 5,000-per-hour GraphQL limit ran out three times and blocked merges
+for 20 to 40 minutes each time (#2926). Automation uses a dedicated GitHub
+App instead, whose installation tokens carry their own quota.
+`scripts/gh-app-token.mjs` mints one per call:
+
+```bash
+# Read-only by default: every granted scope at read level.
+GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/<n>
+# Ask for exactly the write scope a call needs; the child gets GH_TOKEN, never your GITHUB_TOKEN.
+node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write -- \
+  gh pr merge <n> --repo kontourai/station --auto
+```
+
+Each token is scoped to the `station` repository and the requested
+permissions, lives about an hour, and is never cached or written anywhere.
+The helper fails closed (exit 78) and points here when it is not set up. It
+refuses to print a token to a terminal, so a bare run cannot leak one into a
+session transcript; capture it with `$(...)` or run a command after `--`.
+Each refusal starts with a stable reason code, such as
+`gh-app-token: key-in-repository:`.
+
+**Prefer REST for status reads.** `gh pr view`, `gh pr checks` and
+`gh pr status` are GraphQL calls. Read state over REST instead:
+`gh api repos/kontourai/station/pulls/<n>`,
+`gh api repos/kontourai/station/commits/<sha>/check-runs` and
+`gh api repos/kontourai/station/commits/<sha>/status`. The merge queue has no
+REST endpoint, so confirm an armed PR with the single GraphQL query in
+[AGENTS.md](../../AGENTS.md), once, with the app token.
+
+### Setup (owner, once)
+
+1. Create a dedicated app, not the release app. The release app's
+   permissions are broader than arming and reading need. This link pre-fills
+   the minimal permissions and no webhook:
+   `https://github.com/organizations/kontourai/settings/apps/new?name=station-automation&url=https://github.com/kontourai/station&public=false&webhook_active=false&pull_requests=write&contents=write&issues=write&checks=read&statuses=read&actions=read&metadata=read`
+2. Install it on `kontourai` with **Only select repositories**:
+   `kontourai/station`.
+3. Keep the app **off every ruleset bypass list**. It arms auto-merge; the
+   merge queue and required checks must still decide.
+4. Generate a private key, store it in the macOS Keychain, then delete the
+   downloaded file:
+
+   ```bash
+   security add-generic-password -U -s kontourai-station-automation -a <app-id> -w "$(cat station-automation.pem)"
+   rm -P station-automation.pem
+   ```
+
+   The key briefly appears in the process list while that command runs.
+   `security find-generic-password -w` returns a multi-line secret
+   hex-encoded; the helper decodes it in memory.
+5. Point the helper at the app outside the repository, in
+   `~/.config/station/gh-app.json` (or `$STATION_GH_APP_CONFIG`):
+
+   ```json
+   { "appId": "5113898", "installationId": "165937750" }
+   ```
+
+   Environment variables override the file: `STATION_GH_APP_ID`,
+   `STATION_GH_APP_INSTALLATION_ID` (looked up from the app's installation on
+   `kontourai` when absent), `STATION_GH_APP_KEYCHAIN_SERVICE` (default
+   `kontourai-station-automation`), `STATION_GH_APP_KEYCHAIN_ACCOUNT`
+   (default: the app ID) and `STATION_GH_APP_PRIVATE_KEY_PATH`, a key file
+   used instead of the Keychain, for hosts without one. The helper refuses a
+   config or key file inside a repository.
+
+**Rotation.** Generate a new key in the app's settings, replace the Keychain
+item with the same `security add-generic-password -U` command, confirm
+`node scripts/gh-app-token.mjs >/dev/null` exits 0, then delete the old key
+from the app's settings.
+
 ## Verification
 
 Before editing, route the intended paths with `gate:for`. Use the changed

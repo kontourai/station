@@ -1,0 +1,63 @@
+{
+  "path": "AGENTS.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
+
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No merge, push, queue mutation, release, full regression, or behavioral conformance audit was performed. GitHub rules are a time-specific observation.",
+
+  "document": {"digest":"f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+
+  "sources": [
+    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/gate-for.mjs","digest":"6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+
+    {"path":"scripts/lib/typecheck-host-slots.mjs","digest":"26e76900f135282106e245c4946798b5a084cb98de3074750629e9a96d0bef1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"c10941f00e2d434ca22c4cc4e4bdfb1c892cde9e18e7fb8cf558d4acf3c5eaed","revision":"10355abb29c67ba8bac4c9ad44c8718d0f42a85c"},
+
+    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/ci:fast","digest":"63205403780b83bab17755e05d5bd616a956950093d8d92a59955a74e5ce0364","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/full:regression","digest":"c9515f8d1266c6f66972172476fdf896a72e73b3f8c995b57e0273b3ba1b41e0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/gate:for","digest":"7b50a6ae44d67b5b14d5c599d38f14aff7b09c798e012e48625037826834eb2b","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:changed","digest":"448b70b57d2edff1276025401924ec201d2bdc24e5dacb738fc4384951bbd593","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/packageManager","digest":"50fca3fe5c025e96dd5375620d17ab71c3e90fec05d7fe4a572a638193d73bd0","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions. Removed only the unused resolveNpmCli re-export; managed dependency installation and hook arming instructions are unchanged. Pre-edit guidance now includes recorded documentation dependencies. Default scope includes committed, staged, unstaged and untracked changes; explicit paths still avoid Git. Independent actual CLI/collector tests confirmed scope and refusal behavior.",
+
+    "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged.",
+
+    "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+
+    "Integration source review through e0314c727: package.json only removed the @kontourai/bearing and @kontourai/forage dependencies. Every npm script and route AGENTS.md names is unchanged. GitHub rules were not re-observed. Source review is separate from executed test evidence.",
+
+    "Reviewed deltas: the audit skill gained freshness and slice guidance and package.json gained documentation scripts; the routing table and landing rules here are unchanged."
+  ]
+}

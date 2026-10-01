@@ -1,0 +1,7 @@
+{
+  "revision": "694b244f98bf7bebd82fafac047581a565da6df2",
+
+  "notes": [
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Merge review through 694b244f9: this change's only docs/learn/media.json edit removes the capture review fields, which moved to docs/learn/review-ledger/captures/ (#2936); capture metadata is unchanged and this page makes no claim about those fields, so the prose is accurate. Source review is separate from executed test evidence."}
+  ]
+}
