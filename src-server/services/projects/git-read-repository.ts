@@ -471,7 +471,11 @@ export async function openLiveRepository(
     );
   } catch {
     await snapshot.dispose();
-    return { ok: false, state: 'refused', reason: '.git holds an entry Station could not link' };
+    return {
+      ok: false,
+      state: 'refused',
+      reason: '.git holds an entry Station could not link',
+    };
   }
   return {
     ok: true,
@@ -681,7 +685,9 @@ export function forgetRepositoryConfigListings(): void {
   configListings.clear();
 }
 
-async function stampsNow(paths: Iterable<string>): Promise<Map<string, string>> {
+async function stampsNow(
+  paths: Iterable<string>,
+): Promise<Map<string, string>> {
   const stamps = new Map<string, string>();
   for (const path of paths) stamps.set(path, await fileStamp(path));
   return stamps;

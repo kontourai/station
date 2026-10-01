@@ -45,6 +45,7 @@ vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
     }) as typeof original.execGit,
   };
 });
+
 import {
   bindRuntimeLocalOperator,
   setRuntimeAuthenticatedRequestPrincipal,
@@ -688,7 +689,8 @@ describe.skipIf(process.platform === 'win32')(
         const clean = readFileSync(configPath, 'utf-8');
         hooks.beforeGit = (args) => {
           // In place, after the judgement, before git starts.
-          if (args.includes('checkout')) writeFileSync(configPath, clean + config);
+          if (args.includes('checkout'))
+            writeFileSync(configPath, clean + config);
         };
 
         const switched = await post('/git/checkout', {
@@ -719,7 +721,9 @@ describe.skipIf(process.platform === 'win32')(
         expect(git(project, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
           'made-here',
         );
-        expect(git(project, ['reflog', 'show', '--format=%gs', 'HEAD'])).toMatch(
+        expect(
+          git(project, ['reflog', 'show', '--format=%gs', 'HEAD']),
+        ).toMatch(
           /^checkout: moving from feature to made-here\ncheckout: moving from main to feature/,
         );
         expect(git(project, ['reflog', 'show', 'made-here'])).toContain(
@@ -745,9 +749,9 @@ describe.skipIf(process.platform === 'win32')(
           'feature',
         );
         expect(git(main, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('main');
-        expect(git(project, ['reflog', 'show', '--format=%gs', 'HEAD'])).toMatch(
-          /^checkout: moving from linked to feature/,
-        );
+        expect(
+          git(project, ['reflog', 'show', '--format=%gs', 'HEAD']),
+        ).toMatch(/^checkout: moving from linked to feature/);
         expect(git(project, ['status', '--porcelain'])).toBe('');
       });
 
@@ -1490,8 +1494,14 @@ describe.skipIf(process.platform === 'win32')(
     });
 
     test('the configuration listing is reused while its files hold still, and read again when the config is rewritten in place or HEAD moves', async () => {
-      repo(project, { 'a.txt': 'one\n', '.gitattributes': '*.txt filter=evil\n' });
-      writeFileSync(join(project, '.gitconfig-included'), '[core]\n\tabbrev = 11\n');
+      repo(project, {
+        'a.txt': 'one\n',
+        '.gitattributes': '*.txt filter=evil\n',
+      });
+      writeFileSync(
+        join(project, '.gitconfig-included'),
+        '[core]\n\tabbrev = 11\n',
+      );
       git(project, ['config', 'include.path', '../.gitconfig-included']);
       git(project, [
         'config',
@@ -1510,7 +1520,10 @@ describe.skipIf(process.platform === 'win32')(
       const read = () =>
         readProjectRepository(project, project, {}, async (repository) => {
           const options = { cwd: repository.top };
-          await execGit([...repository.repoArgs, 'status', '--porcelain'], options);
+          await execGit(
+            [...repository.repoArgs, 'status', '--porcelain'],
+            options,
+          );
           return (
             await execGit(
               [...repository.repoArgs, 'config', '--show-scope', '--list'],
@@ -1541,13 +1554,19 @@ describe.skipIf(process.platform === 'win32')(
       });
       expect(configCalls).toHaveLength(2);
       expect(ran()).toBe(0);
-      writeFileSync(join(project, '.gitconfig-included'), '[core]\n\tabbrev = 11\n');
+      writeFileSync(
+        join(project, '.gitconfig-included'),
+        '[core]\n\tabbrev = 11\n',
+      );
 
       // The repository's own config rewritten in place.
       const configPath = join(project, '.git', 'config');
       const clean = readFileSync(configPath, 'utf-8');
       writeFileSync(configPath, `${clean}${filter}`);
-      expect(await read()).toMatchObject({ ok: false, state: 'config-refused' });
+      expect(await read()).toMatchObject({
+        ok: false,
+        state: 'config-refused',
+      });
       writeFileSync(configPath, clean);
 
       // HEAD moved to a branch an includeIf names: listed again.
@@ -1776,7 +1795,10 @@ describe.skipIf(process.platform === 'win32')(
       const clean = readFileSync(configPath, 'utf-8');
       hooks.beforeGit = (args) => {
         if (args.includes('worktree') && args.includes('add')) {
-          writeFileSync(configPath, `${clean}[filter "evil"]\n\tsmudge = ${program}\n`);
+          writeFileSync(
+            configPath,
+            `${clean}[filter "evil"]\n\tsmudge = ${program}\n`,
+          );
         }
       };
 
@@ -1790,11 +1812,14 @@ describe.skipIf(process.platform === 'win32')(
         headRevision: head,
       });
 
-      expect(readFileSync(configPath, 'utf-8'), 'the rewrite happened').toContain(
-        'filter "evil"',
-      );
+      expect(
+        readFileSync(configPath, 'utf-8'),
+        'the rewrite happened',
+      ).toContain('filter "evil"');
       expect(existsSync(marker), 'the smudge filter ran').toBe(false);
-      expect(readFileSync(join(workspace.root, 'a.txt'), 'utf-8')).toBe('two\n');
+      expect(readFileSync(join(workspace.root, 'a.txt'), 'utf-8')).toBe(
+        'two\n',
+      );
       // The workspace is a worktree of the repository, not of Station's copy.
       expect(readFileSync(join(workspace.root, '.git'), 'utf-8').trim()).toBe(
         `gitdir: ${join(project, '.git', 'worktrees', basename(workspace.root))}`,

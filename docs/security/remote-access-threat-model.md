@@ -523,7 +523,8 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   side: swapped for a file naming another repository, the previous round
   moved that repository's HEAD on 39 of 300, this round on 0 of 300 (git
   failed on 113 of them); swapped for a link to it, 24 of 300 before and
-  2 and 3 of 300 in two runs now, each reported as
+  between 0 and 15 of 300 across six runs now (2, 3, 12, 0, 1 and 15; the
+  rate rises with host load, up to about 5%), each reported as
   `repository-changed-during-write`;
   with a 200 ms/50 ms dwell, 2 of 300 before this round. No file of the
   other repository was written into the Project in any of these runs. The
@@ -609,7 +610,7 @@ What this does not close, stated so nobody assumes it does:
 - **Still exposed in the git confinement**, each measured as stated above
   unless marked NOT_VERIFIED: a `.git` swapped in the moment between the
   pre-write check and git opening it moves another repository's HEAD on a
-  checkout (2 and 3 of 300 under a 30 ms link flip); the move of a checkpoint's
+  checkout (0 to 15 of 300 under a 30 ms link flip, rising with host load); the move of a checkpoint's
   objects, its ref write, its delete and prune, and the branch and worktree
   entry a `worktree add` writes go by path after the check (0 of 80
   captures reached another repository under that flip; the `worktree add`

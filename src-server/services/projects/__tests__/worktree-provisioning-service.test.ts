@@ -674,7 +674,9 @@ describe('repository-defined programs (#2411)', () => {
     const marker = `${repoPath}.smudge-ran`;
     const program = `${repoPath}.smudge.sh`;
     tmpRoots.push(marker, program);
-    writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\ncat\n`, { mode: 0o755 });
+    writeFileSync(program, `#!/bin/sh\ntouch '${marker}'\ncat\n`, {
+      mode: 0o755,
+    });
     const configPath = join(repoPath, '.git', 'config');
     const clean = readFileSync(configPath, 'utf-8');
     const planted = `${clean}[filter "marker"]\n\tsmudge = ${program}\n`;
@@ -714,17 +716,17 @@ describe('repository-defined programs (#2411)', () => {
       planted,
     );
     expect(existsSync(marker), 'the planted smudge filter ran').toBe(false);
-    expect(metadata?.path && existsSync(join(metadata.path, 'payload.txt'))).toBe(
-      true,
-    );
+    expect(
+      metadata?.path && existsSync(join(metadata.path, 'payload.txt')),
+    ).toBe(true);
     // The new worktree is the repository's own, not the copy's: its `.git`
     // names the repository's `worktrees` entry, which outlives the copy.
     expect(readFileSync(join(metadata!.path, '.git'), 'utf-8').trim()).toBe(
       `gitdir: ${join(repoPath, '.git', 'worktrees', basename(metadata!.path))}`,
     );
-    expect(git(metadata!.path, ['rev-parse', '--abbrev-ref', 'HEAD']).trim()).toBe(
-      metadata!.branch,
-    );
+    expect(
+      git(metadata!.path, ['rev-parse', '--abbrev-ref', 'HEAD']).trim(),
+    ).toBe(metadata!.branch);
     tmpRoots.push(metadata!.path, join(metadata!.path, '..'));
     // Control: plain git, reading that config, runs it on a checkout.
     git(repoPath, ['worktree', 'add', '-q', '--detach', `${repoPath}-plain`]);

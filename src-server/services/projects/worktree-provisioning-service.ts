@@ -313,7 +313,11 @@ function cleanupPolicyForTerminalState(
 class SpawnGitCommandRunner implements GitCommandRunner {
   async run(
     args: string[],
-    options: { cwd?: string; allowCodes?: number[]; env?: NodeJS.ProcessEnv } = {},
+    options: {
+      cwd?: string;
+      allowCodes?: number[];
+      env?: NodeJS.ProcessEnv;
+    } = {},
   ): Promise<GitCommandResult> {
     const allowCodes = options.allowCodes ?? [0];
     return await new Promise((resolve, reject) => {
@@ -624,7 +628,15 @@ export class WorktreeProvisioningService {
       }
       try {
         await this.git.run(
-          [...repo, 'worktree', 'add', '-b', branch, worktreePath, policy.baseRef],
+          [
+            ...repo,
+            'worktree',
+            'add',
+            '-b',
+            branch,
+            worktreePath,
+            policy.baseRef,
+          ],
           { env },
         );
       } catch (error) {

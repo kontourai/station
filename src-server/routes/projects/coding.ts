@@ -210,7 +210,7 @@ function configRefusedMessage(keys: readonly string[]): string {
   // `git lfs install --local` is the common way to end up here; the global
   // install is the operator's own configuration, which applies by design.
   const lfs = keys.some((key) => key.toLowerCase().startsWith('filter.lfs.'))
-    ? ' For Git LFS, install its filters for this computer\'s user instead (`git lfs install`, without `--local`)'
+    ? " For Git LFS, install its filters for this computer's user instead (`git lfs install`, without `--local`)"
     : '';
   return `This repository's own .git/config sets ${named}. Station runs git here as this computer's user, and does not while a repository's own configuration names a program to run, an address to connect to, or a file outside the repository to read. To use Station's git panel here, remove ${keys.length === 1 ? 'it' : 'them'} (\`git config --local --unset <key>\`; an included file from outside the repository is \`include.path\`)${lfs ? `.${lfs}` : ''}, or use git from a terminal`;
 }

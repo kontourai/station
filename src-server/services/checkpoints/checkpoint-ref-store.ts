@@ -183,7 +183,9 @@ export async function withQuarantinedObjects<T>(
   repository: CheckpointRepository,
   build: (env: NodeJS.ProcessEnv) => Promise<T>,
 ): Promise<T> {
-  const quarantine = await mkdtemp(join(tmpdir(), 'station-checkpoint-objects-'));
+  const quarantine = await mkdtemp(
+    join(tmpdir(), 'station-checkpoint-objects-'),
+  );
   try {
     const built = await build({
       GIT_OBJECT_DIRECTORY: quarantine,
