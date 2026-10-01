@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
 
-  "document": {"digest":"b1527bc987a784eda32e707cdd22fa74a05043579fed46cc9b1980b092762b80","revision":"3cc2806e5e1cb691b37ee0b62f688bb456f2971e"},
+  "document": {"digest":"86bd65196df41bc0cc32314ec24936fbeb4d05063af4a726274d7bca6b5bfad5","revision":"ce1dff921cfc4c580e38ae66f5d27f32eda7f0ce"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
@@ -134,7 +134,7 @@
 
     {"path":"deployment/self-hosted-broker/Caddyfile","digest":"609544b0060b97fd9167078d768a4538444c39682ebe33a18539dbd47efa8e7f","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
 
-    {"path":"deployment/self-hosted-broker/.env.example","digest":"de8309f7da6466dc058f975e6bcb7730f5a0e0fb959a0f69abf58357312838a4","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
+    {"path":"deployment/self-hosted-broker/.env.example","digest":"556b997484fc854ea509f91bb0f39b12829ddd882e89619180098ed9b95bd101","revision":"ce1dff921cfc4c580e38ae66f5d27f32eda7f0ce"},
 
     {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"e01bc77122b9ed7b4323dde178d7c82334f7de49"},
 
