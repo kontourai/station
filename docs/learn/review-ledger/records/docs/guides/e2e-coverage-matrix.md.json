@@ -32,13 +32,13 @@
 
     {"path":"tests/agents-copy-existing.spec.ts","digest":"f8cfe3870c6b37748dc1f74f3604ddb04296cc1246e8d29a71b22f6daed6cfb8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/agents-editor-gates.spec.ts","digest":"f5f600e94686892933f857f4783d577e29ef033f5896a7e183663794b3e656c3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/agents-editor-gates.spec.ts","digest":"dd880763ad634e898f84b01317194a94fa0e9632ecccf6149a6590f19382a477","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
     {"path":"tests/agents-editor-roundtrip.spec.ts","digest":"b8459d9185c13fb77600679f37a2d2dd685bc21f83d473dce1bb7eca48ee2a2c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/agents-new-cli-turn.spec.ts","digest":"36a1453086cd2a66724d9b90d3d1f00b760516e62adc2db1d8aa468670504631","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/agents-new-model-turn.spec.ts","digest":"8d65b8280989afd4ab35bfdbc6330cebb20da1765aea9865cbcfce9b2326db7a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/agents-new-model-turn.spec.ts","digest":"9b08dad60969098410c51ef899d3afc319913df22c7a834cdd683ea7aa3f816d","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
     {"path":"tests/agents-new-muse-echo-turn.spec.ts","digest":"2ce8fa9a4e4df0cb06eb0ddd05812ebbbbc728a9397895fd2c821810bfe50922","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -60,9 +60,9 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"2dca267ed3cfe8b8283ae38ff62436b2620d258491b7c3fff4993eb0151ccc7f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
-    {"path":"tests/mobile-chat-composer.spec.ts","digest":"42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"tests/mobile-chat-composer.spec.ts","digest":"8968d4adce878a9985dab595699d5e5acf256180b2f7953dfcf0a1843766639d","revision":"079d8d8e053b60924e56433c99780cb23e212270"},
 
     {"path":"tests/monitoring.spec.ts","digest":"2e6c15a60934379f643596a29d2e11b277fbd76046c1a0608878f7ee4dec980e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -86,7 +86,7 @@
 
     {"path":"tests/skills.spec.ts","digest":"3ca2809b52e5a6f3d462b4d6ae5b3ae97a4996e6c4dc61a088155f0bfde2713b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"52bcc8bc3334aa280108f30b99c7106bead3f8ae09f707954695910777edbe2e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/task-first-home.spec.ts","digest":"3fb9115842c8eb6b8cab55ea6c939fbd607bb3838afed3b12137ae96e8d39dd6","revision":"33d9713a415de9a95880197220386f2d62955a5b"},
 
     {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
