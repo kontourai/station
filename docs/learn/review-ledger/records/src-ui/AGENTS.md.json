@@ -22,7 +22,7 @@
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63","revision":"adcb57024f39f6b546a2589d81e68dc526a85b29"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"6a6c2ac904ced8acf3c9af32018e9d99ae304dbeb476fa3995ff268066689f1c","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

@@ -30,7 +30,7 @@
 
     {"path":"docs/learn/media/shared-task-document.png","digest":"8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
 
-    {"path":"packages/contracts/src/device-settings.ts","digest":"411c2cab089819bc0792d6c38c28e43ce9eb25ae78b3fb9d7e50df2adceac052","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"8283b33e0f72dcb620ae84bd16f2d9ea7ab0d1267d8745ac9886e5fd68debe75","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
