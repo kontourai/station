@@ -15,7 +15,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -33,6 +33,7 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+const addEphemeralMessageMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -79,7 +80,7 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({
     updateChat: vi.fn(),
     clearEphemeralMessages: vi.fn(),
-    addEphemeralMessage: vi.fn(),
+    addEphemeralMessage: addEphemeralMessageMock,
   }),
 }));
 
@@ -294,6 +295,47 @@ describe('ChatDockBody stale busy wait', () => {
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
+    addEphemeralMessageMock.mockReset();
+  });
+
+  // A steer that did not go is a send that did not go: the short-dock composer
+  // line repeats it, so both notices carry sendFailure.
+  test.each([
+    [
+      'refused',
+      () =>
+        steerOrchestrationTurnMock.mockResolvedValueOnce({
+          outcome: 'no-active-turn',
+        }),
+    ],
+    [
+      'thrown',
+      () =>
+        steerOrchestrationTurnMock.mockRejectedValueOnce(
+          new Error('network down'),
+        ),
+    ],
+  ])('a %s steer is a send-failure notice', async (_kind, arrange) => {
+    arrange();
+    renderDock({
+      session: buildSession({
+        queuedMessages: ['steer me'],
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+      } as Partial<ChatSession>),
+    });
+    await screen.findByTestId('queued-messages');
+    const onSteer = queuedMessagesPropsMock.current?.onSteer;
+    expect(onSteer).toBeTypeOf('function');
+    await act(async () => {
+      await onSteer('steer me');
+    });
+    expect(addEphemeralMessageMock).toHaveBeenCalledWith(
+      'thread-busy',
+      expect.objectContaining({ role: 'system', sendFailure: true }),
+    );
   });
 
   test('the reported shape stays draftable with Send dead', () => {

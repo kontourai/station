@@ -677,6 +677,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.ephemeralMessages).toHaveLength(1);
     const notice = chat?.ephemeralMessages?.[0];
     expect(notice?.content).toBe('Full access was not applied.');
+    expect(notice?.sendFailure).toBe(true);
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.fullAccessRefusal).toMatchObject({
       outcome: 'message-not-sent',
@@ -1479,6 +1480,40 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       'next',
     ]);
   });
+
+  it.each([
+    [
+      'refused',
+      () =>
+        steerOrchestrationTurnMock.mockResolvedValueOnce({
+          outcome: 'no-active-turn',
+        }),
+    ],
+    [
+      'thrown',
+      () => steerOrchestrationTurnMock.mockRejectedValueOnce(new Error('down')),
+    ],
+  ])(
+    'a %s steer is a send-failure notice the composer repeats',
+    async (_k, arrange) => {
+      arrange();
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        currentSessionId: 'exec-claude-1',
+        openTurnId: 'turn-open',
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'claude', sessionId, 'course correct');
+      });
+      const notice = activeChatsStore
+        .getSnapshot()
+        [sessionId]?.ephemeralMessages?.at(-1);
+      expect(notice?.content).toBeTruthy();
+      expect(notice?.sendFailure).toBe(true);
+    },
+  );
 
   it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
     steerOrchestrationTurnMock.mockResolvedValueOnce({

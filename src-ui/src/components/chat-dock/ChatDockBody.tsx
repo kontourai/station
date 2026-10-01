@@ -1226,11 +1226,13 @@ export function ChatDockBody({
                 if (result.outcome === 'steered') return true;
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
+                  sendFailure: true,
                   content: steerRefusalMessage(result),
                 });
               } catch (error) {
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
+                  sendFailure: true,
                   content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
                 });
               }

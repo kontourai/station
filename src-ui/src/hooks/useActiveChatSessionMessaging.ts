@@ -348,11 +348,13 @@ export function useSendMessage(
           }
           addEphemeralMessage(sessionId, {
             role: 'system',
+            sendFailure: true,
             content: steerRefusalMessage(result),
           });
         } catch (error) {
           addEphemeralMessage(sessionId, {
             role: 'system',
+            sendFailure: true,
             content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
           });
         }
