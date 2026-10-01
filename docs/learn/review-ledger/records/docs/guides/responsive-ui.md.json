@@ -9,7 +9,7 @@
 
   "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
 
-  "document": {"digest":"05a5877e883794fbe6b0c1c91cd5ee8fcaac66fd5f75bd0d64d9a5ce9560d336","revision":"99e73328a65733aa652e80ee9b4ebe7da8a1513f"},
+  "document": {"digest":"a2971c46c0cd8f8f7d8d315da79f4cb22faf67389e354e563f5c957411645d11","revision":"d7f3dc8591b9993d2fbf1d8156cbc27a3219af11"},
 
   "sources": [
     {"path":"docs/ui/responsive-action-surfaces.txt","digest":"6d03366389fac284ff94b9d2d108dbd6836ee84aa117b06e90a7fad0be5ab66d","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
@@ -56,7 +56,7 @@
 
     {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -78,13 +78,13 @@
 
     {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/button-cap-ratchet.mjs","digest":"e123fdd6b459015b4586b855de54cb1496c125be5adfe4dca55ca31ac9f21faa","revision":"226773070cb29e2246fc27a14b196c1de5f3b540"},
+    {"path":"scripts/button-cap-ratchet.mjs","digest":"8bb9cc8484f0e930609dd015c9b2d85e307449a46700fdae2ff59e1ac56792c4","revision":"593652a1d2869e383d77238e69227735ab2b4bc5"},
 
-    {"path":"src-ui/src/components/ActionRow.tsx","digest":"cfce336f6a6bcc30f656341b9a09e5fd46e23cb492ee44acbd6d79ca7f6a756e","revision":"d8a7916da6b83d3c40608e69f2d18480b0944794"},
+    {"path":"src-ui/src/components/ActionRow.tsx","digest":"ef0435148ae876bb76c336e0140d9b64cebbd4a6003a658bd40a6dad6afbb8a5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"c7657e01ad50d2a571bf7dbdec62427371e636f60b09259a9a416f45d14d34d5","revision":"4c9cd45eba19766eb5dfe2ec6ec936e79918d72a"},
+    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"abf2213fe224cd34badca2fad09f4b73fdad9e278fc07297de3146c5ebf39bf5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"tests/helpers/visible-action-count.ts","digest":"2b9d5e74c7a28eb95daafa7887f8322207a6584f7cb4fb2cf2eeb99dddcf752f","revision":"7d6c628bf39c976db55635a66734b5cb635bcae2"}
+    {"path":"tests/helpers/visible-action-count.ts","digest":"b598b668d2fad8e2b6076100868eb5f9bc446b01487f1a761415b5fcc25ed412","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"}
   ],
 
   "checks": [

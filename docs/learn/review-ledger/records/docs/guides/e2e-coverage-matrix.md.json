@@ -84,7 +84,7 @@
 
     {"path":"tests/schedule.spec.ts","digest":"c2110b9f298e82425969171e3246061c76e3588a828274ad5235288c7e059a26","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/skills.spec.ts","digest":"5fe83f63dda95b3af0b9de116c894d1122fa11c634770e33d9377920297037fc","revision":"e986850846dbabbe97cbcf2279be33ad207789fa"},
+    {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
     {"path":"tests/task-first-home.spec.ts","digest":"1b2169b8e7a077f02f4668aacb7051929c50664e6bbb493601a45a619c264e21","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
 
