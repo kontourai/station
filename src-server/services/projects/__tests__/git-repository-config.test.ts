@@ -18,9 +18,6 @@ const refusedKeys = (
 
 describe('judgeRepositoryConfig', () => {
   test.each([
-    ['extensions.partialclone', 'origin'],
-    ['remote.origin.promisor', 'true'],
-    ['remote.origin.partialclonefilter', 'blob:none'],
     ['extensions.somethingnew', 'true'],
     ['credential.helper', '!touch /tmp/x'],
     ['credential.https://example.test.helper', 'store'],
@@ -81,8 +78,11 @@ describe('judgeRepositoryConfig', () => {
     expect(refusedKeys(ordinary, 'write')).toEqual([]);
   });
 
-  test('a commit or push also refuses includes, a remote named by an address, and a program fsmonitor', () => {
+  test('a commit or push also refuses a partial clone, includes, a remote named by an address, and a program fsmonitor', () => {
     const entries: Array<[string, string, string]> = [
+      ['local', 'extensions.partialclone', 'origin'],
+      ['local', 'remote.origin.promisor', 'true'],
+      ['local', 'remote.origin.partialclonefilter', 'blob:none'],
       ['local', 'include.path', '/tmp/more'],
       ['local', 'remote.https://github.com/acme/pulse.git.url', 'x'],
       ['local', 'core.fsmonitor', '.git/hooks/fsmonitor'],
@@ -90,8 +90,11 @@ describe('judgeRepositoryConfig', () => {
     expect(refusedKeys(entries, 'read')).toEqual([]);
     expect(refusedKeys(entries, 'write')).toEqual([
       'core.fsmonitor',
+      'extensions.partialclone',
       'include.path',
       'remote.https://github.com/acme/pulse.git.url',
+      'remote.origin.partialclonefilter',
+      'remote.origin.promisor',
     ]);
   });
 });

@@ -62,7 +62,8 @@ export type ProjectRepositoryForRead =
 export interface ProjectRepositoryReadOptions {
   /**
    * The verified worktrees of the Project's repository (session worktrees
-   * and the main checkout), symlink-resolved. Asked for only when the
+   * and the main checkout), symlink-resolved, from `listVerifiedWorktrees`
+   * (which trusts the Project's repository only when it is its own). Asked for only when the
    * folder's work tree is neither inside the Project nor above it. Absent:
    * there are none.
    */
@@ -179,8 +180,9 @@ async function confined(
  *   to a folder above it, which would pair that work tree with the wrong
  *   repository.
  * - A registered worktree of the Project's repository: its own `.git`, with
- *   the same checks (the worktree is member-writable too), and only when
- *   the Project's own repository passes them.
+ *   the same checks (the worktree is member-writable too). Which
+ *   worktrees are registered is `listVerifiedWorktrees`' answer, which is
+ *   empty unless the Project's own repository passes these checks.
  * - Anything else is not a repository of this Project's.
  */
 export async function resolveProjectRepositoryForRead(
@@ -225,15 +227,6 @@ export async function resolveProjectRepositoryForRead(
   // Only the worktree's root: a repository nested in a session worktree is
   // not the Project's.
   if (!worktrees.includes(top)) return NOT_A_REPOSITORY;
-  // "Registered" is what git reports from the Project's folder, so it is
-  // only as good as the Project's own repository: a `.git` planted at the
-  // Project's root would register another repository's checkouts.
-  const project = await resolveProjectRepositoryForRead(
-    projectRoot,
-    projectRoot,
-    { timeoutMs },
-  );
-  if (!project.ok) return project;
   return confined(found, projectRoot, [top]);
 }
 

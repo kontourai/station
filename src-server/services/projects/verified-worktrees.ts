@@ -1,6 +1,7 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
+import { resolveProjectRepositoryForRead } from './git-read-repository.js';
 
 /** Enough for any real set of session worktrees; bounds a hostile one. */
 const WORKTREE_LIST_LIMIT = 256;
@@ -18,29 +19,53 @@ const WORKTREE_LIST_LIMIT = 256;
  * `<common>/worktrees/`. Claiming a folder that way takes writing into that
  * folder, which the claimant could then already do. Anything unreadable is
  * left out.
+ *
+ * "The repository containing `projectRoot`" is itself only trusted when it
+ * is the Project's own (`resolveProjectRepositoryForRead`): a `.git` planted
+ * at the Project's root naming another repository would otherwise make that
+ * repository's checkouts "worktrees of the Project". Such a Project has no
+ * worktrees. git is then asked with that repository named, not discovered,
+ * and the listing is dropped if the repository changed while it was read.
  */
 export async function listVerifiedWorktrees(
   projectRoot: string,
   timeoutMs: number,
 ): Promise<readonly string[]> {
-  const opts = {
-    cwd: projectRoot,
-    encoding: 'utf-8' as const,
-    timeout: timeoutMs,
-    maxBuffer: 1024 * 1024,
-  };
   let common: string;
   let listing: string;
   try {
+    const repository = await resolveProjectRepositoryForRead(
+      projectRoot,
+      projectRoot,
+      { timeoutMs },
+    );
+    if (!repository.ok) return [];
+    const opts = {
+      cwd: repository.top,
+      encoding: 'utf-8' as const,
+      timeout: timeoutMs,
+      maxBuffer: 1024 * 1024,
+    };
     common = realpathSync(
       (
         await execGit(
-          ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+          [
+            ...repository.repoArgs,
+            'rev-parse',
+            '--path-format=absolute',
+            '--git-common-dir',
+          ],
           opts,
         )
       ).stdout.trim(),
     );
-    listing = (await execGit(['worktree', 'list', '--porcelain'], opts)).stdout;
+    listing = (
+      await execGit(
+        [...repository.repoArgs, 'worktree', 'list', '--porcelain'],
+        opts,
+      )
+    ).stdout;
+    if (!(await repository.unchanged())) return [];
   } catch {
     return [];
   }

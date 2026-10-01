@@ -28,6 +28,7 @@ import type { FileTreeService } from '../../services/projects/file-tree-service.
 import {
   type ProjectRepositoryReadOptions,
   readProjectRepository,
+  resolveProjectRepositoryForRead,
 } from '../../services/projects/git-read-repository.js';
 import { checkRepositoryConfig } from '../../services/projects/git-repository-config.js';
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
@@ -106,7 +107,34 @@ function gitFailure(c: Context, error: unknown): Response {
       504,
     );
   }
+  if (objectNotFetched(error)) {
+    return c.json(
+      {
+        success: false,
+        error:
+          'This repository is a partial clone, and this needs an object that has not been fetched. Station does not fetch on a read; fetch it from a terminal (for example `git fetch --refetch`, or run the same git command there), then try again',
+        code: 'object-not-available',
+      },
+      409,
+    );
+  }
   return c.json({ success: false, error: errorMessage(error) }, 400);
+}
+
+/**
+ * git's words when a partial clone needs an object it does not have and the
+ * runner would not let it fetch (`utils/git-exec.ts`): the lazy-fetch
+ * notice on git 2.45 and later, the refused transport or promisor failure
+ * before that.
+ */
+function objectNotFetched(error: unknown): boolean {
+  const stderr = (error as { stderr?: unknown })?.stderr;
+  return (
+    typeof stderr === 'string' &&
+    /lazy fetching disabled|from promisor remote|transport '[^']*' not allowed/.test(
+      stderr,
+    )
+  );
 }
 
 // Directories that never contain a user's repos but are expensive to walk.
@@ -181,10 +209,9 @@ const CONFIG_REFUSED_MESSAGE =
  * program or a network target (`git-repository-config.ts`) is not read or
  * checked out, because those commands would run or reach it. `null` means
  * go ahead. `gitArgs`
- * names the repository a read route resolved; without it git discovers the
- * repository from `dir`.
+ * names the repository the route resolved.
  */
-async function readRefusal(dir: string, gitArgs: readonly string[] = []) {
+async function readRefusal(dir: string, gitArgs: readonly string[]) {
   const verdict = await checkRepositoryConfig(dir, 'read', gitArgs);
   if (verdict.ok) return null;
   return verdict.code === 'repository-config-refused'
@@ -975,10 +1002,37 @@ export function createCodingRoutes(
       const { projectSlug, path, branch, create } = getBody(c);
       const location = await writeLocation(c, projectSlug, path);
       if (location instanceof Response) return location;
-      const dir = location.target;
+      // The folder is member-writable: the repository git would discover
+      // from it is not trusted (see `gitRead`), and a checkout through a
+      // planted `.git` would move ANOTHER repository's HEAD and write its
+      // files here. Unlike a read there is no checking again afterwards
+      // (the checkout itself changes `.git`, and a write cannot be
+      // discarded), so a `.git` swapped between this check and the checkout
+      // is not noticed.
+      const repository = await resolveProjectRepositoryForRead(
+        location.projectRoot,
+        location.target,
+        {
+          registeredWorktrees: () =>
+            registeredWorktrees(c, location.projectRoot),
+          timeoutMs: GIT_QUICK_TIMEOUT_MS,
+        },
+      );
+      if (!repository.ok) {
+        return repository.state === 'refused'
+          ? repositoryRefused(c, repository.reason)
+          : c.json(
+              {
+                success: false,
+                error: 'That folder is not in a git repository',
+                code: 'not-a-repository',
+              },
+              409,
+            );
+      }
       // #2363: a branch name only. `.` would discard every change, and `-f`
       // or `--orphan=…` would be read as options.
-      if (!(await isBranchName(dir, branch))) {
+      if (!(await isBranchName(repository.top, branch))) {
         return c.json(
           {
             success: false,
@@ -989,22 +1043,25 @@ export function createCodingRoutes(
         );
       }
       // #2363: `checkout` runs repository-defined smudge filters.
-      const refusal = await readRefusal(dir);
+      const refusal = await readRefusal(repository.top, repository.repoArgs);
       if (refusal) return c.json(refusal, 409);
       const opts = {
-        cwd: dir,
+        cwd: repository.top,
         encoding: 'utf-8' as const,
         windowsHide: true,
         timeout: GIT_CHECKOUT_TIMEOUT_MS,
       };
       await execGit(
-        create
-          ? ['checkout', '-b', branch, '--end-of-options']
-          : ['checkout', '--end-of-options', branch, '--'],
+        [
+          ...repository.repoArgs,
+          ...(create
+            ? ['checkout', '-b', branch, '--end-of-options']
+            : ['checkout', '--end-of-options', branch, '--']),
+        ],
         opts,
       );
       const { stdout } = await execGit(
-        ['rev-parse', '--abbrev-ref', 'HEAD'],
+        [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
         opts,
       );
       return c.json({ success: true, data: { branch: stdout.trim() } });

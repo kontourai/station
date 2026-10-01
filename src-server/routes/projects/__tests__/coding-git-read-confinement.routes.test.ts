@@ -21,15 +21,23 @@ import {
 } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
+import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type { FileTreeService } from '../../../services/projects/file-tree-service.js';
+import {
+  bindRuntimeLocalOperator,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { createCodingRoutes } from '../coding.js';
 
 const SECRET = 'TOP-SECRET-OUTSIDE-CONTENT';
 const OUTSIDE_BRANCH = 'outside-only-branch';
 const OUTSIDE_SUBJECT = 'outside-only-commit-subject';
 const OUTSIDE_AUTHOR = 'Outside Only Author';
+/** A second branch of the outside repository, holding one more file. */
+const OUTSIDE_SIDE_BRANCH = `${OUTSIDE_BRANCH}-side`;
+const SIDE_SECRET = 'SIDE-BRANCH-SECRET-CONTENT';
 
 const READ_ROUTES = ['status', 'log', 'diff', 'branches', 'repos'] as const;
 type ReadRoute = (typeof READ_ROUTES)[number];
@@ -75,7 +83,7 @@ function repo(
 
 /** The operator's other repository, outside the Project. */
 function outsideRepository(): string {
-  return repo(
+  const outside = repo(
     join(root, 'operator-other'),
     { 'secret.txt': `${SECRET}\n` },
     {
@@ -84,12 +92,53 @@ function outsideRepository(): string {
       author: OUTSIDE_AUTHOR,
     },
   );
+  git(outside, ['checkout', '-q', '-b', OUTSIDE_SIDE_BRANCH]);
+  writeFileSync(join(outside, 'side-secret.txt'), `${SIDE_SECRET}\n`);
+  git(outside, ['add', '-A']);
+  git(outside, ['commit', '-q', '-m', 'side']);
+  git(outside, ['checkout', '-q', OUTSIDE_BRANCH]);
+  return outside;
 }
 
+/** The routes, called by the operator in person (so `/exec` is allowed). */
 function app() {
-  return createCodingRoutes({} as unknown as FileTreeService, {
-    resolveProjectFolder: (slug) => (slug === 'acme' ? project : undefined),
+  const mounted = new Hono();
+  mounted.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      kind: 'credential',
+      credential: 'operator',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    bindRuntimeLocalOperator(c.req.raw);
+    await next();
   });
+  mounted.route(
+    '/',
+    createCodingRoutes(new FileTreeService(), {
+      resolveProjectFolder: (slug) => (slug === 'acme' ? project : undefined),
+    }),
+  );
+  return mounted;
+}
+
+async function post(path: string, body: Record<string, unknown>) {
+  const res = await app().request(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectSlug: 'acme', ...body }),
+  });
+  const text = await res.text();
+  return { status: res.status, text, json: JSON.parse(text) as any };
+}
+
+/** The outside repository's branch, branch list and HEAD commit. */
+function outsideState(outside: string): string {
+  return [
+    git(outside, ['rev-parse', '--abbrev-ref', 'HEAD']),
+    git(outside, ['for-each-ref', '--format=%(refname) %(objectname)']),
+    git(outside, ['status', '--porcelain']),
+  ].join('\n');
 }
 
 async function read(route: ReadRoute, path: string) {
@@ -401,13 +450,8 @@ describe.skipIf(process.platform === 'win32')(
             if (route !== 'repos') {
               expect(response.status).toBe(409);
               expect(response.json.code).toBe('repository-config-refused');
-              expect(response.json.keys).toEqual(
-                expect.arrayContaining([
-                  'credential.helper',
-                  'extensions.partialclone',
-                  'remote.origin.promisor',
-                ]),
-              );
+              // The helper is what is refused; being a partial clone is not.
+              expect(response.json.keys).toEqual(['credential.helper']);
             }
 
             // Control, last (it creates the marker): plain git does both.
@@ -429,25 +473,260 @@ describe.skipIf(process.platform === 'win32')(
       );
     });
 
-    test("a .git planted at the Project's root does not make an outside repository's checkout a readable worktree", async () => {
-      const outside = outsideRepository();
-      const outsideHead = git(outside, ['rev-parse', 'HEAD']);
-      mkdirSync(project);
-      writeFileSync(
-        join(project, '.git'),
-        `gitdir: ${join(outside, '.git')}\n`,
+    test('a partial clone with no helper of its own is read, and a read needing an unfetched object says so without fetching', async () => {
+      let connections = 0;
+      const server = createServer((socket) => {
+        connections += 1;
+        socket.destroy();
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
       );
-      // Live: from the Project's folder, git lists the outside checkout as
-      // a worktree of "its" repository.
-      expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
-        `worktree ${outside}`,
+      const { port } = server.address() as { port: number };
+      try {
+        repo(project, { 'README.md': '# project\n' }, { subject: 'cloned' });
+        const blob = git(project, ['rev-parse', 'HEAD:README.md']);
+        writeFileSync(join(project, 'README.md'), '# edited\n');
+        rmSync(
+          join(project, '.git', 'objects', blob.slice(0, 2), blob.slice(2)),
+        );
+        for (const [key, value] of [
+          ['core.repositoryformatversion', '1'],
+          ['extensions.partialClone', 'origin'],
+          ['remote.origin.promisor', 'true'],
+          ['remote.origin.partialclonefilter', 'blob:none'],
+          ['remote.origin.url', `https://127.0.0.1:${port}/x.git`],
+        ]) {
+          git(project, ['config', key, value]);
+        }
+
+        const status = await read('status', project);
+        expect(status.status).toBe(200);
+        expect(status.json.data).toMatchObject({
+          isRepo: true,
+          branch: 'main',
+          lastCommit: { message: 'cloned' },
+        });
+        expect((await read('log', project)).json.data[0].message).toBe(
+          'cloned',
+        );
+        expect((await read('branches', project)).status).toBe(200);
+        // The diff needs the committed file, which is not here.
+        const diff = await read('diff', project);
+        expect(diff.status).toBe(409);
+        expect(diff.json.code).toBe('object-not-available');
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(connections).toBe(0);
+
+        // Control: plain git fetches it (and so connects).
+        await new Promise<void>((resolve) => {
+          spawn('git', ['diff'], { cwd: project, stdio: 'ignore' }).on(
+            'close',
+            () => resolve(),
+          );
+        });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(connections, 'control: plain git connects').toBeGreaterThan(0);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+
+    describe('checkout through a planted .git', () => {
+      test.each([
+        'a .git FILE naming an outside repository',
+        'a symlinked .git',
+      ])(
+        'control: with %s, plain git checkout moves the outside repository and writes its files here',
+        (name) => {
+          const { folder } = PLANTS[name]();
+          const outside = join(root, 'operator-other');
+          git(folder, ['checkout', '-q', '-f', OUTSIDE_SIDE_BRANCH]);
+          expect(git(outside, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+            OUTSIDE_SIDE_BRANCH,
+          );
+          expect(readFileSync(join(folder, 'side-secret.txt'), 'utf-8')).toBe(
+            `${SIDE_SECRET}\n`,
+          );
+        },
       );
 
-      for (const route of READ_ROUTES) {
-        const response = await read(route, outside);
-        expectRefused(route, response);
-        expectNothingFromOutside(response.text, outsideHead);
+      test.each(Object.keys(PLANTS))(
+        '%s: checkout is refused and the outside repository is untouched',
+        async (name) => {
+          const { folder } = PLANTS[name]();
+          const outside = join(root, 'operator-other');
+          const before = outsideState(outside);
+
+          for (const body of [
+            { branch: OUTSIDE_SIDE_BRANCH },
+            { branch: OUTSIDE_BRANCH },
+            { branch: 'made-by-member', create: true },
+          ]) {
+            const response = await post('/git/checkout', {
+              path: folder,
+              ...body,
+            });
+            expect(response.status, JSON.stringify(body)).toBe(409);
+            expect(response.json.code).toBe('git-dir-outside-project');
+            expect(response.text).not.toContain(root);
+          }
+
+          expect(outsideState(outside)).toBe(before);
+          expect(existsSync(join(folder, 'secret.txt'))).toBe(false);
+          expect(existsSync(join(folder, 'side-secret.txt'))).toBe(false);
+        },
+      );
+
+      test('a planted repository whose core.worktree names a folder above the Project: checkout writes nothing there', async () => {
+        const higher = repo(join(root, 'higher'), {
+          'README.md': '# higher\n',
+        });
+        const above = join(higher, 'a');
+        project = join(above, 'proj');
+        // The member's own repository, with a branch holding one more file.
+        const folder = repo(join(project, 'sub'), { 'own.txt': 'own\n' });
+        git(folder, ['checkout', '-q', '-b', 'escape']);
+        writeFileSync(join(folder, 'escape.txt'), 'escaped\n');
+        git(folder, ['add', '-A']);
+        git(folder, ['commit', '-q', '-m', 'escape']);
+        git(folder, ['checkout', '-q', 'main']);
+        git(folder, ['config', 'core.worktree', above]);
+
+        const response = await post('/git/checkout', {
+          path: folder,
+          branch: 'escape',
+        });
+
+        expect(response.status).toBe(409);
+        expect(response.json.code).toBe('git-dir-outside-project');
+        expect(existsSync(join(above, 'escape.txt'))).toBe(false);
+        expect(git(folder, ['symbolic-ref', '--short', 'HEAD'])).toBe('main');
+
+        // Control, last: plain git writes the branch's file above the Project.
+        git(folder, ['checkout', '-q', '-f', 'escape']);
+        expect(existsSync(join(above, 'escape.txt'))).toBe(true);
+      });
+
+      test('an ordinary repository, a session worktree and a repository above the Project still check out', async () => {
+        repo(project, { 'README.md': '# project\n' });
+        git(project, ['branch', 'feature']);
+        const session = join(root, 'sessions', 'one');
+        git(project, ['worktree', 'add', '-q', '-b', 'session-one', session]);
+
+        const switched = await post('/git/checkout', {
+          path: project,
+          branch: 'feature',
+        });
+        expect(switched.status, switched.text).toBe(200);
+        expect(switched.json.data.branch).toBe('feature');
+        expect(git(project, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+          'feature',
+        );
+        const created = await post('/git/checkout', {
+          path: session,
+          branch: 'session-two',
+          create: true,
+        });
+        expect(created.status, created.text).toBe(200);
+        expect(git(session, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+          'session-two',
+        );
+
+        const mono = repo(join(root, 'mono'), {
+          'packages/app/index.ts': 'export {};\n',
+        });
+        git(mono, ['branch', 'mono-feature']);
+        project = join(mono, 'packages', 'app');
+        const inMono = await post('/git/checkout', {
+          path: project,
+          branch: 'mono-feature',
+        });
+        expect(inMono.status, inMono.text).toBe(200);
+        expect(git(mono, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+          'mono-feature',
+        );
+      });
+    });
+
+    describe("a .git planted at the Project's root, naming an outside repository", () => {
+      /** Returns the outside repository, which git now lists as a worktree. */
+      function plantAtRoot(): string {
+        const outside = outsideRepository();
+        mkdirSync(project);
+        writeFileSync(
+          join(project, '.git'),
+          `gitdir: ${join(outside, '.git')}\n`,
+        );
+        // Live: from the Project's folder, git lists the outside checkout
+        // as a worktree of "its" repository.
+        expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
+          `worktree ${outside}`,
+        );
+        return outside;
       }
+
+      test('no file route or command reaches that repository', async () => {
+        const outside = plantAtRoot();
+        const before = outsideState(outside);
+        const refusals = [
+          await read('status', outside),
+          await (async () => {
+            const res = await app().request(
+              `/files/content?projectSlug=acme&path=${encodeURIComponent(outside)}&file=secret.txt`,
+            );
+            const text = await res.text();
+            return { status: res.status, text, json: JSON.parse(text) as any };
+          })(),
+          await (async () => {
+            const res = await app().request(
+              `/files?projectSlug=acme&path=${encodeURIComponent(outside)}`,
+            );
+            const text = await res.text();
+            return { status: res.status, text, json: JSON.parse(text) as any };
+          })(),
+          await post('/files/create', {
+            path: outside,
+            target: 'planted.txt',
+            type: 'file',
+          }),
+          await post('/files/rename', {
+            path: outside,
+            from: 'secret.txt',
+            to: 'moved.txt',
+          }),
+          await post('/files/delete', { path: outside, target: 'secret.txt' }),
+          await post('/git/checkout', {
+            path: outside,
+            branch: OUTSIDE_SIDE_BRANCH,
+          }),
+          await post('/exec', { cwd: outside, command: 'touch ran-here' }),
+        ];
+
+        for (const refusal of refusals) {
+          expect(refusal.status, refusal.text).toBe(403);
+          expect(refusal.json.code).toBe('outside-project');
+          expect(refusal.text).not.toContain(SECRET);
+        }
+        expect(outsideState(outside)).toBe(before);
+        expect(existsSync(join(outside, 'secret.txt'))).toBe(true);
+        expect(existsSync(join(outside, 'planted.txt'))).toBe(false);
+        expect(existsSync(join(outside, 'ran-here'))).toBe(false);
+      });
+
+      test.each(READ_ROUTES)(
+        '%s of that repository is refused',
+        async (route) => {
+          const outside = plantAtRoot();
+          const outsideHead = git(outside, ['rev-parse', 'HEAD']);
+
+          const response = await read(route, outside);
+
+          expect(response.status).toBe(403);
+          expect(response.json.code).toBe('outside-project');
+          expectNothingFromOutside(response.text, outsideHead);
+        },
+      );
     });
 
     test('a planted .git inside a registered session worktree is not read', async () => {
@@ -484,8 +763,9 @@ describe.skipIf(process.platform === 'win32')(
 
       for (const route of ['status', 'log', 'diff', 'branches'] as const) {
         const response = await read(route, session);
-        expect(response.status, route).toBe(409);
-        expect(response.json.code).toBe('git-dir-outside-project');
+        expect(response.status, route).toBe(403);
+        // The Project's repository is not its own, so it has no worktrees.
+        expect(response.json.code).toBe('outside-project');
       }
     });
   },
@@ -594,6 +874,32 @@ describe('coding git reads: repositories that are the Project’s own', () => {
     expect((await read('repos', project)).json.data.repos).toMatchObject([
       { root: project, branch: 'linked-branch' },
     ]);
+    // Its repository's other checkouts are still its registered worktrees:
+    // the main checkout is read, edited and run in.
+    const content = await app().request(
+      `/files/content?projectSlug=acme&path=${encodeURIComponent(main)}&file=README.md`,
+    );
+    expect(((await content.json()) as any).data.content).toBe('# main\n');
+    expect(
+      (
+        await post('/files/create', {
+          path: main,
+          target: 'n.txt',
+          type: 'file',
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await post('/exec', { cwd: main, command: 'touch ran-here' })).status,
+    ).toBe(200);
+    expect(existsSync(join(main, 'ran-here'))).toBe(true);
+    writeFileSync(join(main, 'README.md'), '# main, edited\n');
+    await expectReads(main, {
+      top: main,
+      branch: 'main',
+      subject: 'initial',
+      change: 'README.md',
+    });
   });
 
   test('a registered session worktree beside the Project', async () => {

@@ -95,6 +95,8 @@
  *      The cost: in a GENUINE partial clone (`--filter=blob:none`), a
  *      command that needs an object git has not fetched yet fails instead of
  *      fetching it. Fetch it with a network command, or from a terminal.
+ *      This is what makes a partial clone safe to READ, so the read refusal
+ *      (`git-repository-config.ts`) does not refuse one.
  *
  *    `GIT_CONFIG_NOSYSTEM` is deliberately NOT set. The system file is not
  *    writable by anyone this defends against (writing it takes the

@@ -20,13 +20,7 @@
  *   (measured on git 2.50: a planted `filter.<name>.clean` ran on the first
  *   `status` after a commit, with the tree otherwise clean); `git diff` runs
  *   it and the diff drivers; `add`/`checkout` run filters by design.
- * - Partial clone: `extensions.partialClone`, `remote.<name>.promisor`,
- *   `remote.<name>.partialCloneFilter`. With one of these a missing object
- *   makes ANY read (`diff`, `log`, `status`, `show`) fetch from the
- *   repository's own remote, running its credential helper (measured on git
- *   2.50: the helper ran and the address was connected to). A genuine
- *   partial clone is refused too: Station cannot tell it from a planted one.
- * - Any other `extensions.*` outside `SAFE_EXTENSIONS`: an extension changes
+ * - Any `extensions.*` outside `SAFE_EXTENSIONS`: an extension changes
  *   how git reads the repository, and one Station has not looked at is not
  *   assumed harmless.
  * - Programs: `credential.*` (helpers), `core.askPass`, `core.sshCommand`,
@@ -45,9 +39,23 @@
  * These are the READ refusals, applied by every coding git read. Before the
  * operator's COMMIT or PUSH, which run with the operator's credentials and
  * signing, these are refused as well: `include`/`includeIf` (more
- * configuration from elsewhere), a remote NAMED by an address, and a
+ * configuration from elsewhere), a remote NAMED by an address, a
  * `core.fsmonitor` that is a program rather than the builtin daemon's
- * boolean.
+ * boolean, and a PARTIAL CLONE (`extensions.partialClone`,
+ * `remote.<name>.promisor`, `remote.<name>.partialCloneFilter`).
+ *
+ * PARTIAL CLONES. With a promisor remote, a missing object makes any command
+ * that touches it fetch from the repository's own remote, running its
+ * credential helper (measured on git 2.50: the helper ran and the address
+ * was connected to). For a READ that is closed by the runner, not here:
+ * every command that is not a network command runs with no transport, no
+ * lazy fetch and no credential helper (`utils/git-exec.ts`; measured the
+ * same way: no helper, no connection, git fails naming the missing object).
+ * So a genuine `--filter=blob:none` clone is read like any other, and a
+ * read that needs an object it has not fetched fails. A PUSH is a network
+ * command: the runner gives it the operator's helpers and https/ssh, so a
+ * lazy fetch during it would reach the promisor remote, an address the push
+ * route never validated. Commit and Push therefore refuse a partial clone.
  *
  * NOT refused, because no command Station runs reaches them: `alias.*` (an
  * alias cannot replace a builtin command, and Station names builtins only),
@@ -79,6 +87,8 @@ export type RepositoryConfigPurpose = 'read' | 'write';
  * own files are stored. Everything else under `extensions.` is refused.
  */
 const SAFE_EXTENSIONS = new Set([
+  // Refused for a commit or push (`WRITE_REFUSED`); see PARTIAL CLONES.
+  'extensions.partialclone',
   'extensions.objectformat',
   'extensions.compatobjectformat',
   'extensions.refstorage',
@@ -93,7 +103,6 @@ const READ_REFUSED = [
   /^filter\./,
   /^diff\.external$/,
   /^diff\..+\.(?:textconv|command)$/,
-  /^remote\..+\.(?:promisor|partialclonefilter)$/,
   /^credential\./,
   /^core\.(?:sshcommand|askpass|gitproxy|alternaterefscommand|editor|pager)$/,
   /^sequence\.editor$/,
@@ -109,6 +118,8 @@ const READ_REFUSED = [
 /** Keys (lowercased) refused before an operator commit or push. */
 const WRITE_REFUSED = [
   ...READ_REFUSED,
+  /^extensions\.partialclone$/,
+  /^remote\..+\.(?:promisor|partialclonefilter)$/,
   /^include\./,
   /^includeif\./,
   // A remote whose NAME is an address (`remote."https://host/x.git".url`):
@@ -135,7 +146,9 @@ function refused(
   ) {
     return true;
   }
-  if (lower.startsWith('extensions.')) return !SAFE_EXTENSIONS.has(lower);
+  if (lower.startsWith('extensions.') && !SAFE_EXTENSIONS.has(lower)) {
+    return true;
+  }
   // `pager.<command>` is a boolean, or the program to page that command with.
   if (lower.startsWith('pager.')) return !BOOLEAN_VALUE.test(value ?? '');
   // `submodule.<name>.update=!command` runs the command.
