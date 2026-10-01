@@ -44,7 +44,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
-import { toolRequestIsPlanExit } from '@kontourai/station-shared/tool-request-preview';
+import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import {
   delegatedApprovalDenial,
   type StagedPreToolPolicyEvaluator,
@@ -405,11 +405,12 @@ interface AcpPendingRequest {
    */
   toolName?: string;
   /**
-   * #2933: the request leaves plan mode (`toolRequestIsPlanExit`). A session
-   * answer to it is a one-call accept and mints no session grant, so a later
-   * plan exit is still reviewed.
+   * #2933: the request is addressed to a person (`toolRequestNeedsPerson`:
+   * a plan exit, or a tool named as a harness question). A session answer to
+   * it is a one-call accept and mints no session grant, so a later plan exit
+   * is still reviewed.
    */
-  planExit?: true;
+  needsPerson?: true;
 }
 
 export interface AcpSessionRecord {
@@ -1683,7 +1684,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #2933: a plan exit is answered for this call only: no session grant is
     // minted, and the agent is sent its allow-once option, not allow-always.
     const effective =
-      decision === 'acceptForSession' && pending.planExit ? 'accept' : decision;
+      decision === 'acceptForSession' && pending.needsPerson
+        ? 'accept'
+        : decision;
     if (effective === 'acceptForSession' && pending.toolName) {
       record.approvedTools.add(pending.toolName);
     }
@@ -1974,7 +1977,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       // covers plain calls to the tool, never a plan exit. ACP marks a mode
       // switch such as leaving plan mode with the `switch_mode` tool kind;
       // it reports no other escalation signal on a permission request.
-      const planExit = toolRequestIsPlanExit(toolName, params.toolCall?.kind);
+      // The shared predicate also covers a tool the agent names
+      // `AskUserQuestion` (#3021): Station has no ACP question card, but a
+      // question is still a person's to answer, so it prompts as an ordinary
+      // approval rather than being accepted by a pattern or a session grant.
+      const needsPerson = toolRequestNeedsPerson(
+        toolName,
+        params.toolCall?.kind,
+      );
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -1997,7 +2007,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         );
         if (
           decision.behavior === 'allow' &&
-          !(decision.toolGrant && planExit)
+          !(decision.toolGrant && needsPerson)
         ) {
           return {
             outcome: mapAcpDecisionToOutcome('accept', params.options),
@@ -2012,7 +2022,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // flow below; Station never opens a second prompt.
       } else if (
         toolName &&
-        !planExit &&
+        !needsPerson &&
         isAutoApprovedExternalTool(
           toolName,
           record.agent?.autoApprove,
@@ -2032,7 +2042,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // agent offers no allow option at all, the auto-acceptance would be
       // `cancelled` — fall through to the prompt rather than auto-cancel.
       // #2933: never for a plan exit, which a session grant cannot answer.
-      if (toolName && !planExit && record.approvedTools.has(toolName)) {
+      if (toolName && !needsPerson && record.approvedTools.has(toolName)) {
         const grantedOutcome = mapAcpDecisionToOutcome(
           'accept',
           params.options,
@@ -2084,7 +2094,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           resolve,
           options: params.options,
           ...(toolName ? { toolName } : {}),
-          ...(planExit ? { planExit: true as const } : {}),
+          ...(needsPerson ? { needsPerson: true as const } : {}),
         });
       });
 

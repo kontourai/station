@@ -288,9 +288,15 @@ export type ToolRequestGrantInput = {
   toolKind?: unknown;
 };
 
+/** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
+const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
+/**
+ * Tools whose request is addressed to a person and gets no standing answer:
+ * a plan exit, and a harness question (see `toolRequestNeedsPerson`).
+ */
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
   'askuserquestion',
-  'exitplanmode',
+  ...PLAN_EXIT_TOOLS,
 ]);
 /**
  * Claude Code's read-only tools. The engine allows reads inside the session's
@@ -427,6 +433,22 @@ export function toolRequestIsPlanExit(
 ): boolean {
   if (toolKind === 'switch_mode') return true;
   const trimmed = toolName?.trim();
+  return !!trimmed && PLAN_EXIT_TOOLS.has(canonicalKey(trimmed));
+}
+
+/**
+ * Whether the request is addressed to a person, so nothing standing answers
+ * it: no session grant is offered or honoured and no `tools.autoApprove`
+ * pattern covers it. True for a plan exit (`toolRequestIsPlanExit`) and for
+ * a harness question (Claude's `AskUserQuestion`, #3021), whose answer is
+ * the person's own input.
+ */
+export function toolRequestNeedsPerson(
+  toolName: string | null | undefined,
+  toolKind?: unknown,
+): boolean {
+  if (toolRequestIsPlanExit(toolName, toolKind)) return true;
+  const trimmed = toolName?.trim();
   return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
 }
 
@@ -434,7 +456,7 @@ export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestSessionGrant {
   const toolName = request.toolName?.trim();
-  if (toolRequestIsPlanExit(toolName, request.toolKind)) return 'none';
+  if (toolRequestNeedsPerson(toolName, request.toolKind)) return 'none';
   const readOnly =
     toolName !== undefined && CLAUDE_READ_ONLY_TOOLS.has(toolName);
   const escalates = toolRequestEscalates(request);

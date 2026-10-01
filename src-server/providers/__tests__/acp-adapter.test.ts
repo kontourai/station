@@ -1139,6 +1139,8 @@ describe('AcpAdapter', () => {
         for (const [toolCallId, toolCall] of [
           ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
           ['exit-plan', { name: 'ExitPlanMode' }],
+          // A tool named as a harness question is a person's to answer too.
+          ['question', { name: 'AskUserQuestion' }],
         ] as const) {
           const pending = client.requestPermission({
             sessionId: 'ignored-by-adapter',
