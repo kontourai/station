@@ -135,6 +135,17 @@ export async function gitDirectoryInsideProject(
  */
 const MAX_WALKED_ENTRIES = 50_000;
 
+/**
+ * The same bound for `objects/`, counted on its own. Loose objects are not
+ * few: git only packs them when its automatic maintenance runs, and a
+ * repository agents commit in all day was measured holding 90,000 of them,
+ * which the bound above would refuse outright. Listing them costs one
+ * `readdir` per fan-out directory whatever their number, so the bound is
+ * there to stop a directory tree built to be walked forever, not to limit
+ * an ordinary repository.
+ */
+const MAX_WALKED_OBJECT_ENTRIES = 2_000_000;
+
 class WalkLimitExceeded extends Error {}
 
 /**
@@ -164,6 +175,7 @@ async function redirectedGitEntry(
   stamps: string[],
 ): Promise<string | null> {
   let walked = 0;
+  let limit = MAX_WALKED_ENTRIES;
   // Entries of `dir` by `readdir`'s own type (an lstat: a link is a link).
   const entries = async (dir: string) => {
     let list: Dirent[];
@@ -175,7 +187,7 @@ async function redirectedGitEntry(
       return [];
     }
     walked += list.length;
-    if (walked > MAX_WALKED_ENTRIES) throw new WalkLimitExceeded();
+    if (walked > limit) throw new WalkLimitExceeded();
     return list;
   };
   const named = (path: string) => `.git/${relative(gitDir, path)}`;
@@ -213,15 +225,19 @@ async function redirectedGitEntry(
     }
   };
   try {
-    const found =
+    let found =
       (await linkIn(gitDir, hooksInsideProject)) ??
       (await linkBelow(join(gitDir, 'refs'))) ??
-      (await linkBelow(join(gitDir, 'logs'))) ??
-      (await linkBelow(join(gitDir, 'objects')));
+      (await linkBelow(join(gitDir, 'logs')));
+    if (!found) {
+      walked = 0;
+      limit = MAX_WALKED_OBJECT_ENTRIES;
+      found = await linkBelow(join(gitDir, 'objects'));
+    }
     if (found) return `${named(found)} is a symbolic link`;
   } catch (error) {
     if (error instanceof WalkLimitExceeded) {
-      return `.git holds more than ${MAX_WALKED_ENTRIES} entries to check`;
+      return `.git holds more than ${limit} entries to check`;
     }
     throw error;
   }
