@@ -255,7 +255,8 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
                         agents: {
                           ...agents,
                           revalidate: async (receipt) => {
-                            revalidatingAgent = true;
+                            revalidatingAgent =
+                              receipt.capability === 'agent-publish';
                             try {
                               return await agents.revalidate(receipt);
                             } finally {
@@ -337,19 +338,32 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           ),
           loopbackEnv(),
         );
+      let inspection: DatabaseSync | undefined;
+      let releaseHeld = () => {};
+      let pending: Promise<Response> | undefined;
+      let entryTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         const control = await request();
         expect(control.status).toBe(200);
         expect(await control.text()).toContain('Private investigation prompt.');
         let enter!: () => void, release!: () => void;
-        const entered = new Promise<void>((resolve) => {
-          enter = resolve;
+        const entered = new Promise<void>((resolve, reject) => {
+          enter = () => {
+            clearTimeout(entryTimer);
+            resolve();
+          };
+          entryTimer = setTimeout(
+            () => reject(new Error('Reconciliation boundary was not reached')),
+            5000,
+          );
         });
         const held = new Promise<void>((resolve) => {
           release = resolve;
         });
         const read = service.readSession.bind(service);
+        releaseHeld = release;
         const inspector = new DatabaseSync(fixture.databasePath);
+        inspection = inspector;
         inspector.exec('PRAGMA busy_timeout=0');
         if (change === 'replace-project') {
           if (submitted.kind !== 'recorded') throw new Error('Missing request');
@@ -403,7 +417,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
             },
           );
         }
-        const pending = request();
+        pending = Promise.resolve(request());
         await entered;
         if (change === 'revoke') setDeviceActive(false);
         else if (change === 'replace-task')
@@ -412,7 +426,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           fixture.projects[0] = { id: 'replacement-project', slug: 'project' };
         release();
         const response = await pending;
-        inspector.close();
+
         expect(response.status).toBe(403);
         const body = await response.text();
         expect(body).not.toContain('Private investigation prompt.');
@@ -434,6 +448,10 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           ).toHaveLength(0);
         }
       } finally {
+        clearTimeout(entryTimer);
+        releaseHeld();
+        await pending?.catch(() => undefined);
+        inspection?.close();
         vi.restoreAllMocks();
         await roomRuntime.close();
         await service.shutdown();
