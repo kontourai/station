@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"5f0af0e5e6fedaa116d25a6b6b78247f696659dbd58f00e02db6c39f6330c31e","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
+  "document": {"digest":"88ca09377d88390b99f3a5925e0af06aadc79f301ca4b6419e1e7ab8fd2d0ad2","revision":"e496df4415ccd31aebf9eeb2578854974de8c327"},
 
   "sources": [
     {"path":"docs/learn/media.json#/captures/2","digest":"f2a946d384b5a3a18d0c1711604b220f6435ec6e2b0b484a5e2ed03ba6966018","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
@@ -258,7 +258,17 @@
 
     {"path":"packages/sdk/src/engine-accounts.ts","digest":"616f25c83b780930f4297acd840a549a63a547189f83d6be087aae925d40dbc6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
-    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"b3a56e286c29d5d8ea623a7c9016494d4e6281543639c88762fc74d388d16fa0","revision":"a5618ff63f6feaccc8471d5f802b8f7a78cbd505"}
+    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"b3a56e286c29d5d8ea623a7c9016494d4e6281543639c88762fc74d388d16fa0","revision":"a5618ff63f6feaccc8471d5f802b8f7a78cbd505"},
+
+    {"path":"packages/connect/src/core/hostInput.ts","digest":"c1bcda8275fab668aa3f3de45f7a161344304395e20b750c8d9e59fc74e9308f","revision":"55dad29e8ed7e58c5ce19cf6a0fd935b5015882f"},
+
+    {"path":"packages/connect/src/react/HttpConnectionConsent.tsx","digest":"2deb65b3f990eeb32d44a82de3b8895b44e9b34b9e823e3907d99b5a49748385","revision":"55dad29e8ed7e58c5ce19cf6a0fd935b5015882f"},
+
+    {"path":"packages/connect/src/__tests__/DevicePairingPanel.test.tsx","digest":"f1775b731250b2c252dcfcd51d512a88c2f5cf2a85727b89f96a7f0c19e9123c","revision":"55dad29e8ed7e58c5ce19cf6a0fd935b5015882f"},
+
+    {"path":"src-ui/src/platform/native/pairingTransport.ts","digest":"ff3b1d70df749c1ad0db5975df4f138f5ae897630a80d482c2828a623d405613","revision":"53b0a71d31f5fc3bea5685e94d0480191527732e"},
+
+    {"path":"src-ui/src/platform/native/__tests__/pairingTransport.test.ts","digest":"1a00cad5f91b23b0b4ff3dde132a63245d8f069fc229a32bcbf08b4ff4a9c29a","revision":"55dad29e8ed7e58c5ce19cf6a0fd935b5015882f"}
   ],
 
   "checks": [
