@@ -75,6 +75,7 @@ vi.mock('../auth/cli-auth.js', () => ({
 }));
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
@@ -99,6 +100,7 @@ import {
   readBundledClaudeCodeVersion,
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
+import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
 import { loadClaudeTaskCapture } from './claude-task-captures.js';
 
 function createMockQuery(
@@ -2920,6 +2922,37 @@ describe('ClaudeAdapter', () => {
             },
             {},
           ],
+          // #2932: the engine's sandbox network-host ask and its sandbox
+          // override are escalations too, so the `*` pattern does not
+          // answer them and the child is denied rather than prompted.
+          [
+            'SandboxNetworkAccess',
+            { host: 'api.example.com' },
+            {
+              description: 'Allow network connection to api.example.com?',
+              suggestions: [
+                {
+                  type: 'addRules',
+                  rules: [
+                    {
+                      toolName: 'WebFetch',
+                      ruleContent: 'domain:api.example.com',
+                    },
+                  ],
+                  behavior: 'allow',
+                  destination: 'localSettings',
+                },
+              ],
+            },
+          ],
+          [
+            'Bash',
+            {
+              command: 'curl https://example.com',
+              dangerouslyDisableSandbox: true,
+            },
+            { decisionReason: 'dangerouslyDisableSandbox' },
+          ],
         ] as const) {
           // `allowed` here means the call settled without a request.opened.
           const outcome = await ask(toolName, toolInput, extra);
@@ -2980,6 +3013,325 @@ describe('ClaudeAdapter', () => {
         if (safety.kind === 'prompted') await safety.answer('decline');
         await adapter.stopSession('thread-auto-other');
       });
+    });
+
+    describe('#2932: engine escalation signals always reach a person', () => {
+      const everything = { slug: 'engine-lab', autoApprove: ['*'] };
+      /**
+       * The sandbox network ask exactly as Claude Code 2.1.278 (as 2.1.261)
+       * sends it
+       * (`createSandboxAskCallback`): tool `SandboxNetworkAccess`, input
+       * `{host}`, a `WebFetch(domain:<host>)` allow rule suggested for
+       * `localSettings`, the description, and no title or reason.
+       */
+      const networkAsk = (host: string) =>
+        [
+          'SandboxNetworkAccess',
+          { host },
+          {
+            displayName: 'SandboxNetworkAccess',
+            description: `Allow network connection to ${host}?`,
+            suggestions: [
+              {
+                type: 'addRules',
+                rules: [
+                  { toolName: 'WebFetch', ruleContent: `domain:${host}` },
+                ],
+                behavior: 'allow',
+                destination: 'localSettings',
+              },
+            ],
+          },
+        ] as const;
+      /**
+       * The sandbox override: Bash with `dangerouslyDisableSandbox: true`,
+       * reason type `sandboxOverride` (dropped by the SDK) and reason text
+       * `dangerouslyDisableSandbox`, with no suggestions.
+       */
+      const sandboxOverride = [
+        'Bash',
+        {
+          command: 'curl https://example.com',
+          dangerouslyDisableSandbox: true,
+        },
+        { decisionReason: 'dangerouslyDisableSandbox' },
+      ] as const;
+      /** The MCP organization ceiling (`effectiveMaxPermission: 'ask'`). */
+      const orgCeiling = [
+        'mcp__github__create_issue',
+        { title: 'x' },
+        {
+          decisionReason: 'Your organization requires approval for this tool',
+          suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'mcp__github__create_issue' }],
+              behavior: 'allow',
+              destination: 'localSettings',
+            },
+          ],
+        },
+      ] as const;
+
+      test('a network-host ask offers no session option, and a session answer grants no later host', async () => {
+        const { adapter, ask } = await grantHarness('thread-network');
+        const first = await ask(...networkAsk('api.example.com'));
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(first.event.title).toBe(
+          'Allow network access to api.example.com',
+        );
+        // The surfaces read the payload and offer no session option.
+        expect(toolRequestSessionGrantFromPayload(first.event.payload)).toBe(
+          'none',
+        );
+        // A session answer is a one-call accept: nothing is forwarded, so
+        // the engine's localSettings rule is never written.
+        await expect(first.answer('acceptForSession')).resolves.toEqual({
+          behavior: 'allow',
+          updatedInput: { host: 'api.example.com' },
+          updatedPermissions: undefined,
+        });
+
+        const second = await ask(...networkAsk('evil.example.net'));
+        expect(second.kind).toBe('prompted');
+        if (second.kind === 'prompted') await second.answer('decline');
+        await adapter.stopSession('thread-network');
+      });
+
+      test('a network-host ask names only a plain host in its title', async () => {
+        const { adapter, ask } = await grantHarness('thread-network-title');
+        const odd = await ask(...networkAsk('evil‮.example "x"'));
+        if (odd.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(odd.event.title).toBe(
+          'Allow network access to an unrecognised host',
+        );
+        await odd.answer('decline');
+        const long = await ask(...networkAsk(`${'a'.repeat(200)}.example.com`));
+        if (long.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(long.event.title).toBe(
+          `Allow network access to …${`${'a'.repeat(200)}.example.com`.slice(-119)}`,
+        );
+        await long.answer('decline');
+        await adapter.stopSession('thread-network-title');
+      });
+
+      test.each([
+        ['a zero-width space', 'git​hub.com'],
+        ['a bidi override', '‮github.com'],
+        ['a soft hyphen', 'github.com­'],
+        ['a NUL', 'github.com\u0000.evil.net'],
+      ])(
+        'a host carrying %s is never shown as a cleaned-up host',
+        async (_case, host) => {
+          const { adapter, ask } = await grantHarness('thread-network-hidden');
+          const hidden = await ask(...networkAsk(host));
+          if (hidden.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(hidden.event.title).toBe(
+            'Allow network access to an unrecognised host',
+          );
+          await hidden.answer('decline');
+          await adapter.stopSession('thread-network-hidden');
+        },
+      );
+
+      test('engine description and reason text are published sanitised; the reason literals are unchanged', async () => {
+        for (const literal of [
+          'dangerouslyDisableSandbox',
+          'requiresUserInteraction',
+          'Your organization requires approval for this tool',
+        ])
+          expect(claudeRequestDisplayText(literal)).toBe(literal);
+
+        const { adapter, ask } = await grantHarness('thread-reason-text');
+        const ceiling = await ask(...orgCeiling);
+        if (ceiling.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(ceiling.event.payload.decisionReason).toBe(
+          'Your organization requires approval for this tool',
+        );
+        await ceiling.answer('decline');
+
+        const [, , network] = networkAsk('api.example.com');
+        const escaped = await ask(
+          'SandboxNetworkAccess',
+          { host: 'api.example.com' },
+          {
+            ...network,
+            description: 'Allow network connection\u001b[31m to\nevil.example‮?',
+          },
+        );
+        if (escaped.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(escaped.event.description).toBe(
+          'Allow network connection to evil.example?',
+        );
+        await escaped.answer('decline');
+
+        const prose = await ask(
+          'Bash',
+          { command: 'cat .env' },
+          {
+            decisionReason:
+              '\u001b[1mCommand reads\u001b[0m a sensitive\u0007 file\u001b]8;;x\u0007',
+          },
+        );
+        if (prose.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(prose.event.payload.decisionReason).toBe(
+          'Command reads a sensitive file',
+        );
+        await prose.answer('decline');
+        await adapter.stopSession('thread-reason-text');
+      });
+
+      test("a question card keeps its own title over the engine's title", async () => {
+        const { adapter, ask } = await grantHarness('thread-question-title');
+        // Positive control: any other request shows the engine's title.
+        const bash = await ask(
+          'Bash',
+          { command: 'git status' },
+          { title: 'Claude wants to run git status' },
+        );
+        if (bash.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(bash.event.title).toBe('Claude wants to run git status');
+        await bash.answer('decline');
+
+        const question = await ask(
+          'AskUserQuestion',
+          {
+            questions: [
+              {
+                question: 'Where should we deploy?',
+                header: 'Target',
+                multiSelect: false,
+                options: [
+                  { label: 'Staging', description: 'Try first' },
+                  { label: 'Production', description: 'Release' },
+                ],
+              },
+            ],
+          },
+          { title: 'Claude wants to ask a question' },
+        );
+        if (question.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(question.event.title).toBe('The agent has questions for you');
+        // Left unanswered: stopping the session settles it.
+        await adapter.stopSession('thread-question-title');
+      });
+
+      test('a sandbox override prompts under a Bash session grant, which still answers a plain Bash call (positive control)', async () => {
+        const { adapter, ask } = await grantHarness('thread-override-grant');
+        const mint = await ask('Bash', { command: 'git status' });
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+        await expect(
+          ask('Bash', { command: 'git log' }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+
+        const override = await ask(...sandboxOverride);
+        expect(override.kind).toBe('prompted');
+        if (override.kind !== 'prompted') throw new Error('unreachable');
+        expect(override.event.payload).toMatchObject({
+          decisionReason: 'dangerouslyDisableSandbox',
+        });
+        expect(toolRequestSessionGrantFromPayload(override.event.payload)).toBe(
+          'none',
+        );
+        await override.answer('decline');
+        await adapter.stopSession('thread-override-grant');
+      });
+
+      test('a sandbox-disabled call prompts under a Bash grant when another check raised the ask', async () => {
+        // The engine's Bash `checkPermissions` returns an earlier check's ask
+        // before its own sandboxOverride one, so the input flag can arrive
+        // with a different reason. The flag alone must keep the prompt.
+        const { adapter, ask } = await grantHarness('thread-override-input');
+        const mint = await ask('Bash', { command: 'git status' });
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+
+        const override = await ask(
+          'Bash',
+          {
+            command: 'curl https://example.com',
+            dangerouslyDisableSandbox: true,
+          },
+          { decisionReason: 'Command contains a network request' },
+        );
+        expect(override.kind).toBe('prompted');
+        if (override.kind === 'prompted') await override.answer('decline');
+        await adapter.stopSession('thread-override-input');
+      });
+
+      test('the org-ceiling MCP ask prompts under a grant for that tool', async () => {
+        const { adapter, ask } = await grantHarness('thread-org-grant');
+        const mint = await ask('mcp__github__create_issue', { title: 'a' });
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+        await expect(
+          ask('mcp__github__create_issue', { title: 'b' }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+
+        const ceiling = await ask(...orgCeiling);
+        expect(ceiling.kind).toBe('prompted');
+        if (ceiling.kind === 'prompted') await ceiling.answer('decline');
+        await adapter.stopSession('thread-org-grant');
+      });
+
+      test("autoApprove '*' answers none of them", async () => {
+        const { adapter, ask } = await grantHarness('thread-escalation-auto', {
+          agent: everything,
+        });
+        // Positive control: a plain Bash call is auto-approved.
+        await expect(
+          ask('Bash', { command: 'git status' }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+        const requests: ReadonlyArray<
+          readonly [string, Record<string, unknown>, Record<string, unknown>]
+        > = [
+          networkAsk('api.example.com'),
+          sandboxOverride,
+          orgCeiling,
+          [
+            'Bash',
+            { command: 'open .' },
+            { decisionReason: 'requiresUserInteraction' },
+          ],
+        ];
+        for (const request of requests) {
+          const [toolName, toolInput, extra] = request;
+          const outcome = await ask(toolName, toolInput, extra);
+          expect(outcome.kind, request[0]).toBe('prompted');
+          if (outcome.kind === 'prompted') await outcome.answer('decline');
+        }
+        await adapter.stopSession('thread-escalation-auto');
+      });
+
+      test.each([
+        ['suppressAlwaysAllowRule'],
+        ['defaultToNo'],
+        ['requiresUserInteraction'],
+      ])(
+        'an ask flagged %s by the engine prompts under a Bash grant and carries the flag',
+        async (flag) => {
+          const threadId = `thread-flag-${flag}`;
+          const { adapter, ask } = await grantHarness(threadId);
+          const mint = await ask('Bash', { command: 'git status' });
+          if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+          await mint.answer('acceptForSession');
+
+          const flagged = await ask(
+            'Bash',
+            { command: 'git status' },
+            { [flag]: true },
+          );
+          expect(flagged.kind).toBe('prompted');
+          if (flagged.kind !== 'prompted') throw new Error('unreachable');
+          expect(flagged.event.payload).toMatchObject({ [flag]: true });
+          await flagged.answer('decline');
+          await adapter.stopSession(threadId);
+        },
+      );
     });
 
     test('a session answer on ExitPlanMode mints nothing, and the next plan exit prompts', async () => {

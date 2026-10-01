@@ -193,6 +193,22 @@ agent offers only `allow_always`, it falls back to that option; Station's
 one-call decision therefore does not guarantee one-call behavior in the
 agent. Claude's own plan exit uses its separate response mapping (#2916).
 
+A Claude Session also treats these as escalations that always prompt, even
+under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
+network-host ask (`SandboxNetworkAccess`), which offers no session option and
+names the host in its title, so every new host prompts; a call with
+`dangerouslyDisableSandbox: true`; a request whose `decisionReason` is
+exactly `dangerouslyDisableSandbox`, `requiresUserInteraction` or `Your
+organization requires approval for this tool`; and a request flagged
+`suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`. Agent
+SDK 0.3.278 forwards the first two; `requiresUserInteraction` applies once an
+SDK forwards it. `request.opened` carries the sanitised `decisionReason` and any
+of the flags that are set. Not covered yet: a Bash safety check and a plain
+`permissions.ask` rule reach Station with no signal the SDK forwards, so a
+Bash tool grant or pattern can still answer them. A session answer never
+writes the engine's settings files: every forwarded suggestion is sent with
+`destination: 'session'`.
+
 The command records the decision: the adapter publishes `request.resolved`
 when Station records it, on every engine. Whether the engine then received it
 is a separate fact (#2880), declared per adapter as
