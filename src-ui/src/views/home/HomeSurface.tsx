@@ -57,7 +57,9 @@ export function HomeSurface({
   // item, and reading `workItems` directly here would put every snoozed row
   // back into the chart the counts beside it say is empty.
   const visible = [
-    ...lanes.active,
+    ...lanes.needsYou,
+    ...lanes.running,
+    ...lanes.idle,
     ...lanes.recentlyFinished,
     ...lanes.settled,
   ];

@@ -458,6 +458,12 @@ and package exports own the current surface. Host-context hooks and remote-query
 hooks have different return shapes and prerequisites; follow their declarations
 and current host integration.
 
+The headless [Agent entry](../packages/sdk/src/agent/index.ts) re-exports the
+canonical Agent authoring and execution clients. It excludes UI dependencies;
+plug-in UI stays on the root and owning UI subpaths. Both share contract and
+transport owners. See [Agent development](guides/agent-development.md) and
+[ADR 0021](adr/0021-separate-plugin-and-agent-sdk-surfaces.md).
+
 ### `packages/connect/` — `@kontourai/station-connect`
 
 Connect owns saved Station connections, pairing, discovery and selected

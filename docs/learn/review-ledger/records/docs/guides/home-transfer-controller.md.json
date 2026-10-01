@@ -1,0 +1,187 @@
+{
+  "path": "docs/guides/home-transfer-controller.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed documented pairing/binding probes, external storage custody, preparation/advance outcomes, bounded admission journal, capability/replay/grant revision control sessions, room-write ordering and receipt reconciliation. Traced mounted versus private-only callers and confirmed transfer/resume flags remain false; current prose remains accurate.",
+
+  "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
+
+  "document": {"digest":"3e16288c9db5fe81570dc6f013ce0426096187c395c8e85002cc4f9f32fcc8d2","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+  "sources": [
+    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/windows-vitest-diagnostic.yml","digest":"040f1a8683332740c89c7c9716f7f70370838e9d86441827913cc3db7786d527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/sdk/src/client/delegations.ts","digest":"148d12ffed1091b83149a7d0caa834088f58eebf295ce4c97b697ec1fad747db","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/container-smoke.sh","digest":"31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/lib/dependency-audit-diagnostics.mjs","digest":"c81447d6f6746f19a8a75c5937359850d74935dd43ed53d991ee90929404993a","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/lib/pnpm-advisory.mjs","digest":"d744934bbc925b7a8cf799b335864c0e8555d6b099de2acf6e6990ca5a580bc7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/lib/product-laws.mjs","digest":"b7a549ca0025afb7f662b215e56aad007308b999a3700e0bd7e28464954cc275","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/product-law-gate.mjs","digest":"3611528993c47648caa7c64150902820410f1f330c235891396f4927033e4766","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/home-transfer-room-binding.ts","digest":"327571a0ed3ca3530b5dd6acb90c6c66c8a009f4a413777bb6d1e82420e73f73","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/home-transfer-room-probe.ts","digest":"452280720043dd06eabfa63058e4ae10bd65db403adf427ccc7b64061c102129","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/paired-home-transfer-authority.ts","digest":"085a90751ac616c54bca77ce48112a951334d1d644fdb4fa3287e6aed72f503f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-schema.ts","digest":"c18526693663135c65b06b6aa21b02caad2db819ebdaedee1d51ec914118832f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-store.ts","digest":"2b7da18c962fbb82036fa48e6193bcd038a3f843ec435dd9772b1755052d73a9","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-adapter.ts","digest":"dec0df930857ef8e7de10cbe5d4d8e4e3e604027a866355b020bda1711301f79","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-identity.ts","digest":"7f3f6cddbe5bae1db154cbe1dee86495b08bd53b99cb876d6b4bedc1affbb022","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-receipt-verifier.ts","digest":"f6c49a8611da028d5943e1b66be456acd4bb1de51c4e1a3c65bc2176d0711d54","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-session-authority.ts","digest":"5d9f0768ae2f584a3719568bed7166e708faf3452cdbbc792da9c576c979adff","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-session-schema.ts","digest":"9824fe95c7be0b10056125af8ff411780845d1bdbd5d64b3fbd3cba28f733325","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-transfer-coordinator.ts","digest":"e4e93a19400d17d54295d0dac64c4d8977a13ca0a10c6c9787d3607b45de1307","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-transfer-store.ts","digest":"7af2e74857cfc5af2e968831708daf50d5d4e19751d450044bca9bfc145f6e66","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history-worker.ts","digest":"6c8f8684aadb16162fdf999f692e82b554773e9edbf17d0b4b36a00aba0d1736","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/remote-home-transfer-coordinator.ts","digest":"ff03f9ae3fa558b2a29de1fbe22538d4da7f29fe09dfcdb263c1280c9f313eb0","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-reference.ts","digest":"f3f49b82131fc679b5454d4d5f1cc9ffbe0afd41dfd1317336ac74c7f057d5a1","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-resolver.ts","digest":"cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx","digest":"511e0ac91b3e0c2b744ffe1da6967e1741aa9d2d99f9daa10f39d1b2e78e8494","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"tests/container-self-host.spec.ts","digest":"35a9f2abca5519fa980137f32f8011bb6a88311f2bc3bacd3e9cca830f5379f6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
+  ],
+
+  "checks": [
+    "Prior accepted evidence, not rerun in this tranche: focused: PASS99tests8files28.26s: CodeQL SARIF policy, pnpm advisory command, product laws, delegation attempts route, home-authority routes, cloud-project-import, spatial-board-resolver, documentation foundations",
+
+    "Prior accepted evidence, not rerun in this tranche: links: PASS397Markdown paths/anchors",
+
+    "Prior accepted evidence, not rerun in this tranche: references: PASS263maintained documents/entrypoints",
+
+    "Prior accepted evidence, not rerun in this tranche: veritas: PASS exit0/0failures/0warnings; governance/lint/verification-policy; protected hashes unchanged",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Upstream delta extracts plugin event relay gate; Starter, fleet inference, Project/delegation and deployment composition discussed by these owned guides unchanged. Accepted ONLY for listed owned-document claims; broader plugin gate semantics reviewed elsewhere.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed localRefusalOf and actual read/post callers: typed local refusal cause only for current target; remote codes not promoted to local authority. Delegation identity/claim/persistence explanations unchanged. This is a relevant-delta review, not all delegation behavior re-executed.",
+
+    "Prior accepted evidence, not rerun in this tranche: Upstream source review: Reviewed workflow policy delta for new CI parts, skip-tolerant status conditions, exact Intel pnpm fallback and isolated portable archive workflow upload. Existing policy descriptions retain structural-only proof limits; no claim of full hosted security qualification.",
+
+    "Prior accepted evidence, not rerun in this tranche: Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
+
+    "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
+
+    "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
+
+    "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
+
+    "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
+
+    "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through e0314c727: ci.yml and actionlint-gate.mjs add a reviewed zsh provisioning step for fast-checks shards, and package.json drops bearing/forage. None touches home-transfer contracts or its reproduction command, whose named test files all still exist. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added PAIRING_SCOPE_DESCRIPTIONS to the environment-security contracts. Its home:transfer entry says moving homes and resuming agents are not available yet, which matches the guide's statement that the transfer and resume flags are false. The same file gained FullAccessRevocationReport. DelegationApiError now keeps the envelope's details. device-pairing-service gained deviceHoldsScope, and runtime-routes added revocation reports to the device scope and revoke routes. The pairing/binding, admission journal, control-session and receipt claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts, which changes only the outer device-gate status for recognized but unadmitted credentials. The guide's 403 for denied caller authority comes from the controller's own routes. Its pairing, admission and control-session claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the DelegatedTaskDecision type and the lastDecision and earlierUnacknowledgedDecisions snapshot fields to the SDK delegations client and to station-control-delegation. The guide's home-transfer and delegation-credential claims do not depend on delegation decision reporting. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The guide makes no claim about them. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+
+    "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+  ]
+}

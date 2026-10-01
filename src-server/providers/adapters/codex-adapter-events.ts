@@ -17,6 +17,7 @@ import {
   type ModelImageOutcome,
 } from '../model-image-attachments.js';
 import { isSessionSourceAffinity } from '../sessions/session-source-affinity.js';
+import { codexQuestionnaire } from './harness-questions.js';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -218,6 +219,22 @@ export function mapServerRequestToEvent(
 ): RequestOpenedEvent | null {
   const payload = isRecord(params) ? params : {};
   switch (method) {
+    case 'item/tool/requestUserInput': {
+      const questionnaire = codexQuestionnaire(payload);
+      if (!questionnaire) return null;
+      return {
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt,
+        requestId,
+        method: 'request.opened',
+        requestType: 'approval',
+        ...(payload.isBlocking === false ? { blocking: false } : {}),
+        title: 'The agent has questions for you',
+        payload: { ...payload, questionnaire },
+      };
+    }
     case 'item/permissions/requestApproval':
       return {
         eventId: crypto.randomUUID(),
@@ -324,6 +341,10 @@ export function resolveApprovalOutcome(
     // optional). Its scope is `turn`, matching Codex's own denial (the
     // default, empty profile with scope Turn): an empty grant has nothing to
     // remember for the session.
+    case 'item/tool/requestUserInput':
+      if (decision === 'accept' || decision === 'acceptForSession')
+        throw new Error('Question answers are required.');
+      return { decision, result: { answers: {} } };
     case 'item/permissions/requestApproval': {
       const granted = decision === 'accept' || decision === 'acceptForSession';
       return {

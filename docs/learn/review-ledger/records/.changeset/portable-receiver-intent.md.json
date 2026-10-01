@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/portable-receiver-intent.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"b82eff1758260aaf991f4f58766b438d32e16159ee3293770127aac62bbe9d0f","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}
