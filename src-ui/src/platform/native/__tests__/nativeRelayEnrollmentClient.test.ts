@@ -12,7 +12,12 @@ import { createNativeRelayEnrollmentClient } from '../nativeRelayEnrollmentClien
 
 const transport = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock('../nativeEnrollmentSignalingBridge', () => ({
-  createNativeEnrollmentSignalingBridge: () => ({ open: transport.open }),
+  createNativeEnrollmentSignalingBridge: (input: {
+    expectedProfileRevision: number;
+  }) => ({
+    open: (signal: AbortSignal) =>
+      transport.open(input.expectedProfileRevision, signal),
+  }),
 }));
 const ORIGIN = 'https://station.example';
 const ENROLLMENT = 'e'.repeat(43);
@@ -25,8 +30,16 @@ function fixture() {
   const lifetime = new AbortController();
   let liveRevision = 7;
   let peerSequence = 0;
+  let failTransition = false;
+  let failOpen = false;
+  const openedRevisions: number[] = [];
   const requests: { path: string; body: string }[] = [];
-  transport.open.mockImplementation(async () => {
+  transport.open.mockImplementation(async (capturedRevision: number) => {
+    openedRevisions.push(capturedRevision);
+    if (failOpen) {
+      failOpen = false;
+      throw new Error('ice_unavailable');
+    }
     const listeners: Array<
       { message: (value: unknown) => void; closed: () => void } | undefined
     > = [];
@@ -72,7 +85,8 @@ function fixture() {
       },
       channel: pair[0]!,
       assertCurrent: async () => {
-        if (liveRevision !== 7) throw new Error('old_profile_revision');
+        if (liveRevision !== capturedRevision)
+          throw new Error('old_profile_revision');
       },
       close: async () => pair[0]!.close(),
     };
@@ -145,6 +159,10 @@ function fixture() {
         };
       }
       if (command.endsWith('_transition_current')) {
+        if (failTransition) {
+          failTransition = false;
+          throw new Error('transition_ipc_unavailable');
+        }
         if (
           args?.enrollmentHandle !== ENROLLMENT ||
           args.transitionHandle !== TRANSITION ||
@@ -159,6 +177,14 @@ function fixture() {
           transitionHandle: TRANSITION,
         };
       }
+      if (command.endsWith('_status_accept'))
+        return {
+          version: VERSION,
+          enrollmentHandle: ENROLLMENT,
+          state: 'active',
+          profileRevision: liveRevision,
+          transitionHandle: TRANSITION,
+        };
       if (command.endsWith('_abort')) return;
       throw new Error(`Unexpected fixed host command: ${command}`);
     },
@@ -174,6 +200,13 @@ function fixture() {
     calls,
     requests,
     lifetime,
+    openedRevisions,
+    failNextTransition: () => {
+      failTransition = true;
+    },
+    failNextOpen: () => {
+      failOpen = true;
+    },
   };
 }
 
@@ -206,4 +239,37 @@ test('explicit cancellation before completed publication invalidates the actual 
   expect(f.calls.find((call) => call.command.endsWith('_abort'))?.args).toEqual(
     { enrollmentHandle: ENROLLMENT },
   );
+});
+
+test('revalidates an unknown owned publication before opening a recovery peer', async () => {
+  const f = fixture();
+  await f.client.begin();
+  await f.client.login({ username: 'zach', password: 'user-entered' });
+  await f.client.finalize();
+  f.failNextTransition();
+  await expect(f.client.activate()).rejects.toThrow(
+    'transition_ipc_unavailable',
+  );
+  await f.client.dispose();
+  expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
+  await expect(f.client.status()).resolves.toMatchObject({
+    state: 'active',
+    profileRevision: 8,
+  });
+  expect(f.openedRevisions.at(-1)).toBe(8);
+});
+
+test('retains a revalidated committed Device when the next recovery peer cannot open', async () => {
+  const f = fixture();
+  await f.client.begin();
+  await f.client.login({ username: 'zach', password: 'user-entered' });
+  await f.client.finalize();
+  f.failNextTransition();
+  await expect(f.client.activate()).rejects.toThrow(
+    'transition_ipc_unavailable',
+  );
+  f.failNextOpen();
+  await expect(f.client.status()).rejects.toThrow('ice_unavailable');
+  await f.client.dispose();
+  expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
 });

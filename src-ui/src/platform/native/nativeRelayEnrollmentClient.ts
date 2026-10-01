@@ -105,6 +105,9 @@ export function createNativeRelayEnrollmentClient(
   let enrollmentHandle: string | undefined;
   let busy = false;
   let completed = false;
+  let pendingPublication:
+    | NativeRelayEnrollmentHostActivationAccepted
+    | undefined;
 
   const abortOwned = async () => {
     if (completed) return;
@@ -145,6 +148,12 @@ export function createNativeRelayEnrollmentClient(
     busy = true;
     let publication: NativeRelayEnrollmentHostActivationAccepted | undefined;
     try {
+      if (pendingPublication) {
+        await assertTransition(pendingPublication);
+        completed = true;
+        profileRevision = pendingPublication.profileRevision;
+        pendingPublication = undefined;
+      }
       const bridge = createNativeEnrollmentSignalingBridge({
         profileName,
         expectedProfileRevision: profileRevision,
@@ -192,9 +201,12 @@ export function createNativeRelayEnrollmentClient(
             const owned = active.parse(result);
             if (owned.enrollmentHandle !== requireHandle())
               throw new Error('native_enrollment_attempt_changed');
+            pendingPublication = owned;
             await assertTransition(owned);
+            completed = true;
             publication = owned;
             profileRevision = owned.profileRevision;
+            pendingPublication = undefined;
           }
           if (signal.aborted) {
             await abortOwned();
@@ -327,5 +339,8 @@ export function createNativeRelayEnrollmentClient(
           ),
       ),
     abort: abortOwned,
+    dispose: async () => {
+      if (!pendingPublication) await abortOwned();
+    },
   });
 }
