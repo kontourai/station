@@ -74,7 +74,7 @@
 
     {"path":"scripts/build-desktop.mjs","digest":"882c850640e9a350c1b48f4290b947b506e0b1ef4a6cdf447c6330a88e393c99","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/channel-ports.mjs","digest":"1f94a510faac71ad5e46dbbcb75591aa60c396aab94692eb7515afa314641138","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/channel-ports.mjs","digest":"60371dd4ece531ee30f4361f652ef21b7061bf4984fe202fa79ae4f8ca3b2b3e","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
 
     {"path":"scripts/check-android-16kb-alignment.mjs","digest":"b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
