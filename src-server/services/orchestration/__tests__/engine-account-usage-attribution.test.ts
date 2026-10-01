@@ -1,14 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { usageCredentialAccountKey } from '../../../providers/app-home/app-home-profiles.js';
 import { EventStore } from '../event-store.js';
 import { SessionTranscriptReads } from '../session-transcript-reads.js';
 
+const makeTempDir = trackTempDirs();
+
 test('persisted receipt attribution follows the applied profile within its process epoch and stays owner scoped', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'usage-account-attribution-'));
+  const dir = makeTempDir('usage-account-attribution-');
   const store = new EventStore(join(dir, 'events.sqlite'));
   const owner = 'usage-reader';
   const day = new Date().toISOString().slice(0, 10);
@@ -101,6 +102,5 @@ test('persisted receipt attribution follows the applied profile within its proce
     ).toHaveLength(2);
   } finally {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   }
 });
