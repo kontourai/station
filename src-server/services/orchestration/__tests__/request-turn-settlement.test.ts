@@ -15,10 +15,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import { collectOpenRequests } from '../open-requests.js';
-import {
-  buildAgentRunSummary,
-  buildOrchestrationSessionSummary,
-} from '../orchestration-session-state.js';
+import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 import { projectSessionLifecycle } from '../session-lifecycle-service.js';
 import {
   APPROVAL_BETWEEN_TURNS_EVENTS,
@@ -429,38 +426,6 @@ describe('#3071: requests a recovery abort settles (the process died)', () => {
       ...recoveryAbortAndBanner('turn-never-started', 6),
     ];
     expect(settled(events)).toEqual([]);
-  });
-});
-
-describe('#3071: the agent-run fold agrees', () => {
-  test('a run whose only open request was settled by its turn’s abort is not waiting for approval', () => {
-    const base = {
-      persisted: SETTLEMENT_SESSION,
-      answerability: SETTLEMENT_OBSERVATION,
-    };
-    // Stopped, then resumed: with the request unsettled the run reads
-    // waiting_for_approval under a turn that is plainly running.
-    const stoppedThenResumed = [
-      turnStarted('turn-1', 1),
-      turnRequest('req-1', 'turn-1', 2),
-      turnAborted('turn-1', 3),
-      turnStarted('turn-2', 5),
-    ];
-    expect(
-      buildAgentRunSummary({ ...base, events: stoppedThenResumed }).status,
-    ).toBe('running');
-    // Control: the same shape with the request genuinely open.
-    expect(
-      buildAgentRunSummary({
-        ...base,
-        events: [
-          turnStarted('turn-1', 1),
-          turnAborted('turn-1', 3),
-          turnStarted('turn-2', 5),
-          turnRequest('req-1', 'turn-2', 6),
-        ],
-      }).status,
-    ).toBe('waiting_for_approval');
   });
 });
 

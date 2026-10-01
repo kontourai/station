@@ -1283,15 +1283,12 @@ export function buildAgentRunSummary(options: {
       .filter((event) => event.method === 'request.resolved')
       .map((event) => event.requestId),
   );
-  // #3071: same rule as the session summary's `pendingReview`.
-  const settledRequestIds = requestIdsSettledByTurnAbort(events);
   const hasOpenRequest = events.some(
     (event) =>
       event.method === 'request.opened' &&
       event.blocking !== false &&
       event.requestId &&
-      !lastResolvedRequestIds.has(event.requestId) &&
-      !settledRequestIds.has(event.requestId),
+      !lastResolvedRequestIds.has(event.requestId),
   );
 
   const status = deriveAgentRunStatus({
