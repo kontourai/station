@@ -3701,6 +3701,15 @@ describe('ClaudeAdapter', () => {
         );
         expect(missing.kind, 'missing record').toBe('prompted');
         if (missing.kind === 'prompted') await missing.answer('decline');
+        // A tool whose ordinary ask carries no reason type: only the
+        // missing record makes this one prompt.
+        const missingMcp = await ask(
+          mcpOrdinary.tool_name,
+          mcpOrdinary.input,
+          sdkCanUseToolOptions('never-on-stdout-mcp', mcpOrdinary),
+        );
+        expect(missingMcp.kind, 'missing MCP record').toBe('prompted');
+        if (missingMcp.kind === 'prompted') await missingMcp.answer('decline');
         await adapter.stopSession('thread-frame-auto');
       });
 
