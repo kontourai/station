@@ -106,6 +106,39 @@ Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
 
+### Task room agent requests
+
+`@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
+`submitTaskRoomAgentRequest`, `TaskRoomWorkProtocolError` and
+`TaskRoomWorkNotSentError`. Submission takes `(apiBase, taskId, projectSlug,
+taskCreatedAt, input, options?)`; input contains `operationId`, `agentId` and
+`prompt`. A fresh versioned request-list read precedes the additive delegation
+create field, so an older Station never silently receives an ordinary
+delegation instead. The response must match the Task and submitted intent.
+The server also checks the expected Task incarnation.
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`useTaskRoomAgentOptionsQuery(projectSlug, scope, enabled?)`,
+`useTaskRoomAgentRequestsQuery(taskId, taskCreatedAt, scope, enabled?)` and
+`useSubmitTaskRoomAgentRequestMutation(taskId, taskCreatedAt, projectSlug, scope)`.
+The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
+or stale scope never falls back to the ambient connection. Request caches
+include connection authority, Task identity and incarnation. Request cards
+poll every five seconds and can be refreshed explicitly; journal changes are
+not currently published through room SSE. Mutation retries are disabled.
+Send refreshes Project-scoped delegation options and requires the selected
+agent to be ready before the version negotiation and create.
+
+`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent.
+After the create starts, an error can mean the execution already exists.
+Retain the exact operation and intent for an explicit retry or inspection;
+never generate a replacement operation automatically. Server non-success
+envelopes throw HTTP errors rather than returning every refusal union arm.
+`dispatched` records acknowledgement, not result quality, Task completion or
+customer acceptance. These personal-Station clients do not establish invited,
+remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
+
+
 ### Default host bindings and custom hosts
 
 The [default SDK adapter](../../src-ui/src/core/SDKAdapter.tsx) is delivered

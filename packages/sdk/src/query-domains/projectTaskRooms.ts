@@ -27,6 +27,13 @@ import {
 } from '../client/project-task-rooms';
 import { projectTaskRoomQueries } from '../queryFactories';
 
+export { TaskRoomWorkNotSentError } from '../client/task-room-work';
+export {
+  useSubmitTaskRoomAgentRequestMutation,
+  useTaskRoomAgentOptionsQuery,
+  useTaskRoomAgentRequestsQuery,
+} from './taskRoomWork';
+
 let taskRoomConnectionSequence = 0;
 
 export type { ProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';

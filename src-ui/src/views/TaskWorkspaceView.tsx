@@ -222,16 +222,20 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
       />
     );
   }
-  const projectExists = projectsQuery.data.some(
+  const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
       project.slug === graph.task.projectId,
   );
-  if (!projectExists) return <DeletedProjectTaskState task={graph.task} />;
+  if (!taskProject) return <DeletedProjectTaskState task={graph.task} />;
   return (
     <>
       {starterLinkUnverified && <StarterLinkRetry task={graph.task} />}
-      <TaskWorkspaceContent taskId={taskId} graph={graph} />
+      <TaskWorkspaceContent
+        taskId={taskId}
+        graph={graph}
+        projectSlug={taskProject.slug}
+      />
     </>
   );
 }
@@ -359,9 +363,11 @@ function useTaskExperienceSelection(taskId: string) {
 function TaskWorkspaceContent({
   taskId,
   graph,
+  projectSlug,
 }: {
   taskId: string;
   graph: TaskGraph;
+  projectSlug: string;
 }) {
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
@@ -442,6 +448,7 @@ function TaskWorkspaceContent({
         {activeExperience.id === 'direct' ? (
           <TaskRoomWorkspaceSection
             task={graph.task}
+            projectSlug={projectSlug}
             onOpenActionChange={captureBasisHostOpen}
           />
         ) : null}
@@ -514,9 +521,11 @@ function TaskWorkspaceContent({
 /** Durable promoted workspace-file snapshots; no RelationGraph mirror. */
 function TaskRoomWorkspaceSection({
   task,
+  projectSlug,
   onOpenActionChange,
 }: {
   task: TaskRecord;
+  projectSlug: string;
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
@@ -587,7 +596,11 @@ function TaskRoomWorkspaceSection({
               />
             ) : instance.descriptorId ===
               WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID ? (
-              <ProjectTaskRoomConversation taskId={task.id} />
+              <ProjectTaskRoomConversation
+                taskId={task.id}
+                projectSlug={projectSlug}
+                taskCreatedAt={task.createdAt}
+              />
             ) : instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
               <Suspense
                 fallback={<SkeletonBlock count={3} label="Loading Basis" />}

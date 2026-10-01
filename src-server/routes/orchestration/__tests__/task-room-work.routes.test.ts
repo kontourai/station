@@ -53,7 +53,7 @@ test('the delegation route records one channel request and refuses a target outs
     delegateTask: start,
     taskRoomWork: { module, authorize: async () => scope },
   });
-  const send = (projectSlug: string) =>
+  const send = (projectSlug: string, taskCreatedAt = scope.taskCreatedAt) =>
     app.request('/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -64,12 +64,19 @@ test('the delegation route records one channel request and refuses a target outs
           agent: 'researcher',
           workspace: { kind: 'project', projectSlug },
         },
-        taskRoomRequest: { taskId: 'durable-task', operationId: 'request-1' },
+        taskRoomRequest: {
+          taskId: 'durable-task',
+          taskCreatedAt,
+          operationId: 'request-1',
+        },
       }),
     });
   try {
     const denied = await send('other-project');
     expect(denied.status).toBe(403);
+    expect(start).not.toHaveBeenCalled();
+    const staleTask = await send('demo', '2026-09-29T12:00:00.000Z');
+    expect(staleTask.status).toBe(403);
     expect(start).not.toHaveBeenCalled();
     const first = await send('demo');
     expect(first.status).toBe(200);
@@ -254,7 +261,11 @@ test('real delegation refuses revoked Task authority at provider effects and lea
           agent: 'researcher',
           workspace: { kind: 'project', projectSlug: 'demo' },
         },
-        taskRoomRequest: { taskId: 'durable-task', operationId },
+        taskRoomRequest: {
+          taskId: 'durable-task',
+          taskCreatedAt: '2026-09-30T12:00:00.000Z',
+          operationId,
+        },
       }),
     });
   try {

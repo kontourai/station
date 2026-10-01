@@ -530,6 +530,7 @@ export const delegateTaskSchema = z.object({
   taskRoomRequest: z
     .object({
       taskId: z.string().min(1).max(160),
+      taskCreatedAt: z.string().min(1).max(40),
       operationId: z.string().min(1).max(160),
     })
     .strict()
@@ -2463,7 +2464,8 @@ export function createOrchestrationRoutes(
             c.req.raw,
             principal,
           );
-          return scope?.projectSlug === workspace.projectSlug
+          return scope?.projectSlug === workspace.projectSlug &&
+            scope.taskCreatedAt === roomRequest.taskCreatedAt
             ? scope
             : undefined;
         };

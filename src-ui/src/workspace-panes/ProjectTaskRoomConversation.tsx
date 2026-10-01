@@ -7,6 +7,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useId, useState } from 'react';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
+import { TaskRoomComposer } from './TaskRoomComposer';
 import { taskRoomRevisionLink } from './taskRoomRevisionLink';
 
 function roomRecord(record: ProjectTaskRoomBrowserRecord): string {
@@ -23,7 +24,15 @@ function roomRecord(record: ProjectTaskRoomBrowserRecord): string {
 }
 
 /** Room history is deliberately not a Chat store projection. */
-export function ProjectTaskRoomConversation({ taskId }: { taskId: string }) {
+export function ProjectTaskRoomConversation({
+  taskId,
+  projectSlug,
+  taskCreatedAt,
+}: {
+  taskId: string;
+  projectSlug?: string;
+  taskCreatedAt?: string;
+}) {
   const discover = useProjectTaskRoomDiscoveryQuery(taskId);
   const shared = useProjectTaskRoomContext(taskId);
   const history = useProjectTaskRoomHistoryQuery(taskId);
@@ -122,27 +131,40 @@ export function ProjectTaskRoomConversation({ taskId }: { taskId: string }) {
           resumed when the server provides its continuation cursor.
         </p>
       ) : null}
-      <label htmlFor={`task-room-message-${id}`}>Message</label>
-      <textarea
-        id={`task-room-message-${id}`}
-        value={draft}
-        onChange={(event) => setDraft(event.currentTarget.value)}
-        disabled={!writable || append.isPending}
-      />
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!writable || !draft.trim() || append.isPending}
-      >
-        Send to task room
-      </button>
-      {append.isError || (append.data && append.data.kind === 'rejected') ? (
-        <p role="alert">
-          {append.data?.kind === 'rejected'
-            ? `Message rejected: ${append.data.reason}. Draft retained.`
-            : 'Message outcome is unavailable. Do not resend until you have checked the room history.'}
-        </p>
-      ) : null}
+      {projectSlug && taskCreatedAt ? (
+        <TaskRoomComposer
+          taskId={taskId}
+          projectSlug={projectSlug}
+          taskCreatedAt={taskCreatedAt}
+          writable={writable}
+          readable={readable}
+        />
+      ) : (
+        <>
+          <label htmlFor={`task-room-message-${id}`}>Message</label>
+          <textarea
+            id={`task-room-message-${id}`}
+            value={draft}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            disabled={!writable || append.isPending}
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!writable || !draft.trim() || append.isPending}
+          >
+            Send to task room
+          </button>
+          {append.isError ||
+          (append.data && append.data.kind === 'rejected') ? (
+            <p role="alert">
+              {append.data?.kind === 'rejected'
+                ? `Message rejected: ${append.data.reason}. Draft retained.`
+                : 'Message outcome is unavailable. Do not resend until you have checked the room history.'}
+            </p>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
