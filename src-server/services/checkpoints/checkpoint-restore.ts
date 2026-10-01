@@ -16,6 +16,7 @@ import {
   CheckpointRepositoryRefused,
   dropNestedRepositoryChanges,
   withCheckpointRepository,
+  withQuarantinedObjects,
 } from './checkpoint-ref-store.js';
 import { CHECKPOINT_MUTATION_LOCK } from './checkpoint-retention.js';
 
@@ -397,26 +398,37 @@ async function withTemporaryIndex<T>(
 }
 
 /** git in `repository`, with a temporary index. */
-function indexedGit(repository: CheckpointRepository, index: string) {
+function indexedGit(
+  repository: CheckpointRepository,
+  index: string,
+  env: NodeJS.ProcessEnv = {},
+) {
   return (args: string[], options: { input?: string } = {}) =>
     execGit([...repository.repoArgs, ...args], {
       cwd: repository.top,
       encoding: 'utf-8' as const,
       timeout: RESTORE_GIT_TIMEOUT_MS,
-      env: { GIT_INDEX_FILE: index },
+      env: { GIT_INDEX_FILE: index, ...env },
       ...options,
     });
 }
 
+/**
+ * The tree of the work tree as it is, written as objects into the
+ * repository (the recovery ref and the preview's diff need them), built in
+ * quarantine first (`withQuarantinedObjects`).
+ */
 function snapshotWorkingTree(repoRoot: string): Promise<string> {
   return inOwnRepository(repoRoot, (repository) =>
-    withTemporaryIndex(async (index) => {
-      const git = indexedGit(repository, index);
-      await git(['read-tree', 'HEAD']);
-      await git(['add', '-A', '--', '.']);
-      await dropNestedRepositoryChanges(git);
-      return (await git(['write-tree'])).stdout.trim();
-    }),
+    withTemporaryIndex((index) =>
+      withQuarantinedObjects(repository, async (quarantine) => {
+        const git = indexedGit(repository, index, quarantine);
+        await git(['read-tree', 'HEAD']);
+        await git(['add', '-A', '--', '.']);
+        await dropNestedRepositoryChanges(git);
+        return (await git(['write-tree'])).stdout.trim();
+      }),
+    ),
   );
 }
 

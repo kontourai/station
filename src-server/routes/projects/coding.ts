@@ -26,12 +26,12 @@ import {
 } from '../../services/projects/coding-git-actions.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import {
+  type LiveRepository,
+  openLiveRepository,
   type ProjectRepositoryReadOptions,
   type ReadRepository,
   readProjectRepository,
-  resolveProjectRepositoryForRead,
 } from '../../services/projects/git-read-repository.js';
-import { checkRepositoryConfig } from '../../services/projects/git-repository-config.js';
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -207,34 +207,16 @@ async function isBranchName(dir: string, branch: string): Promise<boolean> {
  */
 function configRefusedMessage(keys: readonly string[]): string {
   const named = keys.length > 0 ? keys.join(', ') : 'options';
-  return `This repository's own .git/config sets ${named}. Station runs git here as this computer's user, and does not while a repository's own configuration names a program to run, an address to connect to, or a file outside the repository to read. To use Station's git panel here, remove ${keys.length === 1 ? 'it' : 'them'} (\`git config --local --unset <key>\`; an included file from outside the repository is \`include.path\`), or use git from a terminal`;
+  // `git lfs install --local` is the common way to end up here; the global
+  // install is the operator's own configuration, which applies by design.
+  const lfs = keys.some((key) => key.toLowerCase().startsWith('filter.lfs.'))
+    ? ' For Git LFS, install its filters for this computer\'s user instead (`git lfs install`, without `--local`)'
+    : '';
+  return `This repository's own .git/config sets ${named}. Station runs git here as this computer's user, and does not while a repository's own configuration names a program to run, an address to connect to, or a file outside the repository to read. To use Station's git panel here, remove ${keys.length === 1 ? 'it' : 'them'} (\`git config --local --unset <key>\`; an included file from outside the repository is \`include.path\`)${lfs ? `.${lfs}` : ''}, or use git from a terminal`;
 }
 
 const CONFIG_UNREADABLE_MESSAGE =
   "git could not read this repository's configuration";
-
-/**
- * The refusal before a checkout (#2363): `checkout` runs smudge filters the
- * repository's own config defines, and reads that config itself, so the
- * `live` rules apply (`git-repository-config.ts`). `null` means go ahead.
- * `gitArgs` names the repository the route resolved.
- */
-async function checkoutRefusal(dir: string, gitArgs: readonly string[]) {
-  const verdict = await checkRepositoryConfig(dir, 'live', gitArgs);
-  if (verdict.ok) return null;
-  return verdict.code === 'repository-config-refused'
-    ? {
-        success: false as const,
-        error: configRefusedMessage(verdict.keys),
-        code: verdict.code,
-        keys: verdict.keys,
-      }
-    : {
-        success: false as const,
-        error: CONFIG_UNREADABLE_MESSAGE,
-        code: verdict.code,
-      };
-}
 
 /**
  * The answer for a folder whose repository is not the Project's own (see
@@ -1060,14 +1042,14 @@ export function createCodingRoutes(
       // checks themselves take several git calls), and its identity is
       // compared afterwards. A `.git` swapped in the moment between that
       // last check and git opening it is still followed.
-      let repository:
-        | Extract<
-            Awaited<ReturnType<typeof resolveProjectRepositoryForRead>>,
-            { ok: true }
-          >
-        | undefined;
+      //
+      // #2363: `checkout` runs smudge filters the repository's config
+      // defines. git runs with Station's copy of that config as its common
+      // directory (`git-read-repository.ts`), the copy that was judged, so
+      // a config rewritten in place after the judgement is never read.
+      let repository: LiveRepository | undefined;
       for (let attempt = 0; attempt < 3 && !repository; attempt += 1) {
-        const resolved = await resolveProjectRepositoryForRead(
+        const opened = await openLiveRepository(
           location.projectRoot,
           location.target,
           {
@@ -1076,10 +1058,31 @@ export function createCodingRoutes(
             timeoutMs: GIT_QUICK_TIMEOUT_MS,
           },
         );
-        if (!resolved.ok) {
-          return resolved.state === 'refused'
-            ? repositoryRefused(c, resolved.reason)
-            : c.json(
+        if (!opened.ok) {
+          switch (opened.state) {
+            case 'refused':
+              return repositoryRefused(c, opened.reason);
+            case 'config-refused':
+              return c.json(
+                {
+                  success: false,
+                  error: configRefusedMessage(opened.keys),
+                  code: 'repository-config-refused',
+                  keys: opened.keys,
+                },
+                409,
+              );
+            case 'config-unreadable':
+              return c.json(
+                {
+                  success: false,
+                  error: CONFIG_UNREADABLE_MESSAGE,
+                  code: 'repository-config-unreadable',
+                },
+                409,
+              );
+            default:
+              return c.json(
                 {
                   success: false,
                   error: 'That folder is not in a git repository',
@@ -1087,11 +1090,10 @@ export function createCodingRoutes(
                 },
                 409,
               );
+          }
         }
-        // #2363: `checkout` runs repository-defined smudge filters.
-        const refusal = await checkoutRefusal(resolved.top, resolved.repoArgs);
-        if (refusal) return c.json(refusal, 409);
-        if (await resolved.unchanged()) repository = resolved;
+        if (await opened.repository.unchanged()) repository = opened.repository;
+        else await opened.repository.dispose();
       }
       if (!repository) {
         return repositoryRefused(
@@ -1099,40 +1101,45 @@ export function createCodingRoutes(
           '.git kept changing while Station was checking it',
         );
       }
-      const opts = {
-        cwd: repository.top,
-        encoding: 'utf-8' as const,
-        windowsHide: true,
-        timeout: GIT_CHECKOUT_TIMEOUT_MS,
-      };
-      await execGit(
-        [
-          ...repository.repoArgs,
-          ...(create
-            ? ['checkout', '-b', branch, '--end-of-options']
-            : ['checkout', '--end-of-options', branch, '--']),
-        ],
-        opts,
-      );
-      // A write cannot be discarded, but it can be reported: if what was
-      // checked is no longer the same files, the checkout may have landed
-      // somewhere else, and nothing about it is echoed back.
-      if (!(await repository.sameIdentity())) {
-        return c.json(
-          {
-            success: false,
-            error:
-              'The repository changed while Station was checking out. The checkout may not have applied here; check the branch from a terminal',
-            code: 'repository-changed-during-write',
-          },
-          409,
+      try {
+        const opts = {
+          cwd: repository.top,
+          encoding: 'utf-8' as const,
+          windowsHide: true,
+          timeout: GIT_CHECKOUT_TIMEOUT_MS,
+          env: repository.env,
+        };
+        await execGit(
+          [
+            ...repository.repoArgs,
+            ...(create
+              ? ['checkout', '-b', branch, '--end-of-options']
+              : ['checkout', '--end-of-options', branch, '--']),
+          ],
+          opts,
         );
+        // A write cannot be discarded, but it can be reported: if what was
+        // checked is no longer the same files, the checkout may have landed
+        // somewhere else, and nothing about it is echoed back.
+        if (!(await repository.sameIdentity())) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'The repository changed while Station was checking out. The checkout may not have applied here; check the branch from a terminal',
+              code: 'repository-changed-during-write',
+            },
+            409,
+          );
+        }
+        const { stdout } = await execGit(
+          [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
+          opts,
+        );
+        return c.json({ success: true, data: { branch: stdout.trim() } });
+      } finally {
+        await repository.dispose();
       }
-      const { stdout } = await execGit(
-        [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
-        opts,
-      );
-      return c.json({ success: true, data: { branch: stdout.trim() } });
     } catch (e: unknown) {
       return gitFailure(c, e);
     }

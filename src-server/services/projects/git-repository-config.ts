@@ -39,16 +39,18 @@
  *   `commit.template` is not among them: Station commits with `-m`, which
  *   never reads it.
  *
- * These are the READ refusals. Where git reads the repository's config
- * itself (`live`: checkout, worktree provisioning, the review workspace),
- * `include`/`includeIf` are refused too: more configuration from another
- * file, read when git runs rather than when Station judged this one. A read
- * resolves includes once, into its own copy (`git-read-repository.ts`).
- * Before the operator's COMMIT or PUSH, which run with the operator's
- * credentials and signing, these are refused as well: every `http.*` key, a
- * remote NAMED by an address, a `core.fsmonitor` that is a program rather
- * than the builtin daemon's boolean, and a PARTIAL CLONE (`extensions.partialClone`,
- * `remote.<name>.promisor`, `remote.<name>.partialCloneFilter`).
+ * These are the READ refusals, applied wherever git runs with Station's own
+ * copy of the configuration, in which includes are already resolved
+ * (`git-read-repository.ts`): the coding reads, checkout, checkpoints,
+ * worktree provisioning and the review workspace. Before the operator's
+ * COMMIT or PUSH, which read the repository's configuration themselves and
+ * run with the operator's credentials and signing, these are refused as
+ * well: `include`/`includeIf` (more configuration from another file, read
+ * when git runs rather than when Station judged this one), every `http.*`
+ * key, a remote NAMED by an address, a `core.fsmonitor` that is a program
+ * rather than the builtin daemon's boolean, and a PARTIAL CLONE
+ * (`extensions.partialClone`, `remote.<name>.promisor`,
+ * `remote.<name>.partialCloneFilter`).
  *
  * PARTIAL CLONES. With a promisor remote, a missing object makes any command
  * that touches it fetch from the repository's own remote, running its
@@ -91,12 +93,10 @@ import { execGit } from '../../utils/git-exec.js';
 /**
  * - `read`: git runs with Station's own copy of this configuration
  *   (`git-read-repository.ts`), in which includes are already resolved.
- * - `live`: git reads the repository's configuration itself (checkout,
- *   worktree provisioning, the review workspace), so more configuration
- *   included from another file is refused: it would be read when git runs.
- * - `write`: the operator's Commit and Push.
+ * - `write`: the operator's Commit and Push, which read the repository's
+ *   configuration themselves.
  */
-export type RepositoryConfigPurpose = 'read' | 'live' | 'write';
+export type RepositoryConfigPurpose = 'read' | 'write';
 
 /**
  * `extensions.*` keys (lowercased) that only describe how the repository's
@@ -140,17 +140,12 @@ const READ_REFUSED = [
 ];
 
 /** Keys (lowercased) refused before an operator commit or push. */
-/** Also refused where git reads the repository's configuration itself. */
-const LIVE_REFUSED = [
+const WRITE_REFUSED = [
   ...READ_REFUSED,
   // More configuration from another file, read when git runs rather than
   // when Station judged this one.
   /^include\./,
   /^includeif\./,
-];
-
-const WRITE_REFUSED = [
-  ...LIVE_REFUSED,
   /^extensions\.partialclone$/,
   /^remote\..+\.(?:promisor|partialclonefilter)$/,
   // Everything under `http.`: where a push connects, what it trusts and
@@ -188,12 +183,7 @@ function refused(
   if (/^submodule\..+\.update$/.test(lower)) {
     return (value ?? '').trimStart().startsWith('!');
   }
-  const rules =
-    purpose === 'read'
-      ? READ_REFUSED
-      : purpose === 'live'
-        ? LIVE_REFUSED
-        : WRITE_REFUSED;
+  const rules = purpose === 'read' ? READ_REFUSED : WRITE_REFUSED;
   return rules.some((rule) => rule.test(lower));
 }
 

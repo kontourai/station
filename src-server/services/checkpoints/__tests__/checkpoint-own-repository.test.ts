@@ -65,13 +65,16 @@ function repo(dir: string, files: Record<string, string>): string {
   return dir;
 }
 
-/** Everything a capture or restore could change in the outside repository. */
+/** Everything a capture or restore could change in the outside repository:
+ * its refs, its work tree, the checkpoint folders, and its object count (a
+ * capture builds objects before it writes a ref). */
 function outsideState(): string {
   return [
     git(outside, ['for-each-ref']),
     git(outside, ['status', '--porcelain']),
     String(existsSync(join(outside, '.git', 'STATION_CHECKPOINTS'))),
     String(existsSync(join(outside, '.git', 'logs', 'STATION_CHECKPOINTS'))),
+    git(outside, ['count-objects', '-v']),
   ].join('\n');
 }
 
@@ -147,6 +150,29 @@ describe.skipIf(process.platform === 'win32')('checkpoint capture', () => {
     // Live: through the swapped `.git`, plain git writes there.
     git(project, ['update-ref', 'refs/heads/planted', 'HEAD']);
     expect(git(outside, ['for-each-ref'])).toContain('refs/heads/planted');
+  });
+
+  test('a .git swapped for a link to another repository while the capture builds its objects: none lands there', async () => {
+    writeFileSync(join(project, 'a.txt'), 'two\n');
+    writeFileSync(join(project, 'new.txt'), 'untracked, so a new blob\n');
+    const before = outsideState();
+    hooks.beforeGit = (args) => {
+      // Before `add -A`, which writes the first new objects: from here
+      // every object git builds would go through the swapped `.git`.
+      if (args.includes('add') && !existsSync(join(project, '.git-real')))
+        swapGitForLink();
+    };
+
+    const result = await capture();
+
+    expect(existsSync(join(project, '.git-real')), 'the swap happened').toBe(
+      true,
+    );
+    expect(result.status).toBe('degraded');
+    expect(outsideState()).toBe(before);
+    // Live: through the swapped `.git`, plain git writes an object there.
+    git(project, ['hash-object', '-w', 'new.txt']);
+    expect(outsideState()).not.toBe(before);
   });
 
   test('config rewritten to name a clean filter during the capture: the filter does not run', async () => {

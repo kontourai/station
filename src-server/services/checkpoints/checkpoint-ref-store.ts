@@ -1,5 +1,13 @@
 import { existsSync } from 'node:fs';
-import { lstat, mkdtemp, rm } from 'node:fs/promises';
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  opendir,
+  rename,
+  rm,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -156,6 +164,55 @@ function isTimeoutError(error: unknown): boolean {
       ('signal' in error &&
         typeof (error as { signal?: unknown }).signal === 'string'))
   );
+}
+
+/**
+ * Runs `build` with git writing every NEW object into a directory Station
+ * owns (`GIT_OBJECT_DIRECTORY`, reading the repository's through the
+ * alternate), and moves them into the repository's object store only once
+ * the repository is still the one that was checked. Without it, `add -A`,
+ * `write-tree` and `commit-tree` write through the snapshot's `objects`
+ * link for as long as they run, and a `.git` swapped for a link to another
+ * repository meanwhile put the Project's files into THAT repository's
+ * object store (measured: 43 objects over 80 captures under a flipping
+ * link). Now only the move itself goes through the path, after the check,
+ * and git is then asked for the objects without the quarantine, so a move
+ * that did not land fails the operation rather than leaving a ref dangling.
+ */
+export async function withQuarantinedObjects<T>(
+  repository: CheckpointRepository,
+  build: (env: NodeJS.ProcessEnv) => Promise<T>,
+): Promise<T> {
+  const quarantine = await mkdtemp(join(tmpdir(), 'station-checkpoint-objects-'));
+  try {
+    const built = await build({
+      GIT_OBJECT_DIRECTORY: quarantine,
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: join(repository.commonDir, 'objects'),
+    });
+    if (!(await repository.stillOwn())) {
+      throw new Error('the repository changed while it was captured');
+    }
+    const store = join(repository.commonDir, 'objects');
+    for await (const fanOut of await opendir(quarantine)) {
+      if (!fanOut.isDirectory() || !/^[0-9a-f]{2}$/.test(fanOut.name)) continue;
+      const bucket = join(store, fanOut.name);
+      await mkdir(bucket, { recursive: true });
+      for await (const object of await opendir(join(quarantine, fanOut.name))) {
+        if (!object.isFile()) continue;
+        const target = join(bucket, object.name);
+        if (existsSync(target)) continue;
+        // As git writes one: whole under a temporary name, then renamed.
+        const staged = `${target}.station-${process.pid}`;
+        await copyFile(join(quarantine, fanOut.name, object.name), staged);
+        await rename(staged, target);
+      }
+    }
+    return built;
+  } finally {
+    await rm(quarantine, { recursive: true, force: true }).catch(() => {
+      // Best-effort; a survivor is inert.
+    });
+  }
 }
 
 /** What a checkpoint operation runs git with: a snapshot of the folder's
@@ -454,7 +511,7 @@ export class CheckpointRefStore {
       // GIT_INDEX_FILE (plus the fixed ident) is injected; the repository
       // is named by `--git-dir`/`--work-tree`, never discovered and never
       // taken from an inherited variable.
-      const env = {
+      const ident = {
         GIT_INDEX_FILE: indexFile,
         GIT_AUTHOR_NAME: CHECKPOINT_IDENT.name,
         GIT_AUTHOR_EMAIL: CHECKPOINT_IDENT.email,
@@ -463,23 +520,17 @@ export class CheckpointRefStore {
         GIT_COMMITTER_EMAIL: CHECKPOINT_IDENT.email,
         GIT_COMMITTER_DATE: capturedAt,
       };
-      const git = (args: string[], options: { input?: string } = {}) =>
-        execGit([...repository.repoArgs, ...args], {
-          cwd: repoRoot,
-          encoding: 'utf-8' as const,
-          timeout: this.gitTimeoutMs,
-          env,
-          ...options,
-        });
+      const gitWith =
+        (env: NodeJS.ProcessEnv) =>
+        (args: string[], options: { input?: string } = {}) =>
+          execGit([...repository.repoArgs, ...args], {
+            cwd: repoRoot,
+            encoding: 'utf-8' as const,
+            timeout: this.gitTimeoutMs,
+            env: { ...ident, ...env },
+            ...options,
+          });
 
-      // Seed the temp index with HEAD so the snapshot starts from the
-      // committed state, then `add -A` folds in working-tree modifications,
-      // deletions, and untracked-but-not-ignored files. Ignored files stay
-      // excluded because `add` respects the repository's ignore rules.
-      await git(['read-tree', 'HEAD']);
-      await git(['add', '-A']);
-      await dropNestedRepositoryChanges(git);
-      const tree = (await git(['write-tree'])).stdout.trim();
       // The commit message is the durable, self-describing record: ref
       // name, boundary phase, turnId, and the exact capturedAt timestamp
       // (git author dates are second-granular — the trailer is what
@@ -491,9 +542,30 @@ export class CheckpointRefStore {
         `phase=${input.kind}`,
         `captured-at=${capturedAt}`,
       ].join('\n');
-      const commit = (
-        await git(['commit-tree', tree, '-p', 'HEAD', '-m', message])
-      ).stdout.trim();
+      // Every object is built in quarantine and moved into the repository
+      // afterwards, once it is still the one that was checked.
+      const { tree, commit } = await withQuarantinedObjects(
+        repository,
+        async (quarantine) => {
+          const git = gitWith(quarantine);
+          // Seed the temp index with HEAD so the snapshot starts from the
+          // committed state, then `add -A` folds in working-tree
+          // modifications, deletions, and untracked-but-not-ignored files.
+          // Ignored files stay excluded because `add` respects the
+          // repository's ignore rules.
+          await git(['read-tree', 'HEAD']);
+          await git(['add', '-A']);
+          await dropNestedRepositoryChanges(git);
+          const tree = (await git(['write-tree'])).stdout.trim();
+          const commit = (
+            await git(['commit-tree', tree, '-p', 'HEAD', '-m', message])
+          ).stdout.trim();
+          return { tree, commit };
+        },
+      );
+      // From here git reads the repository's own object store, so the ref
+      // is only written, and only read back, if the objects landed there.
+      const git = gitWith({});
 
       // The ref is about to be written through the links into the
       // repository. It must still be the repository that was checked (the

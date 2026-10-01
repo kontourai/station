@@ -9,8 +9,12 @@ import type {
 } from '@kontourai/station-contracts/review-evidence';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { execGit } from '../../utils/git-exec.js';
-import { ownRepositoryGitArgs } from '../projects/git-read-repository.js';
-import { checkRepositoryConfig } from '../projects/git-repository-config.js';
+import {
+  type LiveRepository,
+  ownRepositoryGitArgs,
+  RepositoryConfigRefusedError,
+  requireLiveRepository,
+} from '../projects/git-read-repository.js';
 import type {
   ReadOnlyReviewWorkspace,
   ReviewWorkspaceSource,
@@ -98,41 +102,49 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
       // `worktree add` checks the head out, which runs a smudge filter the
       // repository's own config defines, as the operator. Refused by the
       // rule worktree provisioning applies (`git-repository-config.ts`),
-      // and the repository must still be the one that was checked when the
-      // checkout starts. The config is read again by git itself, so one
-      // rewritten in the moment between this and the checkout still runs.
-      const config = await checkRepositoryConfig(
-        repository.top,
-        'live',
-        repository.args.slice(2),
-      );
-      if (!config.ok) {
+      // judged on Station's copy of the config, which is the only config
+      // git reads for the checkout (`git-read-repository.ts`); and the
+      // repository must still be the one that was checked when the
+      // checkout starts.
+      let live: LiveRepository;
+      try {
+        live = await requireLiveRepository(
+          configuredWorkspace,
+          configuredWorkspace,
+          { newWorktree: true },
+        );
+      } catch (error) {
+        if (!(error instanceof RepositoryConfigRefusedError)) throw error;
         throw new Error(
-          config.code === 'repository-config-refused'
-            ? `Review target repository's own git configuration sets ${config.keys.join(', ')}, which Station does not check out with.`
+          error.keys.length > 0
+            ? `Review target repository's own git configuration sets ${error.keys.join(', ')}, which Station does not check out with.`
             : "Review target repository's git configuration could not be read.",
         );
       }
-      if (!(await repository.unchanged())) {
-        throw new Error(
-          'Review target repository changed while it was checked.',
-        );
-      }
       try {
-        await execGit(
-          [
-            ...repository.args,
-            'worktree',
-            'add',
-            '--detach',
-            workspaceRoot,
-            target.headSha,
-          ],
-          { timeout: GIT_MUTATION_TIMEOUT_MS },
-        );
-      } catch (error) {
-        await rm(workspaceRoot, { recursive: true, force: true });
-        throw error;
+        if (live.top !== canonicalRepoRoot || !(await live.unchanged())) {
+          throw new Error(
+            'Review target repository changed while it was checked.',
+          );
+        }
+        try {
+          await execGit(
+            [
+              ...live.repoArgs,
+              'worktree',
+              'add',
+              '--detach',
+              workspaceRoot,
+              target.headSha,
+            ],
+            { cwd: live.top, env: live.env, timeout: GIT_MUTATION_TIMEOUT_MS },
+          );
+        } catch (error) {
+          await rm(workspaceRoot, { recursive: true, force: true });
+          throw error;
+        }
+      } finally {
+        await live.dispose();
       }
     } finally {
       await releaseAdmission();

@@ -521,7 +521,10 @@ async function redirectedGitEntry(
   for (const alternates of ['alternates', 'http-alternates']) {
     try {
       await lstat(join(gitDir, 'objects', 'info', alternates));
-      return `.git/objects/info/${alternates} borrows another repository's objects`;
+      // What `git clone --shared` and `--reference` leave behind. The way
+      // out is git's own: `git repack -a -d` copies the borrowed objects in,
+      // after which the file can go.
+      return `.git/objects/info/${alternates} borrows another repository's objects; to read this repository here, run \`git repack -a -d\` in it and remove that file`;
     } catch {
       // Absent: the ordinary case.
     }

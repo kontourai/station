@@ -10,7 +10,7 @@ function listing(entries: Array<[scope: string, key: string, value: string]>) {
 
 const refusedKeys = (
   entries: Array<[string, string, string]>,
-  purpose: 'read' | 'live' | 'write' = 'read',
+  purpose: 'read' | 'write' = 'read',
 ) => {
   const verdict = judgeRepositoryConfig(listing(entries), purpose);
   return verdict.ok ? [] : 'keys' in verdict ? verdict.keys : ['unreadable'];
@@ -85,16 +85,12 @@ describe('judgeRepositoryConfig', () => {
     expect(refusedKeys(ordinary, 'write')).toEqual([]);
   });
 
-  test('an include is refused wherever git reads the config itself, not where Station runs git with its own copy', () => {
+  test('an include is refused for a commit or push, which read the config themselves, not where Station runs git with its own copy', () => {
     const entries: Array<[string, string, string]> = [
       ['local', 'include.path', '../shared.gitconfig'],
       ['local', 'includeif.gitdir:/x/.path', '/tmp/more'],
     ];
     expect(refusedKeys(entries, 'read')).toEqual([]);
-    expect(refusedKeys(entries, 'live')).toEqual([
-      'include.path',
-      'includeif.gitdir:/x/.path',
-    ]);
     expect(refusedKeys(entries, 'write')).toEqual([
       'include.path',
       'includeif.gitdir:/x/.path',

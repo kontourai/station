@@ -21,8 +21,11 @@ import {
 } from '../../telemetry/metrics.js';
 import { spawnGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
-import { ownRepositoryGitArgs } from './git-read-repository.js';
-import { judgeRepositoryConfig } from './git-repository-config.js';
+import {
+  type LiveRepository,
+  RepositoryConfigRefusedError,
+  requireLiveRepository,
+} from './git-read-repository.js';
 
 type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
 
@@ -49,7 +52,7 @@ type GitCommandResult = {
 export interface GitCommandRunner {
   run(
     args: string[],
-    options?: { cwd?: string; allowCodes?: number[] },
+    options?: { cwd?: string; allowCodes?: number[]; env?: NodeJS.ProcessEnv },
   ): Promise<GitCommandResult>;
 }
 
@@ -310,12 +313,13 @@ function cleanupPolicyForTerminalState(
 class SpawnGitCommandRunner implements GitCommandRunner {
   async run(
     args: string[],
-    options: { cwd?: string; allowCodes?: number[] } = {},
+    options: { cwd?: string; allowCodes?: number[]; env?: NodeJS.ProcessEnv } = {},
   ): Promise<GitCommandResult> {
     const allowCodes = options.allowCodes ?? [0];
     return await new Promise((resolve, reject) => {
       const child = spawnGit(args, {
         cwd: options.cwd,
+        env: options.env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -356,10 +360,16 @@ export class WorktreeProvisioningService {
   constructor(
     private readonly git: GitCommandRunner = new SpawnGitCommandRunner(),
     /**
-     * The repository a Project folder may be provisioned from, as the
-     * arguments that name it. Replaceable for tests that script the runner.
+     * The repository a Project folder may be provisioned from, opened for
+     * the checkout `worktree add` makes (`requireLiveRepository`: its own
+     * git directory named, Station's judged copy of its config as the
+     * common directory). Replaceable for tests that script the runner.
      */
-    private readonly ownRepository: typeof ownRepositoryGitArgs = ownRepositoryGitArgs,
+    private readonly ownRepository: (
+      folder: string,
+      projectRoot: string,
+      options: { newWorktree: true },
+    ) => Promise<LiveRepository> = requireLiveRepository,
   ) {}
 
   /** Read-only continuation proof, sharing cleanup's hostile-metadata checks. */
@@ -536,115 +546,105 @@ export class WorktreeProvisioningService {
     // check out whichever one git finds. Only the folder's own repository
     // is provisioned from, and every call below names it (`repo`) rather
     // than letting git discover it again.
-    const repository = await this.ownRepository(
-      request.repoPath,
-      request.repoPath,
-    );
-    const repoRoot = repository.top;
-    const repo = repository.args;
-
+    //
     // #2411: `worktree add` checks files out, which runs a smudge filter the
     // repository's own config defines, as the operator (and the `status`
     // just below runs a clean filter). Refused by the rule the coding routes
-    // apply before `status`, `diff` and `checkout` (#2363), judged from the
-    // same `git config --show-scope` bytes, read through this service's
-    // runner.
-    let configList: string;
+    // apply before `status`, `diff` and `checkout` (#2363), judged on
+    // Station's copy of the config, which is the only config git reads
+    // here (`env`).
+    let repository: LiveRepository;
     try {
-      configList = (
-        await this.git.run([
-          ...repo,
-          'config',
-          '--show-scope',
-          '--null',
-          '--list',
-        ])
-      ).stdout;
-    } catch {
-      // Unreadable is not "nothing refused": refuse rather than check out.
-      throw new WorktreeRepositoryConfigError([]);
-    }
-    const verdict = judgeRepositoryConfig(configList, 'live');
-    if (!verdict.ok) {
-      throw new WorktreeRepositoryConfigError(
-        verdict.code === 'repository-config-refused' ? verdict.keys : [],
+      repository = await this.ownRepository(
+        request.repoPath,
+        request.repoPath,
+        { newWorktree: true },
       );
-    }
-
-    const status = await this.git.run([...repo, 'status', '--porcelain']);
-    if (status.stdout.trim()) {
-      worktreeConflictPreventedTotal.add(1, {
-        detection_source: 'dirty_repo',
-      });
-      throw new Error(
-        'Cannot provision isolated worktree from a dirty repository',
-      );
-    }
-
-    const branch = buildWorktreeBranchName({
-      threadId: request.threadId,
-      branchPrefix: policy.branchPrefix,
-    });
-    const branchExists = await this.git.run(
-      [...repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
-      { allowCodes: [0, 1] },
-    );
-    if (branchExists.code === 0) {
-      worktreeConflictPreventedTotal.add(1, {
-        detection_source: 'branch_exists',
-      });
-      throw new Error(`Worktree branch already exists: ${branch}`);
-    }
-
-    const worktreeBaseDir = resolveWorktreeBaseDir(
-      repoRoot,
-      policy.worktreeBaseDir,
-    );
-    const worktreePath = join(
-      worktreeBaseDir,
-      worktreeSessionSegment(request.threadId),
-    );
-    assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
-    if (existsSync(worktreePath)) {
-      worktreeConflictPreventedTotal.add(1, {
-        detection_source: 'path_exists',
-      });
-      throw new Error(`Worktree path already exists: ${worktreePath}`);
-    }
-
-    await mkdir(worktreeBaseDir, { recursive: true });
-    // The checks above took several git calls; what they checked must
-    // still be there when the checkout starts.
-    if (!(await repository.unchanged())) {
-      throw new Error(
-        'The repository changed while Station was preparing the worktree',
-      );
-    }
-    try {
-      await this.git.run([
-        ...repo,
-        'worktree',
-        'add',
-        '-b',
-        branch,
-        worktreePath,
-        policy.baseRef,
-      ]);
     } catch (error) {
-      await rm(worktreePath, { recursive: true, force: true });
+      if (error instanceof RepositoryConfigRefusedError) {
+        throw new WorktreeRepositoryConfigError(error.keys);
+      }
       throw error;
     }
+    try {
+      const repoRoot = repository.top;
+      const repo = ['-C', repoRoot, ...repository.repoArgs];
+      const env = repository.env;
 
-    return {
-      mode: 'worktree',
-      repoPath: repoRoot,
-      path: worktreePath,
-      branch,
-      baseRef: policy.baseRef,
-      cleanupPolicy: policy.cleanupPolicy,
-      preserveOnFailure: policy.preserveOnFailure,
-      createdAt: new Date().toISOString(),
-    };
+      const status = await this.git.run([...repo, 'status', '--porcelain'], {
+        env,
+      });
+      if (status.stdout.trim()) {
+        worktreeConflictPreventedTotal.add(1, {
+          detection_source: 'dirty_repo',
+        });
+        throw new Error(
+          'Cannot provision isolated worktree from a dirty repository',
+        );
+      }
+
+      const branch = buildWorktreeBranchName({
+        threadId: request.threadId,
+        branchPrefix: policy.branchPrefix,
+      });
+      const branchExists = await this.git.run(
+        [...repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
+        { allowCodes: [0, 1], env },
+      );
+      if (branchExists.code === 0) {
+        worktreeConflictPreventedTotal.add(1, {
+          detection_source: 'branch_exists',
+        });
+        throw new Error(`Worktree branch already exists: ${branch}`);
+      }
+
+      const worktreeBaseDir = resolveWorktreeBaseDir(
+        repoRoot,
+        policy.worktreeBaseDir,
+      );
+      const worktreePath = join(
+        worktreeBaseDir,
+        worktreeSessionSegment(request.threadId),
+      );
+      assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
+      if (existsSync(worktreePath)) {
+        worktreeConflictPreventedTotal.add(1, {
+          detection_source: 'path_exists',
+        });
+        throw new Error(`Worktree path already exists: ${worktreePath}`);
+      }
+
+      await mkdir(worktreeBaseDir, { recursive: true });
+      // The checks above took several git calls; what they checked must
+      // still be there when the checkout starts.
+      if (!(await repository.unchanged())) {
+        throw new Error(
+          'The repository changed while Station was preparing the worktree',
+        );
+      }
+      try {
+        await this.git.run(
+          [...repo, 'worktree', 'add', '-b', branch, worktreePath, policy.baseRef],
+          { env },
+        );
+      } catch (error) {
+        await rm(worktreePath, { recursive: true, force: true });
+        throw error;
+      }
+
+      return {
+        mode: 'worktree',
+        repoPath: repoRoot,
+        path: worktreePath,
+        branch,
+        baseRef: policy.baseRef,
+        cleanupPolicy: policy.cleanupPolicy,
+        preserveOnFailure: policy.preserveOnFailure,
+        createdAt: new Date().toISOString(),
+      };
+    } finally {
+      await repository.dispose();
+    }
   }
 }
 

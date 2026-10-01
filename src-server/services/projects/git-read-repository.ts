@@ -32,6 +32,21 @@
  * in-tree `.gitattributes` can only select a filter or driver they do not
  * define.
  *
+ * WHAT A WRITE RUNS GIT WITH. A checkout, and a `worktree add` (worktree
+ * provisioning, the independent review), must land in the repository's own
+ * per-worktree files: HEAD, the index, the HEAD reflog, the new worktree's
+ * entry. They run git with `--git-dir` naming the repository's OWN git
+ * directory and `GIT_COMMON_DIR` naming the same copy ({@link
+ * RepositorySnapshot.live}). git takes its configuration from the common
+ * directory, so it reads the copy and nothing else, while HEAD, the index
+ * and `logs/HEAD` are read and written where they live; objects, refs and
+ * the reflogs go through the copy's links to the repository; `worktrees` is
+ * linked too for a `worktree add`, and git names the new entry by its real
+ * path (measured on git 2.50: the `.git` file it writes names the
+ * repository's `worktrees/<name>`, not the copy's). The copy's `packed-refs`
+ * is a link, which a rewrite would replace in the copy alone, so no
+ * operation that repacks or deletes refs runs this way.
+ *
  * WHAT A SWAP CAN STILL DO. `objects` and `refs` are links to PATHS, and
  * git opens them when it runs. A member can swap `.git`, or a folder above
  * the repository, after the check and put it back afterwards. git cannot be
@@ -357,6 +372,154 @@ export class ProjectRepositoryRefusedError extends Error {
   }
 }
 
+/** The repository's own configuration sets `keys` Station does not run git
+ * with (`git-repository-config.ts`); empty when it could not be read. */
+export class RepositoryConfigRefusedError extends Error {
+  constructor(readonly keys: readonly string[]) {
+    super(
+      keys.length > 0
+        ? `this repository's own configuration sets ${keys.join(', ')}`
+        : "git could not read this repository's configuration",
+    );
+    this.name = 'RepositoryConfigRefusedError';
+  }
+}
+
+/**
+ * A repository opened for a write git must make in its own per-worktree
+ * files (a checkout, a `worktree add`): see "WHAT A WRITE RUNS GIT WITH" in
+ * the header. Its configuration was judged on the copy git then runs with.
+ */
+export interface LiveRepository {
+  /** The work tree's root, symlink-resolved. */
+  top: string;
+  gitDir: string;
+  commonDir: string;
+  /** `--git-dir=<its own> --work-tree=<top>`, on every git call. */
+  repoArgs: string[];
+  /** `GIT_COMMON_DIR` naming the copy, as `env` on every git call. */
+  env: { GIT_COMMON_DIR: string };
+  /** See `ProjectRepositoryForRead`. Ask immediately before the write. */
+  unchanged: () => Promise<boolean>;
+  sameIdentity: () => Promise<boolean>;
+  /** Removes the copy. After it, git must not be run with `env` again. */
+  dispose: () => Promise<void>;
+}
+
+export type LiveRepositoryResult =
+  | { ok: true; repository: LiveRepository }
+  | Exclude<ProjectRepositoryForRead, { ok: true }>
+  | Exclude<RepositorySnapshotResult, { ok: true }>;
+
+export interface LiveRepositoryOptions extends ProjectRepositoryReadOptions {
+  /**
+   * The write creates a worktree: the folder's per-worktree configuration
+   * is not carried, and the repository's `worktrees` directory is linked
+   * (created first when the repository has none, before the repository is
+   * checked, so the check sees it).
+   */
+  newWorktree?: boolean;
+}
+
+/**
+ * Resolves `folder`'s repository as {@link resolveProjectRepositoryForRead}
+ * does and opens it for a write. The caller disposes it.
+ */
+export async function openLiveRepository(
+  projectRoot: string,
+  folder: string,
+  options: LiveRepositoryOptions = {},
+): Promise<LiveRepositoryResult> {
+  let repository = await resolveProjectRepositoryForRead(
+    projectRoot,
+    folder,
+    options,
+  );
+  if (!repository.ok) return repository;
+  if (
+    options.newWorktree &&
+    !(await exists(join(repository.commonDir, 'worktrees')))
+  ) {
+    // git creates it on the first `worktree add`; through the copy, that
+    // would land in the copy. Created now, the check below records it.
+    await mkdir(join(repository.commonDir, 'worktrees'));
+    repository = await resolveProjectRepositoryForRead(
+      projectRoot,
+      folder,
+      options,
+    );
+    if (!repository.ok) return repository;
+  }
+  const opened = await openRepositorySnapshot(repository, {
+    timeoutMs: options.timeoutMs,
+    scope: options.newWorktree ? 'new-worktree' : 'this-worktree',
+  });
+  if (!opened.ok) return opened;
+  const { snapshot } = opened;
+  const verdict = judgeRepositoryConfigEntries(snapshot.config, 'read');
+  if (!verdict.ok) {
+    await snapshot.dispose();
+    return verdict.code === 'repository-config-refused'
+      ? { ok: false, state: 'config-refused', keys: verdict.keys }
+      : { ok: false, state: 'config-unreadable' };
+  }
+  try {
+    // Reflogs land in the repository; so does a new worktree's entry.
+    await snapshot.link(
+      ['logs', ...(options.newWorktree ? ['worktrees'] : [])],
+      false,
+    );
+  } catch {
+    await snapshot.dispose();
+    return { ok: false, state: 'refused', reason: '.git holds an entry Station could not link' };
+  }
+  return {
+    ok: true,
+    repository: {
+      top: repository.top,
+      gitDir: repository.gitDir,
+      commonDir: repository.commonDir,
+      repoArgs: snapshot.live.repoArgs,
+      env: snapshot.live.env,
+      unchanged: repository.unchanged,
+      sameIdentity: repository.sameIdentity,
+      dispose: snapshot.dispose,
+    },
+  };
+}
+
+/**
+ * {@link openLiveRepository} for a caller with no request to answer, with
+ * the path handling of {@link requireProjectRepository}: throws
+ * {@link ProjectRepositoryRefusedError} or {@link RepositoryConfigRefusedError}.
+ */
+export async function requireLiveRepository(
+  folder: string,
+  projectRoot: string,
+  options: Pick<LiveRepositoryOptions, 'newWorktree' | 'storage'> = {},
+): Promise<LiveRepository> {
+  let root: string;
+  let target: string;
+  try {
+    root = await realpath(projectRoot);
+    target = folder === projectRoot ? root : await realpath(folder);
+  } catch {
+    throw new ProjectRepositoryRefusedError('the folder does not exist');
+  }
+  const opened = await openLiveRepository(root, target, options);
+  if (opened.ok) return opened.repository;
+  switch (opened.state) {
+    case 'config-refused':
+      throw new RepositoryConfigRefusedError(opened.keys);
+    case 'config-unreadable':
+      throw new RepositoryConfigRefusedError([]);
+    case 'refused':
+      throw new ProjectRepositoryRefusedError(opened.reason);
+    default:
+      throw new ProjectRepositoryRefusedError('it is not in a git repository');
+  }
+}
+
 /** The most bytes of a repository file Station copies for a read. */
 const MAX_SNAPSHOT_FILE_BYTES = 1024 * 1024;
 
@@ -452,8 +615,17 @@ async function exists(path: string): Promise<boolean> {
 
 /** A git directory Station owns, standing in for a repository's. */
 export interface RepositorySnapshot {
+  /** The copy itself. */
+  dir: string;
   /** `--git-dir=<the copy> --work-tree=<top>`, for every git call. */
   repoArgs: string[];
+  /**
+   * For a write that git must make in the repository's own per-worktree
+   * files (see the header): `--git-dir=<the repository's own> --work-tree`,
+   * and the environment that makes the copy git's common directory. Both on
+   * every git call.
+   */
+  live: { repoArgs: string[]; env: { GIT_COMMON_DIR: string } };
   /** The repository's own configuration, as carried into the copy. */
   config: RepositoryConfigEntry[];
   /**
@@ -477,22 +649,88 @@ export interface RepositorySnapshotOptions {
   /** Copy the index too (status and diff need it). */
   index?: boolean;
   timeoutMs?: number;
+  /**
+   * Which of the repository's configuration applies: the folder's own
+   * worktree (its per-worktree configuration folded in; the default), or a
+   * worktree about to be created, to which the folder's per-worktree
+   * settings do not apply and are neither carried nor judged.
+   */
+  scope?: 'this-worktree' | 'new-worktree';
+}
+
+type ConfigListing = Array<RepositoryConfigEntry & { origin: string }>;
+
+/**
+ * Configuration listings by git directory, reused while every file they
+ * came from (the config, the per-worktree config, each included file, and
+ * HEAD, which an `includeIf "onbranch:"` reads) has the stamp it had. The
+ * same reliance on change times as the directory listings in
+ * `git-directory-confinement.ts`, with the same guard: nothing changed
+ * within the last two seconds is remembered. It saves the one git process a
+ * read would otherwise spend on `git config --list`.
+ */
+const configListings = new Map<
+  string,
+  { stamps: Map<string, string>; listing: ConfigListing }
+>();
+const MAX_CACHED_CONFIG_LISTINGS = 2_000;
+const CONFIG_RACY_MS = 2_000;
+
+/** For tests: forget every remembered configuration listing. */
+export function forgetRepositoryConfigListings(): void {
+  configListings.clear();
+}
+
+async function stampsNow(paths: Iterable<string>): Promise<Map<string, string>> {
+  const stamps = new Map<string, string>();
+  for (const path of paths) stamps.set(path, await fileStamp(path));
+  return stamps;
+}
+
+/** Identity, size and change times, by `lstat`; `absent` when nothing is there. */
+async function fileStamp(path: string): Promise<string> {
+  try {
+    const stats = await lstat(path, { bigint: true });
+    return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
+  } catch {
+    return 'absent';
+  }
+}
+
+async function changedWithin(path: string, ms: number): Promise<boolean> {
+  try {
+    const stats = await lstat(path);
+    return Date.now() - Math.max(stats.mtimeMs, stats.ctimeMs) < ms;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Builds the Station-owned git directory described in the header for a
- * repository {@link resolveProjectRepositoryForRead} admitted. The caller
- * judges `config` and must `dispose` it.
+ * The repository's own configuration as git lists it (`git config --list`,
+ * which runs no filter, hook or helper), with the file each entry came
+ * from; from the cache above when nothing it came from has changed.
  */
-export async function openRepositorySnapshot(
+async function listRepositoryConfig(
   repository: Extract<ProjectRepositoryForRead, { ok: true }>,
-  options: RepositorySnapshotOptions = {},
-): Promise<RepositorySnapshotResult> {
+  timeoutMs: number,
+): Promise<ConfigListing | null> {
   const { top, gitDir, commonDir } = repository;
-  let listing: Array<RepositoryConfigEntry & { origin: string }>;
+  const watched = [
+    join(commonDir, 'config'),
+    join(gitDir, 'config.worktree'),
+    join(gitDir, 'HEAD'),
+  ];
+  const known = configListings.get(gitDir);
+  if (known) {
+    const now = await stampsNow(known.stamps.keys());
+    if ([...known.stamps].every(([path, stamp]) => now.get(path) === stamp)) {
+      return known.listing;
+    }
+    configListings.delete(gitDir);
+  }
+  let listing: ConfigListing;
   try {
-    // The one time git reads the repository's configuration for this read.
-    // `git config` runs no filter, hook or helper.
     listing = parseConfigListing(
       (
         await execGit(
@@ -507,7 +745,7 @@ export async function openRepositorySnapshot(
           {
             cwd: top,
             encoding: 'utf-8',
-            timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+            timeout: timeoutMs,
             maxBuffer: 4 * 1024 * 1024,
           },
         )
@@ -515,8 +753,50 @@ export async function openRepositorySnapshot(
     ).filter((entry) => entry.scope === 'local' || entry.scope === 'worktree');
   } catch (error) {
     if (timedOut(error)) throw error;
-    return { ok: false, state: 'config-unreadable' };
+    return null;
   }
+  const origins = new Set(watched);
+  for (const entry of listing) {
+    if (entry.origin.startsWith('file:')) {
+      origins.add(resolve(top, entry.origin.slice('file:'.length)));
+    }
+  }
+  const stamps = await stampsNow(origins);
+  let racy = false;
+  for (const path of origins) {
+    if (await changedWithin(path, CONFIG_RACY_MS)) racy = true;
+  }
+  if (!racy) {
+    if (configListings.size >= MAX_CACHED_CONFIG_LISTINGS) {
+      const oldest = configListings.keys().next().value;
+      if (oldest !== undefined) configListings.delete(oldest);
+    }
+    configListings.set(gitDir, { stamps, listing });
+  }
+  return listing;
+}
+
+/**
+ * Builds the Station-owned git directory described in the header for a
+ * repository {@link resolveProjectRepositoryForRead} admitted. The caller
+ * judges `config` and must `dispose` it.
+ */
+export async function openRepositorySnapshot(
+  repository: Extract<ProjectRepositoryForRead, { ok: true }>,
+  options: RepositorySnapshotOptions = {},
+): Promise<RepositorySnapshotResult> {
+  const { top, gitDir, commonDir } = repository;
+  // The one time git reads the repository's configuration for this read.
+  const listed = await listRepositoryConfig(
+    repository,
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  );
+  if (listed === null) return { ok: false, state: 'config-unreadable' };
+  const listing = listed.filter(
+    (entry) =>
+      entry.scope === 'local' ||
+      (entry.scope === 'worktree' && options.scope !== 'new-worktree'),
+  );
   // Every file the configuration came from is the repository's own: its
   // config, its per-worktree config, or a file an include names INSIDE the
   // work tree or the git directory. One from anywhere else would put a
@@ -617,7 +897,12 @@ export async function openRepositorySnapshot(
   return {
     ok: true,
     snapshot: {
+      dir,
       repoArgs: [`--git-dir=${dir}`, `--work-tree=${top}`],
+      live: {
+        repoArgs: [`--git-dir=${gitDir}`, `--work-tree=${top}`],
+        env: { GIT_COMMON_DIR: dir },
+      },
       config,
       link: async (names, create) => {
         for (const name of names) {
