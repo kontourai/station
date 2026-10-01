@@ -2050,6 +2050,59 @@ mod tests {
     }
 
     #[test]
+    fn key_candidate_transport_accepts_broker_clock_skew_without_extending_host_deadline() {
+        let vault = MemoryNativeRelayProofKeyVault::new();
+        let owner = make_owner(
+            NativeProofKeyChannel::Stable,
+            "11111111-1111-4111-8111-111111111111",
+        );
+        let public = vault.create(&owner).unwrap();
+        let local_now = 1000;
+        let deadline = local_now + 10_000;
+        for (server_ahead, accepted) in [(0, true), (200, true), (5000, true), (5001, false)] {
+            let body = serde_json::json!({
+                "version":"station-broker-native-key-candidate-result/v1",
+                "expiresAt":local_now + server_ahead + 60_000,"candidate":null,
+            })
+            .to_string();
+            let (origin, server) = candidate_http_server(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .into_bytes(),
+                std::time::Duration::ZERO,
+            );
+            let mut input = invitation(&"A".repeat(43));
+            input.broker_origin = origin;
+            let challenge = NativeBrokerKeyCandidateChallenge::from_invitation(
+                &owner,
+                &public,
+                input,
+                &URL_SAFE_NO_PAD.encode([7_u8; 32]),
+                NativeBrokerKeyCandidateAction::Request,
+            )
+            .unwrap();
+            let signature = vault
+                .sign_key_candidate_es256_p1363(&owner, &challenge)
+                .unwrap();
+            let result = NativeKeyCandidateTransport::new().send_result(
+                &challenge,
+                &signature,
+                deadline,
+                || local_now,
+            );
+            server.join().unwrap();
+            assert_eq!(result.is_ok(), accepted, "server ahead {server_ahead}ms");
+            if let Ok(result) = result {
+                assert_eq!(result.expires_at, deadline);
+                assert!(result.candidate.is_none());
+            }
+        }
+    }
+
+    #[test]
     fn key_candidate_signing_is_action_separated_and_owner_bound() {
         let vault = MemoryNativeRelayProofKeyVault::new();
         let owner = make_owner(
