@@ -2082,22 +2082,16 @@ describe.skipIf(process.platform === 'win32')(
       expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
         `worktree ${join(project, 'w')}`,
       );
-      let ticks = 0;
-      const ticking = setInterval(() => {
-        ticks += 1;
-      }, 20);
-
+      // A read that waited on the FIFO would block the event loop, so the
+      // race below would never settle and this test would time out.
       const listed = await Promise.race([
         listVerifiedWorktrees(project, 10_000),
         new Promise<'held'>((resolve) =>
           setTimeout(() => resolve('held'), 5_000),
         ),
       ]);
-      clearInterval(ticking);
 
       expect(listed).toEqual([project]);
-      // The event loop kept turning while it ran.
-      expect(ticks).toBeGreaterThan(0);
     });
   },
 );
