@@ -56,9 +56,7 @@ export function EngineAccountOverview({
     grant.kind === 'operator' || grant.grantedScopes.includes('access:manage');
   const canLogin =
     grant.kind === 'operator' || grant.grantedScopes.includes('engine:login');
-  const canReadActivity =
-    grant.kind === 'operator' ||
-    grant.grantedScopes.includes('orchestration:read');
+  const canReadActivity = canManage;
   return (
     <AccountPage
       key={`${scope.apiBase}:${scope.authorityKey}:${connectionId}`}
@@ -315,7 +313,7 @@ function AccountPage({
         </div>
         <small>This Station · this engine · all accounts</small>
         {!canReadActivity ? (
-          <p>Activity access is disabled for this device.</p>
+          <p>Activity requires credential-management permission.</p>
         ) : activity.isLoading ? (
           <SkeletonBlock count={2} label="Loading activity" />
         ) : activity.isError ? (

@@ -67,7 +67,7 @@ test.each([
               : {
                   kind: 'device',
                   deviceId: 'login-device',
-                  grantedScopes: ['engine:login'],
+                  grantedScopes: ['orchestration:read', 'engine:login'],
                 },
           });
         if (u.pathname.endsWith('/accounts'))

@@ -377,9 +377,9 @@ profile's account.
 
 Quota reads remain `access:manage`: they borrow a selected account's stored token
 for an outbound provider request. An engine-login grant alone admits neither
-quota reads nor account creation or manual enrolment metadata. Activity retains
-orchestration-read visibility independently; its engine filter does not grant
-access to another principal's receipts or make them per-account billing.
+quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only
+reads; its engine filter does not lower that floor, grant access to another
+principal's receipts or make them per-account billing.
 
 ### Coding routes: command execution and client paths (#2412)
 

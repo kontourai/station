@@ -74,8 +74,8 @@ exists. Tokens remain on the server.
 accounts. Receipts do not identify the credential profile, so this is not
 per-account history. Reported cost and estimates remain separate; missing costs
 are shown as unavailable, and partial coverage is disclosed. Subscription
-allowance and engine-reported costs are not billing statements. Activity requires
-orchestration-read access independently of account access.
+allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
+even when the page requests only this Station.
 
 The component/transport tests exercise both account pages and the login relay
 with controlled provider responses. An isolated Claude CLI probe confirmed the
