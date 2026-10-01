@@ -14,9 +14,11 @@ import {
 } from '../documentation-impact.mjs';
 import {
   listReviewLedgerFiles,
+  parseRecordFile,
   REVIEW_LEDGER_INDEX,
   readReviewStateAt,
   recordFile,
+  serializeRecordFile,
 } from '../lib/review-ledger-store.mjs';
 import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
@@ -393,6 +395,10 @@ describe('documentation impact', () => {
     'source-path',
     'source-digest',
     'source-revision',
+    'source-digest-array',
+    'source-revision-array',
+    'document-digest-array',
+    'document-revision-array',
   ] as const)(
     'refuses malformed %s historical records instead of losing dependency leads',
     (corruption) => {
@@ -403,6 +409,21 @@ describe('documentation impact', () => {
       if (corruption === 'source-path') value.sources[0].path = '../outside.ts';
       if (corruption === 'source-digest') value.sources[0].digest = 'bad';
       if (corruption === 'source-revision') value.sources[0].revision = 'bad';
+      if (corruption === 'source-digest-array')
+        value.sources[0].digest = [value.sources[0].digest];
+      if (corruption === 'source-revision-array')
+        value.sources[0].revision = [value.sources[0].revision];
+      if (corruption === 'document-digest-array')
+        value.document.digest = [value.document.digest];
+      if (corruption === 'document-revision-array')
+        value.document.revision = [value.document.revision];
+      if (corruption.endsWith('-array')) {
+        const canonical = serializeRecordFile(value);
+        expect(() => parseRecordFile(file, canonical)).toThrow('binding');
+        expect(() =>
+          parseRecordFile(file, canonical, 'advisory-dependency-history'),
+        ).toThrow('binding');
+      }
       f.write(
         file,
         corruption === 'json'

@@ -216,6 +216,8 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
     );
   exactKeys(record.document, ['digest', 'revision'], file);
   const validIdentity = (value) =>
+    typeof value.digest === 'string' &&
+    typeof value.revision === 'string' &&
     /^[a-f0-9]{64}$/.test(value.digest) &&
     /^[a-f0-9]{40}$/.test(value.revision);
   if (!validIdentity(record.document))
