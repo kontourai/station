@@ -77,7 +77,7 @@ describe('UnattendedGrantStore', () => {
       agentSlug: 'operator',
       sessionId: 'one',
     });
-    await store.grantTool(principal, 'calendar.create', 'brian');
+    await store.grantTool(principal, 'calendar.create', 'casey');
     expect(store.isGranted(principal, 'calendar.create')).toBe(true);
 
     await store.revokeGrant(principal, 'calendar.create');
@@ -86,7 +86,7 @@ describe('UnattendedGrantStore', () => {
       {
         principalKey: principal,
         toolName: 'calendar.create',
-        grantedBy: 'brian',
+        grantedBy: 'casey',
         grantedAt: '2026-08-09T12:00:00.000Z',
         revokedAt: '2026-08-09T12:01:00.000Z',
       },
@@ -112,13 +112,13 @@ describe('UnattendedGrantStore', () => {
       const receipt = await store.grantTool(
         principal,
         'calendar.create',
-        'brian',
+        'casey',
       );
       expect(receipt.toolName).toBe('calendar.create');
       expect(store.isGranted(principal, 'calendar.create')).toBe(true);
       expect(JSON.parse(readFileSync(filePath, 'utf8'))).toMatchObject({
         [JSON.stringify([principal, 'calendar.create'])]: {
-          grantedBy: 'brian',
+          grantedBy: 'casey',
         },
       });
       // revokeGrant must likewise not throw and must persist the revocation.
@@ -150,7 +150,7 @@ describe('UnattendedGrantStore', () => {
     expect(first).toBe(second);
     expect(first).not.toBe(other);
 
-    await store.grantTool(first, 'calendar.create', 'brian');
+    await store.grantTool(first, 'calendar.create', 'casey');
     expect(store.isGranted(second, 'calendar.create')).toBe(true);
     expect(store.isGranted(other, 'calendar.create')).toBe(false);
   });
@@ -168,31 +168,31 @@ describe('UnattendedGrantStore', () => {
     });
     expect(new Set([voice, scheduledJob, delegatedChild])).toHaveLength(3);
 
-    await store.grantTool(voice, 'reports.send', 'brian');
+    await store.grantTool(voice, 'reports.send', 'casey');
     expect(store.isGranted(scheduledJob, 'reports.send')).toBe(false);
     expect(store.isGranted(delegatedChild, 'reports.send')).toBe(false);
   });
 
   test('grant is isolated to its exact tool', async () => {
     const principal = principalKey({ kind: 'scheduled-job', jobId: 'daily' });
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     expect(store.isGranted(principal, 'reports.delete')).toBe(false);
   });
 
   test('re-grant after revocation restores authorization with a fresh receipt', async () => {
     const principal = principalKey({ kind: 'scheduled-job', jobId: 'daily' });
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     await store.revokeGrant(principal, 'reports.send');
     expect(store.isGranted(principal, 'reports.send')).toBe(false);
     expect(store.listGrants()[0]?.revokedAt).toBe('2026-08-09T12:01:00.000Z');
 
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     expect(store.isGranted(principal, 'reports.send')).toBe(true);
     expect(store.listGrants()).toEqual([
       {
         principalKey: principal,
         toolName: 'reports.send',
-        grantedBy: 'brian',
+        grantedBy: 'casey',
         grantedAt: '2026-08-09T12:02:00.000Z',
       },
     ]);
@@ -200,13 +200,13 @@ describe('UnattendedGrantStore', () => {
 
   test('rejects blank mutation inputs without changing an existing store', async () => {
     const principal = principalKey({ kind: 'scheduled-job', jobId: 'daily' });
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     const before = readFileSync(filePath, 'utf-8');
 
     for (const [invalidPrincipal, invalidToolName, invalidGrantedBy] of [
-      [principal, '', 'brian'],
+      [principal, '', 'casey'],
       [principal, 'reports.delete', ' '],
-      ['', 'reports.delete', 'brian'],
+      ['', 'reports.delete', 'casey'],
     ]) {
       await expect(
         store.grantTool(invalidPrincipal, invalidToolName, invalidGrantedBy),
@@ -229,11 +229,11 @@ describe('UnattendedGrantStore', () => {
       kind: 'scheduled-job',
       jobId: 'daily-report',
     });
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     expect(store.listGrants()[0]).toEqual({
       principalKey: principal,
       toolName: 'reports.send',
-      grantedBy: 'brian',
+      grantedBy: 'casey',
       grantedAt: '2026-08-09T12:00:00.000Z',
     });
     expect(Object.keys(store.listGrants()[0])).not.toEqual(
@@ -251,14 +251,14 @@ describe('UnattendedGrantStore', () => {
     const toolName = 'reports.send';
     // Create the directory using the real store, then replace its contents
     // with a receipt from a newer/unsupported scope contract.
-    await store.grantTool(principal, toolName, 'brian');
+    await store.grantTool(principal, toolName, 'casey');
     writeFileSync(
       filePath,
       JSON.stringify({
         [JSON.stringify([principal, toolName])]: {
           principalKey: principal,
           toolName,
-          grantedBy: 'brian',
+          grantedBy: 'casey',
           grantedAt: '2026-08-09T12:00:00.000Z',
           expiresAt: '2026-08-10T12:00:00.000Z',
         },
@@ -272,14 +272,14 @@ describe('UnattendedGrantStore', () => {
 
   test('corrupt primary fails closed for read, grant, and revoke without overwrite', async () => {
     const principal = principalKey({ kind: 'scheduled-job', jobId: 'keeper' });
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     corruptFile(filePath);
 
     expect(() => store.isGranted(principal, 'reports.send')).toThrow(
       UnattendedGrantStoreUnavailableError,
     );
     await expect(
-      store.grantTool(principal, 'reports.delete', 'brian'),
+      store.grantTool(principal, 'reports.delete', 'casey'),
     ).rejects.toThrow(UnattendedGrantStoreUnavailableError);
     await expect(store.revokeGrant(principal, 'reports.send')).rejects.toThrow(
       UnattendedGrantStoreUnavailableError,
@@ -289,15 +289,15 @@ describe('UnattendedGrantStore', () => {
 
   test('torn primary with .previous is unavailable, never restored or rewritten', async () => {
     const principal = principalKey({ kind: 'scheduled-job', jobId: 'daily' });
-    await store.grantTool(principal, 'reports.send', 'brian');
-    await store.grantTool(principal, 'reports.archive', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
+    await store.grantTool(principal, 'reports.archive', 'casey');
     const { truncated } = truncatePrimaryKeepPrevious(filePath);
 
     expect(() => store.isGranted(principal, 'reports.send')).toThrow(
       UnattendedGrantStoreUnavailableError,
     );
     await expect(
-      store.grantTool(principal, 'reports.delete', 'brian'),
+      store.grantTool(principal, 'reports.delete', 'casey'),
     ).rejects.toThrow(UnattendedGrantStoreUnavailableError);
     expect(readFileSync(filePath, 'utf-8')).toBe(truncated);
     expect(
@@ -314,7 +314,7 @@ describe('UnattendedGrantStore', () => {
       await store.grantTool(
         principalKey({ kind: 'scheduled-job', jobId: 'setup' }),
         'reports.send',
-        'brian',
+        'casey',
       );
       rmSync(filePath);
       danglingSymlink(filePath);
@@ -331,7 +331,7 @@ describe('UnattendedGrantStore', () => {
       await store.grantTool(
         principalKey({ kind: 'scheduled-job', jobId: 'setup' }),
         'reports.send',
-        'brian',
+        'casey',
       );
       writeFileSync(filePath, content);
       expect(() => store.listGrants()).toThrow(
@@ -343,7 +343,7 @@ describe('UnattendedGrantStore', () => {
   test('serialized concurrent interleave preserves both grants', async () => {
     const first = principalKey({ kind: 'scheduled-job', jobId: 'first' });
     const second = principalKey({ kind: 'scheduled-job', jobId: 'second' });
-    await store.grantTool(first, 'reports.send', 'brian');
+    await store.grantTool(first, 'reports.send', 'casey');
     const injected = interleaveOnceOnLockAcquire(
       (hook) => {
         onLockAcquire = hook;
@@ -360,7 +360,7 @@ describe('UnattendedGrantStore', () => {
         writeFileSync(filePath, JSON.stringify(current, null, 2));
       },
     );
-    await store.grantTool(first, 'reports.delete', 'brian');
+    await store.grantTool(first, 'reports.delete', 'casey');
     expect(injected()).toBe(true);
     expect(store.isGranted(second, 'reports.archive')).toBe(true);
     expect(store.isGranted(first, 'reports.delete')).toBe(true);
@@ -368,7 +368,7 @@ describe('UnattendedGrantStore', () => {
   test('grantTool rejects an undefined or empty grantor without bricking the store', async () => {
     const principal = principalKey({ kind: 'scheduled-job', jobId: 'j1' });
     const file = readFileSync;
-    await store.grantTool(principal, 'reports.send', 'brian');
+    await store.grantTool(principal, 'reports.send', 'casey');
     const before = file(unattendedGrantStorePath(homeDir), 'utf-8');
     await expect(
       // runtime callers can defeat the string type
