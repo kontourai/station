@@ -16,7 +16,7 @@
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"4ec510404c46aa8fd0bd0739e593acb214998048418fcac797cbc66a031cea8a","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009","revision":"69eb5db90072c149c16115135f495ac538155e71"}
   ],
 
   "checks": [

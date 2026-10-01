@@ -9,7 +9,7 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"e39df6b0907871c59dce5b4d82940882bd40328d6d5fe10018283bc44da61d03","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
+  "document": {"digest":"26abf152c0153c4e4d013560405bfae483d897342a957753ea50e009a774271d","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -66,9 +66,9 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5549722cc113e026ff1bd7aebe7ef9f0926b1d7fbede4c283018b96be27ff848","revision":"d93991f52363d8d7d2a1fa12938ba5783158b27c"},
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
-    {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"cc2d69428c1b40135252806c9ac78f35ef536536f4f666cff63efbde60adbadc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"9a70df390bdb6e3bac0d63ad93f19ed6829ca2317790b80b2522aff14b743abb","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
     {"path":"src-ui/src/hooks/useChatInput.ts","digest":"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -106,7 +106,15 @@
 
     {"path":"src-ui/src/components/chat-dock/useChatDockOverlays.ts","digest":"ddc9e5110725ab4e806ae6abe91021397faf665cb4ba6703926d67170979b325","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockModalStack.tsx","digest":"30292eee3830872a07acd638a3c65ffea109690df23d03dff7b95b7f8e1da243","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"}
+    {"path":"src-ui/src/components/chat-dock/ChatDockModalStack.tsx","digest":"30292eee3830872a07acd638a3c65ffea109690df23d03dff7b95b7f8e1da243","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+
+    {"path":"src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","digest":"72127f777e93b2ea8df1ad08e7ac6f55aaad5f5be8fecdabf3a9dfed2d9af5d5","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+
+    {"path":"src-ui/src/contexts/scheduler-job-dialog-store.ts","digest":"5c3d2e50f1eac439eb4b5264550c6d37fbab65344ec37350ad36dd4a9e2b63fa","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+
+    {"path":"src-ui/src/components/scheduler/JobFormModal.tsx","digest":"7e970394e14224b917dac0cadd9409c4482790366c89a7699fa78220bd0d37ce","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+
+    {"path":"src-ui/src/contexts/NavigationContext.tsx","digest":"45ff6041393b20c0214bad1333489a1e2f6d447bf42fa5aa2b4dfc1cca6b9515","revision":"69eb5db90072c149c16115135f495ac538155e71"}
   ],
 
   "checks": [

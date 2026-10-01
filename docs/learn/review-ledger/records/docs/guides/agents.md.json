@@ -80,7 +80,7 @@
 
     {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"1e8ca834f915e477e055a6bda36e08d6cc4375d9604345bd69ef726082596e9f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"ac9e7fb59ca6ef72a15b70ce7a91c5510659a36e8a1f2686f355a08199eefdef","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
     {"path":"src-server/runtime/bootstrap/native-engine-adoption.ts","digest":"553480ee2b76b8672f4a187a0680b30dc2576397644fdecb1aead79d1ef62b82","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
