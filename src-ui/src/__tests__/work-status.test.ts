@@ -122,19 +122,21 @@ describe('the status ladder, from real server summaries', () => {
     });
   });
 
-  it('an approval left behind by an interrupted turn still reads Needs approval (#3071)', () => {
-    // Recovery aborts the dead turn but does not settle the request it had
-    // opened, so the fold re-stamps the session review_pending. Nothing on
-    // the summary reliably separates this from a live approval, so the row
-    // does not guess: it says what the server says. Pinned so the row
-    // changes only when the server does.
-    const summary = folded('staleApprovalAfterInterruption');
+  it('an approval whose turn was interrupted reads Interrupted, not Needs approval (#3071)', () => {
+    // Recovery aborts the dead turn, and that abort settles the request the
+    // turn had opened, so the fold no longer re-stamps the session
+    // review_pending: nobody can answer an approval a dead process asked.
+    const summary = folded('approvalSettledByInterruption');
     expect(summary).toMatchObject({
-      lifecycleState: 'review_pending',
-      pendingReview: true,
+      lifecycleState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      pendingReview: false,
       hasActiveTurn: false,
     });
-    expect(statusOf(summary).line).toBe('Needs approval');
+    expect(statusOf(summary)).toMatchObject({
+      lane: 'needsYou',
+      line: 'Interrupted',
+    });
   });
 
   it('a running turn names its current tool and how long the turn has run', () => {

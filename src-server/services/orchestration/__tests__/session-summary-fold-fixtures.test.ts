@@ -133,6 +133,7 @@ describe('the client fixtures are what the server folds', () => {
   test('covers the states the inbox ladder reads', () => {
     expect([...NAMES].sort()).toEqual([
       'approvalInOpenTurn',
+      'approvalSettledByInterruption',
       'blocked',
       'detachedApproval',
       'draft',
@@ -143,7 +144,6 @@ describe('the client fixtures are what the server folds', () => {
       'runningTool',
       'runningWithChildren',
       'silentRun',
-      'staleApprovalAfterInterruption',
       'turnCompleted',
     ]);
   });

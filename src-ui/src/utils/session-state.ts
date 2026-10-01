@@ -222,11 +222,9 @@ export function orchestrationLifecycleLabel(
  *   `transitionReason: 'runtime_exit'`: the turn was cut short.
  * - any other `needs_input` says only that the session waits on the user.
  *
- * NOT DISTINGUISHED HERE (#3071): a turn interrupted by a restart while an
- * approval was open keeps reading `review_pending`, because recovery does not
- * settle the request the dead turn opened. Nothing on the summary reliably
- * tells that apart from a live approval, so it is not guessed at. It will
- * read Interrupted once the server settles the request.
+ * A turn interrupted by a restart while an approval was open reads
+ * Interrupted: recovery's abort settles the request the dead turn opened
+ * (#3071), so the server no longer reports it `review_pending`.
  */
 export function sessionAttentionKind(
   session: Pick<
@@ -240,8 +238,6 @@ export function sessionAttentionKind(
 ): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
   const disposition = sessionAttentionDisposition(session);
   if (disposition.state !== 'awaiting') return 'waiting';
-  // A stale approval left by an interrupted turn also lands here until the
-  // server settles the request (#3071); it will then read Interrupted.
   if (disposition.via === 'review_pending') return 'approval';
   if (disposition.via === 'blocked') return 'blocked';
   if (session.transitionReason === 'input_requested') return 'answer';

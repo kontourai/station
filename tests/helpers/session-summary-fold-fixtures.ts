@@ -147,7 +147,7 @@ const SEQUENCES = {
     ],
   },
   interrupted: { events: [TURN, ...RECOVERY] },
-  staleApprovalAfterInterruption: { events: [TURN, APPROVAL, ...RECOVERY] },
+  approvalSettledByInterruption: { events: [TURN, APPROVAL, ...RECOVERY] },
   blocked: {
     events: [
       {
@@ -459,15 +459,15 @@ const SUMMARIES: Record<FoldFixtureName, FoldSummary> = {
     draft: false,
     updatedAt: '2026-09-30T10:00:05.000Z',
   },
-  staleApprovalAfterInterruption: {
+  approvalSettledByInterruption: {
     threadId: 'T',
     status: 'ready',
     controlMode: 'station-owned',
-    lifecycleState: 'review_pending',
+    lifecycleState: 'needs_input',
     previousLifecycleState: 'needs_input',
-    transitionReason: 'review_requested',
-    transitionSource: 'runtime',
-    pendingReview: true,
+    transitionReason: 'runtime_exit',
+    transitionSource: 'system_recovery',
+    pendingReview: false,
     hasActiveTurn: false,
     answerability: {
       answerable: true,
@@ -596,7 +596,7 @@ export const FOLD_FIXTURES: Record<FoldFixtureName, FoldFixture> = {
   detachedApproval: fixture('detachedApproval'),
   questionInOpenTurn: fixture('questionInOpenTurn'),
   interrupted: fixture('interrupted'),
-  staleApprovalAfterInterruption: fixture('staleApprovalAfterInterruption'),
+  approvalSettledByInterruption: fixture('approvalSettledByInterruption'),
   blocked: fixture('blocked'),
   turnCompleted: fixture('turnCompleted'),
   idleWithChildren: fixture('idleWithChildren'),
