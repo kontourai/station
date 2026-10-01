@@ -409,26 +409,38 @@ function AccountLogin({
             </Button>
           </p>
         )}
-        {login.verificationUri && (
+        <ResponsiveSurfaceActions className="engine-account-overview__login-actions">
+          {login.verificationUri && (
+            <Button
+              onClick={() => {
+                try {
+                  const uri = new URL(login.verificationUri!);
+                  if (
+                    uri.protocol === 'https:' &&
+                    !uri.username &&
+                    !uri.password
+                  )
+                    void openExternalLink(uri.href).catch(() =>
+                      setFailure(
+                        'The sign-in page could not be opened. Try opening it again.',
+                      ),
+                    );
+                } catch {
+                  setFailure('The sign-in link is invalid. Start again.');
+                }
+              }}
+            >
+              Open {account.login === 'browser-code' ? 'Claude' : 'OpenAI'}{' '}
+              sign-in
+            </Button>
+          )}
           <Button
-            onClick={() => {
-              try {
-                const uri = new URL(login.verificationUri!);
-                if (uri.protocol === 'https:' && !uri.username && !uri.password)
-                  void openExternalLink(uri.href).catch(() =>
-                    setFailure(
-                      'The sign-in page could not be opened. Try opening it again.',
-                    ),
-                  );
-              } catch {
-                setFailure('The sign-in link is invalid. Start again.');
-              }
-            }}
+            onClick={() => act({ kind: 'cancel' })}
+            pending={mutation.isPending}
           >
-            Open {account.login === 'browser-code' ? 'Claude' : 'OpenAI'}{' '}
-            sign-in
+            Cancel
           </Button>
-        )}
+        </ResponsiveSurfaceActions>
         {login.userCode && (
           <div>
             <span>Verification code</span>
@@ -473,12 +485,6 @@ function AccountLogin({
               : 'Checking sign-in…'}
           </small>
         )}
-        <Button
-          onClick={() => act({ kind: 'cancel' })}
-          pending={mutation.isPending}
-        >
-          Cancel
-        </Button>
       </div>
     );
   return (
