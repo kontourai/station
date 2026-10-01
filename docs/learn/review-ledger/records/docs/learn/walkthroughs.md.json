@@ -9,7 +9,7 @@
 
   "limits": "Browser captures with sample data and a substituted display name. No external Agent/provider execution, physical native-device result or approval decision is established. The images retain the actual Task editor limitations.",
 
-  "document": {"digest":"94daff3015921df5abceff554d015a2565ec5aa57c178ac5e4178d34539ad310","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
+  "document": {"digest":"a7c8e2d511feccaa04fd527d36c0317823a42b9e47d8464acbb00feaf5fce483","revision":"5ae6db513f1bf69d928af57be4e6c38316e99fb8"},
 
   "sources": [
     {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
@@ -94,7 +94,7 @@
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"b54a36284f48f932623028d791005687cdb7643136798572909f53faaaeea532","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

@@ -151,6 +151,22 @@ vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useProjectLayoutsQuery: () => layouts,
   usePersonalLayoutsQuery: () => ({ data: [] }),
+  useCreatePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useUpdatePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useDeletePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  usePromotePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   useFeaturePreviewsQuery: () => ({ data: [] }),
   useBoardAvailabilityQuery: () => boardAvailability,
