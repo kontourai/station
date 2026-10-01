@@ -1287,14 +1287,10 @@ const SCREENS: Screen[] = [
     title: 'Mobile — Activity opened over Chat (#2549)',
     path: '/?surface=activity',
     viewport: MOBILE,
-    waitFor: '.sessions-axis-tabs',
+    waitFor: '.activity-filters, .split-pane__list',
     afterGoto: async (page) => {
-      const tab = page.getByRole('tab', { name: 'By app', exact: true });
-      await tab.click();
-      await expect(tab).toHaveAttribute('aria-selected', 'true');
       for (const control of [
-        tab,
-        page.getByRole('button', { name: 'Start a task', exact: true }),
+        page.getByRole('button', { name: 'New task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(
@@ -1636,19 +1632,17 @@ const SCREENS: Screen[] = [
     },
     afterGoto: async (page) => {
       try {
-        await page
-          .getByPlaceholder('Search conversations…')
-          .fill('missing-session');
+        await page.getByPlaceholder('Search activity…').fill('missing-session');
         // The margin here covers the read-model fetch's own latency (>6s
         // wall-clock has been observed under host load — that signal is
         // archive#4466, not something this timeout fixes); a repeat-500
         // still fails loudly via the error branch rather than at this
         // timeout.
         await expect(
-          page.getByText('Nothing in sessions matches “missing-session”'),
+          page.getByText('No activity matches “missing-session”'),
         ).toBeVisible({ timeout: 15_000 });
         await expect(
-          page.getByRole('button', { name: 'Clear filter' }),
+          page.getByRole('button', { name: 'Clear search and filters' }),
         ).toBeVisible();
       } finally {
         // `page.route` handlers persist across `page.goto()` for the

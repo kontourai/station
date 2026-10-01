@@ -9,6 +9,12 @@
 > for current installation and grant boundaries. No complete iframe-security
 > or cross-runtime compatibility audit is implied here.
 
+> **Amended 2026-09-29.** [shell-plugins-distributions.md](shell-plugins-distributions.md)
+> records owner decisions that make the runtime tier a per-install trust grant
+> informed by signature provenance, rather than a first-party/third-party split,
+> and makes Home a required kernel slot filled by a plugin. The tier vocabulary
+> below stands; read that record for how a tier is chosen.
+
 Status: adopted with epic station#4142 (owner direction, 2026-08-25). This is
 step 5 of that epic, written early so surfaces stop being argued one at a time.
 

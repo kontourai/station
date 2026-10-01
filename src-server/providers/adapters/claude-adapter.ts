@@ -47,12 +47,15 @@ import {
 } from '@kontourai/station-shared/harness-questions';
 import {
   sessionGrantPermissionUpdates,
+  type ToolRequestGrantInput,
   type ToolRequestSessionGrant,
+  toolRequestIsPlainCall,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
-import type {
-  PreToolPolicyDecision,
-  StagedPreToolPolicyEvaluator,
+import {
+  delegatedApprovalDenial,
+  type PreToolPolicyDecision,
+  type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
@@ -920,6 +923,18 @@ function serverDelegation(
 }
 
 function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
+  // #2933: a tool-level grant (the agent's `tools.autoApprove`) is decided
+  // from the tool name alone, before the engine has checked the call. A hook
+  // `allow` would skip the engine's working-directory check outright, so an
+  // autoApproved Read outside the session's directories would run unasked
+  // (Claude Code 2.1.278, as 2.1.261 before it, re-checks only deny rules,
+  // ask rules, safety checks and user-interaction tools after a hook allow). Express no opinion
+  // instead: the engine allows what it allows itself and asks `canUseTool`
+  // for the rest, where the same patterns answer plain calls and every
+  // escalation or plan exit reaches a person.
+  if (decision.behavior === 'allow' && decision.toolGrant) {
+    return { continue: true };
+  }
   if (decision.behavior === 'allow') {
     return {
       continue: true,
@@ -2771,6 +2786,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             message: 'This question format is not supported.',
           };
 
+        const record = this.requireSession(input.threadId);
+        const request: ToolRequestGrantInput = {
+          toolName,
+          suggestions: options.suggestions,
+          blockedPath: options.blockedPath,
+          matchedAskRule: options.matchedAskRule,
+          permissionMode: record.currentPermissionMode,
+        };
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
         // `tools.autoApprove` via `isAutoApproved` (agent-hooks.ts,
@@ -2781,8 +2804,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // `mcp__<server>__<tool>` tool name into the same `<server>_<tool>`
         // shape Station-engine patterns are authored against, so e.g.
         // `station-control_*` matches `mcp__station-control__list_agents`.
+        // #2933: a pattern covers plain calls to the tool, never a request
+        // that reaches beyond it (a path outside the session's directories,
+        // a directory widening, a rule-forced ask, a read or edit safety
+        // check) or a plan exit: those always reach a person, even for `*`.
         if (
           !questionnaire &&
+          toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
             input.agent?.autoApprove,
@@ -2795,7 +2823,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
-        const record = this.requireSession(input.threadId);
         // Tool-level session grant: "Allow Bash for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.
         // Checked after agent autoApprove (authored policy stays first) and
@@ -2804,19 +2831,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // #2915: the grant covers calls to the tool, never a request that
         // reaches beyond it (a path outside the session's directories, a
         // directory widening, a rule-forced ask): that one always prompts.
-        const sessionGrant = toolRequestSessionGrant({
-          toolName,
-          suggestions: options.suggestions,
-          blockedPath: options.blockedPath,
-          matchedAskRule: options.matchedAskRule,
-          permissionMode: record.currentPermissionMode,
-        });
+        const sessionGrant = toolRequestSessionGrant(request);
         if (
           !questionnaire &&
           record.approvedTools.has(toolName) &&
           sessionGrant === 'tool'
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
+        }
+        // #2933: a delegated child that may not grant approvals reaches here
+        // when the engine asks after the staged evaluator did not deny the
+        // call: a tool-level grant let it past (an autoApprove match is no
+        // hook allow) and it escalates or exits plan mode; a real hook allow
+        // (for example the approval guardian's) was followed by an engine
+        // safety check or a user-interaction tool's ask; or no hook ran at
+        // all (no resolved agent, or no `resolvePreToolPolicy`). Nobody can
+        // answer the child's request, so deny it fail-fast with the
+        // evaluator's own denial rather than wait on a prompt.
+        if (serverDelegation(input.metadata)?.denyApprovals) {
+          const { denial } = delegatedApprovalDenial(toolName, 'external');
+          return { behavior: 'deny', message: denial.reason };
         }
         const requestId = crypto.randomUUID();
         const eventId = crypto.randomUUID();

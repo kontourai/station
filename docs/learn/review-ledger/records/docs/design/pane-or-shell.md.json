@@ -9,7 +9,7 @@
 
   "limits": "Current destination/router ownership checked. No exhaustive placement, migration, iframe-security, or runtime-tier compatibility proof.",
 
-  "document": {"digest":"628156637ea2f89baab9ba73c53100e6313754b0361c80e37bff94c90ed9ef23","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+  "document": {"digest":"c1440d672ee51e914ea0b0d2267d6e53b4abca7d8602ac01a0feda9c09aeeec8","revision":"2e8ddc0f774480d55159bdb07436537747a27032"},
 
   "sources": [
     {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},

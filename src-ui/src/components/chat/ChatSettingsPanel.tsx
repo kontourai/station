@@ -107,6 +107,7 @@ export function ChatSettingsPanel({
           <button
             type="button"
             className="chat-settings-modal__btn"
+            aria-label="Decrease font size"
             onClick={() => setChatFontSize((prev) => Math.max(10, prev - 1))}
             disabled={chatFontSize <= 10}
           >
@@ -115,6 +116,7 @@ export function ChatSettingsPanel({
           <button
             type="button"
             className={`chat-settings-modal__btn${chatFontSize === defaultFontSize ? ' chat-settings-modal__btn--muted' : ''}`}
+            aria-label="Reset font size"
             onClick={() => setChatFontSize(() => defaultFontSize)}
           >
             A
@@ -122,6 +124,7 @@ export function ChatSettingsPanel({
           <button
             type="button"
             className="chat-settings-modal__btn"
+            aria-label="Increase font size"
             onClick={() => setChatFontSize((prev) => Math.min(24, prev + 1))}
             disabled={chatFontSize >= 24}
           >

@@ -84,6 +84,7 @@ category.
 - [shared-task-channels.md](shared-task-channels.md) — Shared Task channels
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
+- [shell-plugins-distributions.md](shell-plugins-distributions.md) — Shell kernel, plugin contributions and distribution manifests
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
@@ -91,5 +92,6 @@ category.
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
+- [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

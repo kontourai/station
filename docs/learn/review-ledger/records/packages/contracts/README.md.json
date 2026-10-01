@@ -12,9 +12,9 @@
   "document": {"digest":"4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 
   "sources": [
-    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
-    {"path":"packages/contracts/src/child-work.ts","digest":"e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    {"path":"packages/contracts/src/child-work.ts","digest":"329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35","revision":"9ed8cdffa9ba991c5bcd085b9a53c4368798fac2"},
 
     {"path":"packages/contracts/src/index.ts","digest":"ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 

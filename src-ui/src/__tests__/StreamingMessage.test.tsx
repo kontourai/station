@@ -226,11 +226,11 @@ describe('StreamingMessage', () => {
           agentIconStyle={{}}
           fontSize={14}
           attributionAgent={{ name: 'Release Reviewer' }}
-          owner={{ id: 'brian', label: 'Brian Anderson' }}
+          owner={{ id: 'casey', label: 'Casey Example' }}
         />,
       );
       expect(screen.getByText('Release Reviewer')).toBeTruthy();
-      expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
+      expect(screen.getByText(/via Casey Example/)).toBeTruthy();
     });
 
     test('station#1424 review round 3 (NEW-1): never renders an engine chip while streaming — no `engine` prop exists on this component any more, so there is nothing that could assert an engine identity here only to retract it once the row persists', () => {
@@ -241,7 +241,7 @@ describe('StreamingMessage', () => {
           agentIconStyle={{}}
           fontSize={14}
           attributionAgent={{ name: 'Release Reviewer' }}
-          owner={{ id: 'brian', label: 'Brian Anderson' }}
+          owner={{ id: 'casey', label: 'Casey Example' }}
         />,
       );
       expect(container.querySelector('.engine-chip')).toBeNull();

@@ -1712,6 +1712,24 @@ The [route](../../src-server/routes/orchestration/project-task-rooms.ts) emits
 closed browser DTOs; exact-order document events take priority over queued
 presence events without bypassing the final currentness check.
 
+Personal runtime composition also mounts the
+[TaskRoomWorkModule](../../src-server/services/projects/task-room-work-module.ts),
+a separate Station-wide JSON journal for explicit agent requests. It reserves
+an execution identity before existing delegation runs, rechecks Task/Project
+incarnation and requester authority, and never re-invokes a recorded operation.
+The delegation route supplies a private admission that OrchestrationService
+rechecks at provider start and initial-turn effects. The same private admission
+supplies the existing room-execution binding so source seals and pending-work
+joins cover independent room sessions. Known authority loss uses
+clean pre-effect refusal; unknown failures retain uncertainty. The
+[composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
+agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
+Ordinary composer messages also use captured transport authority and an expected
+Task incarnation that the history grant rechecks before commit. Request cards
+currently poll the journal read and link to existing execution
+inspection; they are not room-SSE lifecycle events. Invited/public result
+projection and actual-provider acceptance remain unfinished.
+
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
@@ -2779,7 +2797,7 @@ Without a tenant evidence composition, hosted reads can retain the authorized Th
 
 A Task remains a durable work record before and after an engine runs. The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) turns a dispatch intent into an execution attempt; [TaskGraph](../../src-server/services/projects/task-graph-service.ts) retains the Task, reservation, and resulting links. A dispatch receipt is not proof the Task succeeded.
 
-**Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the single execution Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface.
+**Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
 **Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 

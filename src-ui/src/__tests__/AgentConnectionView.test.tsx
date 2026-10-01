@@ -345,6 +345,32 @@ describe('AgentConnectionView', () => {
       origin: operatorScope.apiBase,
       requestAuthority: operatorScope,
       transport: async (url) => {
+        const path = new URL(String(url)).pathname;
+        const reply = (data: unknown) =>
+          new Response(JSON.stringify(data), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        if (path.endsWith('/accounts'))
+          return reply({
+            success: true,
+            data: {
+              engine: path.includes('claude') ? 'claude' : 'codex',
+              accounts: [],
+              activeProfileRef: null,
+            },
+          });
+        if (path.endsWith('/usage-rollup'))
+          return reply({
+            success: true,
+            data: {
+              window: { from: '2026-09-25', to: '2026-10-01' },
+              rows: [],
+              receipts: [],
+              coverage: [],
+            },
+          });
+        if (path.endsWith('/account-login'))
+          return reply({ success: true, data: { login: null } });
         if (new URL(String(url)).pathname !== '/api/auth/authority')
           throw new Error('Unexpected authority fixture request');
         return new Response(JSON.stringify(operatorAuthority), {
