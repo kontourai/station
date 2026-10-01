@@ -32,6 +32,7 @@ use zeroize::Zeroizing;
 
 const MAX_CANDIDATE_BYTES: usize = 8192;
 const CANDIDATE_LIFETIME_SECONDS: u64 = 60;
+pub(crate) const CANDIDATE_CLOCK_SKEW_SECONDS: u64 = 5;
 const CODE_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 const TRUST_RECORD_SCHEMA_VERSION: u8 = 1;
@@ -419,7 +420,7 @@ fn validate_claims(claims: &Claims) -> CandidateResult<()> {
 fn ensure_candidate_fresh(claims: &Claims, now: u64) -> CandidateResult<()> {
     if now > JS_SAFE_INTEGER_MAX
         || claims.exp <= now
-        || claims.iat > now.saturating_add(5)
+        || claims.iat > now.saturating_add(CANDIDATE_CLOCK_SKEW_SECONDS)
         || claims.iat < now.saturating_sub(CANDIDATE_LIFETIME_SECONDS)
         || claims.exp <= claims.iat
         || claims.exp - claims.iat > CANDIDATE_LIFETIME_SECONDS

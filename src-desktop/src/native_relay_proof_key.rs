@@ -926,7 +926,10 @@ impl NativeKeyCandidateResponse {
             || result.expires_at <= now_ms
             || request_deadline_ms <= now_ms
             || result.expires_at > challenge.invitation.expires_at
-            || result.expires_at > now_ms.saturating_add(60_000)
+            || result.expires_at
+                > now_ms.saturating_add(60_000).saturating_add(
+                    crate::native_station_key_custody::CANDIDATE_CLOCK_SKEW_SECONDS * 1000,
+                )
         {
             return Err(ProofKeyError::BrokerTransport);
         }
@@ -1932,7 +1935,7 @@ mod tests {
             1999
         );
         let mut too_far = envelope.clone();
-        too_far["expiresAt"] = serde_json::json!(61001);
+        too_far["expiresAt"] = serde_json::json!(66001);
         assert!(response(200, &too_far)
             .parse(&challenge, 1000, 90000)
             .is_err());
