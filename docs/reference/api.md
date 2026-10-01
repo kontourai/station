@@ -44,6 +44,27 @@ and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-ru
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
 
+### Keep a declared output
+
+`POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts
+`{operationId}` and resolves the declaration from the authorized Session owner.
+The [route](../../src-server/routes/orchestration/task-outputs.ts) captures the
+Task's Project, creation time and workspace. Its publication witness refuses a
+changed Task incarnation, Project or workspace, including at the pull-request
+commit boundary. Reusing an ID and path does not make a replacement Task the
+original target.
+
+The [Session output owner](../../src-server/services/orchestration/session-outputs-module.ts)
+checks the durable declaration and source workspace. File curation reaches the
+[immutable output store](../../src-server/services/projects/task-output-module.ts),
+which checks declared digest/length against captured bytes and rechecks the
+publication witness under its lock. A successful keep is `201` with a
+`task-declared-output-keep/v1` result; conflicts are `409`, previously deleted kept outputs
+are `410`, unavailable storage is `503`, and lost current authority is opaque
+`404`. A keep preserves an artifact or reference; it does not establish agent
+attribution, accepted quality or feedback. Shared review and exact-version
+feedback remain programme work.
+
 ## Table of Contents
 
 | Area | Route families |
