@@ -60,7 +60,7 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"2dca267ed3cfe8b8283ae38ff62436b2620d258491b7c3fff4993eb0151ccc7f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
     {"path":"tests/mobile-chat-composer.spec.ts","digest":"42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
@@ -86,7 +86,7 @@
 
     {"path":"tests/skills.spec.ts","digest":"d73507be0f45a2eb3d52bca94b9505641cc2004e6661e46c76c4650b1f074736","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"1b2169b8e7a077f02f4668aacb7051929c50664e6bbb493601a45a619c264e21","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
+    {"path":"tests/task-first-home.spec.ts","digest":"0c8e1da38b6bd6cb5689e57b6596f5b2d5cb6bb390703c3d442e957e8f1baf4d","revision":"2dee75143bca994a270d7038965d1a825bbde516"},
 
     {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
