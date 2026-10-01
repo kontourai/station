@@ -44,7 +44,7 @@ test.runIf(process.platform === 'win32')(
 describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
   const makeTempDir = trackTempDirs();
   test('serve refuses an invalid private TURN issuer before opening a listener', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-broker-ice-cli-'));
+    const root = makeTempDir('station-broker-ice-cli-');
     const configPath = join(root, 'broker.json');
     const issuerPath = join(root, 'issuer.json');
     writeFileSync(

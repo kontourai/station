@@ -104,7 +104,7 @@
 
     {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"scripts/__tests__/self-hosted-broker-cli.test.ts","digest":"20057b11bff4fab075909632b9c23c571d8505195cad9780209f1b75995c67e9","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    {"path":"scripts/__tests__/self-hosted-broker-cli.test.ts","digest":"3420d7853707f5ea714bf673a691e499cd3567c54b457b23824f49bd76ee3ec1","revision":"7badec8afccf1359a99e3a81b6b688fd1a32a916"},
 
     {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
@@ -148,7 +148,7 @@
 
     {"path":"src-server/services/connections/cloudflare-turn-provider.ts","digest":"9cbdebaa7fc780b8bda0a5716475698ea82c0ee9ae5114bddb5ae65fe277a272","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"src-server/services/connections/__tests__/broker-ice-service.test.ts","digest":"3b15a3af1b6f652c850dd494fb667db81115a003501719816724b936a9cf07cc","revision":"1efe2d8ed7db54f07c856ff186585096cb25d738"},
+    {"path":"src-server/services/connections/__tests__/broker-ice-service.test.ts","digest":"4fbd788308386f2cb2bd270963df4dd24707d4839d5e58857806a8d3857c4925","revision":"7badec8afccf1359a99e3a81b6b688fd1a32a916"},
 
     {"path":"packages/connect/src/__tests__/relayIceConfiguration.test.ts","digest":"3146699fe18f669c88e277edc5ebd750a3250233d6fe1f85055c9e3ce059a637","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"}
   ],
