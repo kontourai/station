@@ -3756,3 +3756,18 @@ current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
 for the wire shape and limits. Inspection preserves `requiresAnswers` for
 clients that must direct the user to the inline question card.
+
+
+## Engine account queries
+
+The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
+selected quota and live login queries, explicit login/account-create mutations,
+and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
+keys partition API base, authority, engine connection and profile. Login retries
+are disabled and live status polls only while a login is pending. Quota refresh
+is explicit. Strict contracts live in
+`@kontourai/station-contracts/engine-accounts`.
+
+These exports require a release containing this change; current source presence
+is not evidence of npm publication. The Connections guide owns account-viewing,
+sign-in, permission and cost-attribution limits.

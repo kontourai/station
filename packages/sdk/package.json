@@ -67,7 +67,8 @@
     "./relay-enrollment": "./src/client/relay-enrollment.ts",
     "./native-device-proof": "./src/client/native-device-proof.ts",
     "./application-session-native": "./src/client/application-session-native.ts",
-    "./device-code-login": "./src/device-code-login.ts"
+    "./device-code-login": "./src/device-code-login.ts",
+    "./engine-accounts": "./src/engine-accounts.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",

@@ -351,7 +351,7 @@ export function appHomeProfileDir(
 
 /** Per-session env for a Claude Code session pointed at an app-home profile. */
 export function claudeAppHomeEnv(dir: string): Record<string, string> {
-  return { CLAUDE_CONFIG_DIR: dir };
+  return { CLAUDE_CONFIG_DIR: dir, CLAUDE_SECURESTORAGE_CONFIG_DIR: dir };
 }
 
 /**
