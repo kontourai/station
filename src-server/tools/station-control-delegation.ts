@@ -5829,6 +5829,8 @@ export async function executeExecutionTargetMessage(
       ) {
         return { sessionId: conversationId, startRequired: false };
       }
+      // The service forwards `ConversationLineage`'s result as-is, including
+      // `retirePredecessorSessionId`, which its declared return type omits.
       return await orchestrationService.resolveConversationContinuation(
         conversationId,
         readAuthority,

@@ -4173,7 +4173,6 @@ export class OrchestrationService {
     resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
-    retirePredecessorSessionId?: string;
   }> {
     this.initialize();
     return this.conversationLineage.resolveConversationContinuation(
