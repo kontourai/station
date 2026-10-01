@@ -1,6 +1,6 @@
 import type { StationProfile } from '@kontourai/station-contracts';
-import type { NativeRelayEnrollmentHostChallengeAccepted } from '@kontourai/station-contracts/native-relay-enrollment';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { NativeRelayEnrollmentHostResumeAttempt } from '@kontourai/station-contracts/native-relay-enrollment';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { createNativeRelayEnrollmentClient } from '../../platform/native/nativeRelayEnrollmentClient';
@@ -11,12 +11,14 @@ import {
 import { nativeRelayKeyApproval } from '../../platform/native/relayKeyApproval';
 
 type EnrollmentClient = ReturnType<typeof createNativeRelayEnrollmentClient>;
+type EnrollmentAttempt = NativeRelayEnrollmentHostResumeAttempt;
 type EnrollmentPhase =
   | 'idle'
   | 'challenge'
   | 'pending'
   | 'staged'
   | 'verifying'
+  | 'cancel-required'
   | 'configured';
 
 interface NativeRelayEnrollmentWizardProps {
@@ -40,6 +42,11 @@ function enrollmentFailureCopy(cause: unknown): string {
     cause.message === 'native_enrollment_peer_capacity_reached'
   )
     return 'Another native setup is still closing. Wait a moment and retry.';
+  if (
+    cause instanceof Error &&
+    cause.message === 'native_enrollment_recovery_required'
+  )
+    return 'Station has an existing enrollment. Resume that Device setup before starting another.';
   return 'Station could not verify this Device enrollment. Check the broker route, Station trust and connection, then retry.';
 }
 
@@ -81,8 +88,10 @@ export function NativeRelayEnrollmentWizard({
 }: NativeRelayEnrollmentWizardProps) {
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<EnrollmentPhase>('idle');
-  const [challenge, setChallenge] =
-    useState<NativeRelayEnrollmentHostChallengeAccepted | null>(null);
+  const [candidate, setCandidate] = useState<NonNullable<
+    EnrollmentAttempt['candidate']
+  > | null>(null);
+  const [registrationAvailable, setRegistrationAvailable] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [invitation, setInvitation] = useState('');
@@ -119,6 +128,78 @@ export function NativeRelayEnrollmentWizard({
     [],
   );
 
+  async function validatedProfileRevision(
+    signal: AbortSignal,
+  ): Promise<number> {
+    const grantStatus = await refreshGrantStatus();
+    signal.throwIfAborted();
+    const grant = grantStatus.grants[0];
+    const cleanupPending = grantStatus.cleanups.some(
+      (cleanup) =>
+        !cleanup.brokerRetired ||
+        (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
+    );
+    if (
+      grantStatus.profileName !== profile.name ||
+      grantStatus.stationId !== selection.stationId ||
+      grantStatus.enrollmentId !== selection.enrollmentId ||
+      !grant ||
+      grant.expired ||
+      grant.metadata.expiresAt <= Date.now() ||
+      cleanupPending
+    )
+      throw new Error('staleProfile');
+    await nativeRelayGrantAdapter.assertCurrentRoute({
+      profileName: profile.name,
+      expectedProfileRevision: grantStatus.profileRevision,
+      expectedUpdatedAt: profile.updatedAt,
+      expectedRoute: selection,
+    });
+    signal.throwIfAborted();
+    const trust = await queryClient.fetchQuery({
+      queryKey: ['native-relay-key-approval', profile.name, 'status'],
+      queryFn: () => nativeRelayKeyApproval.status(profile.name),
+      staleTime: 0,
+    });
+    signal.throwIfAborted();
+    if (
+      trust.status !== 'approved' ||
+      trust.profileName !== profile.name ||
+      trust.brokerOrigin !== route.brokerOrigin ||
+      trust.stationId !== route.stationId ||
+      trust.enrollmentId !== route.enrollmentId
+    )
+      throw new Error('stationTrustRequired');
+    return grantStatus.profileRevision;
+  }
+
+  const recoveryKey = [
+    'native-relay-enrollment-recovery',
+    ...routeQueryKey.slice(1),
+  ] as const;
+  const recovery = useQuery({
+    queryKey: recoveryKey,
+    queryFn: async () => {
+      const controller = new AbortController();
+      const revision = await validatedProfileRevision(controller.signal);
+      const client = createNativeRelayEnrollmentClient({
+        profileName: profile.name,
+        expectedProfileRevision: revision,
+        stationAudience: profile.endpoint,
+        signal: controller.signal,
+      });
+      try {
+        return await client.recovery();
+      } finally {
+        await client.dispose().catch(() => undefined);
+      }
+    },
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   const begin = useMutation({
     mutationFn: async () => {
       setError(null);
@@ -128,54 +209,18 @@ export function NativeRelayEnrollmentWizard({
       terminalRef.current = false;
 
       try {
-        const grantStatus = await refreshGrantStatus();
-        controller.signal.throwIfAborted();
-        const grant = grantStatus.grants[0];
-        const cleanupPending = grantStatus.cleanups.some(
-          (cleanup) =>
-            !cleanup.brokerRetired ||
-            (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
-        );
-        if (
-          grantStatus.profileName !== profile.name ||
-          grantStatus.stationId !== selection.stationId ||
-          grantStatus.enrollmentId !== selection.enrollmentId ||
-          !grant ||
-          grant.expired ||
-          grant.metadata.expiresAt <= Date.now() ||
-          cleanupPending
-        )
-          throw new Error('staleProfile');
-        await nativeRelayGrantAdapter.assertCurrentRoute({
-          profileName: profile.name,
-          expectedProfileRevision: grantStatus.profileRevision,
-          expectedUpdatedAt: profile.updatedAt,
-          expectedRoute: selection,
-        });
-        controller.signal.throwIfAborted();
-
-        const trust = await queryClient.fetchQuery({
-          queryKey: ['native-relay-key-approval', profile.name, 'status'],
-          queryFn: () => nativeRelayKeyApproval.status(profile.name),
-          staleTime: 0,
-        });
-        controller.signal.throwIfAborted();
-        if (
-          trust.status !== 'approved' ||
-          trust.profileName !== profile.name ||
-          trust.brokerOrigin !== route.brokerOrigin ||
-          trust.stationId !== route.stationId ||
-          trust.enrollmentId !== route.enrollmentId
-        )
-          throw new Error('stationTrustRequired');
+        const revision = await validatedProfileRevision(controller.signal);
 
         const client = createNativeRelayEnrollmentClient({
           profileName: profile.name,
-          expectedProfileRevision: grantStatus.profileRevision,
+          expectedProfileRevision: revision,
           stationAudience: profile.endpoint,
           signal: controller.signal,
         });
         clientRef.current = client;
+        const currentRecovery = await client.recovery();
+        if (currentRecovery.attempts.length > 0)
+          throw new Error('native_enrollment_recovery_required');
         return await client.begin();
       } catch (cause) {
         controller.abort();
@@ -187,8 +232,97 @@ export function NativeRelayEnrollmentWizard({
       }
     },
     onSuccess: (result) => {
-      setChallenge(result);
+      setCandidate(result.candidate);
+      setRegistrationAvailable(result.registrationAvailable);
       setPhase('challenge');
+      void queryClient.invalidateQueries({ queryKey: recoveryKey });
+    },
+    onError: (cause) => {
+      reportEnrollmentFailure(cause, setError);
+      void queryClient.invalidateQueries({ queryKey: recoveryKey });
+    },
+  });
+
+  const resume = useMutation({
+    mutationFn: async (selectedHandle: string) => {
+      setError(null);
+      setNotice(null);
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      terminalRef.current = false;
+      const revision = await validatedProfileRevision(controller.signal);
+      const client = createNativeRelayEnrollmentClient({
+        profileName: profile.name,
+        expectedProfileRevision: revision,
+        stationAudience: profile.endpoint,
+        signal: controller.signal,
+      });
+      clientRef.current = client;
+      const attempt = await client.resume(selectedHandle);
+      attemptStartedRef.current = true;
+      onEnrollmentStart();
+      return { client, attempt };
+    },
+    onSuccess: async ({ client, attempt }) => {
+      setCandidate(attempt.candidate);
+      setRegistrationAvailable(attempt.registrationAvailable);
+      if (attempt.phase === 'begin-required') {
+        const result = await client.begin();
+        setCandidate(result.candidate);
+        setRegistrationAvailable(result.registrationAvailable);
+        setPhase('challenge');
+        setNotice(
+          'Resumed the saved Device setup. Continue with Station account sign-in.',
+        );
+      } else if (attempt.phase === 'candidate') {
+        setPhase('challenge');
+        setNotice(
+          'Resumed the saved Device setup. Continue with Station account sign-in.',
+        );
+      } else if (attempt.phase === 'staged') {
+        setPhase('staged');
+        setNotice(
+          'The saved Device delivery is staged. Review it before explicitly activating this Device.',
+        );
+      } else if (attempt.phase === 'activation-unknown') {
+        setPhase('verifying');
+        setNotice('Checking the saved Device activation with Station.');
+        checkStatus.mutate();
+      } else if (attempt.phase === 'cancel-required') {
+        setPhase('cancel-required');
+        setNotice(
+          'Station requires this saved Device setup to be cancelled before another can begin.',
+        );
+      } else {
+        terminalRef.current = true;
+        setPhase('configured');
+        setNotice('Station confirmed this Device is configured.');
+      }
+      await queryClient.invalidateQueries({ queryKey: recoveryKey });
+    },
+    onError: (cause) => reportEnrollmentFailure(cause, setError),
+  });
+
+  const cancelRecovered = useMutation({
+    mutationFn: () => requireClient().cancel(),
+    onSuccess: async (result) => {
+      if (
+        result.state === 'cancelled' ||
+        result.state === 'expired' ||
+        result.state === 'revoked'
+      ) {
+        setPhase('idle');
+        setNotice('Station confirmed this Device setup is no longer active.');
+        attemptStartedRef.current = false;
+        clientRef.current = null;
+        controllerRef.current?.abort();
+        controllerRef.current = null;
+        await queryClient.invalidateQueries({ queryKey: recoveryKey });
+      } else {
+        setError(
+          'Station has not confirmed cancellation of this Device setup.',
+        );
+      }
     },
     onError: (cause) => reportEnrollmentFailure(cause, setError),
   });
@@ -315,7 +449,8 @@ export function NativeRelayEnrollmentWizard({
     if (terminalRef.current) return;
     attemptStartedRef.current = false;
     onEnrollmentCancel();
-    setChallenge(null);
+    setCandidate(null);
+    setRegistrationAvailable(false);
     setPhase('idle');
     setUsername('');
     setPassword('');
@@ -328,6 +463,7 @@ export function NativeRelayEnrollmentWizard({
     checkStatus.reset();
     finalize.reset();
     activate.reset();
+    void queryClient.invalidateQueries({ queryKey: recoveryKey });
   }
 
   function submitLogin() {
@@ -339,9 +475,10 @@ export function NativeRelayEnrollmentWizard({
     login.mutate();
   }
 
-  const candidate = challenge?.candidate;
   const busy =
     begin.isPending ||
+    resume.isPending ||
+    cancelRecovered.isPending ||
     login.isPending ||
     checkStatus.isPending ||
     finalize.isPending ||
@@ -359,18 +496,65 @@ export function NativeRelayEnrollmentWizard({
         access.
       </p>
       {phase === 'idle' ? (
-        <Button
-          variant="primary"
-          pending={begin.isPending}
-          pendingLabel="Preparing…"
-          onClick={() => {
-            attemptStartedRef.current = true;
-            onEnrollmentStart();
-            begin.mutate();
-          }}
-        >
-          Begin Device setup
-        </Button>
+        <>
+          {recovery.isPending ? (
+            <p role="status">Checking for saved Device setup…</p>
+          ) : null}
+          {recovery.isError ? (
+            <>
+              <p role="status">
+                Saved Device setup could not be checked. Retry before starting
+                another setup.
+              </p>
+              <Button onClick={() => void recovery.refetch()}>
+                Retry saved setup check
+              </Button>
+            </>
+          ) : null}
+          {recovery.isSuccess &&
+          !recovery.isFetching &&
+          recovery.data.attempts.length > 0 ? (
+            <section aria-label="Saved Device setups">
+              <h4>Saved Device setup</h4>
+              <p>
+                Resume an existing setup before starting another. Station
+                verifies its current state when you select it.
+              </p>
+              {recovery.data.attempts.map((attempt, index) => (
+                <Button
+                  key={attempt.enrollmentHandle}
+                  disabled={busy}
+                  pending={
+                    resume.isPending &&
+                    resume.variables === attempt.enrollmentHandle
+                  }
+                  onClick={() => resume.mutate(attempt.enrollmentHandle)}
+                >
+                  Resume{' '}
+                  {attempt.candidate
+                    ? `Device ${attempt.candidate.deviceId}`
+                    : `saved setup ${index + 1}`}
+                </Button>
+              ))}
+            </section>
+          ) : null}
+          {recovery.isSuccess &&
+          !recovery.isFetching &&
+          recovery.data.attempts.length === 0 ? (
+            <Button
+              variant="primary"
+              pending={begin.isPending}
+              pendingLabel="Preparing…"
+              onClick={() => {
+                attemptStartedRef.current = true;
+                onEnrollmentStart();
+                begin.mutate();
+              }}
+            >
+              Begin Device setup
+            </Button>
+          ) : null}
+        </>
       ) : null}
 
       {candidate ? (
@@ -428,7 +612,7 @@ export function NativeRelayEnrollmentWizard({
               disabled={busy}
             />
           </label>
-          {challenge?.registrationAvailable ? (
+          {registrationAvailable ? (
             <>
               <label className="editor-field editor-field--row">
                 <input
@@ -526,6 +710,23 @@ export function NativeRelayEnrollmentWizard({
         </section>
       ) : null}
 
+      {phase === 'cancel-required' ? (
+        <section aria-label="Device setup cancellation required">
+          <p>
+            Station requires cancellation of this saved Device setup before
+            another can begin.
+          </p>
+          <Button
+            variant="primary"
+            disabled={busy}
+            pending={cancelRecovered.isPending}
+            onClick={() => cancelRecovered.mutate()}
+          >
+            Confirm Device setup cancellation
+          </Button>
+        </section>
+      ) : null}
+
       {phase === 'configured' ? (
         <p role="status">
           <strong>Device configured</strong>. Account sign-in and Project access
@@ -536,7 +737,8 @@ export function NativeRelayEnrollmentWizard({
       {error ? <p role="alert">{error}</p> : null}
       {(attemptStartedRef.current &&
         phase !== 'configured' &&
-        phase !== 'verifying') ||
+        phase !== 'verifying' &&
+        phase !== 'cancel-required') ||
       begin.isPending ? (
         <Button variant="ghost" onClick={() => void cancelSetup()}>
           Cancel Device setup

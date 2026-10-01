@@ -50,6 +50,8 @@ const mocks = vi.hoisted(() => ({
   openVerifiedPeer: vi.fn(),
   exchangeSignals: [] as AbortSignal[],
   finalizeResponses: [] as unknown[],
+  recoveryAttempts: [] as unknown[],
+  transitionCurrentFails: false,
 }));
 
 vi.mock(
@@ -280,6 +282,11 @@ function configureEnrollmentHost() {
   );
   mocks.enrollmentInvoke.mockImplementation(
     async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'station_native_enrollment_resume')
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          attempts: mocks.recoveryAttempts,
+        };
       if (command === 'station_native_relay_enrollment_binding')
         return {
           profileName: 'Home Station',
@@ -390,14 +397,29 @@ function configureEnrollmentHost() {
       if (
         command === 'station_native_enrollment_activation_accept' ||
         command === 'station_native_enrollment_transition_current'
-      )
+      ) {
+        if (
+          command === 'station_native_enrollment_transition_current' &&
+          mocks.transitionCurrentFails
+        )
+          throw new Error('native_enrollment_transition_retired');
         return {
           version: NATIVE_RELAY_ENROLLMENT_VERSION,
-          enrollmentHandle,
+          enrollmentHandle:
+            typeof args?.enrollmentHandle === 'string'
+              ? args.enrollmentHandle
+              : enrollmentHandle,
           state: 'active',
-          profileRevision: 13,
-          transitionHandle: enrollmentTransitionHandle,
+          profileRevision:
+            typeof args?.expectedProfileRevision === 'number'
+              ? args.expectedProfileRevision
+              : 13,
+          transitionHandle:
+            typeof args?.transitionHandle === 'string'
+              ? args.transitionHandle
+              : enrollmentTransitionHandle,
         };
+      }
       if (command === 'station_native_enrollment_abort') return undefined;
       throw new Error(`Unexpected native enrollment command: ${command}`);
     },
@@ -504,6 +526,8 @@ describe('RelayRouteProfiles', () => {
     mocks.openVerifiedPeer.mockReset();
     mocks.exchangeSignals.length = 0;
     mocks.finalizeResponses.length = 0;
+    mocks.recoveryAttempts.length = 0;
+    mocks.transitionCurrentFails = false;
     mocks.keyStatus.mockResolvedValue({
       status: 'untrusted',
       trustRevision: 0,
@@ -678,7 +702,9 @@ describe('RelayRouteProfiles', () => {
         invitation,
       }),
     );
-    expect(mocks.grantInvoke).toHaveBeenCalledTimes(5);
+    expect(mocks.grantInvoke).toHaveBeenCalledWith(
+      'station_profile_store_read',
+    );
     expect(screen.getByText('Not connected')).toBeTruthy();
     expect(
       screen.getByText(
@@ -860,6 +886,159 @@ describe('RelayRouteProfiles', () => {
         ([command]) => command === 'station_native_enrollment_abort',
       ),
     ).toBe(false);
+  });
+
+  test('requires explicit resume selection and runs begin only for the selected saved attempt', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'begin-required',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: null,
+      transition: null,
+    });
+    renderRoutes();
+
+    const resumeButton = await screen.findByRole('button', {
+      name: `Resume saved setup 1`,
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Begin Device setup' }),
+    ).toBeNull();
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
+      expect.anything(),
+    );
+
+    fireEvent.click(resumeButton);
+    await screen.findByRole('heading', {
+      name: 'Public Device candidate for the Station operator',
+    });
+    expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
+      expect.objectContaining({ enrollmentHandle }),
+    );
+    expect(
+      screen.getByText(
+        /does not sign in for application use or grant Project access/,
+      ),
+    ).toBeTruthy();
+  });
+
+  test('rechecks recovery before begin and blocks a setup that appeared meanwhile', async () => {
+    configureEnrollmentReadyRoute();
+    renderRoutes();
+    const beginButton = await screen.findByRole('button', {
+      name: 'Begin Device setup',
+    });
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'candidate',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: enrollmentCandidate,
+      transition: null,
+    });
+
+    fireEvent.click(beginButton);
+    await screen.findByRole('button', {
+      name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+    });
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_begin_prepare',
+      expect.anything(),
+    );
+  });
+
+  test('shows configured only after selected active attempt passes host currentness', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'active',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: null,
+      transition: {
+        version: NATIVE_RELAY_ENROLLMENT_VERSION,
+        enrollmentHandle,
+        state: 'active',
+        profileRevision: 12,
+        transitionHandle: enrollmentTransitionHandle,
+      },
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Resume saved setup 1' }),
+    );
+    await screen.findByText(/Device configured/);
+    expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
+      'station_native_enrollment_transition_current',
+      {
+        enrollmentHandle,
+        transitionHandle: enrollmentTransitionHandle,
+        expectedProfileRevision: 12,
+      },
+    );
+    expect(
+      screen.getByText(/Account sign-in and Project access remain separate/),
+    ).toBeTruthy();
+  });
+
+  test('does not display configured when selected active attempt fails host currentness', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.transitionCurrentFails = true;
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'active',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: null,
+      transition: {
+        version: NATIVE_RELAY_ENROLLMENT_VERSION,
+        enrollmentHandle,
+        state: 'active',
+        profileRevision: 12,
+        transitionHandle: enrollmentTransitionHandle,
+      },
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Resume saved setup 1' }),
+    );
+    await screen.findByRole('alert');
+    expect(screen.queryByText('Device configured')).toBeNull();
+  });
+
+  test('resumes staged delivery without automatically activating it', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'staged',
+      profileRevision: 12,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
+      candidate: enrollmentCandidate,
+      transition: null,
+    });
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+      }),
+    );
+    await screen.findByRole('button', { name: 'Activate this Device' });
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_activate_prepare',
+      expect.anything(),
+    );
   });
 
   test('aborts the owned attempt and network signal when the user cancels', async () => {
