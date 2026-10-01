@@ -1207,6 +1207,8 @@ export {
   refetchAuthoritativeProjectTaskRoomDocument,
   submitProjectTaskRoomBatch,
   subscribeProjectTaskRoomEvents,
+  TaskRoomWorkNotSentError,
+  type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
@@ -1215,6 +1217,9 @@ export {
   useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
   useSubmitProjectTaskRoomBatchMutation,
+  useSubmitTaskRoomAgentRequestMutation,
+  useTaskRoomAgentOptionsQuery,
+  useTaskRoomAgentRequestsQuery,
 } from './query-domains/projectTaskRooms.js';
 export type { PullRequestResolvingContext } from './query-domains/pullRequests';
 export {

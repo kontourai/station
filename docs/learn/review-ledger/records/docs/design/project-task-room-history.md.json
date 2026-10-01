@@ -12,11 +12,11 @@
   "document": {"digest":"3f77bb159020d9d6bb2a5f9e8fbebd1326a5ff27a7ff0b960edae7cb2e1726cb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"d0196ce1fb343a0930c493bdd2ba266fb0783bb49c5805144d00b1f7180a4bc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts","digest":"c49b0801559536fc5fd6cdd58f0c3bd8ee7e3038750c1b27f3e088579d7c6bda","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"030ad542581f57e8aeecad32b0328ec6615774050940d139b0a68ec1f94fbeac","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"ee747fb90b796681735629e4b5b29b2c6cf7eae7c5921194e0339a11497e424b","revision":"20c5a81766e320fec9bb7f5353030ec38c5d1a19"},
 
     {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -24,7 +24,7 @@
 
     {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"19d16440f2e8c69b7f26394a9f6d4c7033fb8ae6c86ad1e02102e007cad98f2d","revision":"11ead89b2b34cd6c303e268f5fdf462a233e9d5d"}
   ],
 
   "checks": [

@@ -111,6 +111,7 @@
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",
     "./project-task-room-browser": "./src/project-task-room-browser.ts",
+    "./task-room-work": "./src/task-room-work.ts",
     "./project-reference-integrity": "./src/project-reference-integrity.ts",
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
     "./registry-lifecycle": "./src/registry-lifecycle.ts",

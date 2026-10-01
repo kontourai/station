@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import type {
   ProjectTaskRoomAuthority,
@@ -15,12 +16,14 @@ import type {
   TaskRecord,
 } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   DEFAULT_LIVE_WORK_BOUNDS,
   type LiveWorkRecoveryState,
   LiveWorkSession,
 } from '../../../domain/live-work-session.js';
 import { SharedWorkingState } from '../../../domain/shared-working-state.js';
+import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
@@ -51,6 +54,7 @@ test('browser heartbeat cadence remains comfortably below live TTL', () => {
   );
 });
 
+const makeTempDir = trackTempDirs();
 const directories: string[] = [];
 afterEach(() => {
   vi.useRealTimers();
@@ -508,6 +512,77 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test('a human message bound to an earlier Task incarnation never appends to its replacement', async () => {
+    const directory = makeTempDir('station-room-message-incarnation-');
+    const path = join(directory, 'orchestration.sqlite');
+    const store = new EventStore(path);
+    const probe = new DatabaseSync(path);
+    probe.exec('PRAGMA busy_timeout = 0');
+    let replaceAtCommit = false;
+    let replacementObserved = false;
+    const currentTask: TaskRecord = { ...task, createdBy: 'operator-1' };
+    const { runtime } = runtimeComposition(store, {
+      taskRecord: currentTask,
+      requestAuthority: {
+        resolve: async () => {
+          if (replaceAtCommit) {
+            try {
+              probe.exec('BEGIN IMMEDIATE');
+              probe.exec('ROLLBACK');
+            } catch (error) {
+              if (!isSqliteContentionError(error)) throw error;
+              replacementObserved = true;
+              currentTask.createdAt = '2026-09-30T00:00:00.000Z';
+            }
+          }
+          return {
+            kind: 'granted',
+            operatorId: 'operator-1',
+            deviceId: 'device-1',
+            policyRevision: 'pairing-v1',
+          };
+        },
+      },
+    });
+    const request = new Request('http://station');
+    try {
+      expect((await runtime.discover({ taskId: task.id, request })).kind).toBe(
+        'opened',
+      );
+      const first = await runtime.message({
+        taskId: task.id,
+        request,
+        proposalId: 'message-before-replacement',
+        text: 'Original discussion',
+        expectedTaskCreatedAt: task.createdAt,
+      });
+      expect(first.kind).toBe('committed');
+      replaceAtCommit = true;
+      const stale = await runtime.message({
+        taskId: task.id,
+        request,
+        proposalId: 'message-after-replacement',
+        text: 'Old private draft',
+        expectedTaskCreatedAt: task.createdAt,
+      });
+      expect(replacementObserved).toBe(true);
+      replaceAtCommit = false;
+      expect(stale.kind).toBe('not-found');
+      const history = await runtime.history({ taskId: task.id, request });
+      expect(history.kind).toBe('available');
+      if (history.kind !== 'available')
+        throw new Error('Missing real history read');
+      expect(history.records).toHaveLength(1);
+      expect(history.records[0].body).toMatchObject({
+        kind: 'human-message',
+        text: 'Original discussion',
+      });
+    } finally {
+      await runtime.close();
+      probe.close();
+      store.close();
+    }
+  });
   test.each(['heartbeat', 'cadence', 'snapshot'] as const)(
     'concurrent %s cannot arm another request or invalidate its pending announcement',
     async (activity) => {

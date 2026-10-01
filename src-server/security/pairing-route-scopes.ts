@@ -2344,6 +2344,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },
     // Task Output bytes remain the paired operator's local Task projection;
     // reads use the family read tier and promotion/deletion use operate.
     { method: 'GET', path: '/api/tasks/:taskId/outputs' },
