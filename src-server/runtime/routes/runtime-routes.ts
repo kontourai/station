@@ -3586,6 +3586,36 @@ export function configureRuntimeRoutes(
             : { kind: 'revoked' as const };
         },
       },
+      readAgentRequests: async (taskId) => {
+        const task = context.taskGraphService.readTaskView(taskId);
+        const project =
+          task &&
+          context.projectService
+            .listProjects()
+            .find(
+              (candidate) =>
+                candidate.id === task.projectId ||
+                candidate.slug === task.projectId,
+            );
+        if (!task || !project) return [];
+        const requests = await taskRoomWork.readPublicationRequests({
+          taskId,
+          projectId: project.id,
+          taskCreatedAt: task.createdAt,
+          roomProjectId: task.projectId,
+          readBinding: (sessionId) =>
+            context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+              sessionId,
+            ),
+        });
+        return requests.map((record) => ({
+          sessionId: record.sessionId,
+          agentId: record.agentId,
+          ownerOperatorId: record.ownerId,
+          taskCreatedAt: record.taskCreatedAt,
+          createdAt: record.createdAt,
+        }));
+      },
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -3599,6 +3629,8 @@ export function configureRuntimeRoutes(
         const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
+          createdAt: detail.session.createdAt,
+          updatedAt: detail.session.updatedAt,
           ...(outcome ? { outcome } : {}),
         };
       },
@@ -3671,13 +3703,17 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/tasks',
       createProjectTaskRoomRoutes(roomRuntime, {
-        listAgentRequests: (taskId, request) =>
-          taskRoomWork.list(taskId, async () => {
+        listAgentRequests: async (taskId, request) => {
+          const result = await taskRoomWork.list(taskId, async () => {
             const principal = roomRequestPrincipals.get(request);
             return principal
               ? authorizeTaskRoomWork(taskId, request, principal)
               : undefined;
-          }),
+          });
+          if (result.kind === 'available')
+            await roomRuntime.reconcileAgentLifecycles([taskId]);
+          return result;
+        },
       }),
     );
   }

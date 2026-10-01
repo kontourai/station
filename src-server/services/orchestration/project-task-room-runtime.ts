@@ -138,10 +138,22 @@ interface ProjectTaskRoomRuntimeDeps {
   readonly revisionEvidence?: ProjectTaskRoomRevisionEvidencePort;
   readonly working: ProjectTaskRoomWorkingState;
   readonly requestAuthority: ProjectTaskRoomRequestAuthority;
+  /** Private journal lookup, filtered by current Task incarnation and immutable execution binding. */
+  readonly readAgentRequests?: (taskId: string) => Promise<
+    readonly {
+      sessionId: string;
+      agentId: string;
+      ownerOperatorId: string;
+      taskCreatedAt: string;
+      createdAt: string;
+    }[]
+  >;
   /** Durable Session projection used to reconstruct exact provider/lifecycle. */
   readonly readAgentLifecycle?: (input: { sessionId: string }) => Promise<
     | {
         readonly provider: string;
+        readonly createdAt?: string;
+        readonly updatedAt?: string;
         readonly outcome?: 'completed' | 'failed' | 'cancelled';
       }
     | undefined
@@ -560,6 +572,7 @@ export class ProjectTaskRoomRuntime {
     this.#publishAgentPresence({
       task: association.task,
       scope: association.scope,
+      agentId: input.agentId,
       sessionId: input.sessionId,
       provider: input.provider,
       startedAt: Date.parse(
@@ -589,16 +602,21 @@ export class ProjectTaskRoomRuntime {
     sessionId: string;
     provider: string;
     outcome: 'completed' | 'failed' | 'cancelled';
+    occurredAt?: string;
   }): Promise<void> {
-    const task = this.#deps.taskGraph.readTaskView(input.taskId);
-    if (!task || task.sessionId !== input.sessionId || !task.agentId) return;
+    const association = await this.#lifecycleAssociation(
+      input.taskId,
+      input.sessionId,
+    );
+    if (!association) return;
+    const { task } = association;
     const lifecycle: PendingAgentLifecycle = {
       taskId: task.id,
       sessionId: input.sessionId,
       provider: input.provider,
       outcome: input.outcome,
       dispatchId: `room-exit:${input.sessionId}`,
-      occurredAt: new Date().toISOString(),
+      occurredAt: input.occurredAt ?? new Date().toISOString(),
       authorizationReceiptId: agentLifecycleReceiptId(
         task.id,
         input.sessionId,
@@ -621,6 +639,35 @@ export class ProjectTaskRoomRuntime {
         const lifecycle = parsePendingAgentLifecycle(record.value);
         if (!lifecycle || lifecycle.taskId !== taskId) continue;
         await this.#publishAgentLifecycle(lifecycle);
+      }
+      for (const request of (await this.#deps.readAgentRequests?.(taskId)) ??
+        []) {
+        const durable = await this.#deps.readAgentLifecycle?.({
+          sessionId: request.sessionId,
+        });
+        if (!durable) continue;
+        const started: PendingAgentLifecycle = {
+          taskId,
+          sessionId: request.sessionId,
+          provider: durable.provider,
+          outcome: 'started',
+          dispatchId: `room-request:${request.sessionId}`,
+          occurredAt: durable.createdAt ?? request.createdAt,
+          authorizationReceiptId: agentLifecycleReceiptId(
+            taskId,
+            request.sessionId,
+            'started',
+          ),
+        };
+        await this.#publishAgentLifecycle(started);
+        if (durable.outcome)
+          await this.publishAgentFinished({
+            taskId,
+            sessionId: request.sessionId,
+            provider: durable.provider,
+            outcome: durable.outcome,
+            occurredAt: durable.updatedAt,
+          });
       }
       // Task association is the durable source of a started publication. It
       // closes the crash window before an outbox insert (or when that insert
@@ -1992,19 +2039,16 @@ export class ProjectTaskRoomRuntime {
     lifecycle: PendingAgentLifecycle,
   ): Promise<void> {
     if (this.#closed || this.#deps.hosted?.()) return;
-    const task = this.#deps.taskGraph.readTaskView(lifecycle.taskId);
-    if (
-      !task?.agentId ||
-      task.id !== lifecycle.taskId ||
-      task.sessionId !== lifecycle.sessionId
-    )
-      return;
-    const scope = this.#scope(task.id);
-    if (!scope) return;
+    const association = await this.#lifecycleAssociation(
+      lifecycle.taskId,
+      lifecycle.sessionId,
+    );
+    if (!association) return;
+    const { task, scope, agentId, ownerOperatorId } = association;
     const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> = {
       kind: 'agent',
-      agentId: task.agentId,
-      ownerOperatorId: task.createdBy,
+      agentId,
+      ownerOperatorId,
       deviceId: `agent-session:${lifecycle.sessionId}`,
       authorizationReceiptId: lifecycle.authorizationReceiptId,
     };
@@ -2036,11 +2080,12 @@ export class ProjectTaskRoomRuntime {
         this.#publishAgentPresence({
           task,
           scope,
+          agentId,
           sessionId: lifecycle.sessionId,
           provider: lifecycle.provider,
           startedAt: Date.parse(lifecycle.occurredAt),
         });
-      else this.#removeAgentPresence(scope, task.agentId, lifecycle.sessionId);
+      else this.#removeAgentPresence(scope, agentId, lifecycle.sessionId);
       await this.#deps.working.removeAgentLifecycle({
         scope: { ...scope, documentId: documentIdFor(scope) },
         intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
@@ -2051,6 +2096,41 @@ export class ProjectTaskRoomRuntime {
         documentId: documentIdFor(scope),
       });
     }
+  }
+
+  async #lifecycleAssociation(taskId: string, sessionId: string) {
+    if (this.#closed || this.#deps.hosted?.()) return undefined;
+    const before = this.#deps.taskGraph.readTaskView(taskId);
+    const scope = this.#scope(taskId);
+    if (!before || !scope) return undefined;
+    if (before.agentId && before.sessionId === sessionId)
+      return {
+        task: before,
+        scope,
+        agentId: before.agentId,
+        ownerOperatorId: before.createdBy,
+      };
+    const request = (await this.#deps.readAgentRequests?.(taskId))?.find(
+      (candidate) =>
+        candidate.sessionId === sessionId &&
+        candidate.taskCreatedAt === before.createdAt,
+    );
+    const task = this.#deps.taskGraph.readTaskView(taskId);
+    const currentScope = this.#scope(taskId);
+    if (
+      !request ||
+      !task ||
+      task.createdAt !== before.createdAt ||
+      !currentScope ||
+      !sameScope(scope, currentScope)
+    )
+      return undefined;
+    return {
+      task,
+      scope: currentScope,
+      agentId: request.agentId,
+      ownerOperatorId: request.ownerOperatorId,
+    };
   }
 
   #agentAssociation(input: {
@@ -2090,16 +2170,12 @@ export class ProjectTaskRoomRuntime {
   #publishAgentPresence(input: {
     readonly task: TaskRecord;
     readonly scope: ProjectTaskRoomScope;
+    readonly agentId: string;
     readonly sessionId: string;
     readonly provider?: string;
     readonly startedAt: number;
   }): void {
-    if (
-      this.#closed ||
-      input.task.agentId === undefined ||
-      input.task.sessionId !== input.sessionId
-    )
-      return;
+    if (this.#closed) return;
     const document = {
       ...input.scope,
       documentId: documentIdFor(input.scope),
@@ -2110,17 +2186,13 @@ export class ProjectTaskRoomRuntime {
         ? input.startedAt
         : Date.now(),
     );
-    const actorId = agentActorId(
-      input.task.id,
-      input.task.agentId,
-      input.sessionId,
-    );
+    const actorId = agentActorId(input.task.id, input.agentId, input.sessionId);
     const existingRunId = entry.agentParticipants.get(actorId)?.work.runId;
     const runId = input.provider
       ? createOrchestrationRunId(input.provider, input.sessionId)
       : existingRunId;
     entry.agentParticipants.set(actorId, {
-      actor: { actorId, kind: 'agent', label: input.task.agentId },
+      actor: { actorId, kind: 'agent', label: input.agentId },
       work: {
         sessionId: input.sessionId,
         ...(runId ? { runId } : {}),
@@ -2261,14 +2333,15 @@ export class ProjectTaskRoomRuntime {
     principal: ProjectTaskRoomPrincipal;
   }) {
     if (receipt.principal.kind !== 'agent') return { kind: 'denied' as const };
-    const task = this.#deps.taskGraph.readTaskView(receipt.scope.taskId);
-    return task &&
-      task.projectId === receipt.scope.projectId &&
+    const sessionId = agentSessionId(receipt.principal);
+    const association =
+      sessionId &&
+      (await this.#lifecycleAssociation(receipt.scope.taskId, sessionId));
+    return association &&
+      sameScope(receipt.scope, association.scope) &&
       receipt.receiptId === receipt.principal.authorizationReceiptId &&
-      task.agentId === receipt.principal.agentId &&
-      task.createdBy === receipt.principal.ownerOperatorId &&
-      task.sessionId === agentSessionId(receipt.principal) &&
-      sameScope(receipt.scope, this.#scope(task.id) ?? receipt.scope)
+      association.agentId === receipt.principal.agentId &&
+      association.ownerOperatorId === receipt.principal.ownerOperatorId
       ? { kind: 'authorized' as const, principal: receipt.principal }
       : { kind: 'revoked' as const };
   }
@@ -3086,15 +3159,16 @@ export class ProjectTaskRoomRuntime {
       return { kind: 'revoked' };
     const currentScope = this.#scope(issued.scope.taskId);
     if (issued.principal.kind === 'agent') {
-      const task = this.#deps.taskGraph.readTaskView(issued.scope.taskId);
+      const sessionId = agentSessionId(issued.principal);
+      const association =
+        sessionId &&
+        (await this.#lifecycleAssociation(issued.scope.taskId, sessionId));
       if (
-        !currentScope ||
-        !task ||
-        !sameScope(currentScope, issued.scope) ||
+        !association ||
+        !sameScope(association.scope, issued.scope) ||
         issued.receiptId !== issued.principal.authorizationReceiptId ||
-        task.agentId !== issued.principal.agentId ||
-        task.createdBy !== issued.principal.ownerOperatorId ||
-        task.sessionId !== agentSessionId(issued.principal)
+        association.agentId !== issued.principal.agentId ||
+        association.ownerOperatorId !== issued.principal.ownerOperatorId
       )
         return { kind: 'revoked' };
       return {
@@ -3102,9 +3176,9 @@ export class ProjectTaskRoomRuntime {
         receipt: {
           receiptId: issued.receiptId,
           capability: required,
-          scope: currentScope,
+          scope: association.scope,
           principal: issued.principal,
-          policyRevision: this.#roomPolicyRevision(currentScope),
+          policyRevision: this.#roomPolicyRevision(association.scope),
         },
       };
     }
