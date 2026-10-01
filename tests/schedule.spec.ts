@@ -347,7 +347,7 @@ test.describe('Schedule Page', () => {
       .getByPlaceholder('What should the agent do?')
       .fill('Summarize weekly work');
     await fillCron(page, ['30', '8', '*', '*', '1']);
-    await page.getByRole('button', { name: 'Add job', exact: true }).click();
+    await page.getByRole('button', { name: 'Add Job', exact: true }).click();
     await expect(page.getByTestId('job-row-weekly-brief')).toBeVisible();
 
     await page.getByRole('button', { name: 'Edit weekly-brief' }).click();
@@ -410,7 +410,7 @@ test.describe('Schedule Page', () => {
     await expect(page.getByPlaceholder('my-daily-briefing')).toHaveValue(
       'weekly-brief-copy',
     );
-    await page.getByRole('button', { name: 'Add job', exact: true }).click();
+    await page.getByRole('button', { name: 'Add Job', exact: true }).click();
     await expect(page.getByTestId('job-row-weekly-brief-copy')).toBeVisible();
 
     await page
