@@ -57,7 +57,7 @@ export function removeEmptyRender(source) {
 export const MUTATIONS = [
   {
     id: 'fast-checks-shard-threshold',
-    test: 'scripts/__tests__/fast-checks-shard-cli.test.ts',
+    test: 'scripts/__tests__/fast-checks-plan.test.ts',
     failure: '41 selected files produce 2 shards',
     files: [
       {
