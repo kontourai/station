@@ -361,6 +361,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the lazy-boundary ratchet against this repository as one bounded
   // single-shot node child.
   'scripts/__tests__/lazy-boundary-ratchet.test.ts',
+  // #3045: same shape — the button-cap ratchet runs as bounded single-shot
+  // node children against small fixture trees, so its refusal path's EXIT
+  // STATUS and the row it names are proven, plus one run on this repository.
+  'scripts/__tests__/button-cap-ratchet.test.ts',
   // station 2026-08-28: same shape again — the commit-subject gate's CLI and
   // its .githooks/commit-msg wrapper run as bounded single-shot children so
   // the refusal path's exit STATUS is proven, not just the pure validator;

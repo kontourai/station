@@ -118,6 +118,30 @@ Action inventories allow explicit deferred cases. The
 named page-local responsive rules. A green ratchet is structural evidence,
 not a universal accessibility, keyboard or device certificate.
 
+### Action rows
+
+A header, toolbar or action row shows at most two labelled actions. Further
+actions go into an overflow menu; an icon-only button with an accessible name
+does not count. The [button-cap ratchet](../../scripts/button-cap-ratchet.mjs)
+(`npm run button-cap:ratchet`) parses every UI `.tsx` file and fails when a JSX
+element holds an unbroken run of more than two labelled `Button` or `button`
+siblings that [its baseline](../../scripts/button-cap-baseline.json) does not
+record, or when a recorded row gains one. Rows are identified by file,
+enclosing component and element, never by line. A recorded row that shrinks
+only prints a note; `--record` lowers the baseline and refuses to raise it or
+add a row. `--report` lists every row over the cap with its labels.
+
+The scan reads source structure, not layout. It does not see actions assembled
+from an array or split across components, anchors styled as buttons, whether
+siblings render in one line, or how a header collapses as width shrinks.
+Tabs, menu items and pressed or selected toggles are choices and are not
+counted; `&&` branches all count, so mutually exclusive ones overcount. Check
+the rendered row for anything the scan cannot see.
+
+To fold actions, pass them to
+[the More menu](../../src-ui/src/components/chat-dock/ChatDockHeaderMoreMenu.tsx)
+with a `label` naming the row, as the Skills detail header does.
+
 For changed behavior, use the existing owner tests and an affected caller
 journey. Check initial focus, Tab traversal, Escape/backdrop, history behavior,
 focus return, reachable actions, long content, both themes and keyboard-sized
