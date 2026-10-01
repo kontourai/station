@@ -223,13 +223,7 @@ describe('HomeSurface composition', () => {
     ).toHaveLength(1);
   });
 
-  /**
-   * archive#3227 A7, carried over: the "Projects" number and the chart's rows
-   * must fold the same list. Pinned as the INVARIANT, not a spot value — the
-   * fixture deliberately has ONE configured project against five distinct
-   * project labels, the populations the audit caught disagreeing.
-   */
-  test('the Projects count equals the project rows the chart renders', () => {
+  test('keeps unattributed activity visible without calling its groups projects', () => {
     renderHome({
       workItems: [
         item('a', 'Attributed work', 'Station', 5, 'Running'),
@@ -253,15 +247,9 @@ describe('HomeSurface composition', () => {
     });
     const rows = document.querySelectorAll('.home-heat__row');
     expect(rows.length).toBe(5);
-    const projectStat = Array.from(
-      document.querySelectorAll('.home-pulse__stat'),
-    ).find(
-      (stat) =>
-        stat.querySelector('.home-pulse__label')?.textContent === 'Projects',
-    );
-    expect(projectStat?.querySelector('.home-pulse__value')?.textContent).toBe(
-      String(rows.length),
-    );
+    expect(
+      document.querySelector('.home-pulse__stats')?.textContent,
+    ).not.toContain('Projects');
   });
 
   /**
@@ -476,11 +464,7 @@ describe('HomeSurface: what is clickable', () => {
     expect(screen.queryByRole('button', { name: /^Needs you,/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Idle,/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Active now,/ })).toBeNull();
-    expect(
-      screen.getByRole('button', {
-        name: 'Projects, 1, show where the work has been',
-      }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Projects,/ })).toBeNull();
     // Nothing is snoozed and nothing is in the "Recently finished" lane, so
     // neither renders and neither count offers a destination.
     expect(screen.queryByRole('button', { name: /^Snoozed,/ })).toBeNull();

@@ -87,6 +87,7 @@ vi.mock('../hooks/useScheduler', () => ({
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn(), updateParams: vi.fn() }),
+  useNavigationActions: () => ({ navigate: vi.fn() }),
 }));
 
 vi.mock('../contexts/ToastContext', () => ({

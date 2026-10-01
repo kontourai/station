@@ -212,7 +212,16 @@ Project's Review layout. Missing or unavailable records remain visible as such.
 Reading a receipt does not satisfy a gate. See
 [how the inspection keeps the exact target](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#inspect-approval-and-review-evidence).
 
+Home keeps unattributed chats visible in its activity chart. Its work counters
+show states such as Running and Needs you; activity groups are not a count of
+configured Projects.
+
 ## Run A Scheduled Readiness Check
+
+To create an ordinary scheduled job, use an agent with a model connection
+(Station's engine). AI app agents cannot run scheduled jobs. If none is ready,
+the job form offers **Set up a scheduled-job agent** to open agent creation;
+choose **Use a model connection** there.
 
 Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;

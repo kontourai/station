@@ -428,9 +428,17 @@ describe('JobFormModal schedule compatibility', () => {
 
   test('an empty catalog offers setup guidance instead of blaming a default agent ID', () => {
     agentCatalog.agents = [];
-    render(<JobFormModal onClose={vi.fn()} />);
+    const setup = vi.fn();
+    render(<JobFormModal onClose={vi.fn()} onSetupAgent={setup} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Set up a scheduled-job agent' }),
+    );
+    expect(setup).toHaveBeenCalledOnce();
+    expect(addMutate).not.toHaveBeenCalled();
     expect(
-      screen.getByText('Set up an agent in Agents before adding a job.'),
+      screen.getByText(
+        'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/No Agent named/)).toBeNull();
   });

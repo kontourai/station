@@ -7,7 +7,6 @@ import {
   buildHeatRows,
   type HeatRow,
 } from './blocks/activity-bars';
-import { revealHomeRegion } from './home-reveal';
 import type { HomeViewNavigation, useHomeViewModel } from './useHomeViewModel';
 import { useHomeWorkLanes } from './useHomeWorkLanes';
 
@@ -106,12 +105,6 @@ export function HomeSurface({
         agents={model.agents}
         remoteUnavailable={model.remoteUnavailable}
         remoteAuthenticationRequired={model.remoteAuthenticationRequired}
-        projectRowCount={heatRows.length}
-        onShowProjects={
-          heatRows.length > 0
-            ? () => revealHomeRegion(ACTIVITY_HEADING_ID)
-            : null
-        }
         onOpen={model.continueWork}
         onViewActivity={() => showSurface('activity')}
         onRetry={model.retryWork}

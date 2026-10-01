@@ -43,6 +43,7 @@ export function JobFormModal({
   job,
   prefill,
   onClose,
+  onSetupAgent,
   providers = [],
 }: {
   job?: SchedulerJob;
@@ -54,6 +55,7 @@ export function JobFormModal({
     agent: string;
   }>;
   onClose: () => void;
+  onSetupAgent?: () => void;
   providers?: SchedulerProviderInfo[];
 }) {
   const isEdit = !!job;
@@ -469,10 +471,19 @@ export function JobFormModal({
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {!isEdit && !init.agent && !agentOptions.defaultSlug
-                  ? 'Set up an agent in Agents before adding a job.'
+                  ? 'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.'
                   : jobAgentRunnability.reason}
               </span>
             )}
+            {!isEdit &&
+              !init.agent &&
+              agentRunnabilityKnown &&
+              !agentOptions.defaultSlug &&
+              onSetupAgent && (
+                <Button type="button" variant="link" onClick={onSetupAgent}>
+                  Set up a scheduled-job agent
+                </Button>
+              )}
             {agentOptions.excludedEngineAgents.length > 0 && (
               <span className="schedule__field-hint">
                 {SCHEDULER_ENGINE_AGENT_NOTE}

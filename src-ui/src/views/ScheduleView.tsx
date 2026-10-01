@@ -7,6 +7,7 @@ import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
 import { JobDetail, JobFormModal } from '../components/scheduler';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
 import {
   useDeleteJob,
@@ -44,6 +45,7 @@ function parseQualifiedScheduleRun(runId: string | null) {
 }
 
 export function ScheduleView() {
+  const { navigate } = useNavigationActions();
   const {
     data: jobs = [],
     isLoading,
@@ -320,6 +322,7 @@ export function ScheduleView() {
       {showAddForm && (
         <JobFormModal
           prefill={prefill}
+          onSetupAgent={() => navigate('/agents/new')}
           onClose={() => {
             setShowAddForm(false);
             setPrefill(undefined);
