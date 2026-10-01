@@ -767,3 +767,142 @@ describe('a Details sheet whose row leaves the list', () => {
     ).toBe('false');
   });
 });
+
+describe('the Details sheet’s actions are a menu list, never a row of buttons', () => {
+  const openSheet = async () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+  };
+
+  it('a slim draft row lists snooze presets under a Snooze group, then close, with Discard last and marked', async () => {
+    const onSnoozeWake = vi.fn();
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    const row: Row = {
+      facts: undefined,
+      item: {
+        ...base.item,
+        lifecycleLabel: 'Draft',
+        turnProgress: undefined,
+        chatSessionId: 'tab-1',
+      },
+    };
+    renderRow(row, {
+      chrome: 'touch',
+      size: 'slim',
+      hoverCard: true,
+      isOpenChat: true,
+      onSnoozeWake,
+      onCloseChat: vi.fn(),
+      onDraftDiscarded: vi.fn(),
+    });
+    await openSheet();
+    const menu = screen.getByTestId('inbox-row-details-actions');
+    // The shared menu primitive, group by group; every row full-width with
+    // an icon in the glyph slot and a label.
+    expect(menu.className).toContain('menu-surface');
+    const groups = [...menu.children];
+    expect(
+      groups.every((group) => group.classList.contains('menu-group')),
+    ).toBe(true);
+    expect(
+      groups.map((group) =>
+        [...group.querySelectorAll('button')].map(
+          (button) => button.textContent,
+        ),
+      ),
+    ).toEqual([
+      ['30 min', '3 hours', 'Until 9 AM'],
+      ['Close chat'],
+      ['Discard draft'],
+    ]);
+    expect(within(groups[0] as HTMLElement).getByText('Snooze')).toBeTruthy();
+    expect(
+      screen.getByRole('group', { name: 'Snooze' }).contains(groups[0]),
+    ).toBe(true);
+    for (const button of menu.querySelectorAll('button')) {
+      expect(button.classList.contains('menu-row')).toBe(true);
+      expect(button.querySelector('svg')).not.toBeNull();
+    }
+    const discard = within(menu).getByRole('button', {
+      name: 'Discard draft Migrate sessions table',
+    });
+    expect(discard.className).toContain('action-overflow__row--danger');
+    // A preset goes through the sheet: closes it, hands over the trigger.
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(within(menu).getByRole('button', { name: '3 hours' }));
+    expect(onSnoozeWake).toHaveBeenCalledWith(
+      row.item,
+      NOW + 3 * 3_600_000,
+      details,
+    );
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+  });
+
+  it('a row that keeps nothing in the sheet renders no list at all', async () => {
+    // Home's Draft row: Discard is beside the row and there is no snooze.
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    renderRow(
+      {
+        facts: undefined,
+        item: {
+          ...base.item,
+          lifecycleLabel: 'Draft',
+          turnProgress: undefined,
+        },
+      },
+      { chrome: 'touch', hoverCard: true, onDraftDiscarded: vi.fn() },
+    );
+    await openSheet();
+    expect(screen.queryByTestId('inbox-row-details-actions')).toBeNull();
+    expect(
+      screen.getByTestId('inbox-row-details').querySelector('.menu-surface'),
+    ).toBeNull();
+  });
+
+  it('opens on the dialog layer when its row sits inside a dialog-layer host, and as a popover otherwise', async () => {
+    // A popover-layer sheet opened from the mobile task switcher (a dialog)
+    // would paint UNDER the switcher. The layer follows the host's computed
+    // layer, not which host it is.
+    document.documentElement.style.setProperty(
+      '--layer-surface-popover',
+      '9250',
+    );
+    const layerOf = () =>
+      screen
+        .getByTestId('inbox-row-details')
+        .closest('.responsive-surface-overlay')
+        ?.getAttribute('data-responsive-layer');
+    try {
+      const inDialog = render(
+        <div style={{ position: 'fixed', zIndex: 10000 }}>
+          <QueryClientProvider client={new QueryClient()}>
+            <InboxRow
+              item={rowFor().item}
+              isCurrent={false}
+              isSnoozed={false}
+              isOpenChat={false}
+              now={NOW}
+              chrome="touch"
+              onActivate={vi.fn()}
+            />
+          </QueryClientProvider>
+        </div>,
+      );
+      await openSheet();
+      expect(layerOf()).toBe('dialog');
+      inDialog.unmount();
+
+      renderRow(rowFor(), { chrome: 'touch', hoverCard: true });
+      await openSheet();
+      expect(layerOf()).toBe('popover');
+    } finally {
+      document.documentElement.style.removeProperty('--layer-surface-popover');
+    }
+  });
+});

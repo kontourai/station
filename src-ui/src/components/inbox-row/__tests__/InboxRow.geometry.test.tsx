@@ -524,7 +524,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     try {
       await pg.setContent(page(markup));
       await settle(pg);
-      const buttons = pg.locator('.chat-dock-inbox-details__actions button');
+      const buttons = pg.locator('.chat-dock-inbox-details__menu .menu-row');
       const labels: string[] = [];
       for (let index = 0; index < (await buttons.count()); index += 1) {
         const box = await buttons.nth(index).boundingBox();

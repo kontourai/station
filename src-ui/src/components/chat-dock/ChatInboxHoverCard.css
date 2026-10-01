@@ -257,13 +257,24 @@
   overflow-wrap: anywhere;
 }
 
-.chat-dock-inbox-details__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* The row's remaining actions, in the shared menu primitive's groups and
+   rows. Flat here: the sheet is already the raised surface, so the list
+   takes no second border, fill or shadow of its own. */
+.chat-dock-inbox-details__menu {
   margin-top: 12px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-top: 8px;
 }
 
-.chat-dock-inbox-details__actions:empty {
-  display: none;
+/* The shared discard button draws its icon as a direct child; give it the
+   16px slot every other row's glyph sits in. */
+.chat-dock-inbox-details__menu .menu-row > svg {
+  width: var(--space-8);
+  height: var(--space-8);
+  flex: 0 0 var(--space-8);
 }

@@ -4,7 +4,14 @@ import { useGitStatusQuery } from '@kontourai/station-sdk';
 import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
 import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { relativeTime, relativeTimeAgo } from '../../utils/relativeTime';
@@ -12,6 +19,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
 import { InboxRowStatusGlyph } from '../inbox-row/InboxRowStatus';
+import { hostLayerOf, OverlayLayerContext } from '../overlay-layer';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -186,14 +194,35 @@ export function ChatInboxDetailsSheet({
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
   /**
-   * The row's actions that are not shown beside it on a touch chrome
-   * (ordinary buttons). Absent or empty renders no action strip.
+   * The row's actions that are not shown beside it on a touch chrome, as a
+   * menu list the row builds (`.menu-surface` groups of `.menu-row`s).
+   * Absent renders nothing: a sheet with no such action has no list.
    */
   actions?: React.ReactNode;
 }) {
+  // The sheet belongs to its row, so it is a popover — unless the row sits
+  // inside a surface that already owns a higher layer (the mobile task
+  // switcher is a dialog). A popover-layer sheet opened from there would be
+  // painted UNDER the switcher it was opened from. Read from the computed
+  // layer of whatever hosts the trigger, not from which host this is.
+  const overlay = useContext(OverlayLayerContext);
+  const [layer] = useState<'popover' | 'dialog'>(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return 'popover';
+    const popoverLayer = Number.parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--layer-surface-popover',
+      ),
+      10,
+    );
+    return Number.isFinite(popoverLayer) &&
+      hostLayerOf(trigger, overlay) > popoverLayer
+      ? 'dialog'
+      : 'popover';
+  });
   return (
     <ResponsiveDialogSurface
-      layer="popover"
+      layer={layer}
       ariaLabel={`Details for ${item.title}`}
       onClose={onClose}
       returnFocusTarget={triggerRef.current}
@@ -217,12 +246,7 @@ export function ChatInboxDetailsSheet({
           gitLocation={gitLocation}
           showTitle={false}
         />
-        <div
-          className="chat-dock-inbox-details__actions"
-          data-testid="inbox-row-details-actions"
-        >
-          {actions}
-        </div>
+        {actions}
       </div>
     </ResponsiveDialogSurface>
   );

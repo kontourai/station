@@ -19,11 +19,11 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
-import { Button } from '../Button';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
   ArrowDownGlyph,
+  CloseGlyph,
   InfoGlyph,
   ReturnGlyph,
   TimeGlyph,
@@ -47,6 +47,8 @@ import {
 } from './mobile-activity-groups';
 import './ChatDockInboxPanel.css';
 import '../inbox-row/InboxRow.css';
+// The danger row treatment the sheet's Discard shares with every overflow.
+import '../ActionOverflowMenu.css';
 
 /**
  * kontourai/station#3312 — the one inbox, two chromes split.
@@ -512,6 +514,131 @@ export function InboxRow({
     setDetailsOpen(false);
     if (detailsTriggerRef.current) action(detailsTriggerRef.current);
   };
+  // The actions that are not beside the row, as the sheet's menu list: the
+  // shared menu primitive's groups and rows (`.menu-group`, `.menu-row`), an
+  // icon and a label on each, snooze presets under their own group label and
+  // the destructive Discard last. They are buttons in a labelled list, not
+  // `role="menu"`: the sheet is a dialog that also holds read-only details
+  // and takes focus as a dialog, and a menu role would promise roving arrow
+  // keys this composite does not implement. `undefined` when the row keeps
+  // nothing in the sheet, so no empty list is rendered.
+  const sheetSnoozePresets =
+    !beside('snooze') && onSnoozeWake && !isSnoozed ? onSnoozeWake : undefined;
+  const sheetUnsnooze =
+    !beside('snooze') && onSnoozeWake && isSnoozed ? onSnoozeWake : undefined;
+  const sheetSnoozeMenu =
+    !beside('snooze') && onSnoozeMenu ? onSnoozeMenu : undefined;
+  const sheetClose = !beside('close') && closable;
+  const sheetDiscard =
+    !beside('discard') && discardThreadId && onDraftDiscarded
+      ? { threadId: discardThreadId, onDraftDiscarded }
+      : undefined;
+  const sheetMenu =
+    sheetSnoozePresets ||
+    sheetUnsnooze ||
+    sheetSnoozeMenu ||
+    sheetClose ||
+    sheetDiscard ? (
+      <div
+        className="menu-surface chat-dock-inbox-details__menu"
+        data-testid="inbox-row-details-actions"
+      >
+        {sheetSnoozePresets && (
+          <fieldset className="menu-group">
+            <legend className="menu-group__label">Snooze</legend>
+            {SNOOZE_OPTIONS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className="menu-row"
+                onClick={() =>
+                  fromSheet((trigger) =>
+                    sheetSnoozePresets(
+                      item,
+                      snoozeWakeAt(option, now),
+                      trigger,
+                    ),
+                  )
+                }
+              >
+                <span className="menu-row__glyph" aria-hidden="true">
+                  <TimeGlyph />
+                </span>
+                {option.label}
+              </button>
+            ))}
+          </fieldset>
+        )}
+        {(sheetUnsnooze || sheetSnoozeMenu || sheetClose) && (
+          <div className="menu-group">
+            {sheetUnsnooze && (
+              <button
+                type="button"
+                className="menu-row"
+                onClick={() =>
+                  fromSheet((trigger) => sheetUnsnooze(item, null, trigger))
+                }
+              >
+                <span className="menu-row__glyph" aria-hidden="true">
+                  <ReturnGlyph />
+                </span>
+                Unsnooze
+              </button>
+            )}
+            {sheetSnoozeMenu && (
+              <button
+                type="button"
+                className="menu-row"
+                onClick={() =>
+                  fromSheet((trigger) => sheetSnoozeMenu(item, trigger))
+                }
+              >
+                <span className="menu-row__glyph" aria-hidden="true">
+                  <TimeGlyph />
+                </span>
+                Snooze…
+              </button>
+            )}
+            {sheetClose && (
+              <button
+                type="button"
+                className="menu-row"
+                onClick={() =>
+                  fromSheet((trigger) =>
+                    onCloseChat?.(item.chatSessionId!, trigger),
+                  )
+                }
+              >
+                <span className="menu-row__glyph" aria-hidden="true">
+                  <CloseGlyph />
+                </span>
+                Close chat
+              </button>
+            )}
+          </div>
+        )}
+        {/* Destructive, so last and marked. It is the shared discard
+            button (its accessible name and its server command unchanged),
+            and like every sheet action it closes the sheet and hands the
+            host the row's own trigger to move focus from. */}
+        {sheetDiscard && (
+          <div className="menu-group">
+            <DiscardDraftButton
+              threadId={sheetDiscard.threadId}
+              title={item.title}
+              label="Discard draft"
+              className="menu-row action-overflow__row--danger"
+              closeSessionIds={draftSessionIds(item)}
+              onDiscarded={() =>
+                fromSheet((trigger) =>
+                  sheetDiscard.onDraftDiscarded(item, trigger),
+                )
+              }
+            />
+          </div>
+        )}
+      </div>
+    ) : undefined;
   const discardButton =
     discardThreadId && onDraftDiscarded ? (
       <DiscardDraftButton
@@ -717,80 +844,7 @@ export function InboxRow({
             gitLocation,
             triggerRef: detailsTriggerRef,
             onClose: () => setDetailsOpen(false),
-            actions: (
-              <>
-                {!beside('snooze') &&
-                  onSnoozeWake &&
-                  (isSnoozed ? (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        fromSheet((trigger) =>
-                          onSnoozeWake(item, null, trigger),
-                        )
-                      }
-                    >
-                      Unsnooze
-                    </Button>
-                  ) : (
-                    SNOOZE_OPTIONS.map((option) => (
-                      <Button
-                        key={option.label}
-                        size="sm"
-                        onClick={() =>
-                          fromSheet((trigger) =>
-                            onSnoozeWake(
-                              item,
-                              snoozeWakeAt(option, now),
-                              trigger,
-                            ),
-                          )
-                        }
-                      >
-                        {`Snooze: ${option.label}`}
-                      </Button>
-                    ))
-                  ))}
-                {!beside('snooze') && onSnoozeMenu && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      fromSheet((trigger) => onSnoozeMenu(item, trigger))
-                    }
-                  >
-                    Snooze…
-                  </Button>
-                )}
-                {!beside('close') && closable && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      fromSheet((trigger) =>
-                        onCloseChat?.(item.chatSessionId!, trigger),
-                      )
-                    }
-                  >
-                    Close chat
-                  </Button>
-                )}
-                {/* The sheet's discard is a labelled button, and like every
-                    sheet action it closes the sheet and hands the host the
-                    row's own trigger, so the host can move focus to the
-                    next row before this one is removed. */}
-                {!beside('discard') && discardThreadId && onDraftDiscarded && (
-                  <DiscardDraftButton
-                    threadId={discardThreadId}
-                    title={item.title}
-                    label="Discard draft"
-                    className="button button--secondary button--small"
-                    closeSessionIds={draftSessionIds(item)}
-                    onDiscarded={() =>
-                      fromSheet((trigger) => onDraftDiscarded(item, trigger))
-                    }
-                  />
-                )}
-              </>
-            ),
+            actions: sheetMenu,
           }}
         />
       )}
