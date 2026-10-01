@@ -127,7 +127,7 @@ given; the engineering reading that follows them says where it adds rules.
    holds:
    - `plugins/`, one package each;
    - `distributions/kontour-default`;
-   - `examples/acme-distribution`, which extends the default, swaps the
+   - an `acme-distribution` example (in that repository's examples folder), which extends the default, swaps the
      Coding layout and Home, and sets branding and SSO;
    - `templates/plugin-starter`.
 
@@ -634,7 +634,7 @@ slot's default filler covers a broken Home override.
 - `plugins/<name>/`: one package each, released independently and signed with
   Kontour's key;
 - `distributions/kontour-default/`: the default manifest;
-- `examples/acme-distribution/`: extends kontour-default, swaps the Coding
+- the `acme-distribution` example, in that repository's examples folder: extends kontour-default, swaps the Coding
   layout and Home, and sets branding and SSO configuration;
 - `templates/plugin-starter/`.
 
@@ -1105,7 +1105,7 @@ Proof:
 
 ### i3. kontour-default and acme manifests [security]
 
-- Publish `distributions/kontour-default` and `examples/acme-distribution`.
+- Publish `distributions/kontour-default` and the `acme-distribution` example.
 - Release signing uses whatever OPEN-4 decides.
 
 Acceptance:
