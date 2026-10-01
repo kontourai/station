@@ -1,7 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { useMemo, useSyncExternalStore } from 'react';
-import { activeChatsStore } from '../../contexts/active-chats-store';
-import { useOpenChats } from '../../contexts/open-chats-store';
+import { useMemo } from 'react';
+import { useOpenChatInbox } from '../../contexts/open-chats-store';
 import type { AgentSummary } from '../../types';
 import {
   buildHomeWorkItems,
@@ -32,28 +31,8 @@ export function useInboxWorkItems(
   sessions: OrchestrationSessionSummary[],
   resolveModelLabel?: ResolveModelLabel,
 ): HomeWorkItem[] {
-  const openChatItems = useOpenChats(agents, sessions, resolveModelLabel);
-  // The same store `useOpenChats` and `useWorkFacts` read, not the context
-  // hook over it, so a host's harness that stubs the context is unaffected.
-  const chats = useSyncExternalStore(
-    activeChatsStore.subscribe,
-    activeChatsStore.getSnapshot,
-    activeChatsStore.getSnapshot,
-  );
-  // Which execution each conversation is on now, from the same chat records
-  // the dock's derived sessions carry it on; a tie between two children of
-  // one conversation resolves to the current one.
-  const currentSessionIdByConversation = useMemo(
-    () =>
-      new Map(
-        Object.values(chats).flatMap((chat) =>
-          chat.conversationId && chat.currentSessionId
-            ? [[chat.conversationId, chat.currentSessionId] as const]
-            : [],
-        ),
-      ),
-    [chats],
-  );
+  const { items: openChatItems, currentSessionIdByConversation } =
+    useOpenChatInbox(agents, sessions, resolveModelLabel);
   return useMemo(
     () =>
       buildHomeWorkItems({

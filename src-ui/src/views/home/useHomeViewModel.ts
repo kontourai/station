@@ -77,7 +77,8 @@ function useHomeWorkData(): HomeWorkData {
   const { resolveModelLabel, isLoading: pickerCatalogLoading } =
     useCatalogModelLabel();
   // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
-  // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
+  // of its items. The inboxes list every open chat — see `useInboxWorkItems`
+  // and `useOpenWorkChats`.
   const openChatItems = useOpenWorkChats(
     agents,
     sessions.data ?? [],

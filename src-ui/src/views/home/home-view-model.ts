@@ -601,6 +601,16 @@ function mergeHomeWorkItems(
       orchestration && !orchestration.model && !orchestration.projectSlug
         ? earlier
         : undefined;
+    // The side that supplies the winning slug supplies the label. A side's
+    // "No project" is a display fallback for an absent value and must never
+    // outrank the other side's real project: the dock read "No project" for
+    // a chat bound to Project B whose session reported no slug. Only when no
+    // side knows a slug does the orchestration label stand, and that may
+    // legitimately be a delegated or ambiguous name (`sessionProjectLabel`)
+    // rather than the fallback.
+    const projectSource = [orchestration, identity, chat].find(
+      (candidate) => candidate?.projectSlug,
+    );
     combined.set(key, {
       ...display,
       id: key,
@@ -643,12 +653,9 @@ function mergeHomeWorkItems(
         orchestration?.modelLabel ??
         chat?.modelLabel ??
         display.modelLabel,
-      projectSlug:
-        orchestration?.projectSlug ??
-        identity?.projectSlug ??
-        chat?.projectSlug,
+      projectSlug: projectSource?.projectSlug,
       projectLabel:
-        (identity?.projectSlug ? identity.projectLabel : undefined) ??
+        projectSource?.projectLabel ??
         orchestration?.projectLabel ??
         chat?.projectLabel ??
         display.projectLabel,

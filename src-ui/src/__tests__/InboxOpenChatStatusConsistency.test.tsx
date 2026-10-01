@@ -24,8 +24,8 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, within } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { createRef, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FOLD_FIXTURES,
@@ -38,9 +38,10 @@ const CHAT_TAB = 'tab-1';
 const AGENTS: AgentSummary[] = [
   { slug: agentId('demo-agent'), name: 'Demo agent' },
 ];
-/** The row's accessible name is its title and project; the project is the
- *  merge's choice, so only the title is pinned here. */
-const ROW_NAME = /^Mismatch demo chat, /;
+/** The row's accessible name: its title and its project. The chat is bound
+ *  to Project B and the session reports no slug, so the merge must name the
+ *  chat's project, not the session side's "No project" fallback. */
+const ROW_NAME = 'Mismatch demo chat, Project B';
 
 /** The server's own fold of a turn that opened an approval (#3042). */
 const SESSIONS: OrchestrationSessionSummary[] = [
@@ -131,6 +132,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 }));
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
@@ -154,6 +156,31 @@ function DockInbox() {
       onOpenSession={vi.fn()}
       onCloseChat={vi.fn()}
       onOpenHistory={vi.fn()}
+      now={NOW}
+    />
+  );
+}
+
+/** The mobile task switcher the way `ChatDock.tsx` mounts it: the same
+ *  items and facts as the dock panel. It portals its sheet, so its rows are
+ *  found on the document rather than in a container. */
+function MobileSwitcher() {
+  const items = useInboxWorkItems(AGENTS, SESSIONS);
+  const workFacts = useWorkFacts(items, SESSIONS);
+  return (
+    <MobileTaskSwitcher
+      open
+      tasks={items}
+      workFacts={workFacts}
+      activeChatSessionId={null}
+      openChatSessionIds={[CHAT_TAB]}
+      visualViewportStyle={{}}
+      triggerRef={createRef<HTMLButtonElement>()}
+      onClose={vi.fn()}
+      onFocusChat={vi.fn()}
+      onOpenConversation={vi.fn()}
+      onOpenSession={vi.fn()}
+      onCloseChat={vi.fn()}
       now={NOW}
     />
   );
@@ -234,9 +261,21 @@ describe('a chat open in this tab reads the same status in the sidebar and the d
       'needsYou',
     );
     // And it is the same item: the accessible name (title and project) too.
-    expect(dockRow.getAttribute('aria-label')).toBe(
-      sidebarRow.getAttribute('aria-label'),
-    );
+    expect(dockRow.getAttribute('aria-label')).toBe(ROW_NAME);
+    expect(sidebarRow.getAttribute('aria-label')).toBe(ROW_NAME);
+    expect(
+      within(dock.container).getByText('Project B', {
+        selector: '.inbox-row__project',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('the mobile task switcher shows the same row', async () => {
+    renderWithProviders(<MobileSwitcher />);
+    const row = await screen.findByRole('button', { name: ROW_NAME });
+    const sheet = row.closest('[data-testid="inbox-row"]') as HTMLElement;
+    expect(statusTextIn(sheet)).toBe('Needs approval');
+    expect(sheet.dataset.lane).toBe('needsYou');
   });
 
   it('the sidebar row is the dock item for that chat, not a second derivation', () => {

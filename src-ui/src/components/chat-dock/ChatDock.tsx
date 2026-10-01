@@ -590,6 +590,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [inventory.data],
   );
+  // The chats open in this tab as the inbox lists them, for the context
+  // meter's membership check.
+  const openChatRows = useMemo(
+    () => openChatInboxRows(inboxItems),
+    [inboxItems],
+  );
   // The inventory's acknowledgement stamps are presentation (which finished
   // rows are "Just finished"), layered on the shared items; no status word
   // reads them.
@@ -2424,7 +2430,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 !importedSessionId &&
                 (isPaneOpen || isCollapsedDragPreview) &&
                 activeSession?.conversationId &&
-                openChatInboxRows(inboxItems).some(
+                openChatRows.some(
                   (item) => chatTaskSessionId(item) === activeSession.id,
                 ) ? (
                   <ContextPercentage

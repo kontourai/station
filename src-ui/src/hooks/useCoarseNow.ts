@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * A clock for relative-time copy ("2m", "no progress for 6m") that advances
@@ -15,18 +15,20 @@ export function useCoarseNow(
 ): number {
   const [now, setNow] = useState(() => Date.now());
   const ticking = supplied === undefined && enabled;
+  // A fresh mount's clock is already current; re-setting it a millisecond
+  // later re-rendered the host and every row under it for no visible
+  // change. Every LATER start of ticking (a sheet reopened, an injected
+  // clock withdrawn) catches up at once, however long the clock stood.
+  const freshMount = useRef(true);
   useEffect(() => {
     if (!ticking) return;
-    // Catch up a clock that went stale while not ticking (a sheet reopened
-    // minutes later) by at least one interval; a fresh mount is already
-    // current, and re-setting it a millisecond later would re-render the
-    // host and every row under it for no visible change.
-    setNow((previous) => {
-      const current = Date.now();
-      return current - previous >= intervalMs ? current : previous;
-    });
+    if (!freshMount.current) setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(timer);
   }, [ticking, intervalMs]);
+  // Declared after the ticking effect so a ticking mount sees `fresh`.
+  useEffect(() => {
+    freshMount.current = false;
+  }, []);
   return supplied ?? now;
 }

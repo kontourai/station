@@ -99,8 +99,8 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => chats,
 }));
-vi.mock('../contexts/open-chats-store', () => ({
-  useOpenChats: () =>
+vi.mock('../contexts/open-chats-store', () => {
+  const fakeOpenChats = () =>
     Object.entries(chats).map(([id, chat]: [string, any]) => ({
       id,
       chatSessionId: id,
@@ -113,16 +113,23 @@ vi.mock('../contexts/open-chats-store', () => ({
       modelLabel: chat.model ?? 'Model not reported',
       lifecycleLabel: 'Recent',
       updatedAt: 0,
-    })),
-  openChatsStore: {
-    focus: vi.fn(),
-    openCollection: vi.fn(),
-    registerNavigation: ({ openCollection }: any) => {
-      openChatsStore.openCollection = openCollection;
-      return vi.fn();
+    }));
+  return {
+    useOpenChats: fakeOpenChats,
+    useOpenChatInbox: () => ({
+      items: fakeOpenChats(),
+      currentSessionIdByConversation: new Map(),
+    }),
+    openChatsStore: {
+      focus: vi.fn(),
+      openCollection: vi.fn(),
+      registerNavigation: ({ openCollection }: any) => {
+        openChatsStore.openCollection = openCollection;
+        return vi.fn();
+      },
     },
-  },
-}));
+  };
+});
 vi.mock('../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
