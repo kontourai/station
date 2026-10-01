@@ -233,6 +233,21 @@ describe('button-cap scan', () => {
     );
   });
 
+  // Found by fault injection: a third labelled button added AFTER a row's
+  // overflow menu component passed, because the component broke the run.
+  test('an overflow menu component in the row does not split it in two', () => {
+    expect(
+      count(
+        `<Button>Test</Button><MoreMenu actions={folded} /><Button>Export</Button><Button>Save</Button>`,
+      ),
+    ).toBe(3);
+    expect(
+      count(
+        `<Button>Test</Button><MoreMenu actions={folded} /><Button>Save</Button>`,
+      ),
+    ).toBe(0);
+  });
+
   test('a menu container is where overflow goes and is never a row', () => {
     const rows = scanSource(
       'Menu.tsx',

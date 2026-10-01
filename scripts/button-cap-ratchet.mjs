@@ -300,13 +300,12 @@ function meaningfulChildren(node) {
 }
 
 // A container's children are flattened into a sequence of tokens: a string
-// for each labelled action (its label), and BREAK for any other element. A
-// row is an unbroken RUN of labelled actions — three buttons separated by
-// paragraphs, fields or sections in a long form are three places, not a row.
-// Text, icon buttons, choices, menu triggers and empty spacer elements
-// neither count nor break.
+// for each labelled action (its label), and BREAK for any other element that
+// has content of its own. A row is an unbroken RUN of labelled actions —
+// three buttons separated by paragraphs, labelled fields or sections in a
+// long form are three places, not a row. Text, icon buttons, choices, menu
+// triggers and self-closing elements neither count nor break.
 const BREAK = Symbol('break');
-const SPACER_TAGS = new Set(['div', 'span', 'hr']);
 
 function longestRun(tokens) {
   let best = [];
@@ -387,11 +386,11 @@ function tokensInChild(child) {
       }
     }
   }
-  // An empty host element (`<div className="spacer" />`, `<hr />`) is layout
-  // between two halves of ONE row, not content between two rows.
-  if (ts.isJsxSelfClosingElement(child) && SPACER_TAGS.has(tagNameOf(child))) {
-    return [];
-  }
+  // A self-closing element is not content between two rows: it is a spacer
+  // (`<div className="spacer" />`), a field or badge that sits IN the row, a
+  // modal that renders elsewhere — or the row's own overflow menu component,
+  // which must never be what hides a third labelled button beside it.
+  if (ts.isJsxSelfClosingElement(child)) return [];
   return [BREAK];
 }
 
@@ -636,9 +635,10 @@ const REMEDY = [
   '',
   `A header, toolbar or action row shows at most ${LABELLED_ACTION_CAP} labelled actions (#3045).`,
   'Keep the two that matter most as labelled buttons and move the rest into',
-  'an overflow menu: `useMenuFocus` with a `.menu-surface` of `.menu-row`',
-  'items (see src-ui/src/components/OverflowMenu.tsx). An icon-only button',
-  'with an `aria-label` does not count. Do not add the row to',
+  'an overflow menu: pass them as `actions` to `ChatDockHeaderMoreMenu`',
+  '(src-ui/src/components/chat-dock/ChatDockHeaderMoreMenu.tsx) with a',
+  '`label` naming the row, as src-ui/src/views/SkillsView.tsx does. An',
+  'icon-only button with an `aria-label` does not count. Do not add the row to',
   'scripts/button-cap-baseline.json: the baseline records what existed when',
   'the rule arrived and only goes down.',
   '',
