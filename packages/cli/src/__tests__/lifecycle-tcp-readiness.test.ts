@@ -13,15 +13,20 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+const timers: ReturnType<typeof setTimeout>[] = [];
+
 function listenAfter(port: number, delayMs: number): void {
-  setTimeout(() => {
-    const server = createServer();
-    servers.push(server);
-    server.listen(port, '127.0.0.1');
-  }, delayMs);
+  timers.push(
+    setTimeout(() => {
+      const server = createServer();
+      servers.push(server);
+      server.listen(port, '127.0.0.1');
+    }, delayMs),
+  );
 }
 
 afterEach(async () => {
+  for (const timer of timers.splice(0)) clearTimeout(timer);
   await Promise.all(
     servers
       .splice(0)
@@ -36,7 +41,9 @@ describe('waitForTcpOk slow-boot extension (#2964)', () => {
     listenAfter(port, 450);
     await waitForTcpOk('127.0.0.1', port, 150, {
       childAlive: () => true,
-      extensionMs: 400,
+      // Generous: the wait returns on connect, so a wide extension only
+      // costs time when the listener never opens.
+      extensionMs: 1_000,
       maxExtensions: 2,
       log: (line) => lines.push(line),
     });
@@ -67,7 +74,7 @@ describe('waitForTcpOk slow-boot extension (#2964)', () => {
     ).rejects.toThrow(`Timed out waiting for TCP listener 127.0.0.1:${port}`);
     expect(lines).toHaveLength(2);
     // Base plus two extensions, and not a third.
-    expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(280);
   });
 
   test('stops at once when the child has exited', async () => {

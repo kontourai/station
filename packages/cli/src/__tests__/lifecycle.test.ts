@@ -7833,6 +7833,13 @@ describe('lifecycle build + restart ergonomics', () => {
           uiPort: 5274,
         }),
       ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3243');
+      // start() hands the server child's liveness to the TCP waits (#2964):
+      // with it, the terminal port is probed again after the base deadline;
+      // without it, the first refused probe would be the only one.
+      const terminalProbes = tcpConnect.mock.calls.filter(
+        ([target]) => (target as { port?: number } | undefined)?.port === 3243,
+      );
+      expect(terminalProbes.length).toBeGreaterThan(1);
       expect(killProcessTree).toHaveBeenCalledWith(44001);
       expect(killProcessTree).toHaveBeenCalledWith(44002);
       expect(existsSync(getInstanceStatePath('terminal-not-ready'))).toBe(
