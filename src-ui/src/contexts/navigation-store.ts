@@ -65,6 +65,12 @@ const LAST_PROJECT_KEY = 'lastProject';
 export const LAST_PROJECT_LAYOUT_KEY = 'lastProjectLayout';
 const LAYOUT_TAB_MEMORY_KEY = 'station-layout-tabs';
 const NAVIGATION_INDEX_KEY = '__stationNavigationIndex';
+/**
+ * How many history entries' locations the store remembers (`entryLocations`).
+ * Enough for any Back/Forward control to answer "is the adjacent entry one of
+ * mine?"; bounded so a long session does not grow it without limit.
+ */
+const MAX_REMEMBERED_ENTRY_LOCATIONS = 64;
 
 /**
  * The navigation entry a history state belongs to. A same-URL layer pushed by
@@ -232,6 +238,16 @@ class NavigationStore {
   get traversalDepartedIndex(): number {
     return this.departedHistoryIndex;
   }
+  /**
+   * The location of each history entry this page load has observed, keyed by
+   * the store's own entry index. The browser exposes only the CURRENT entry's
+   * URL, so an in-app Back/Forward control that must know whether the
+   * adjacent entry belongs to its own view (`adjacentLocation`) can only ask
+   * the store that wrote the entries. Bounded (`MAX_REMEMBERED_ENTRY_LOCATIONS`,
+   * farthest from the current entry evicted first) and in memory only: after
+   * a reload the neighbours are unknown, which callers treat as "not mine".
+   */
+  private readonly entryLocations = new Map<number, NavigationLocation>();
   private readonly navigationGuardOwners = new Map<symbol, string>();
   /** Whether any registered guard protects `owner`'s content (it is dirty). */
   hasNavigationGuard(owner: string): boolean {
@@ -300,6 +316,9 @@ class NavigationStore {
           window.location.href,
         );
       }
+      // The first commit above ran before the index was known.
+      this.entryLocations.clear();
+      this.rememberEntryLocation();
       window.addEventListener('popstate', this.handlePopState);
       // This store owns navigation indices; `dialog-history` owns the dialog
       // layer. Installed rather than called because the dependency runs that
@@ -335,6 +354,43 @@ class NavigationStore {
     this.navigationHref = href;
     this.state = state;
     if (state.isDockMaximized) this.lastDockMaximized = true;
+    this.rememberEntryLocation();
+  }
+
+  private rememberEntryLocation() {
+    if (typeof window === 'undefined') return;
+    this.entryLocations.set(this.historyIndex, {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    });
+    while (this.entryLocations.size > MAX_REMEMBERED_ENTRY_LOCATIONS) {
+      let farthest: number | undefined;
+      for (const index of this.entryLocations.keys()) {
+        if (
+          farthest === undefined ||
+          Math.abs(index - this.historyIndex) >
+            Math.abs(farthest - this.historyIndex)
+        )
+          farthest = index;
+      }
+      if (farthest === undefined) break;
+      this.entryLocations.delete(farthest);
+    }
+  }
+
+  /** The store's index for the current history entry (monotonic per push). */
+  getHistoryIndex(): number {
+    return this.historyIndex;
+  }
+
+  /**
+   * The location of the entry `delta` steps from the current one, when this
+   * page load has observed it; null when it has not (a reload, an entry
+   * another origin wrote, or nothing there). A push truncates the forward
+   * entries, so a forward neighbour is only ever one this store still owns.
+   */
+  adjacentLocation(delta: -1 | 1): NavigationLocation | null {
+    return this.entryLocations.get(this.historyIndex + delta) ?? null;
   }
 
   /**
@@ -846,6 +902,9 @@ class NavigationStore {
     delete nextHistoryState[MAIN_PAGE_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
+    // A push discards every forward entry the browser held.
+    for (const index of [...this.entryLocations.keys()])
+      if (index > nextIndex) this.entryLocations.delete(index);
     this.commitState(this.parseUrl(), true);
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
