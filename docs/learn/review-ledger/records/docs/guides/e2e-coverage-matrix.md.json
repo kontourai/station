@@ -62,7 +62,7 @@
 
     {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
-    {"path":"tests/mobile-chat-composer.spec.ts","digest":"0baef2bd77a79850a21f02f786f96ab26fcf4824144e8fe4fbb5b345e5ef37bb","revision":"08fd77f74f71bf494dbf0ae3171da6e9622ff015"},
+    {"path":"tests/mobile-chat-composer.spec.ts","digest":"d5245899dba128ec8e86c640a31b2d80c8770c220f6e60f41716107a50917c7b","revision":"27c7d69e7c5ce3d45d0aa667f73e0690f40f5ab2"},
 
     {"path":"tests/monitoring.spec.ts","digest":"2e6c15a60934379f643596a29d2e11b277fbd76046c1a0608878f7ee4dec980e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
