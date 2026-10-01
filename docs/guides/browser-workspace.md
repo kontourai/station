@@ -134,7 +134,8 @@ decides each JavaScript dialog when it opens:
   `dialog-answered`; a prompt's typed text is not recorded. The input that
   opened the dialog settles immediately, and further clicks, keys and text are
   refused (`page-dialog-open`, said in the view) until it is answered. The
-  same card appears in the float-over-chat, with **Open in pane**. A held
+  same card appears in the float-over-chat, with **Open in pane** as an
+  icon-only control that is a 44px target on a coarse pointer. A held
   dialog is dismissed automatically when the person's control ends
   (released, lapsed or passed to an Agent) and after two minutes at most.
   While the card is in view on a visible tab it sends a keep-alive: a

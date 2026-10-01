@@ -870,7 +870,7 @@
 
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"a48c98f49fefb566c7cd8618e3798ed3697645a3fecd662897ec2340f9a9e8ae","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
 
     {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38","revision":"c82192d89121275a4b40400a4c110927beff4344"},
 
