@@ -59,30 +59,6 @@ function isLiveFailureMarker(message: ChatMessage): boolean {
     .startsWith(CHAT_ERROR_MARKER_PREFIX);
 }
 
-/**
- * The failure text a marker carries, once per distinct wording. A marker read
- * back from the conversation store holds the same sentence in `content` AND
- * in its text part, so the joined transcript text repeats the prefix
- * mid-string and never matched anything.
- */
-function failureMarkerReasons(message: ChatMessage): string[] {
-  const segments = [
-    message.content ?? '',
-    ...(message.contentParts ?? []).map((part) => part.content ?? ''),
-  ];
-  return [
-    ...new Set(
-      segments
-        .map((segment) =>
-          segment
-            .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
-            .trim(),
-        )
-        .filter((reason) => reason.length > 0),
-    ),
-  ];
-}
-
 interface ProjectedTurnFailure {
   turnId: string;
   startedAt: number;
@@ -805,11 +781,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       // A turn-identified marker owns its failure's one visible element —
       // the projected copy for that turn was stripped above.
       if (message.turnId !== undefined) return true;
-      const reasons = failureMarkerReasons(message);
-      return (
-        reasons.length === 0 ||
-        !reasons.every((reason) => projectedFailureText.includes(reason))
-      );
+      const reason = transcriptMessageText(message)
+        .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
+        .trim();
+      return reason.length === 0 || !projectedFailureText.includes(reason);
     });
     const handoffBoundaries: ChatMessage[] = window.handoffs.map((handoff) => ({
       id: `conversation-handoff:${handoff.sessionId}`,
