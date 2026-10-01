@@ -161,10 +161,10 @@ test('editing broken A stays in repair while ready B exists, then restores A and
     'value',
     'edited instructions',
   );
+  expect(screen.getByRole('button', { name: /Agent A/ })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
-  expect(inputs.edit.mock.calls[0]?.[0]).toMatchObject({
+  expect(inputs.edit.mock.calls[0]?.[0]).toEqual({
     target: 'edit-a',
-    agent: 'a',
     prompt: 'edited instructions',
   });
 });
