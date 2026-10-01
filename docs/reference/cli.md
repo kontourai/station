@@ -1389,6 +1389,12 @@ history), `GET /api/orchestration/sessions/:threadId/flow-run`
 archive#189 S4), plus a separate fleet-routing receipt read. This does not
 continuously refresh every owner projection.
 
+The approvals pane lists a `request.opened` with no `request.resolved` that
+was not [settled by its turn's abort](session-api.md#respondtorequest), by the
+same shared rule the server applies, over the events this screen holds. A
+keypress decision on an approval or permission is sent with the listed
+request's event id as `expectedRequestEventId`.
+
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent
 lifecycles, and a session commonly has one and not the other. The row states
