@@ -26,10 +26,10 @@ non-default listener block, source revision, and public signing descriptor.
 The actual operator credential stays in private `operator.json`. Do not copy
 that file or broker connector/routing credentials into a WebView or invitation.
 
-The broker owner provisions that exact scope using the existing private broker
-CLI, then supplies only the Station-owned connector/routing bundle in
-`broker-credentials.json`. The existing running broker checkout and its issuer
-secret remain untouched.
+Stage the artifacts and launch prerequisites below **before** the broker owner
+provisions this exact scope. The initial lease is only 60 seconds; do not start
+that clock before a Go build, certificate preparation, or dependency install.
+The existing running broker checkout and its issuer secret remain untouched.
 
 Build Pion from this exact source with pinned Go and cached modules into the
 owned run directory. Retain its command receipt; write private
@@ -43,7 +43,15 @@ Create private `connector.json` using the existing
 and application origins, use `nativeClient:{kind:"station-native-registry"}`,
 `turn:{source:"broker"}`, at most four peers, `maxPeerLifetimeMs:120000`, and
 private owned paths for the credentials, Pion executable, certificate and key.
-No static TURN password or Cloudflare issuer credential belongs here.
+No static TURN password or Cloudflare issuer credential belongs here. The private
+config can name the future credential path during artifact staging. Once the
+build, certificate/config checks and launch command are ready, the broker owner
+runs the existing private `init` for the exact new scope and supplies only the
+Station-owned connector/routing bundle in `broker-credentials.json`. Complete
+the final credential/scope preflight and start `serve` immediately. Confirm
+actual broker `online` registration and at least one subsequent lease renewal;
+loopback Station HTTP 200 and successful operator Project creation prove only
+those local paths.
 
 Start the owned runtime in a foreground or operator-owned service invocation:
 
@@ -57,6 +65,37 @@ enrollment opt-ins. A disposable Node socket guard permits only its listener
 block and `relay-test.kontourai.com:443`; it is a diagnostic guard, not an OS
 sandbox for Pion. The wrapper begins cleanup before its thirty-minute hard
 lifetime. Neither user port 3141 nor 3000 is allowed.
+
+## Executed startup failure: provisioned too early
+
+The preserved Linux `fresh-d8dd-20261001` run demonstrates the ordering risk:
+
+| Observation (UTC, 2026-10-01) | Result |
+| --- | --- |
+| Initial private broker provisioning, 11:28:15 | Exact scope and credential hashes committed |
+| Broker lease expiry, 11:29:15.273 | Initial 60-second window ended |
+| Pion artifact/config staging, 11:29:40.554 | Already after the lease expiry |
+| Owned runtime spawn, 11:30:39.248 | About 84 seconds after expiry |
+| Local Station/Project publisher | Well-known 200 and actual publisher success |
+| Public connector registration/withdrawal | Actual HTTP 401; lease revision 0 and no last-seen registration |
+| Explicit stop | Process group settled; broker cleanup unconfirmed (401) |
+
+Read-only comparison established that both connector/routing IDs and credential
+hashes, Station/enrollment/generation/Origin scope, and private config matched.
+The lease was not withdrawn; it had simply expired before first registration.
+An isolated diagnostic using the exact Node socket guard and a credential-free
+GET of the public broker returned 404, so the separate startup socket refusal
+was not evidence that the guard blocked the broker. No native client, application
+Pion, or public Project transfer was established by this failed run.
+
+The existing `provision` transaction returns an exact same-generation bundle
+idempotently without changing expiry. `register` and `renew` require a live lease.
+Therefore repeating private `init` cannot revive this expired generation. Keep
+its run directory and scope unchanged. The justified next attempt uses a new
+owned scope, completes artifact staging first, provisions last, and observes
+real online registration plus renewal. No lease TTL or authority rule is changed.
+The [operator guide](../../docs/guides/self-hosted-broker.md) records the explicit
+recovery proposal separately; it is not an implemented bypass.
 
 ## Fresh person and Device journey
 
