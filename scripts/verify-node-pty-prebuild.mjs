@@ -1,4 +1,16 @@
 #!/usr/bin/env node
+import { createHash } from 'node:crypto';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 /**
  * Proves a node-pty Linux prebuild actually works as a prebuild (#1245).
  *
@@ -24,19 +36,7 @@
  * Usage:
  *   node scripts/verify-node-pty-prebuild.mjs --artifact <path/to/pty.node>
  */
-import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { verifyNodePtyHandshake } from './lib/dependency-lifecycle-policy.mjs';
 import { symbolVersionFloor } from './lib/elf-symbol-floor.mjs';
 
@@ -86,7 +86,7 @@ try {
   mkdirSync(join(stagedPackage, 'prebuilds', target), { recursive: true });
   cpSync(artifact, join(stagedPackage, 'prebuilds', target, 'pty.node'));
 
-  const prebuildCheck = spawnSync(
+  const prebuildCheck = spawnSyncBounded(
     process.execPath,
     [join(stagedPackage, 'scripts', 'prebuild.js')],
     {

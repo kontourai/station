@@ -48,6 +48,7 @@ import {
   FAST_CHECKS_SLICE_RUN,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -3079,7 +3080,7 @@ function main() {
   let stdout = '';
   let status = 0;
   try {
-    stdout = execFileSync(binary, [], {
+    stdout = execFileSyncBounded(binary, [], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

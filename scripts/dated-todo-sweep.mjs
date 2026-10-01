@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, relative, sep } from 'node:path';
 // Dated TODO sweep: scan tracked sources for dated TODOs and keep ONE GitHub
 // tracking issue current. Convention: `TODO(YYYY-MM-DD):` — the date is the
 // day the comment promised a revisit.
@@ -8,15 +16,7 @@
 //
 // The scan is deterministic; no agent is involved. Validation is importable so
 // a privileged writer can check the report before publishing it.
-import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ISSUE_TITLE = 'Dated TODO sweep';
@@ -133,7 +133,7 @@ export function validateDatedTodoReport(report, { expectedDate }) {
 }
 
 function runGh(args) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
   }).trim();

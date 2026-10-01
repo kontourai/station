@@ -1,10 +1,10 @@
 #!/usr/bin/env node
+import { existsSync, readFileSync } from 'node:fs';
 // Static architecture ratchet for #809. React features may only touch the
 // Tauri SDK inside the dedicated native platform adapter. This keeps host
 // detection, commands, and events out of feature code and makes the web
 // fallback deterministic.
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
@@ -338,7 +338,7 @@ export function findTauriResourceBoundaryViolations(
 
 function listTrackedUiSources() {
   return (
-    execFileSync('git', ['ls-files', 'src-ui/src'], {
+    execFileSyncBounded('git', ['ls-files', 'src-ui/src'], {
       encoding: 'utf8',
       windowsHide: true,
     })

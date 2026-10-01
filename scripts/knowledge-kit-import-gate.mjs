@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 // Zero-tolerance regression gate for #200's K2 acceptance criterion
 // `k2-no-kit-internal-imports` (mirrors scripts/rename-inventory.mjs's /
 // scripts/unsaved-guard-gate.mjs's "ban a pattern everywhere" style, not a
@@ -49,8 +50,7 @@
 // `@kontourai` mentions elsewhere in the tree (verified empirically: this
 // repo's existing `node_modules` references, in packages/cli and
 // packages/shared, are never adjacent to `@kontourai`/`flow-agents` tokens).
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 // Matches `@kontourai/flow-agents/kits`, `/build`, or `/src` — i.e. any
@@ -131,7 +131,7 @@ const SCOPED_EXTENSIONS = [
 ];
 
 function listTrackedFiles() {
-  const out = execFileSync('git', ['ls-files', '--', ...SCOPED_DIRS], {
+  const out = execFileSyncBounded('git', ['ls-files', '--', ...SCOPED_DIRS], {
     encoding: 'utf8',
     windowsHide: true,
   });

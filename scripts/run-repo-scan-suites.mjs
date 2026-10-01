@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 /**
  * Run every whole-tree source scan (`REPO_SCAN_SUITES`, #2176) through the
  * focused runner. The list lives in the impact manifest so this runner, the
@@ -6,10 +9,7 @@
  *
  * `--list` prints the suites and runs nothing.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { DOCS_FRESHNESS_MODE_ENV } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runFocusedTests } from './run-focused-tests.mjs';
@@ -35,7 +35,7 @@ export function ensureCliBundle({
 }
 
 function buildCliBundle(root) {
-  execFileSync(process.execPath, ['esbuild.config.mjs'], {
+  execFileSyncBounded(process.execPath, ['esbuild.config.mjs'], {
     cwd: join(root, 'packages', 'cli'),
     encoding: 'utf8',
     windowsHide: true,

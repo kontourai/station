@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -8,6 +8,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, resolve, sep } from 'node:path';
+import {
+  execFileSyncBounded,
+  spawnSyncBounded,
+} from './lib/bounded-capture.mjs';
 import {
   gitLocationKeys,
   sanitizedGitEnvironment,
@@ -36,7 +40,7 @@ function fail(message) {
 }
 
 function git(root, args) {
-  return execFileSync('git', ['-C', root, ...args], {
+  return execFileSyncBounded('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: transferGitEnvironment(),
@@ -145,7 +149,7 @@ function sameProvenance(left, right, label) {
  */
 function verifyReusableBaseline(root, baseSha) {
   exactRoot(root, 'reusable baseline', baseSha);
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     process.execPath,
     ['scripts/dependency-lifecycle.mjs', 'verify'],
     {

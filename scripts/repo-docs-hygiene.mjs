@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 // Sweeps EVERY tracked markdown and .jsonl record under docs/ for the privacy
 // patterns public-docs-hygiene.mjs already defines (machine paths, tailnet/private
 // hostnames, private IPs, personal mailboxes). The public gate scans only the
@@ -11,10 +14,7 @@
 // (or newly leaking files) from joining them, and it is staleness-checked in
 // both directions: an entry whose file comes back clean (or leaves the tree)
 // must be removed, so the list only ever shrinks.
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { PRIVACY_PATTERNS } from './public-docs-hygiene.mjs';
 
@@ -22,7 +22,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GRANDFATHER_FILE = 'scripts/docs-hygiene-grandfather.json';
 
 export function trackedDocs() {
-  return execFileSync(
+  return execFileSyncBounded(
     'git',
     ['ls-files', '--', 'docs/*.md', 'docs/*.mdx', 'docs/*.jsonl'],
     {

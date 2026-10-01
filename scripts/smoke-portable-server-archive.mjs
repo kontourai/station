@@ -34,6 +34,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import {
   highestSymbolVersion,
   symbolVersionFloor,
@@ -87,7 +88,7 @@ function noteAnnouncedHome(output) {
 /** Runs the launcher once, recording any Station home it announces. */
 function spawnLauncherSync(launcher, args, env, cwd, timeout) {
   const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
+  const result = spawnSyncBounded(command, argv, {
     ...options,
     cwd,
     env,

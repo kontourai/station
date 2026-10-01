@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 // Type-laundering gate: blocks NEW `as unknown as T` and `as any` casts in
 // production surfaces. Existing sites live in the shrink-only baseline; a
 // baseline entry may be removed, never added, and a covered site that
@@ -10,10 +13,7 @@
 //
 // The scan is line-based and deliberately simple: it sees textual casts, not
 // every way to launder a type. It is a ratchet, not a type system.
-import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASELINE_PATH = 'scripts/type-laundering-baseline.json';
@@ -117,7 +117,7 @@ function readJsonFile(path) {
 
 function readUpstreamBaseline() {
   try {
-    const stdout = execFileSync(
+    const stdout = execFileSyncBounded(
       'git',
       ['show', `${UPSTREAM_BASELINE_REF}:${BASELINE_PATH}`],
       {
