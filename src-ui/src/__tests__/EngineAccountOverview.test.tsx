@@ -372,13 +372,9 @@ test.each([
         target: { value: 'EUR' },
       });
       expect(screen.getByTitle('2026-09-30: EUR 3.00')).toBeTruthy();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Tokens', exact: true }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Tokens' }));
       expect(screen.getByText('Daily tokens')).toBeTruthy();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Estimated cost', exact: true }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Estimated cost' }));
       expect(
         screen.getByText('No estimated cost observations in this period.'),
       ).toBeTruthy();

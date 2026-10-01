@@ -5213,7 +5213,9 @@ describe('CodexAdapter', () => {
           profileRef: 'applied-profile',
         };
       });
-      const processFactory = vi.fn(() => processHandle!);
+      const processFactory = vi.fn(
+        (_env?: Record<string, string>) => processHandle!,
+      );
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv,
@@ -5255,12 +5257,9 @@ describe('CodexAdapter', () => {
       expect(configured.metadata.usageAccountKey).toBe(
         usageCredentialAccountKey('codex', 'applied-profile'),
       );
-      expect(processFactory).toHaveBeenCalledWith(
-        expect.objectContaining({
-          CODEX_HOME: '/private/station/canary-profile-home',
-        }),
-        expect.any(Array),
-      );
+      expect(processFactory.mock.calls[0]?.[0]).toMatchObject({
+        CODEX_HOME: '/private/station/canary-profile-home',
+      });
       await adapter.stopAll();
     });
 

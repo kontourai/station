@@ -1002,8 +1002,8 @@ function AllowanceHistory({
                     </tr>
                   </thead>
                   <tbody>
-                    {observations
-                      .toReversed()
+                    {[...observations]
+                      .reverse()
                       .slice(0, visibleCount)
                       .map((point) => (
                         <tr key={point.fetchedAt}>
