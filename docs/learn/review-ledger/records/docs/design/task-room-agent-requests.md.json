@@ -50,9 +50,9 @@
 
     {"path":"src-server/services/projects/__tests__/task-room-work-module.test.ts","digest":"75e4c4221bf81aa72df851cc9a349d37c28b5fab8aa2262c003f8c13387781dc","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
-    {"path":"packages/sdk/src/__tests__/task-room-work.test.ts","digest":"adb561aa5523b5861bb38c67a072d0d55245ec7dd35807ba4baab85079c56a5f","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
+    {"path":"packages/sdk/src/__tests__/task-room-work.test.ts","digest":"e40b08114eae18b600fb9978744d7389a63223627f617b92f2cfe0b9574204cd","revision":"0f2037dcc2b0a3a4d9f0e086c61c3dccaf8141de"},
 
-    {"path":"src-ui/src/__tests__/TaskWorkspaceView.test.tsx","digest":"f43c5517baac12f972788ef2e703e69131f5c181f1406b3de6d36af960225a9b","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    {"path":"src-ui/src/__tests__/TaskWorkspaceView.test.tsx","digest":"311c0e0296833c711544da39f815b17c105ff57c146a9a7b195c6d5025936efe","revision":"0f2037dcc2b0a3a4d9f0e086c61c3dccaf8141de"},
 
     {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"b6ab400718d1a406b143dbf1bbb002fc0ac06387971a6cf352cfebe9d0633317","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
 
