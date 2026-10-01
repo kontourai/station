@@ -40,7 +40,7 @@
 
     {"path":"src-server/domain/config-loader-storage.ts","digest":"aa4d54454644b06580d0b819dab783c84990d946b07513580c7063bb35c68e01","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/domain/config-loader.ts","digest":"7643f85e5eb7ea030ae941a962ce94a9c9c76fa18e707c82259f2634b3fece14","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/domain/config-loader.ts","digest":"b70738e0cecbc0f060089377ed78ef9dfbaf13224739e910bcacad3a19307217","revision":"26b51492632d81e2d767e2f4729d214b514403ac"},
 
     {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
