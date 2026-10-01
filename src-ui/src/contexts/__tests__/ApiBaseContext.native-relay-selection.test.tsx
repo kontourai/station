@@ -66,13 +66,18 @@ vi.mock('../../platform/native/nativeAccountSessionBridge', () => ({
     let retired = false;
     const listeners = new Set<() => void>();
     return {
-      current: () => (input.signal.aborted ? null : current),
+      current: () =>
+        !input.signal.aborted &&
+        current &&
+        Date.parse(current.expiresAt) > Date.now()
+          ? current
+          : null,
       subscribe: (listener: () => void) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
       async login(credentials: { username: string }) {
-        if (retired) throw new Error('native_account_scope_retired');
+        if (retired || current) throw new Error('native_account_scope_retired');
         current = Object.freeze({
           instanceId: credentials.username,
           generation: 1,
@@ -213,6 +218,7 @@ afterEach(() => {
   captureNativeRelayConnectionOwner(ownerKey)?.dispose();
   setStationHealthRouteResolver();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 function mounted() {
   return renderHook(
@@ -353,3 +359,34 @@ it.each(['confirmed', 'unknown'] as const)(
     await listProjectViews(origin, { requestScope: result.current.scope });
   },
 );
+
+it('retires an expired account owner so the same approved Device can sign in again', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  const { result } = mounted();
+  await act(async () => {
+    await result.current.account.login({
+      username: 'alice',
+      password: 'test-password',
+    });
+  });
+  const before = result.current.scope;
+  expect(before?.isCurrent()).toBe(true);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_001);
+  });
+  expect(before?.isCurrent()).toBe(false);
+  expect(result.current.scope).toBeUndefined();
+  await act(async () => {
+    await result.current.account.login({
+      username: 'alice',
+      password: 'test-password',
+    });
+  });
+  expect(result.current.scope?.isCurrent()).toBe(true);
+  expect(
+    boundary.repository?.captureNativeRequestBinding(
+      'station-profile:relay',
+      origin,
+    )?.bindingId,
+  ).toBe(bindingId);
+});
