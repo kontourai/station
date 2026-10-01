@@ -605,7 +605,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id this server accepts"
-            hint="Used when an agent names no model of its own, and it is the model Test Connection sends its one minimal chat request to — the only check a server that offers no model list can pass."
+            hint="Used when an agent does not choose its own model, and for testing a service that cannot list models."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </>
@@ -836,10 +836,9 @@ export function ProviderConnectionForm({
             id="provider-test-disclosure"
             className="provider-detail__disclosure"
           >
-            Asks this connection for its model list. If it offers none, Station
-            sends one minimal chat request (max_tokens 1) using the default
-            model — the only way to prove it can run work. Some providers bill
-            for that request.
+            Checks this service's model list. If it cannot list models, Station
+            sends a small test prompt using the default model. Your provider may
+            charge for that request.
           </p>
           {testResult && (
             <div

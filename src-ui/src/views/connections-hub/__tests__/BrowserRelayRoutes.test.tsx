@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
 
+import '@testing-library/jest-dom/vitest';
+
 import {
   act,
   fireEvent,
@@ -103,6 +105,7 @@ function fillAndAccept(turn?: {
   username?: string;
   credential?: string;
 }) {
+  fireEvent.click(screen.getByText('Advanced: broker setup'));
   fireEvent.change(screen.getByLabelText('Station name'), {
     target: { value: 'Home Station' },
   });
@@ -202,6 +205,18 @@ describe('browser broker route acceptance', () => {
     ).toBeTruthy();
     expect(mocks.redeem).not.toHaveBeenCalled();
     expect(mocks.approveTrust).not.toHaveBeenCalled();
+    expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
+  });
+
+  it('keeps broker setup out of the ordinary view until explicitly expanded', () => {
+    render(<BrowserRelayRoutes />);
+    expect(screen.getByLabelText('Station name')).not.toBeVisible();
+    fireEvent.click(screen.getByText('Advanced: broker setup'));
+    expect(screen.getByRole('textbox', { name: 'Station name' })).toBeVisible();
+    expect(
+      screen.getByRole('textbox', { name: 'Station application address' }),
+    ).toBeVisible();
+    expect(mocks.redeem).not.toHaveBeenCalled();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
   });
 
