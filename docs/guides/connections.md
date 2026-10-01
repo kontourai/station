@@ -97,15 +97,52 @@ establishes Device configuration only, not an account session or membership.
 See [native enrollment](../design/native-relay-enrollment.md) for the separate
 Station, routing, Device and account owners and current qualification limits.
 
-A configured native route can now be projected into saved Station selection.
+Configured routes are not selected automatically. A configured row says
+**Device configured · not selected** until you choose **Use this Station**. A
+selected configured row distinguishes **account sign-in required** from
+**account session active** using the current native account scope; neither
+status says the workspace is connected. Sign in with the Station account only
+after selecting its route. Account sign-in does not approve a Device or create
+Project membership.
+
+The selected route's **Accept account invitation** action requires that account
+session. Station returns a typed Project membership receipt with the exact
+Project scope and `grantsDeviceAccess: false`; the UI invalidates the Station
+Project-list cache. Device approval remains separate. **Sign out of this
+Station account** asks Station to revoke the account session and reports
+revocation only after the host validates Station's typed confirmation. If the
+response is lost or invalid, the UI reports the remote outcome as unconfirmed.
+**Forget account session on this device** only clears the host-held local
+continuation; it does not revoke the remote Station session.
+
 The ordinary native transport obtains fresh ICE and verifies Station proof for
 each encrypted application peer. Its current resource surface is health,
 authority and member Project reads; operator Workspace features and writes
-remain unsupported. Account continuation is a separate step from Device
-activation. No direct HTTP fallback is used. The CLI continues to refuse these
-routes as defaults or explicit `--station`/`STATION_TARGET` targets.
-The integrated source and mocked-IPC checks do not establish installed Nightly
-or physical iOS acceptance.
+remain unsupported. The member Project view is available only when Station
+returns its member-safe Project shape. It lists published shared work; opening
+an item reads its current publication, bounded human-message history and
+published document through the member-read SDK. History and document content
+stay hidden while publication is being rechecked, after it is unshared, or when
+the current request scope is unavailable. The member detail view does not load
+operator layouts, Git status, knowledge, or workspace panes; an operator
+Project response does not mount those Project detail panels. Member Project
+icons that point to URLs are omitted so the native relay view does not issue
+raw image requests outside the broker.
+
+The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
+[Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
+[member Project view](../../src-ui/src/views/project-page/MemberProjectPage.tsx).
+Its captured-scope list and detail reads live in
+[ProjectsContext](../../src-ui/src/contexts/ProjectsContext.tsx) and use the
+[shared-task SDK readers](../../packages/sdk/src/client/project-shared-tasks.ts).
+
+No direct HTTP fallback is used. The CLI continues to refuse these routes as
+defaults or explicit `--station`/`STATION_TARGET` targets. Focused source and
+mounted UI checks do not establish installed Nightly or physical iOS
+acceptance. The mounted journey checks live in the
+[relay-route tests](../../src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx)
+and [Project/member view tests](../../src-ui/src/__tests__/ProjectPage.test.tsx)
+and [member reader tests](../../src-ui/src/views/project-page/__tests__/MemberProjectPage.test.tsx).
 
 Already redeemed native routing grants have a separate foreground maintenance
 path. While the native renderer is visible, it observes every saved broker

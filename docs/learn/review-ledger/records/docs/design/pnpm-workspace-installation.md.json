@@ -16,9 +16,9 @@
 
     {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"package.json","digest":"cc56c4930c0b6b4e80c14edea0df616e7479f33007fd109971f6f77cfcbb357e","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
+    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
 
-    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 

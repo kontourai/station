@@ -24,7 +24,7 @@
 
     {"path":"packages/contracts/src/attention.ts","digest":"f24a25ff663776f1cbaf5b59d305a2074328b37e024a57786ad15cd33e9430ca","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
-    {"path":"packages/contracts/src/child-work.ts","digest":"e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/child-work.ts","digest":"329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35","revision":"9ed8cdffa9ba991c5bcd085b9a53c4368798fac2"},
 
     {"path":"packages/contracts/src/conversation-pull-request-links.ts","digest":"f49fc639b21741343e1a4fce0ea30314cec0e8b36c1ac34a8dd69fff4ab0777c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
