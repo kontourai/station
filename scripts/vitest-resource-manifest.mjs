@@ -1094,6 +1094,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
   'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #3045: same shape — loads small fixtures and the real ActionRow into one
+  // Chromium to prove the rendered action count rejects a row of three and
+  // follows the cascade rather than the markup.
+  'src-ui/src/__tests__/visible-action-count.rendered.test.tsx',
   // #2112: same shape again — launches a real Chromium to hit-test each header
   // and dock menu's dismiss backdrop against the chrome control that opens it.
   // jsdom returns nothing useful from `elementFromPoint`, and a computed-style

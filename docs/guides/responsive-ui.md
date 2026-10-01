@@ -122,25 +122,44 @@ not a universal accessibility, keyboard or device certificate.
 
 A header, toolbar or action row shows at most two labelled actions. Further
 actions go into an overflow menu; an icon-only button with an accessible name
-does not count. The [button-cap ratchet](../../scripts/button-cap-ratchet.mjs)
-(`npm run button-cap:ratchet`) parses every UI `.tsx` file and fails when a JSX
-element holds an unbroken run of more than two labelled `Button` or `button`
-siblings that [its baseline](../../scripts/button-cap-baseline.json) does not
-record, or when a recorded row gains one. Rows are identified by file,
-enclosing component and element, never by line. A recorded row that shrinks
-only prints a note; `--record` lowers the baseline and refuses to raise it or
-add a row. `--report` lists every row over the cap with its labels.
+does not count.
+
+Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
+takes a `primary` action, a `secondary` action and `overflow` items, so there
+is no slot for a third labelled button. `overflowLabel` names the `⋯` trigger
+and its menu. An overflow item marked `tone: 'danger'` is painted as
+destructive and moved last, behind a separator; a disabled item can carry a
+`disabledReason`, shown under its label. The row's buttons and the trigger
+have an always-on 44px hit area, so a row needs no page-local responsive rule
+for its touch targets. The menu is
+[`ActionOverflowMenu`](../../src-ui/src/components/ActionOverflowMenu.tsx),
+which the dock header's More menu also uses.
+
+The [button-cap ratchet](../../scripts/button-cap-ratchet.mjs)
+(`npm run button-cap:ratchet`) holds the same line for rows written without
+`ActionRow`. It parses every UI `.tsx` file and fails when a JSX element holds
+an unbroken run of more than two labelled `Button` or `button` siblings that
+[its baseline](../../scripts/button-cap-baseline.json) does not record, or
+when a recorded row gains one. Rows are identified by file, enclosing
+component and element, never by line. A recorded row that shrinks only prints
+a note; `--record` lowers the baseline and refuses to raise it or add a row.
+`--report` lists every row over the cap with its labels. A baseline entry
+with a `reason` is one the scan misreads; one without is a row still to fold.
 
 The scan reads source structure, not layout. It does not see actions assembled
 from an array or split across components, anchors styled as buttons, whether
 siblings render in one line, or how a header collapses as width shrinks.
-Tabs, menu items and pressed or selected toggles are choices and are not
-counted; `&&` branches all count, so mutually exclusive ones overcount. Check
-the rendered row for anything the scan cannot see.
+Tabs, menu items, pressed or selected toggles and title-and-description cards
+are not counted. `&&` branches all count unless their guards are textually
+exclusive (`x` and `!x`, or one expression compared with different literals),
+so branches that are exclusive for any other reason overcount.
 
-To fold actions, pass them to
-[the More menu](../../src-ui/src/components/chat-dock/ChatDockHeaderMoreMenu.tsx)
-with a `label` naming the row, as the Skills detail header does.
+For what the scan cannot see, a Playwright spec can count what a page shows
+with [`actionRowsOverCap`](../../tests/helpers/visible-action-count.ts): the
+visible buttons displaying a word, per `[role="toolbar"]`, `header` or
+`.action-row`, at the viewport the spec set. Its
+[own test](../../src-ui/src/__tests__/visible-action-count.rendered.test.tsx)
+proves the count in Chromium; no product journey calls it yet.
 
 For changed behavior, use the existing owner tests and an affected caller
 journey. Check initial focus, Tab traversal, Escape/backdrop, history behavior,
