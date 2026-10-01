@@ -44,6 +44,8 @@ export interface NativeAccountExchangePreparation {
 /** Structured native operations; no JWS input or authority claims cross this seam. */
 export interface NativeApplicationSessionProofProvider {
   readonly kind: 'station-native-host-proof-provider/v1';
+  /** Actual native preparation deadline; never extended by a later account exchange. */
+  readonly contextExpiresAtMs?: number;
   readonly publicKey: ApplicationSessionPublicKey;
   prepareExchange(input: {
     readonly challenge: NativeAccountOpaqueChallenge;
@@ -633,6 +635,7 @@ function asCredentials(value: Readonly<Record<string, unknown>>) {
  * provider/Device/Project authority is implemented here.
  */
 export class NativeApplicationSessionClient {
+  private readonly contextExpiresAtMs: number | undefined;
   private readonly consumedChallenges = new Set<string>();
   private readonly issuedJti = new Set<string>();
   constructor(
@@ -643,9 +646,25 @@ export class NativeApplicationSessionClient {
       | NativeApplicationSessionProofProvider,
   ) {
     parsePublicKey(key.publicKey);
+    this.contextExpiresAtMs = isHostProofProvider(key)
+      ? key.contextExpiresAtMs
+      : undefined;
+    this.assertContextDeadline();
+  }
+
+  private assertContextDeadline() {
+    const deadline = this.contextExpiresAtMs;
+    if (
+      deadline !== undefined &&
+      (!Number.isSafeInteger(deadline) ||
+        deadline <= Date.now() ||
+        !Number.isFinite(new Date(deadline).getTime()))
+    )
+      throw new Error('Native host account context expired.');
   }
 
   private current() {
+    this.assertContextDeadline();
     const snapshot = this.trust();
     if (snapshot?.kind !== 'station-native')
       throw new Error('Native application session trust is unavailable.');
@@ -807,11 +826,26 @@ export class NativeApplicationSessionClient {
       body,
     });
     this.assertSameTrust(trust);
-    return parseContinuation(
+    const accepted = parseContinuation(
       response,
       trust,
       await applicationSessionKeyThumbprint(this.key.publicKey),
     );
+    const deadline = this.contextExpiresAtMs;
+    if (deadline === undefined) return accepted;
+    if (
+      !Number.isSafeInteger(deadline) ||
+      deadline <= Date.now() ||
+      !Number.isFinite(new Date(deadline).getTime())
+    )
+      throw new Error('Native host account context expired.');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      ...accepted,
+      expiresAt: new Date(
+        Math.min(Date.parse(accepted.expiresAt), deadline),
+      ).toISOString(),
+    });
   }
 
   /**

@@ -1518,6 +1518,16 @@ const continuation = await accounts.exchange({ username, password });
 const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/projects' });
 ```
 
+The native preparation RPC returns `contextExpiresAtMs`, the host's actual
+preparation deadline clipped to its captured routing grant. The production
+bridge requires this closed DTO field and passes it to the proof provider.
+The SDK captures that optional provider deadline once, clamps the continuation
+and public account expiry to the earlier host/server deadline, and refuses
+later read or revoke preparation at that deadline. A delayed sign-in never
+extends the host context. Compatibility SDK signers without a native context
+deadline retain their existing behavior; production native RPCs always supply
+it. Removing local account scope does not remove Device custody.
+
 The host proof provider may implement `prepareInvitationAcceptance({continuation, token})`.
 `NativeApplicationSessionClient.prepareInvitationAcceptance(continuation, token)`
 validates the exact token-only body and host account signature, rejects reused

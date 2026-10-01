@@ -49,6 +49,12 @@ const preparedSchema = z
   .object({
     version: z.literal('station-native-account-operation/v1'),
     accountContextHandle: opaque,
+    contextExpiresAtMs: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .refine((value) => Number.isFinite(new Date(value).getTime())),
     publicKey,
     target,
     deviceId: z.string().uuid(),
@@ -206,6 +212,7 @@ export async function createNativeAccountSessionBridge(input: {
     application = input.application,
     signal = input.signal,
     invoke = input.invoke ?? defaultInvoker;
+  let contextExpiresAtMs: number | undefined;
   let retired = false,
     generation = 0,
     busy = false;
@@ -215,11 +222,19 @@ export async function createNativeAccountSessionBridge(input: {
   const instanceId = randomCorrelationId();
   const assertCurrent = async () => {
     signal.throwIfAborted();
-    if (retired || !application.isCurrent())
+    if (
+      retired ||
+      !application.isCurrent() ||
+      (contextExpiresAtMs !== undefined && Date.now() >= contextExpiresAtMs)
+    )
       throw new Error('native_account_scope_retired');
     await application.assertCurrent();
     signal.throwIfAborted();
-    if (retired || !application.isCurrent())
+    if (
+      retired ||
+      !application.isCurrent() ||
+      (contextExpiresAtMs !== undefined && Date.now() >= contextExpiresAtMs)
+    )
       throw new Error('native_account_scope_retired');
   };
   await assertCurrent();
@@ -229,6 +244,7 @@ export async function createNativeAccountSessionBridge(input: {
       expectedProfileRevision: revision,
     }),
   );
+  contextExpiresAtMs = prepared.contextExpiresAtMs;
   await assertCurrent();
   if (
     prepared.target.audience !== application.origin ||
@@ -245,6 +261,7 @@ export async function createNativeAccountSessionBridge(input: {
   });
   const host: NativeApplicationSessionProofProvider = {
     kind: 'station-native-host-proof-provider/v1',
+    contextExpiresAtMs: prepared.contextExpiresAtMs,
     publicKey: prepared.publicKey,
     async prepareExchange(args) {
       await assertCurrent();

@@ -243,6 +243,43 @@ function invitationHostProvider(
 }
 
 describe('structured native account proof provider', () => {
+  test('host context deadline is frozen before signing and clamps a later server session without extending reads or revoke', async () => {
+    const started = Date.now();
+    let hostDeadline = started + 900000;
+    const h = await fixture((key, trust) => {
+      const host = invitationHostProvider(key, trust);
+      return {
+        ...host,
+        get contextExpiresAtMs() {
+          return hostDeadline;
+        },
+        async prepareExchange(input) {
+          const result = await host.prepareExchange(input);
+          hostDeadline = started + 1800000;
+          return result;
+        },
+      };
+    });
+    h.setContinuationOverride({
+      expiresAt: new Date(started + 960000).toISOString(),
+    });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(started + 60000);
+    try {
+      const accepted = await h.client.exchange(credentials);
+      expect(Date.parse(accepted.expiresAt)).toBe(started + 900000);
+      clock.mockReturnValue(started + 900000);
+      await expect(
+        h.client.headers(accepted, { method: 'GET', path: '/api/projects' }),
+      ).rejects.toThrow('context expired');
+      await expect(h.client.prepareRevocation(accepted)).rejects.toThrow(
+        'context expired',
+      );
+    } finally {
+      clock.mockRestore();
+      h.fetchSpy.mockRestore();
+    }
+  });
+
   test('fixed native revoke preparation validates exact endpoint proof and trust after host signing without widening reads', async () => {
     let wrongPath = true;
     let change: () => void = () => {};
