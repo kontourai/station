@@ -18,7 +18,7 @@
 
     {"path":"scripts/__tests__/native-fresh-relay-fixture.test.ts","digest":"2d5cb796a4bc7c0421954d5a427618b169c08f15842e70ab7c7bfea7e9ae6195","revision":"a4941debef212ed3d0bff88049ad06051be8f80b"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"349ef0c6b430baf11cd088e27e4df05cd19c3e19c83c892266574a4a3bd0cbab","revision":"a4941debef212ed3d0bff88049ad06051be8f80b"}
+    {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"}
   ],
 
   "checks": [
