@@ -80,6 +80,12 @@ export interface OperateApproval {
   requestType: string;
   /** The `request.opened` event this row was folded from. */
   requestEventId?: string;
+  /**
+   * The request carries a questionnaire. A keypress decision on it is sent
+   * unbound, so the server's "inspect the question first" guard still
+   * applies.
+   */
+  isQuestion?: true;
   title: string;
   toolName?: string;
   toolInput?: unknown;

@@ -4475,7 +4475,7 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    test('#3071: requests raised while the interrupt is in flight — the turn’s own is settled before turn.aborted, a subagent’s stays answerable', async () => {
+    test('#3071: requests raised while the interrupt is in flight are settled before turn.aborted, a subagent’s included', async () => {
       const threadId = 'thread-stop-gap';
       const controlled = createControlledMockQuery();
       let finishInterrupt!: () => void;
@@ -4530,31 +4530,44 @@ describe('ClaudeAdapter', () => {
         outcome: 'cancelled',
       });
 
-      // The turn's own request is denied and resolved BEFORE the abort...
+      // Asserted, not awaited: a request left pending would otherwise show
+      // up only as this test timing out.
+      const settledNow = (permission: Promise<unknown>) =>
+        Promise.race([
+          permission.then(() => 'settled'),
+          new Promise((resolve) => setTimeout(() => resolve('pending'), 50)),
+        ]);
+      expect(await settledNow(mainPermission)).toBe('settled');
+      expect(await settledNow(subagentPermission)).toBe('settled');
       await expect(mainPermission).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(subagentPermission).resolves.toMatchObject({
+        behavior: 'deny',
+      });
+      // Both are resolved BEFORE the abort, so nothing is open when every
+      // transcript reader retires the turn's approvals on it.
       const afterGap = [
         (await iterator.next()).value,
         (await iterator.next()).value,
+        (await iterator.next()).value,
       ];
-      expect(afterGap).toMatchObject([
-        {
-          method: 'request.resolved',
-          requestId: mainOpened.requestId,
-          status: 'cancelled',
-        },
-        { method: 'turn.aborted', turnId: turn.turnId },
+      expect(afterGap.map((event) => event.method)).toEqual([
+        'request.resolved',
+        'request.resolved',
+        'turn.aborted',
       ]);
-      // ...and the subagent's is still pending, names no turn (so no reader
-      // settles it on that abort), and takes an answer.
+      expect(
+        afterGap
+          .slice(0, 2)
+          .map((event) => event.requestId)
+          .sort(),
+      ).toEqual([mainOpened.requestId, subagentOpened.requestId].sort());
+      expect(afterGap[2]).toMatchObject({ turnId: turn.turnId });
+      // The subagent's request named no turn; the adapter, not the abort,
+      // is what closed it.
       expect(subagentOpened.turnId).toBeUndefined();
-      await adapter.respondToRequest(
-        threadId,
-        subagentOpened.requestId,
-        'accept',
-      );
-      await expect(subagentPermission).resolves.toMatchObject({
-        behavior: 'allow',
-      });
+      await expect(
+        adapter.respondToRequest(threadId, subagentOpened.requestId, 'accept'),
+      ).rejects.toThrow('Unknown Claude permission request');
       await adapter.stopSession(threadId);
     });
 

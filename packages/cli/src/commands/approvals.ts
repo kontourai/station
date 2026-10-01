@@ -463,29 +463,44 @@ async function runApprovalsList(
  * re-opened, or settled since.
  *
  * Nothing is vetoed here: a request this lookup does not find (already
- * closed, an input question, a session that could not be read) is posted
- * without the binding and the server decides, as before.
+ * closed, an input request, a question, a session that could not be read)
+ * is posted without the binding and the server decides, as before.
  */
 async function expectedRequestEvent(
   apiBase: string,
   threadId: string,
   requestId: string,
 ): Promise<{ expectedRequestEventId?: string }> {
-  let pending: PendingApproval[];
+  let detail: OrchestrationSessionDetail;
   try {
-    pending = await listPendingForThread(apiBase, threadId);
+    detail = await getOrchestrationSession<OrchestrationSessionDetail>(
+      apiBase,
+      threadId,
+    );
   } catch {
     return {};
   }
-  const request = pending.find(
+  const events = detail.events ?? [];
+  const request = derivePendingApprovals(threadId, events, detail.session).find(
     (candidate) =>
       candidate.requestId === requestId &&
       (candidate.requestType === 'approval' ||
         candidate.requestType === 'permission'),
   );
-  return request?.requestEventId
-    ? { expectedRequestEventId: request.requestEventId }
-    : {};
+  if (!request?.requestEventId) return {};
+  // A question (a request carrying a questionnaire) is never bound here.
+  // The server refuses an unbound answer to one, so that nothing closes a
+  // question its asker has not been shown; binding it automatically would
+  // turn `decline` and `cancel` into a way around that.
+  const opened = events.find(
+    (event) => event.eventId === request.requestEventId,
+  );
+  const payload =
+    opened?.payload && typeof opened.payload === 'object'
+      ? (opened.payload as Record<string, unknown>)
+      : undefined;
+  if (payload?.questionnaire !== undefined) return {};
+  return { expectedRequestEventId: request.requestEventId };
 }
 
 async function runApprovalsRespond(

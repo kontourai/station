@@ -157,11 +157,12 @@ function recoveryRequestResolved(
 export function recoveryAbortAndBanner(
   turnId: string,
   second: number,
+  boundaryId = BOUNDARY_ID,
 ): CanonicalRuntimeEvent[] {
   return [
     {
       ...base,
-      eventId: `turn-interrupted-abort:${BOUNDARY_ID}`,
+      eventId: `turn-interrupted-abort:${boundaryId}`,
       createdAt: at(second),
       method: 'turn.aborted',
       turnId,
@@ -170,7 +171,7 @@ export function recoveryAbortAndBanner(
     },
     {
       ...base,
-      eventId: `turn-interrupted:${BOUNDARY_ID}`,
+      eventId: `turn-interrupted:${boundaryId}`,
       createdAt: at(second),
       method: 'session.state-changed',
       sessionId: SETTLEMENT_THREAD_ID,
@@ -181,7 +182,7 @@ export function recoveryAbortAndBanner(
       transitionReason: 'runtime_exit',
       transitionSource: 'system_recovery',
       interruptedTurnBoundary: {
-        boundaryId: BOUNDARY_ID,
+        boundaryId,
         priorState: 'accepted',
         providerTurnId: turnId,
         ownerId: 'owner-1',

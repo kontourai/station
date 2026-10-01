@@ -1928,17 +1928,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // still-pending receipt either.
     await record.query.interrupt();
     // #3071: the SDK can ask for one more permission while that interrupt is
-    // in flight. A request the turn itself raised in the gap can never run
-    // its call either, so it is settled before the abort like the ones
-    // above; left pending it would be an approval on offer for a turn that
-    // is gone. A SUBAGENT's request raised in the gap is left alone: a
-    // background subagent can survive this stop and is then genuinely
-    // waiting on it (it is withdrawn when that subagent ends, and it names
-    // no turn, so the abort below does not settle it for any reader).
-    for (const [requestId, pending] of [...record.pendingRequests]) {
-      if (pending.agentId !== undefined) continue;
-      this.cancelPendingRequest(record, threadId, requestId);
-    }
+    // in flight. Whatever was raised in the gap is settled before the abort
+    // by the same rule as above, a subagent's included: every reader of the
+    // transcript retires every approval on `turn.aborted`
+    // (`approvalRetiredBy`), so a request left pending here would be live
+    // with no surface showing it. A background subagent that survives the
+    // stop loses that one call and asks again.
+    this.cancelPendingRequests(record, threadId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,

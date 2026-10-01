@@ -201,6 +201,32 @@ describe('operate/state: keypress -> intent (table-driven)', () => {
     });
   });
 
+  it('#3071: a decision on a question is not bound to its event, so the server still refuses to close it unseen', () => {
+    let state = initialState({ focusedThreadId: 'thread-1' });
+    state = reduce(state, {
+      type: 'event',
+      event: {
+        threadId: 'thread-1',
+        provider: 'codex',
+        eventId: 'evt-question',
+        method: 'request.opened',
+        requestId: 'req-question',
+        requestType: 'approval',
+        title: 'The agent has questions for you',
+        payload: { questionnaire: { questions: [] } },
+      },
+    });
+    expect(
+      reduce(state, { type: 'keypress', key: key({ sequence: 'd' }) })
+        .pendingIntent,
+    ).toEqual({
+      type: 'respond-approval',
+      threadId: 'thread-1',
+      requestId: 'req-question',
+      decision: 'decline',
+    });
+  });
+
   it("'s' emits respond-approval(acceptForSession)", () => {
     const state = reduce(stateWithTwoSessionsAndApprovals(), {
       type: 'keypress',

@@ -5642,12 +5642,45 @@ export class EventStore {
    * Two reads, mirroring the fold's two arms, and none at all for a thread
    * with no unresolved request (the ordinary case):
    * - every recovery abort after the earliest unresolved request, with the
-   *   `turn.started` of the turn it names;
+   *   `turn.started` of the turn it names and the first different turn's
+   *   start between the two (the upper bound of what that abort settles);
    * - for each unresolved request that names a turn, that turn's terminals
    *   after the request.
    * Bounded by the thread's unresolved requests and its recovery aborts,
    * never by history length.
    */
+  /**
+   * #3071: the first `turn.started` of a DIFFERENT turn after `afterSequence`
+   * (and before `beforeSequence`, when given). It is the upper bound of the
+   * window a recovery abort settles: a request opened once another turn has
+   * started is not the dead turn's.
+   */
+  firstOtherTurnStartedAfter(
+    threadId: string,
+    turnId: string,
+    afterSequence: number,
+    beforeSequence?: number,
+  ): PersistedRuntimeEvent | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND sequence > ?
+           AND (? IS NULL OR sequence < ?)
+           AND (turn_id IS NULL OR turn_id != ?)
+         ORDER BY sequence ASC
+         LIMIT 1`,
+      )
+      .get(
+        threadId,
+        afterSequence,
+        beforeSequence ?? null,
+        beforeSequence ?? null,
+        turnId,
+      );
+    return row ? this.mapEventRow(row) : undefined;
+  }
+
   private listRequestSettlementFacts(
     threadId: string,
     unresolvedRequests: readonly PersistedRuntimeEvent[],
@@ -5687,7 +5720,18 @@ export class EventStore {
     for (const abort of recoveryAborts) {
       if (!abort.turnId) continue;
       const row = startOfTurn.get(threadId, abort.turnId, abort.sequence);
-      if (row) facts.push(this.mapEventRow(row));
+      if (!row) continue;
+      const started = this.mapEventRow(row);
+      facts.push(started);
+      // The window's upper bound: without it the bounded fold would settle
+      // a request a later turn opened before this abort landed.
+      const superseding = this.firstOtherTurnStartedAfter(
+        threadId,
+        abort.turnId,
+        started.sequence,
+        abort.sequence,
+      );
+      if (superseding) facts.push(superseding);
     }
     for (const request of unresolvedRequests) {
       if (!request.turnId) continue;

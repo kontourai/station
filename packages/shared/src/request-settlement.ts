@@ -22,8 +22,13 @@
  *    whether or not the request names a turn. Position is the only link most
  *    adapters leave (they stamp no turn id on a request), and here position
  *    is enough: a background subagent, a retry after an error, the turn
- *    itself — none of them outlived the process. A request opened before the
- *    turn started is not touched.
+ *    itself — none of them outlived the process. The window is the dead
+ *    turn's own: it opens at its `turn.started` and closes at the first
+ *    `turn.started` of a different turn. A request opened before the window
+ *    is not touched, and one opened after it belongs to that later turn,
+ *    which may be alive (recovery can run after a newer turn has started).
+ *    A recovery abort for a turn with no `turn.started` has no window; like
+ *    any abort it still settles the requests that name the turn (arm 2).
  *
  * 2. A LIVE abort — any other `turn.aborted`, or the
  *    `turn.completed(finishReason: 'cancelled')` an engine publishes to
@@ -73,12 +78,21 @@ export function requestIdsSettledByTurnAbort(
   const settled = new Set<string>();
   const open = new Map<string, { position: number; turnId?: string }>();
   const startPositionByTurnId = new Map<string, number>();
+  // Where a different turn first started after this one did.
+  const supersededPositionByTurnId = new Map<string, number>();
+  let latestStartedTurnId: string | undefined;
   events.forEach((event, position) => {
     const turnId = typeof event.turnId === 'string' ? event.turnId : undefined;
     const requestId =
       typeof event.requestId === 'string' ? event.requestId : undefined;
     if (event.method === 'turn.started') {
-      if (turnId) startPositionByTurnId.set(turnId, position);
+      if (!turnId) return;
+      if (latestStartedTurnId !== undefined && latestStartedTurnId !== turnId)
+        if (!supersededPositionByTurnId.has(latestStartedTurnId))
+          supersededPositionByTurnId.set(latestStartedTurnId, position);
+      startPositionByTurnId.set(turnId, position);
+      supersededPositionByTurnId.delete(turnId);
+      latestStartedTurnId = turnId;
     } else if (event.method === 'request.opened') {
       if (!requestId) return;
       // A re-opened request is a new ask; its earlier settlement is history.
@@ -89,24 +103,26 @@ export function requestIdsSettledByTurnAbort(
       open.delete(requestId);
       settled.delete(requestId);
     } else if (
-      event.method === 'turn.aborted' &&
-      event.recoveryTerminal === true
-    ) {
-      const startedAt = turnId ? startPositionByTurnId.get(turnId) : undefined;
-      if (startedAt === undefined) return;
-      for (const [openRequestId, request] of open) {
-        if (request.position < startedAt) continue;
-        open.delete(openRequestId);
-        settled.add(openRequestId);
-      }
-    } else if (
       turnId &&
       (event.method === 'turn.aborted' ||
         (event.method === 'turn.completed' &&
           event.finishReason === 'cancelled'))
     ) {
+      // Arm 2, for every abort including a recovery one: by name.
+      // Arm 1, a recovery abort only: by position, inside the dead turn's
+      // own window.
+      const startedAt =
+        event.method === 'turn.aborted' && event.recoveryTerminal === true
+          ? startPositionByTurnId.get(turnId)
+          : undefined;
+      const supersededAt = supersededPositionByTurnId.get(turnId);
       for (const [openRequestId, request] of open) {
-        if (request.turnId !== turnId) continue;
+        const named = request.turnId === turnId;
+        const inWindow =
+          startedAt !== undefined &&
+          request.position > startedAt &&
+          (supersededAt === undefined || request.position < supersededAt);
+        if (!named && !inWindow) continue;
         open.delete(openRequestId);
         settled.add(openRequestId);
       }

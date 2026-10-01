@@ -30,12 +30,13 @@ interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here
-   * deliberately — the six operations this module needs
+   * deliberately — the seven operations this module needs
    * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
-   * `listEventsForTurn`, `listUnresolvedRequestEvents`, `hasEventId`,
+   * `listEventsForTurn`, `listUnresolvedRequestEvents`,
+   * `firstOtherTurnStartedAfter`, `hasEventId`,
    * `resolveInterruptedTurnBoundary`) are
    * one transactional unit over the boundary table and event log, and
-   * fanning them into six unrelated arrows would hide that. No Map crosses (T13).
+   * fanning them into seven unrelated arrows would hide that. No Map crosses (T13).
    */
   eventStore: () => EventStore | undefined;
   /**
@@ -228,7 +229,8 @@ export class InterruptedTurnRecovery {
    * publishes its `request.resolved` (`expired`,
    * `turn-interrupted-request:<boundaryId>:<requestId>`) before the abort,
    * for every request still unresolved that was opened since the turn
-   * started. Requests opened before it are left alone.
+   * started and before any other turn started. Requests outside that window
+   * are left alone.
    *
    * IDEMPOTENCE (review round 1, H1): the write→delete gap between a
    * banner landing and `resolveInterruptedTurnBoundary` closing its row is
@@ -278,51 +280,61 @@ export class InterruptedTurnRecovery {
         // the dead turn's own turn.started necessarily predates its
         // boundary claim. Inside the per-record try like everything else:
         // a throwing resolve must strand this row, not the whole loop.
-        const latestTurnStarted = eventStore.latestEventByMethod(
-          record.threadId,
-          'turn.started',
-        );
-        // #2324: a turn the engine opened on its own records its row just
-        // BEFORE its `turn.started` is persisted. If that start is not the
-        // thread's latest turn start, the process died before it landed (or
-        // the thread moved on): there is no turn to close or banner.
-        const providerTurn = isProviderTurnBoundary(record);
-        // #2324 review L4: a send the engine accepted but never started (it
-        // was queued behind a turn the engine opened itself when the process
-        // died) has no `turn.started` of its own — the start is published
-        // only when the engine starts it. A newer start on the thread is then
-        // not "the thread moved on past it": that send still needs its
-        // terminal and banner, or it vanishes without a trace. Disclosed:
-        // if a NEWER turn is genuinely running by the time this runs (the
-        // same window the moved-on check above exists for), that send's
-        // banner still lands and forces needs_input over it — accepted
-        // because the alternative loses the user's message silently, and
-        // consume runs once, at boot, before live traffic normally arrives.
-        const ownTurnStarted =
-          record.providerTurnId !== undefined &&
-          eventStore
-            .listEventsForTurn(record.threadId, record.providerTurnId, 64)
-            .some((event) => event.payload.method === 'turn.started');
-        if (
-          (providerTurn &&
-            latestTurnStarted?.turnId !== record.providerTurnId) ||
-          (!providerTurn &&
-            (record.providerTurnId === undefined || ownTurnStarted) &&
-            latestTurnStarted?.turnId !== undefined &&
-            latestTurnStarted.turnId !== record.providerTurnId &&
-            latestTurnStarted.createdAt > record.createdAt)
-        ) {
-          this.deps.logger.warn(
-            'Interrupted-turn boundary is stale; the thread moved on — resolving without recovery events',
-            { threadId: record.threadId, boundaryId: record.boundaryId },
+        // #3071: asked twice — here, and again after the FileMemory await
+        // below. A turn can start during that await, and everything after
+        // it (the request resolutions, the abort, the banner) must be
+        // decided against the thread as it is then, not as it was.
+        const boundaryState = record.state;
+        const movedOn = (): boolean => {
+          const latestTurnStarted = eventStore.latestEventByMethod(
+            record.threadId,
+            'turn.started',
           );
-          eventStore.resolveInterruptedTurnBoundary({
-            boundaryId: record.boundaryId,
-            ownerId: record.ownerId,
-            state: record.state,
-          });
-          continue;
-        }
+          // #2324: a turn the engine opened on its own records its row just
+          // BEFORE its `turn.started` is persisted. If that start is not the
+          // thread's latest turn start, the process died before it landed (or
+          // the thread moved on): there is no turn to close or banner.
+          const providerTurn = isProviderTurnBoundary(record);
+          // #2324 review L4: a send the engine accepted but never started (it
+          // was queued behind a turn the engine opened itself when the process
+          // died) has no `turn.started` of its own — the start is published
+          // only when the engine starts it. A newer start on the thread is then
+          // not "the thread moved on past it": that send still needs its
+          // terminal and banner, or it vanishes without a trace. Disclosed:
+          // if a NEWER turn is genuinely running by the time this runs (the
+          // same window the moved-on check above exists for), that send's
+          // banner still lands and forces needs_input over it — accepted
+          // because the alternative loses the user's message silently, and
+          // consume runs once, at boot, before live traffic normally arrives.
+          const ownTurnStarted =
+            record.providerTurnId !== undefined &&
+            eventStore
+              .listEventsForTurn(record.threadId, record.providerTurnId, 64)
+              .some((event) => event.payload.method === 'turn.started');
+          if (
+            (providerTurn &&
+              latestTurnStarted?.turnId !== record.providerTurnId) ||
+            (!providerTurn &&
+              (record.providerTurnId === undefined || ownTurnStarted) &&
+              latestTurnStarted?.turnId !== undefined &&
+              latestTurnStarted.turnId !== record.providerTurnId &&
+              latestTurnStarted.createdAt > record.createdAt)
+          ) {
+            this.deps.logger.warn(
+              'Interrupted-turn boundary is stale; the thread moved on — resolving without recovery events',
+              { threadId: record.threadId, boundaryId: record.boundaryId },
+            );
+            eventStore.resolveInterruptedTurnBoundary({
+              boundaryId: record.boundaryId,
+              ownerId: record.ownerId,
+              state: boundaryState,
+            });
+            return true;
+          }
+          return false;
+        };
+        if (movedOn()) continue;
+        const providerTurn = isProviderTurnBoundary(record);
         const startEvent = eventStore.latestEventByMethod(
           record.threadId,
           'session.started',
@@ -386,6 +398,10 @@ export class InterruptedTurnRecovery {
         // the fold's final word — the turn reads closed AND the session
         // reads needs_input. Skipped when the boundary never accepted a
         // turn (`record.providerTurnId` absent): there is no turn to close.
+        // #3071: the occupancy check above awaited. If a newer turn started
+        // meanwhile, this boundary is stale now even though it was not when
+        // first asked; publish nothing, exactly as the first check would.
+        if (movedOn()) continue;
         const providerTurnId = record.providerTurnId;
         if (providerTurnId !== undefined) {
           // #3071: settle what the dead turn was waiting on, BEFORE the
@@ -416,12 +432,29 @@ export class InterruptedTurnRecovery {
           const turnStartSequence = eventStore
             .listEventsForTurn(record.threadId, providerTurnId, 64)
             .find((event) => event.payload.method === 'turn.started')?.sequence;
+          // Bounded above by the next turn of a different id: a request
+          // opened after another turn started belongs to work that is alive
+          // (the L4 case above can reach here with a newer turn running),
+          // and its adapter is waiting on it. Same bound as the fold's.
+          const supersededAtSequence =
+            turnStartSequence === undefined
+              ? undefined
+              : eventStore.firstOtherTurnStartedAfter(
+                  record.threadId,
+                  providerTurnId,
+                  turnStartSequence,
+                )?.sequence;
           const interruptedRequests =
             turnStartSequence === undefined
               ? []
               : eventStore
                   .listUnresolvedRequestEvents(record.threadId)
-                  .filter((event) => event.sequence > turnStartSequence);
+                  .filter(
+                    (event) =>
+                      event.sequence > turnStartSequence &&
+                      (supersededAtSequence === undefined ||
+                        event.sequence < supersededAtSequence),
+                  );
           let requestSettlementDeclined = false;
           for (const opened of interruptedRequests) {
             const request = opened.payload;

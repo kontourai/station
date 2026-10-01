@@ -38,7 +38,8 @@ come from `@kontourai/station-contracts/harness-questions`.
 given one session's events in order, the ids of the requests their turn's
 abort settled without a `request.resolved`. A recovery abort
 (`turn.aborted` with `recoveryTerminal`) settles every unresolved request
-opened since that turn started; any other abort, or a
+opened since that turn started and before a different turn started; any
+abort, or a
 `turn.completed` with `finishReason: 'cancelled'`, settles only the requests
 whose `request.opened` names that turn. It reads five fields and accepts
 untyped event records. The server's session summary, attention feed and

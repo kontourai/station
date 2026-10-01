@@ -1784,6 +1784,7 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
   function serviceFor(
     eventStore: EventStore,
     adapters: ProviderAdapterShape[] = [],
+    memoryAdapters = new Map<string, InterruptedTurnMemoryAdapter>(),
   ) {
     return new OrchestrationService({
       adapterRegistry: {
@@ -1795,7 +1796,7 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       eventBus: new EventBus(),
       eventStore,
       logger,
-      memoryAdapters: new Map(),
+      memoryAdapters,
     });
   }
 
@@ -2240,6 +2241,118 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       hasActiveTurn: false,
     });
     expect(rebooted.takeInterruptedTurnBoundaries()).toEqual([]);
+  });
+
+  /**
+   * A turn that starts, and opens a request, while consume() is awaiting the
+   * FileMemory occupancy read: the window between the moved-on check and the
+   * read of the unresolved set.
+   */
+  function crashWithTurnStartingDuringOccupancyRead(
+    threadId: string,
+    laterTurnCreatedAt: string,
+  ) {
+    const eventStore = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+      duringTurn: [approval(threadId, 'req-dead')],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const memory = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    let interleaved = false;
+    memory.getMessages.mockImplementation(async () => {
+      if (!interleaved) {
+        interleaved = true;
+        eventStore.appendEvent({
+          eventId: `turn-started-2:${threadId}`,
+          provider: 'acp',
+          threadId,
+          turnId: 'turn-2',
+          createdAt: laterTurnCreatedAt,
+          method: 'turn.started',
+          prompt: 'carry on',
+        } as CanonicalRuntimeEvent);
+        eventStore.appendEvent(
+          approval(threadId, 'req-live', { createdAt: laterTurnCreatedAt }),
+        );
+      }
+      return [];
+    });
+    const { adapter, respondToRequest } = holdingAdapter(threadId);
+    const service = serviceFor(
+      eventStore,
+      [adapter],
+      new Map([['demo-agent', memory]]),
+    );
+    return { eventStore, service, respondToRequest };
+  }
+
+  test('a turn that starts during the occupancy read makes the boundary stale: nothing is published and its request stays answerable', async () => {
+    const threadId = 'thread-raced-by-new-turn';
+    const { eventStore, service, respondToRequest } =
+      crashWithTurnStartingDuringOccupancyRead(
+        threadId,
+        '2026-08-16T00:05:00.000Z',
+      );
+
+    await (service as any).interruptedTurns.consume();
+
+    const methods = eventStore
+      .listEvents(threadId)
+      .map((event) => event.payload.method);
+    expect(methods).not.toContain('request.resolved');
+    expect(methods).not.toContain('turn.aborted');
+    expect(methods).not.toContain('session.state-changed');
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId,
+      requestId: 'req-live',
+      decision: 'accept',
+    });
+    expect(respondToRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test('when recovery still proceeds past a newer turn, it expires only what the dead turn opened before that turn started', async () => {
+    // The newer start carries a timestamp older than the boundary claim, so
+    // the moved-on check (which compares creation times) lets recovery run.
+    // The window bound is then the only thing between recovery and a request
+    // a live adapter is waiting on.
+    const threadId = 'thread-raced-recovery-proceeds';
+    const { eventStore, service, respondToRequest } =
+      crashWithTurnStartingDuringOccupancyRead(
+        threadId,
+        '2026-08-15T00:00:00.000Z',
+      );
+
+    await (service as any).interruptedTurns.consume();
+
+    expect(
+      eventStore
+        .listEvents(threadId)
+        .filter((event) => event.payload.method === 'request.resolved')
+        .map((event) => event.payload.requestId),
+    ).toEqual(['req-dead']);
+    expect(
+      eventStore
+        .listUnresolvedRequestEvents(threadId)
+        .map((event) => event.payload.requestId),
+    ).toEqual(['req-live']);
+    expect(service.readRequestOutcome(threadId, 'req-live')).toMatchObject({
+      state: 'open',
+    });
+    await service.dispatch({
+      type: 'respondToRequest',
+      threadId,
+      requestId: 'req-live',
+      decision: 'accept',
+    });
+    expect(respondToRequest).toHaveBeenCalledTimes(1);
   });
 
   test('a log from before the fix (abort and banner, request never resolved) reads settled without a write', async () => {

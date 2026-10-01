@@ -1911,11 +1911,14 @@ function deriveAgentRunStatus(options: {
         // `completedAt`, i.e. sorted as the freshest active work.
         //
         // The synthetic resolution that motivated this is GONE (archive#1745
-        // projects the orphan cancellation at read time and writes nothing),
-        // so the only producers left are real adapters. The arm stays, and
-        // is not dead: `sessionState` is a general field on the event and an
-        // adapter that stamps a resting state must be honoured for exactly
-        // the reason above. The `?? 'running'` fallback covers a resolution
+        // projects the orphan cancellation at read time and writes nothing).
+        // The producers left are real adapters and, since #3071,
+        // interrupted-turn recovery, which resolves a dead turn's requests
+        // `expired` BEFORE it aborts the turn and stamps no state: its
+        // resolution folds to `running` here and the abort and banner that
+        // follow it decide. The arm stays, and is not dead: `sessionState`
+        // is a general field on the event and a producer that stamps a
+        // resting state must be honoured for exactly the reason above. The `?? 'running'` fallback covers a resolution
         // that stamps nothing, which is the ordinary live case.
         //
         // Read here rather than compensated for at the producer:

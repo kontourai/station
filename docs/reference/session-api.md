@@ -219,8 +219,8 @@ aborted. Two aborts count, and they settle different sets
   [Interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
   records `request.resolved` with status `expired` and `response.reason:
   'turn-interrupted'` for every request still open that was opened since the
-  dead turn started, then aborts the turn (`turn.aborted` with
-  `recoveryTerminal`). The session reads `needs_input` with transition reason
+  dead turn started and before any other turn started, then aborts the turn
+  (`turn.aborted` with `recoveryTerminal`). The session reads `needs_input` with transition reason
   `runtime_exit`, not `review_pending`. A log written before recovery recorded
   those resolutions holds the abort with the request still open; every server
   read treats that request as settled all the same.
@@ -229,11 +229,12 @@ aborted. Two aborts count, and they settle different sets
   confirm a stop. This settles only a request whose `request.opened` names
   that turn in `turnId`. Claude Code stamps it on the main thread's requests,
   and Muse and Station's own engine on their turn's; a request with no
-  `turnId` (Codex and ACP today, and a Claude Code subagent's) is left open,
-  because work that outlives the turn may still be waiting on it. Separately, the adapters read for this
-  change (Claude Code, Codex, ACP) resolve the requests they hold `cancelled`
-  when they stop a turn or session; that publication, not this rule, is what
-  normally closes them.
+  `turnId` (Codex and ACP today, and a subagent's on Claude Code or Muse) is
+  left open by this rule, because work that outlives the turn may still be
+  waiting on it. Separately, the adapters read for this change (Claude Code,
+  Codex, ACP) resolve the requests they hold `cancelled` when they stop a
+  turn or session, a subagent's included on Claude Code; that publication,
+  not this rule, is what normally closes them.
 
 A turn that fails without being aborted (`runtime.error` or `session.exited`
 alone) settles nothing, and neither does an ordinary `turn.completed` or a

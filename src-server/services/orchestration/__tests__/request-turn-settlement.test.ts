@@ -420,12 +420,28 @@ describe('#3071: requests a recovery abort settles (the process died)', () => {
     });
   });
 
-  test('a recovery abort for a turn with no turn.started settles nothing', () => {
+  test('a recovery abort for a turn with no turn.started has no window: it settles only a request that names the turn', () => {
     const events = [
-      requestOpened('req-1', 2),
+      requestOpened('req-unattributed', 2),
+      turnRequest('req-named', 'turn-never-started', 3),
       ...recoveryAbortAndBanner('turn-never-started', 6),
     ];
-    expect(settled(events)).toEqual([]);
+    expect(settled(events)).toEqual(['req-named']);
+    expect(open(events)).toEqual(['req-unattributed']);
+  });
+
+  test('a request a later turn opened before the dead turn’s recovery abort landed is that later turn’s, and stays open', () => {
+    // Recovery runs after boot; a newer turn can already be running and
+    // waiting on an approval when the old turn's abort is written.
+    const events = [
+      turnStarted('turn-1', 1),
+      requestOpened('req-dead', 2),
+      turnStarted('turn-2', 3),
+      requestOpened('req-live', 4),
+      ...recoveryAbortAndBanner('turn-1', 6),
+    ];
+    expect(settled(events)).toEqual(['req-dead']);
+    expect(open(events)).toEqual(['req-live']);
   });
 });
 
@@ -442,6 +458,7 @@ describe('#3071: the bounded projection settles exactly what the full log does',
     for (const store of stores.splice(0)) store.close();
   });
 
+  const OTHER_THREAD_ID = 'thread-other';
   const later = [turnStarted('turn-9', 20), requestOpened('req-live', 21)];
   const sequences: Record<string, CanonicalRuntimeEvent[]> = {
     'interrupted, resolved by recovery':
@@ -506,6 +523,66 @@ describe('#3071: the bounded projection settles exactly what the full log does',
       turnAborted('turn-1', 3),
       ...later,
     ],
+    // The dead turn is neither the thread's first turn nor its latest, so
+    // neither the first-prompted-turn slot nor the latest-turn slot carries
+    // its `turn.started`.
+    'dead turn is neither first nor latest': [
+      turnStarted('turn-1', 1),
+      turnCompleted('turn-1', 2, 'stop'),
+      turnStarted('turn-2', 3),
+      requestOpened('req-1', 4),
+      ...recoveryAbortAndBanner('turn-2', 6),
+      turnStarted('turn-3', 8),
+    ],
+    'two recovery aborts on one thread': [
+      turnStarted('turn-1', 1),
+      turnCompleted('turn-1', 2, 'stop'),
+      turnStarted('turn-2', 3),
+      requestOpened('req-a', 4),
+      ...recoveryAbortAndBanner('turn-2', 6, 'boundary-a'),
+      requestOpened('req-at-rest', 7),
+      turnStarted('turn-3', 8),
+      requestOpened('req-b', 9),
+      ...recoveryAbortAndBanner('turn-3', 11, 'boundary-b'),
+      turnStarted('turn-4', 12),
+      requestOpened('req-live', 13),
+    ],
+    'resolved, re-opened, then the turn dies': [
+      turnStarted('turn-1', 1),
+      turnCompleted('turn-1', 2, 'stop'),
+      turnStarted('turn-2', 3),
+      requestOpened('req-1', 4),
+      requestResolved('req-1', 5),
+      requestOpened('req-1', 6),
+      ...recoveryAbortAndBanner('turn-2', 8),
+      turnStarted('turn-3', 9),
+    ],
+    'settled, then re-opened under a later turn': [
+      turnStarted('turn-1', 1),
+      turnCompleted('turn-1', 2, 'stop'),
+      turnStarted('turn-2', 3),
+      requestOpened('req-1', 4),
+      ...recoveryAbortAndBanner('turn-2', 6),
+      turnStarted('turn-3', 8),
+      requestOpened('req-1', 9),
+    ],
+    'a later turn opened a request before the dead turn’s abort landed': [
+      turnStarted('turn-0', 0),
+      turnCompleted('turn-0', 0, 'stop'),
+      turnStarted('turn-1', 1),
+      requestOpened('req-dead', 2),
+      turnStarted('turn-2', 3),
+      requestOpened('req-live', 4),
+      ...recoveryAbortAndBanner('turn-1', 6),
+    ],
+    'recovery abort with no start, request names the turn': [
+      turnStarted('turn-1', 1),
+      turnCompleted('turn-1', 2, 'stop'),
+      requestOpened('req-unattributed', 3),
+      turnRequest('req-named', 'turn-never-started', 4),
+      ...recoveryAbortAndBanner('turn-never-started', 6),
+      turnStarted('turn-3', 8),
+    ],
     'error mid-turn, request, recovery abort, later turn': [
       turnStarted('turn-1', 1),
       runtimeError(2, { retriable: true }),
@@ -520,7 +597,33 @@ describe('#3071: the bounded projection settles exactly what the full log does',
       join(makeTempDir('request-settlement-'), 'orchestration.sqlite'),
     );
     stores.push(store);
-    for (const event of events) store.appendEvent(event);
+    // A second thread's events interleaved with this one's: every read the
+    // rule depends on must stay inside its own thread.
+    for (const event of events) {
+      store.appendEvent(event);
+      store.appendEvent({
+        ...event,
+        threadId: OTHER_THREAD_ID,
+        eventId: `other:${event.eventId}`,
+        ...('sessionId' in event ? { sessionId: OTHER_THREAD_ID } : {}),
+        // The other thread's requests are all answered, so a leak of its
+        // turn facts or of this thread's would change one of the answers.
+        ...(event.method === 'request.opened' ||
+        event.method === 'request.resolved'
+          ? { requestId: `other:${event.requestId}` }
+          : {}),
+      } as CanonicalRuntimeEvent);
+    }
+    expect(
+      settled(store.listEvents(OTHER_THREAD_ID).map((event) => event.payload)),
+    ).toEqual(settled(events).map((id) => `other:${id}`));
+    expect(
+      settled(
+        store
+          .listSessionProjectionEvents(OTHER_THREAD_ID)
+          .map((event) => event.payload),
+      ),
+    ).toEqual(settled(events).map((id) => `other:${id}`));
 
     const full = store
       .listEvents(SETTLEMENT_THREAD_ID)
@@ -590,5 +693,30 @@ describe('#3071: the bounded projection settles exactly what the full log does',
     expect(
       settled(sequences['pre-fix orphan, then a later turn running']!),
     ).toEqual(['req-1']);
+    expect(
+      settled(sequences['dead turn is neither first nor latest']!),
+    ).toEqual(['req-1']);
+    expect(settled(sequences['two recovery aborts on one thread']!)).toEqual([
+      'req-a',
+      'req-b',
+    ]);
+    expect(
+      settled(sequences['resolved, re-opened, then the turn dies']!),
+    ).toEqual(['req-1']);
+    expect(
+      settled(sequences['settled, then re-opened under a later turn']!),
+    ).toEqual([]);
+    expect(
+      settled(
+        sequences[
+          'a later turn opened a request before the dead turn’s abort landed'
+        ]!,
+      ),
+    ).toEqual(['req-dead']);
+    expect(
+      settled(
+        sequences['recovery abort with no start, request names the turn']!,
+      ),
+    ).toEqual(['req-named']);
   });
 });

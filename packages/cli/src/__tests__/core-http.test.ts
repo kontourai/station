@@ -2363,6 +2363,10 @@ describe('CLI core commands over HTTP', () => {
         },
         opened('req-live', 'evt-open-live'),
         opened('req-server-closed', 'evt-open-server-closed'),
+        {
+          ...opened('req-question', 'evt-open-question'),
+          payload: { questionnaire: { questions: [] } },
+        },
       ];
     }
 
@@ -2383,18 +2387,22 @@ describe('CLI core commands over HTTP', () => {
 
     test('list drops a request settled by its turn’s abort, by the shared fold alone', async () => {
       seedSettledThread();
-      expect(await listed()).toEqual(['req-live', 'req-server-closed']);
+      expect(await listed()).toEqual([
+        'req-live',
+        'req-question',
+        'req-server-closed',
+      ]);
     });
 
     test('list also drops a request the server no longer lists as open', async () => {
-      seedSettledThread({ openRequestIds: ['req-live'] });
-      expect(await listed()).toEqual(['req-live']);
+      seedSettledThread({ openRequestIds: ['req-live', 'req-question'] });
+      expect(await listed()).toEqual(['req-live', 'req-question']);
     });
 
-    test('respond binds the decision to the listed request event; a settled request is posted unbound for the server to refuse', async () => {
+    test('respond binds the decision to the listed request event; a settled request and a question are posted unbound for the server to decide', async () => {
       const { runCli } = await import('../cli.js');
-      seedSettledThread({ openRequestIds: ['req-live'] });
-      for (const requestId of ['req-live', 'req-dead']) {
+      seedSettledThread({ openRequestIds: ['req-live', 'req-question'] });
+      for (const requestId of ['req-live', 'req-dead', 'req-question']) {
         await runCli([
           'approvals',
           'respond',
@@ -2421,6 +2429,13 @@ describe('CLI core commands over HTTP', () => {
           type: 'respondToRequest',
           threadId: 'settled-thread',
           requestId: 'req-dead',
+          decision: 'accept',
+        },
+        // A question is listed, and still posted unbound.
+        {
+          type: 'respondToRequest',
+          threadId: 'settled-thread',
+          requestId: 'req-question',
           decision: 'accept',
         },
       ]);
