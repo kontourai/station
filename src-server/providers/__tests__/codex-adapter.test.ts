@@ -5506,7 +5506,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         }),
       } as any);
@@ -5527,7 +5527,7 @@ describe('CodexAdapter', () => {
       await withTimeout(discoveryPromise, 'listModelCatalog');
 
       expect(processFactory).toHaveBeenCalledWith({
-        CODEX_HOME: '/Users/brian/.codex_vibe',
+        CODEX_HOME: '/Users/me/.codex_vibe',
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
       });
     });
@@ -5541,7 +5541,7 @@ describe('CodexAdapter', () => {
           CODEX_HOME: '/station/app-homes/codex',
         }),
         getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         }),
       } as any);
@@ -5583,7 +5583,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getConnectionEnv: async () => ({
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
         }),
       } as any);
 
@@ -5609,7 +5609,7 @@ describe('CodexAdapter', () => {
       await withTimeout(startSessionPromise, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/Users/brian/.codex_vibe' },
+        { CODEX_HOME: '/Users/me/.codex_vibe' },
         undefined,
       );
       await adapter.stopAll();
@@ -5623,7 +5623,7 @@ describe('CodexAdapter', () => {
         getAppHomeEnv: async () => ({ CODEX_HOME: '/profiles/a' }),
         getConnectionEnv: async () => ({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
-          CODEX_HOME: '/Users/brian/.codex_vibe',
+          CODEX_HOME: '/Users/me/.codex_vibe',
         }),
       } as any);
 

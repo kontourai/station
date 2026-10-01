@@ -57,7 +57,7 @@ describe('expandTilde', () => {
   });
 
   test('leaves absolute paths unchanged', () => {
-    expect(expandTilde('/Users/brian/dev')).toBe('/Users/brian/dev');
+    expect(expandTilde('/Users/me/dev')).toBe('/Users/me/dev');
   });
 
   test('leaves relative paths (no leading ~) unchanged', () => {

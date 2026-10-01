@@ -34,13 +34,13 @@
 
     {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"a4794be13e631aa2539945c1d84903d89e990383dd51ed58d68dab0fcaa421fb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"68c77fe71eb4696a9d4acf5e143cc1d74098c5546e9bf3735f73ed18f9b9de14","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
+    {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"782b94981bc53ab58b8ada06351569af5e6ce0ab60e63e064b17e718cedb46da","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"01fc6c85608b0c256edbdb93f007f406fbe08aedc79069a0e6171c98ae3f40d9","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"17a538da39b90664eaa87ce67651d93266b093ac0be0e103a0bed0380b0d47bf","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"14b4baff35cb6c07405e97469216982662618507a013f536aa0d34dbe31dd967","revision":"0368881dcab562767c4127b5bee0ebb6356449f3"},
 
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348","revision":"5709d8b4ca722477dd326b7806c12ce7bdd6bbf3"},
+    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -126,7 +126,7 @@
 
     {"path":"src-ui/src/workspace-panes/RegionEmptyChooser.tsx","digest":"b5db980bb3d0f19a6896f1fda56901525b0fae2af762a5ac0a920ff6d87f8b9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"6bebef5e8aaae046ffc950b9539faf38e131164ea1242f9d2e9216678e12119d","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
+    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"7aeaffe0ca0c199563ebe34302646533558871d69914b365810ced54e74f4ed4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx","digest":"8560e54fa82f7309fd7189b7f99919bdfc828e79455d3f378aeef269cf3ceb9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -144,7 +144,7 @@
 
     {"path":"src-ui/src/workspace-panes/useDockProject.ts","digest":"c23ae2160b25f249c27c5e83f6d3df8f0994de980b8d84b4d225ca6db9394260","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/workspacePaneHostController.ts","digest":"3644477e8152a8ec2971d816c4ba2d6edfd63d24b9a61b2b448bdce1a584d341","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostController.ts","digest":"780ff40c25751cfa7fa6ced177370f5d672a3addb2a28e29983c9a3d6e495c8d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/workspacePaneHostStorage.ts","digest":"7e4eff4612599876fd997d9e1f7ce33e644ace58c11b8bf9c8306801695f2d26","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

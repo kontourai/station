@@ -1897,7 +1897,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
-      cwd: '/Users/brian',
+      cwd: '/Users/me',
     }));
 
     await expect(

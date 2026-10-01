@@ -353,12 +353,38 @@
   background: var(--bg-hover-panel);
 }
 
+/*
+ * Selected: a tint of the accent with an accent bar, and the row's ordinary
+ * text colours.
+ *
+ * This used to be a SOLID accent fill painted with --text-on-accent. The row
+ * only owns its name and subtitle, though: everything a consumer renders
+ * inside them (status words, meta spans, chips, "Also driven from another
+ * origin") keeps its own colour, and those colours are chosen for the panel,
+ * not the accent. Measured with axe in the running Activity list: 1.17:1 in
+ * light, 1.38:1 in dark. A tint keeps every descendant on (nearly) the
+ * surface it was designed for, so the fix holds for content this component
+ * never sees.
+ *
+ * The one colour a tint does push below AA is the faintest text step
+ * (--text-muted is --k-text-faint, 4.98:1 on the light panel from
+ * @kontourai/ui 1.17, 4.52:1 before), so the selected
+ * row re-points that token at --text-secondary for its whole subtree —
+ * descendants that read --text-muted follow without knowing they are selected.
+ * Selection is also shown by shape (the inset bar), not colour alone.
+ */
 .split-pane__item--selected {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  /* --text-on-accent, not --bg-primary: dark mode's --bg-primary is
-     near-black, which read as dark-on-accent text (station#3305). */
-  color: var(--text-on-accent);
+  --text-muted: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+  color: var(--text-primary);
+}
+
+/* `:hover` outranks the bare selected class; keep the row reading as
+   selected under the pointer instead of dropping to the hover grey. */
+.split-pane__item--selected:hover {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
 }
 
 .split-pane__item-icon {
@@ -371,10 +397,6 @@
   border-radius: 5px;
   background: var(--bg-elevated);
   font-size: 0.85rem;
-}
-
-.split-pane__item--selected .split-pane__item-icon {
-  background: color-mix(in srgb, var(--text-on-accent) 24%, transparent);
 }
 
 .split-pane__item-text {
@@ -438,11 +460,6 @@
   min-width: 0;
   max-width: 100%;
   white-space: normal;
-}
-
-.split-pane__item--selected .split-pane__item-name,
-.split-pane__item--selected .split-pane__item-subtitle {
-  color: var(--text-on-accent);
 }
 
 .split-pane__item-subtitle {
@@ -757,6 +774,78 @@
 
   .split-pane__add-btn {
     min-height: 42px;
+  }
+}
+
+/*
+ * Touch targets on a coarse pointer (a tablet at desktop width included; the
+ * narrow-viewport branch above already sizes rows). Desktop density — the
+ * 24px collapse control, compact trailing chips, the mono group toggle — is
+ * deliberate and a fine pointer keeps it.
+ *
+ * Where this component owns the box, the box itself grows: rows, the group
+ * header (its toggle is transparent text, so stretching it is invisible) and
+ * the collapse control.
+ *
+ * Trailing and group-summary controls are the caller's markup, and a hit area
+ * that grows past a control's drawn box takes taps meant for whatever is drawn
+ * there. An earlier version grew it both ways: a tap just inside a row's right
+ * edge landed on the row's Discard draft, and a tap on one run-board cluster's
+ * edge landed on the next. So:
+ * - WIDTH is real: a narrow control is laid out at least 44px wide, so its
+ *   neighbours are moved, not overlapped;
+ * - HEIGHT grows through an invisible ::after, vertically only, centred in a
+ *   line that is itself 44px tall, so it never reaches another row;
+ * - the trailing slot does not wrap here: two controls stacked in one 44px
+ *   row would each extend over the other.
+ *
+ * Measured limit: a control that clips its own overflow (the project pill's
+ * ellipsis) clips its ::after too, so it keeps its drawn height. None of
+ * today's consumers draws an ::after or positions these controls; one that
+ * starts to must reconcile it with this rule.
+ */
+@media (pointer: coarse) {
+  .split-pane__item {
+    min-height: 44px;
+  }
+
+  /* flex: none — framed, the control shares .split-pane__filter-row with the
+     search input, which squeezed it to 40px in a 255px rail. */
+  .split-pane__collapse {
+    flex: none;
+    width: 44px;
+    height: 44px;
+  }
+
+  .split-pane__group-header,
+  .split-pane__item-row {
+    min-height: 44px;
+  }
+
+  .split-pane__group-toggle {
+    align-self: stretch;
+  }
+
+  /* Two 44px controls plus the gap must fit even in the 220px minimum rail,
+     where the 38% cap alone leaves about 84px. */
+  .split-pane__item-trailing {
+    flex-wrap: nowrap;
+    max-width: max(38%, 96px);
+  }
+
+  .split-pane__group-header :is(button, a[href]):not(.split-pane__group-toggle),
+  .split-pane__item-trailing :is(button, a[href]) {
+    position: relative;
+    min-width: 44px;
+  }
+
+  .split-pane__group-header
+    :is(button, a[href]):not(.split-pane__group-toggle)::after,
+  .split-pane__item-trailing :is(button, a[href])::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block: min(0px, calc((100% - 44px) / 2));
   }
 }
 

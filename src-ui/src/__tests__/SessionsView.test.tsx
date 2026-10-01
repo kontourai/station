@@ -296,6 +296,19 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
+// The Station-owned detail's conversation reads its own durable window
+// (useSessionTranscriptEvents, covered by SessionTranscript.test.tsx).
+const transcriptLoadOlder = vi.hoisted(() => vi.fn());
+const transcriptHistory = vi.hoisted(() => ({ hasMore: false }));
+vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
+  useSessionTranscriptEvents: () => ({
+    events: [],
+    hasMore: transcriptHistory.hasMore,
+    loadOlder: transcriptLoadOlder,
+    settled: true,
+  }),
+}));
+
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
     events: feedEvents,
@@ -356,6 +369,52 @@ function renderView(
   };
 }
 
+/** The row button whose accessible name begins with `title`. */
+function rowButton(title: string): HTMLElement {
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return screen
+    .getAllByRole('button', { name: new RegExp(`^${escaped}`) })
+    .find((candidate) => candidate.classList.contains('split-pane__item'))!;
+}
+
+/** The row's one trailing "⋯" menu trigger. */
+function rowMenuTrigger(title: string): HTMLElement {
+  return within(
+    rowButton(title).closest('.split-pane__item-row') as HTMLElement,
+  ).getByRole('button', { name: 'More actions' });
+}
+
+function openRowMenu(title: string): HTMLElement {
+  fireEvent.click(rowMenuTrigger(title));
+  return screen.getByRole('menu', { name: `Actions for ${title}` });
+}
+
+/** The row menu's item labels; the menu is closed again afterwards. */
+function rowMenuItems(title: string): string[] {
+  const menu = openRowMenu(title);
+  const labels = within(menu)
+    .getAllByRole('menuitem')
+    .map((item) => item.textContent ?? '');
+  fireEvent.keyDown(menu, { key: 'Escape' });
+  return labels;
+}
+
+function activateEvidence(title: string) {
+  fireEvent.click(
+    within(openRowMenu(title)).getByRole('menuitem', {
+      name: 'Show details & evidence',
+    }),
+  );
+}
+
+function filterToProject(title: string) {
+  fireEvent.click(
+    within(openRowMenu(title)).getByRole('menuitem', {
+      name: 'Filter to this project',
+    }),
+  );
+}
+
 describe('SessionsView', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -395,6 +454,8 @@ describe('SessionsView', () => {
     acknowledgeAttentionItem.mockReset();
     acknowledgeAttentionItem.mockResolvedValue(undefined);
     loadOlder.mockClear();
+    transcriptLoadOlder.mockClear();
+    transcriptHistory.hasMore = false;
     historyState = {
       hasMore: false,
       upgradeRequired: false,
@@ -565,16 +626,16 @@ describe('SessionsView', () => {
 
     expect(
       screen
-        .getByRole('button', { name: 'Run · 2 delegated sessions' })
+        .getByRole('button', { name: '2 subtasks' })
         .getAttribute('aria-expanded'),
     ).toBe('true');
-    expect(screen.getAllByTestId('session-member-status')).toHaveLength(3);
+    expect(screen.getAllByTestId('activity-row-meta')).toHaveLength(3);
     expect(
       (await screen.findAllByText(/No progress events for/)).length,
     ).toBeGreaterThan(0);
     expect(
       screen
-        .getAllByTestId('session-member-status')
+        .getAllByTestId('activity-row-meta')
         .find(
           (node) => node.getAttribute('data-session-id') === 'worker-thread-2',
         )?.textContent,
@@ -650,7 +711,7 @@ describe('SessionsView', () => {
 
     const statusFor = (sessionId: string) =>
       screen
-        .getAllByTestId('session-member-status')
+        .getAllByTestId('activity-row-meta')
         .find((node) => node.getAttribute('data-session-id') === sessionId)!;
 
     expect(
@@ -710,14 +771,14 @@ describe('SessionsView', () => {
     const view = renderView();
     const list = view.container.querySelector('.split-pane__list')!;
     const group = screen.getByRole('button', {
-      name: 'Run · 1 delegated session',
+      name: '1 subtask · 1 needs you',
     });
 
     expect(
       Array.from(list.querySelectorAll('.split-pane__section-header')).map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Delegated/background work · 2']);
+    ).toEqual(['Needs you · 1']);
     expect(screen.queryByText(/^Running ·/)).toBeNull();
     expect(
       Array.from(list.querySelectorAll('button'))
@@ -731,11 +792,7 @@ describe('SessionsView', () => {
             ? button.textContent?.replace('⌄', '').trim()
             : button.querySelector('.split-pane__item-name')?.textContent,
         ),
-    ).toEqual([
-      'Run · 1 delegated session',
-      'Active parent',
-      'Needs you child',
-    ]);
+    ).toEqual(['1 subtask · 1 needs you', 'Active parent', 'Needs you child']);
 
     fireEvent.click(group);
     expect(group.getAttribute('aria-expanded')).toBe('false');
@@ -744,9 +801,9 @@ describe('SessionsView', () => {
       Array.from(list.querySelectorAll('.split-pane__section-header')).map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Delegated/background work · 2']);
+    ).toEqual(['Needs you · 1']);
     expect(
-      screen.getByRole('button', { name: 'Run · 1 delegated session' }),
+      screen.getByRole('button', { name: '1 subtask · 1 needs you' }),
     ).toBeTruthy();
 
     view.rerenderSession('needs-you-child');
@@ -784,7 +841,7 @@ describe('SessionsView', () => {
     renderView();
 
     const toggle = screen.getByRole('button', {
-      name: 'Run · 1 delegated session',
+      name: '1 subtask · 1 needs you',
     });
     fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -801,7 +858,7 @@ describe('SessionsView', () => {
     );
   });
 
-  test('keeps an ungrouped row structure, trailing project pill, selection, and accessible name intact', () => {
+  test('keeps an ungrouped row structure, one trailing menu, the project as plain text, selection, and accessible name intact', () => {
     sessions = [
       {
         ...sessions[0],
@@ -812,17 +869,22 @@ describe('SessionsView', () => {
     ];
     const { container } = renderView();
     const row = container.querySelector('.split-pane__item');
-    const pill = container.querySelector('.session-project-pill');
 
     expect(container.querySelector('.split-pane__group-toggle')).toBeNull();
     expect(row?.parentElement?.className).toBe('split-pane__item-row');
-    expect(pill?.textContent).toBe('demo');
-    expect(pill?.getAttribute('aria-pressed')).toBe('false');
+    // One trailing control (the "⋯" menu) plus the time — no filter pill.
+    expect(container.querySelector('.session-project-pill')).toBeNull();
+    expect(
+      row?.parentElement?.querySelectorAll('.split-pane__item-trailing button'),
+    ).toHaveLength(1);
     expect(
       row?.querySelector('.split-pane__item-subtitle')?.textContent,
-    ).toMatch(/^Waiting on you · \d+d ago$/);
+    ).toMatch(/^! Waiting on you · Claude Code · demo, \d+d ago$/);
+    // The row is named by its title alone; its status line describes it.
+    // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
-      name: /^An independent session Waiting on you · \d+d ago$/,
+      name: 'An independent session',
+      description: /^\s*! Waiting on you · Claude Code · demo, \d+d ago$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
@@ -863,7 +925,7 @@ describe('SessionsView', () => {
     expect(rows).toHaveLength(1);
     expect(
       rows[0].querySelector('.split-pane__item-subtitle')?.textContent,
-    ).toMatch(/^Completed · 2 turns · /);
+    ).toMatch(/^✓ Completed · Claude Code · 2 turns, /);
     expect(
       container.querySelector('.split-pane__section-header')?.textContent,
     ).toMatch(/ · 1$/);
@@ -905,6 +967,8 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    // The Station-owned detail pages its conversation's own window.
+    transcriptHistory.hasMore = true;
     renderView();
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
@@ -912,7 +976,8 @@ describe('SessionsView', () => {
       screen.getByRole('button', { name: 'Show older messages' }),
     );
 
-    expect(loadOlder).toHaveBeenCalledOnce();
+    expect(transcriptLoadOlder).toHaveBeenCalledOnce();
+    transcriptHistory.hasMore = false;
 
     // It shipped as a bare <button> with no className, inside a wrapper class
     // that has no CSS rule anywhere in the repo — so it rendered as raw
@@ -1029,96 +1094,33 @@ describe('SessionsView', () => {
     expect(screen.getAllByTestId('session-history-elided')).toHaveLength(1);
   });
 
-  test('directs the highest-priority delegated task without opening its detail', async () => {
-    sessions.push({
-      ...sessions[0],
-      threadId: 'thread-review',
-      lifecycleState: 'review_pending',
-      pendingReview: true,
-      updatedAt: '2026-06-28T00:00:02.000Z',
-      delegation: {
-        ...(sessions[0].delegation as Record<string, unknown>),
-        taskId: 'task:review-release',
-        targetKind: 'station-agent',
-        targetId: 'release-worker',
-      },
-    });
-    renderView();
-
-    const coordinator = screen.getByTestId('delegated-task-coordinator');
-    // archive#3227: was `getByText('review release')` — the coordinator's
-    // `<h3>` rendered a bare `humanizeId(taskId)`, which is the same helper
-    // that returns a raw hash unchanged when there is no task id. It renders
-    // `sessionTitle` now, the one name this session is listed under, so the
-    // heading and the row beside it say the same thing. Kept as an exact
-    // match: a loose `toContain` here would no longer notice a raw id.
-    expect(
-      within(coordinator).getByText('Worker task · review release'),
-    ).toBeTruthy();
-    expect(within(coordinator).getByText('Station agent')).toBeTruthy();
-    fireEvent.click(
-      within(coordinator).getByRole('button', { name: 'Review request' }),
-    );
-
-    expect(screen.getByTestId('session-detail').textContent).toContain(
-      'review release',
-    );
-  });
-
-  test('sends a direct follow-up from the delegated work coordinator', async () => {
-    renderView();
-
-    const coordinator = screen.getByTestId('delegated-task-coordinator');
-    const input = within(coordinator).getByLabelText('Direct worker follow-up');
-    fireEvent.change(input, { target: { value: 'Run the focused tests' } });
-    fireEvent.click(
-      within(coordinator).getByRole('button', { name: 'Send follow-up' }),
-    );
-
-    await waitFor(() =>
-      expect(sendTurn).toHaveBeenCalledWith({
-        threadId: 'thread-alpha',
-        text: 'Run the focused tests',
-        apiBase: 'http://test.local',
-      }),
-    );
-    expect(screen.queryByTestId('session-detail')).toBeNull();
-  });
-
-  // archive#1073 closure: pin both sides of isStreamingSession's fallback.
-  test('a legacy running summary without the turn fold stays conservatively locked', async () => {
+  // archive#1073 closure: pin both sides of isStreamingSession's fallback,
+  // now on the row menu's Stop… (the coordinator card's gate, moved).
+  test('a legacy running summary without the turn fold still offers Stop…', async () => {
     sessions[0] = {
       ...sessions[0],
       lifecycleState: 'running',
       hasActiveTurn: undefined,
     };
     renderView();
-    const coordinator = screen.getByTestId('delegated-task-coordinator');
-    expect(
-      within(coordinator).queryByLabelText('Direct worker follow-up'),
-    ).toBeNull();
-    expect(
-      within(coordinator).getByRole('button', { name: 'Stop active task' }),
-    ).toBeTruthy();
+    expect(rowMenuItems('Worker task · mobile browser 12345678')).toContain(
+      'Stop…',
+    );
   });
 
-  test('an explicit hasActiveTurn:false unlocks the composer even when lifecycleState says running', async () => {
+  test('an explicit hasActiveTurn:false offers no Stop… even when lifecycleState says running', async () => {
     sessions[0] = {
       ...sessions[0],
       lifecycleState: 'running',
       hasActiveTurn: false,
     };
     renderView();
-    const coordinator = screen.getByTestId('delegated-task-coordinator');
-    expect(
-      within(coordinator).getByLabelText('Direct worker follow-up'),
-    ).toBeTruthy();
-    expect(
-      within(coordinator).queryByRole('button', { name: 'Stop active task' }),
-    ).toBeNull();
+    expect(rowMenuItems('Worker task · mobile browser 12345678')).not.toContain(
+      'Stop…',
+    );
   });
 
-  test('stops running delegated work directly from the coordinator', async () => {
+  test('stops running delegated work from the row menu, only after confirming', async () => {
     // Post-archive#1073 a running session carries the turn fold; the Stop control
     // gates on it, not on lifecycleState.
     sessions[0] = {
@@ -1128,9 +1130,17 @@ describe('SessionsView', () => {
     };
     renderView();
 
-    const coordinator = screen.getByTestId('delegated-task-coordinator');
     fireEvent.click(
-      within(coordinator).getByRole('button', { name: 'Stop active task' }),
+      within(openRowMenu('Worker task · mobile browser 12345678')).getByRole(
+        'menuitem',
+        { name: 'Stop…' },
+      ),
+    );
+    expect(interruptTurn).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: 'Stop',
+      }),
     );
 
     await waitFor(() =>
@@ -1141,56 +1151,11 @@ describe('SessionsView', () => {
     );
   });
 
-  test('launches a child worker from the prioritized delegated task', async () => {
-    renderView();
-
-    const coordinator = screen.getByTestId('delegated-task-coordinator');
-    const trigger = within(coordinator).getByRole('button', {
-      name: 'Delegate subtask',
-    });
-    fireEvent.click(trigger);
-
-    const dialog = screen.getByRole('dialog', { name: 'Delegate a task' });
-    expect(dialog).toBeTruthy();
-    expect(screen.getByText('Child worker of')).toBeTruthy();
-    expect(within(dialog).getByText('mobile browser 12345678')).toBeTruthy();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByLabelText('Task')),
-    );
-
-    fireEvent.change(screen.getByLabelText('Task'), {
-      target: { value: 'Audit the compact task controls' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
-
-    await waitFor(() =>
-      expect(delegateTask).toHaveBeenCalledWith({
-        input: {
-          prompt: 'Audit the compact task controls',
-          target: {
-            environment: { kind: 'current' },
-            agent: 'codex',
-            workspace: { kind: 'project', projectSlug: 'station' },
-          },
-          parentTaskId: 'task:mobile-browser-12345678',
-        },
-        // No host scope in this suite: the per-invocation Home address is
-        // the launcher prop, with no scope attached.
-        apiBase: 'http://test.local',
-      }),
-    );
-    await waitFor(() => expect(refetchSessions).toHaveBeenCalled());
-  });
-
   test('offers a top-level worker launcher before any sessions exist', () => {
     sessions = [];
     renderView();
 
-    const starter = screen.getByTestId('delegated-task-starter');
-    expect(starter.textContent).toContain('Ask an AI app to work on something');
-    fireEvent.click(
-      within(starter).getByRole('button', { name: 'Start a task' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
 
     expect(
       screen.getByRole('dialog', { name: 'Delegate a task' }),
@@ -1232,10 +1197,8 @@ describe('SessionsView', () => {
     }
 
     function openLauncher() {
-      const starter = screen.getByTestId('delegated-task-starter');
-      const trigger = within(starter).getByRole('button', {
-        name: 'Start a task',
-      });
+      const trigger = screen.getByRole('button', { name: 'New task' });
+      const starter = trigger.parentElement as HTMLElement;
       trigger.focus();
       fireEvent.click(trigger);
       return { starter, trigger };
@@ -1263,7 +1226,9 @@ describe('SessionsView', () => {
       sessions = [];
       renderView();
       const { starter, trigger } = openLauncher();
-      const row = trigger.parentElement as HTMLElement;
+      // The footer keeps a wrapper around the trigger; removing the trigger
+      // alone is what a refreshed pane does to a control it re-rendered.
+      const row = trigger;
 
       withStubbedFrame((fire) => {
         fireEvent.click(
@@ -1280,33 +1245,6 @@ describe('SessionsView', () => {
       expect(document.activeElement).not.toBe(document.body);
       expect(starter.getAttribute('tabindex')).toBe('-1');
     });
-  });
-
-  test('inherits a Station-agent parent instead of defaulting to an Agent app', () => {
-    sessions[0] = {
-      ...sessions[0],
-      assignedAgentSlug: 'reviewer',
-      delegation: {
-        ...(sessions[0].delegation as Record<string, unknown>),
-        connectionId: undefined,
-        targetKind: 'station-agent',
-        targetId: 'reviewer',
-      },
-    };
-    renderView();
-
-    fireEvent.click(
-      within(screen.getByTestId('delegated-task-coordinator')).getByRole(
-        'button',
-        { name: 'Delegate subtask' },
-      ),
-    );
-
-    expect(screen.getByText('Reviewer')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
-    expect((screen.getByLabelText('Worker') as HTMLSelectElement).value).toBe(
-      'agent:reviewer',
-    );
   });
 
   test('selects the exact session requested by the route', () => {
@@ -1356,7 +1294,7 @@ describe('SessionsView', () => {
 
     const input = screen.getByLabelText('Continue delegated task');
     fireEvent.change(input, { target: { value: 'continue please' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() =>
       expect(sendTurn).toHaveBeenCalledWith({
@@ -1415,7 +1353,14 @@ describe('SessionsView', () => {
     );
     expect(within(detail).getAllByText('Running').length).toBeGreaterThan(0);
 
-    fireEvent.click(within(detail).getByRole('button', { name: 'Stop task' }));
+    // Stop asks first (activity redesign): the header control only opens
+    // the confirmation, and the confirmation's own button stops the turn.
+    fireEvent.click(within(detail).getByRole('button', { name: 'Stop…' }));
+    expect(interruptTurn).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('alertdialog', {
+      name: 'Stop this task?',
+    });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Stop task' }));
 
     await waitFor(() =>
       expect(interruptTurn).toHaveBeenCalledWith({
@@ -1523,9 +1468,8 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
-    expect(within(detail).queryByText('● live')).toBeNull();
-    expect(within(detail).queryByText('○ connecting')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
+    expect(within(detail).queryByText('Connecting…')).toBeNull();
     expect(
       within(detail).queryByLabelText('Continue delegated task'),
     ).toBeNull();
@@ -1554,9 +1498,8 @@ describe('SessionsView', () => {
     const detail = screen.getByTestId('session-detail');
     const failure = screen.getByTestId('session-failure');
     expect(within(failure).getByText(/rate limited/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
-    expect(within(detail).queryByText('● live')).toBeNull();
-    expect(within(detail).queryByText('○ connecting')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
+    expect(within(detail).queryByText('Connecting…')).toBeNull();
     expect(within(detail).getAllByText('Failed').length).toBe(1);
   });
 
@@ -1656,9 +1599,9 @@ describe('SessionsView', () => {
     );
     // archive#1170's decisions stand alongside the new composer: no live
     // indicator, no Stop task on a stopped session.
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
     expect(
-      within(screen.getByTestId('session-detail')).queryByText('● live'),
+      within(screen.getByTestId('session-detail')).queryByText('Connecting…'),
     ).toBeNull();
   });
 
@@ -1673,7 +1616,7 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     expect(screen.getByLabelText('Send input to session')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop…' })).toBeNull();
   });
 
   /*
@@ -2275,10 +2218,14 @@ describe('SessionsView', () => {
 
     const { container } = renderView('external:claude:ambiguous-1');
 
-    const pill = container.querySelector('.session-project-pill');
-    expect(pill?.textContent).toBe('ambiguous (alpha, beta)');
-    expect(pill?.tagName).toBe('SPAN');
-    expect(container.querySelector('button.session-project-pill')).toBeNull();
+    const project = container.querySelector(
+      '.split-pane__item [data-segment="project"]',
+    );
+    expect(project?.textContent).toBe('ambiguous (alpha, beta)');
+    // Ambiguous: the row offers no single project to filter to.
+    expect(
+      rowMenuItems('Claude Code session').includes('Filter to this project'),
+    ).toBe(false);
     expect(screen.queryByText('Unassigned')).toBeNull();
   });
 
@@ -2297,11 +2244,12 @@ describe('SessionsView', () => {
 
     const { container } = renderView('task-remote-1');
 
-    // The caveat is carried verbatim by the pill — the list does not get to
+    // The caveat is carried verbatim by the row — the list does not get to
     // shorten it away into a bare slug.
-    expect(container.querySelector('.session-project-pill')?.textContent).toBe(
-      'station (unverified name match)',
-    );
+    expect(
+      container.querySelector('.split-pane__item [data-segment="project"]')
+        ?.textContent,
+    ).toBe('station (unverified name match)');
   });
 
   test('renders attached terminal transcripts through canonical message content without mutations', () => {
@@ -2883,7 +2831,7 @@ describe('SessionsView', () => {
     });
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
       target: { value: 'station' },
     });
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3383,7 +3331,7 @@ describe('SessionsView', () => {
     }
 
     function search(query: string) {
-      fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
         target: { value: query },
       });
     }
@@ -3392,7 +3340,7 @@ describe('SessionsView', () => {
     // lane must not re-emit the lane heading. Members carry the lane section
     // now; a member with an undefined section reset the layout's neighbor
     // comparison and the following flat row duplicated 'Running · N'
-    // (then labelled 'Active now · N').
+    // (then labelled 'Active now · N'; the lane is 'Running' today).
     test('emits the lane heading exactly once when a run group and a flat session share the lane', () => {
       const parent = {
         ...sessions[0],
@@ -3429,11 +3377,8 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Running'),
       );
-      expect(headings).toEqual([]);
-      expect(sectionHeadings(container)).toEqual([
-        'Delegated/background work · 2',
-        'Conversations · 1',
-      ]);
+      expect(headings).toEqual(['Running · 3']);
+      expect(sectionHeadings(container)).toEqual(['Running · 3']);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {
@@ -3459,13 +3404,12 @@ describe('SessionsView', () => {
       expect(listRows(container)[0].textContent).not.toContain('external');
     });
 
-    test('the delegated work card reads the lifecycle state in words, not the wire token', () => {
+    test('a delegated row reads the lifecycle state in words, not the wire token', () => {
       // The seeded session is delegated and `needs_input`.
-      renderView();
+      const { container } = renderView();
 
-      const coordinator = screen.getByTestId('delegated-task-coordinator');
-      expect(within(coordinator).getByText('Waiting on you')).toBeTruthy();
-      expect(coordinator.textContent).not.toContain('needs_input');
+      expect(listRows(container)[0].textContent).toContain('Waiting on you');
+      expect(listRows(container)[0].textContent).not.toContain('needs_input');
     });
 
     test('surfaces a peer delegation record without offering local-session controls (#847)', () => {
@@ -3488,17 +3432,10 @@ describe('SessionsView', () => {
       ];
 
       const { container } = renderView();
-      const coordinator = screen.getByTestId('delegated-task-coordinator');
 
       expect(rowNames(container)).toContain('Run the peer checks');
-      expect(within(coordinator).getByText('Paired Station')).toBeTruthy();
-      expect(coordinator.textContent).toContain(
-        'Its transcript and final answer remain on the paired Station.',
-      );
-      expect(
-        within(coordinator).queryByLabelText('Direct worker follow-up'),
-      ).toBeNull();
-      expect(within(coordinator).queryByText('Stop active task')).toBeNull();
+      // The paired Station owns the turn: no local Stop… on its row.
+      expect(rowMenuItems('Run the peer checks')).not.toContain('Stop…');
     });
 
     test('every row carries a relative time', () => {
@@ -3581,8 +3518,8 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      // Every fixture is `completed` and hours old: one lane, one heading.
-      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
+      // Every fixture is an attached transcript: one lane, one heading.
+      expect(sectionHeadings(container)).toEqual(['From other apps · 4']);
       expect(listRows(container)).toHaveLength(4);
       expect(rowNames(container)).toEqual([
         'Beta two',
@@ -3590,11 +3527,13 @@ describe('SessionsView', () => {
         'Beta one',
         'Alpha one',
       ]);
-      // The project is still on screen — as a row pill, not a heading.
+      // The project is still on screen — as plain row text, not a heading.
       expect(
-        Array.from(container.querySelectorAll('.session-project-pill')).map(
-          (pill) => pill.textContent,
-        ),
+        Array.from(
+          container.querySelectorAll(
+            '.split-pane__item [data-segment="project"]',
+          ),
+        ).map((node) => node.textContent),
       ).toEqual(['beta', 'alpha', 'beta', 'alpha']);
     });
 
@@ -3634,7 +3573,16 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
+      // The live lanes have no members here and therefore emit nothing at all.
+      // The six-hour-old row reads under the dated history stream, whose
+      // sub-section depends on the local hour the suite runs at.
+      const headings = sectionHeadings(container);
+      expect(headings.slice(0, 2)).toEqual([
+        'Needs you · 2',
+        'Recently finished · 1',
+      ]);
+      expect(['Earlier today · 1', 'Yesterday · 1']).toContain(headings[2]);
+      expect(headings).toHaveLength(3);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3656,6 +3604,24 @@ describe('SessionsView', () => {
      * recomputes the map it checks agrees by construction.
      */
     test('no rendered row contradicts the section heading above it', () => {
+      const FINISHED = ['Completed', 'Stopped', 'Failed'];
+      const LANE_VOCABULARY: Record<string, string[]> = {
+        'Needs you': [
+          'Needs attention',
+          'Waiting on you',
+          'Review pending',
+          'Blocked',
+        ],
+        Running: ['Running'],
+        Idle: ['Ready', 'Queued', "Can't answer here"],
+        'Recently finished': FINISHED,
+        // The history lane's dated sub-sections.
+        'Earlier today': FINISHED,
+        Yesterday: FINISHED,
+        'This week': FINISHED,
+        Older: FINISHED,
+      };
+
       sessions = [
         // A1 shape 1 (archive#1069): attached, never ran a turn.
         attachedSession({
@@ -3666,6 +3632,16 @@ describe('SessionsView', () => {
           lifecycleState: 'running',
           hasActiveTurn: false,
           updatedAt: new Date(Date.now() - 30_000).toISOString(),
+        }),
+        // A turn genuinely in flight: the Running lane's own row.
+        attachedSession({
+          threadId: 'in-flight',
+          displayTitle: 'Turn in flight',
+          controlMode: 'station-owned',
+          answerability: { answerable: true },
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+          updatedAt: new Date(Date.now() - 20_000).toISOString(),
         }),
         // A1 shape 2: a review is pending while a turn is in flight.
         attachedSession({
@@ -3742,12 +3718,26 @@ describe('SessionsView', () => {
         });
       }
 
-      // Every session reached a lane, and the fixture spans all four — a walk
-      // over a short or single-lane render would pass while checking nothing.
-      expect(rendered).toHaveLength(6);
-      expect(new Set(rendered.map((entry) => entry.heading))).toEqual(
-        new Set(['Conversations']),
-      );
+      // Every session reached a lane, and the fixture spans every live lane
+      // plus history — a walk over a short or single-lane render would pass
+      // while checking nothing.
+      expect(rendered).toHaveLength(7);
+      const headings = new Set(rendered.map((entry) => entry.heading));
+      expect(
+        [...headings].filter(
+          (heading) => heading !== 'Earlier today' && heading !== 'Yesterday',
+        ),
+      ).toEqual(['Needs you', 'Running', 'Idle', 'Recently finished']);
+      expect(headings.size).toBe(5);
+
+      for (const entry of rendered) {
+        const permitted = LANE_VOCABULARY[entry.heading];
+        expect(permitted, `unknown heading "${entry.heading}"`).toBeTruthy();
+        expect(
+          permitted.some((word) => entry.row.includes(word)),
+          `a row under "${entry.heading}" reads "${entry.row}"`,
+        ).toBe(true);
+      }
 
       // The four A1 shapes, by the word each used to print.
       const rowText = (name: string) =>
@@ -3762,11 +3752,11 @@ describe('SessionsView', () => {
     });
 
     /**
-     * The reason the lane exists. `DelegatedTaskCoordinator` renders
-     * `tasks[0]` only, so a SECOND delegated session waiting on the user had
-     * nowhere on this page to appear.
+     * The reason the lane exists. The (since removed) delegated-work card
+     * rendered `tasks[0]` only, so a SECOND delegated session waiting on the
+     * user had nowhere on this page to appear.
      */
-    test('a second waiting delegated session is visible in the list, not only the first in the card', () => {
+    test('a second waiting delegated session is visible in the list, under Needs you', () => {
       sessions = [
         {
           ...sessions[0],
@@ -3785,37 +3775,14 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       const needsYou = sectionHeadings(container)[0];
-      expect(needsYou).toBe('Delegated/background work · 2');
+      expect(needsYou).toBe('Needs you · 2');
       expect(rowNames(container)).toEqual([
         'First worker question',
         'Second worker question',
       ]);
     });
 
-    test('the delegation card renders below the list, not above it', () => {
-      const { container } = renderView();
-
-      const list = container.querySelector('.split-pane__list');
-      const footer = container.querySelector('.split-pane__add');
-      expect(
-        list?.querySelector('[data-testid="delegated-task-coordinator"]'),
-      ).toBeNull();
-      expect(
-        footer?.querySelector('[data-testid="delegated-task-coordinator"]'),
-      ).toBeTruthy();
-      //.and its actions still work from there.
-      fireEvent.click(
-        within(screen.getByTestId('delegated-task-coordinator')).getByRole(
-          'button',
-          { name: 'View task' },
-        ),
-      );
-      expect(screen.getByTestId('session-detail').textContent).toContain(
-        'mobile browser 12345678',
-      );
-    });
-
-    test('clicking a project pill filters the list, and clicking it again clears it', () => {
+    test('"Filter to this project" filters the list, and removing its chip clears it', () => {
       const stamp = (iso: string) => ({ createdAt: iso, updatedAt: iso });
       sessions = [
         attachedSession({
@@ -3835,32 +3802,25 @@ describe('SessionsView', () => {
       const { container } = renderView();
       expect(rowNames(container)).toEqual(['Alpha work', 'Beta work']);
 
-      const alphaPill = container.querySelector(
-        'button.session-project-pill[data-project="alpha"]',
-      ) as HTMLButtonElement;
-      fireEvent.click(alphaPill);
+      filterToProject('Alpha work');
 
       expect(rowNames(container)).toEqual(['Alpha work']);
-      expect(sectionHeadings(container)).toEqual(['Conversations · 1']);
-      const clear = screen.getByRole('button', {
-        name: 'Clear the alpha project filter',
-      });
-      expect(clear).toBeTruthy();
+      expect(sectionHeadings(container)).toEqual(['From other apps · 1']);
       expect(
-        container
-          .querySelector('button.session-project-pill[data-project="alpha"]')
-          ?.getAttribute('aria-pressed'),
-      ).toBe('true');
+        (screen.getByLabelText('Project') as HTMLSelectElement).value,
+      ).toBe('alpha');
+      // Already filtered to it: the row no longer offers the same filter.
+      expect(rowMenuItems('Alpha work')).not.toContain(
+        'Filter to this project',
+      );
 
       fireEvent.click(
-        container.querySelector(
-          'button.session-project-pill[data-project="alpha"]',
-        ) as HTMLButtonElement,
+        screen.getByRole('button', { name: 'Remove filter Project: alpha' }),
       );
       expect(rowNames(container)).toEqual(['Alpha work', 'Beta work']);
     });
 
-    test('the clear affordance removes an active project filter', () => {
+    test('Clear all removes an active project filter', () => {
       const stamp = (iso: string) => ({ createdAt: iso, updatedAt: iso });
       sessions = [
         attachedSession({
@@ -3878,24 +3838,14 @@ describe('SessionsView', () => {
       ];
 
       const { container } = renderView();
-      fireEvent.click(
-        container.querySelector(
-          'button.session-project-pill[data-project="alpha"]',
-        ) as HTMLButtonElement,
-      );
+      filterToProject('Alpha work');
       expect(rowNames(container)).toEqual(['Alpha work']);
 
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Clear the alpha project filter',
-        }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
 
       expect(rowNames(container)).toEqual(['Alpha work', 'Beta work']);
       expect(
-        screen.queryByRole('button', {
-          name: 'Clear the alpha project filter',
-        }),
+        screen.queryByRole('button', { name: 'Remove filter Project: alpha' }),
       ).toBeNull();
     });
 
@@ -3923,11 +3873,7 @@ describe('SessionsView', () => {
       ];
 
       const { container } = renderView();
-      fireEvent.click(
-        container.querySelector(
-          'button.session-project-pill[data-project="alpha"]',
-        ) as HTMLButtonElement,
-      );
+      filterToProject('Repair the failing gate');
       expect(rowNames(container)).toEqual([
         'Repair the failing gate',
         'Something else entirely',
@@ -3970,23 +3916,13 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      fireEvent.click(
-        container.querySelector(
-          'button.session-project-pill[data-project="alpha"]',
-        ) as HTMLButtonElement,
-      );
+      filterToProject('Alpha work');
       expect(rowNames(container)).toEqual(['Alpha work', 'Could be either']);
 
       fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Clear the alpha project filter',
-        }),
+        screen.getByRole('button', { name: 'Remove filter Project: alpha' }),
       );
-      fireEvent.click(
-        container.querySelector(
-          'button.session-project-pill[data-project="beta"]',
-        ) as HTMLButtonElement,
-      );
+      filterToProject('Beta work');
       expect(rowNames(container)).toEqual(['Beta work', 'Could be either']);
     });
 
@@ -4143,17 +4079,19 @@ describe('SessionsView', () => {
       ];
       renderView();
 
-      expect(screen.getByText('Fresh draft')).toBeTruthy();
-      expect(screen.queryByText('Stale draft')).toBeNull();
-      expect(screen.queryByText('Staler draft')).toBeNull();
+      expect(rowButton('Fresh draft')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /^Stale draft/ })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: /^Staler draft/ }),
+      ).toBeNull();
       const toggle = screen.getByRole('button', { name: /2 older drafts$/ });
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
       fireEvent.click(toggle);
 
       expect(toggle.getAttribute('aria-expanded')).toBe('true');
-      expect(screen.getByText('Stale draft')).toBeTruthy();
-      expect(screen.getByText('Staler draft')).toBeTruthy();
+      expect(rowButton('Stale draft')).toBeTruthy();
+      expect(rowButton('Staler draft')).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Discard draft Staler draft' }),
       ).toBeTruthy();
@@ -4223,33 +4161,18 @@ describe('SessionsView', () => {
       ];
 
       renderView();
+      const offersEvidence = (title: string) =>
+        rowMenuItems(title).includes('Show details & evidence');
 
       // Present on every ended row…
-      expect(
-        screen.getByRole('button', { name: 'Evidence for Completed work' }),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole('button', { name: 'Evidence for Failed work' }),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole('button', { name: 'Evidence for Stopped work' }),
-      ).toBeTruthy();
-      // …and on no other row — asserted both by name and by count, so an
-      // unconditional render cannot pass on the strength of the present rows.
-      expect(
-        screen.queryByRole('button', { name: 'Evidence for Running work' }),
-      ).toBeNull();
-      expect(
-        screen.queryByRole('button', { name: 'Evidence for Waiting work' }),
-      ).toBeNull();
-      expect(
-        screen.queryByRole('button', {
-          name: 'Evidence for Attached transcript',
-        }),
-      ).toBeNull();
-      expect(
-        screen.getAllByRole('button', { name: /^Evidence for / }),
-      ).toHaveLength(3);
+      expect(offersEvidence('Completed work')).toBe(true);
+      expect(offersEvidence('Failed work')).toBe(true);
+      expect(offersEvidence('Stopped work')).toBe(true);
+      // …and on no other row — each row asked, so an unconditional item
+      // cannot pass on the strength of the present rows.
+      expect(offersEvidence('Running work')).toBe(false);
+      expect(offersEvidence('Waiting work')).toBe(false);
+      expect(offersEvidence('Attached transcript')).toBe(false);
     });
 
     test('offers Evidence on a run group member that has ended, not on its live sibling', () => {
@@ -4272,24 +4195,20 @@ describe('SessionsView', () => {
 
       renderView();
 
-      expect(
-        screen.getByRole('button', { name: 'Run · 1 delegated session' }),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole('button', { name: 'Evidence for Run child done' }),
-      ).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Evidence for Run parent' }),
-      ).toBeNull();
+      expect(screen.getByRole('button', { name: '1 subtask' })).toBeTruthy();
+      expect(rowMenuItems('Run child done')).toContain(
+        'Show details & evidence',
+      );
+      expect(rowMenuItems('Run parent')).not.toContain(
+        'Show details & evidence',
+      );
     });
 
     test('activation selects locally and focuses evidence without changing the route', async () => {
       sessions = [flatSession({})];
       const view = renderView();
 
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Evidence for Completed work' }),
-      );
+      activateEvidence('Completed work');
 
       expect(window.location.pathname).toBe('/');
       expect(window.location.search).toBe('?surface=activity');
@@ -4303,9 +4222,7 @@ describe('SessionsView', () => {
 
       // A later render with the routed props unchanged must not drag the
       // reader back to the region they have since left.
-      screen
-        .getByRole('button', { name: 'Evidence for Completed work' })
-        .focus();
+      rowMenuTrigger('Completed work').focus();
       view.rerenderSession();
       expect(document.activeElement).not.toBe(region);
     });
@@ -4319,9 +4236,7 @@ describe('SessionsView', () => {
       sessions = [flatSession({})];
       const view = renderView();
 
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Evidence for Completed work' }),
-      );
+      activateEvidence('Completed work');
       view.rerenderSession('done', 'evidence');
       const region = screen.getByTestId('session-evidence-region');
       await waitFor(() => expect(document.activeElement).toBe(region));
@@ -4368,23 +4283,43 @@ describe('SessionsView', () => {
       );
     });
 
-    test('the Evidence control is keyboard-operable', async () => {
+    test('the evidence action is keyboard-operable', async () => {
       sessions = [flatSession({})];
       renderView();
 
-      const control = screen.getByRole('button', {
-        name: 'Evidence for Completed work',
+      // The row menu's trigger is a native button in the Tab order; the
+      // menu takes focus on open and moves it with the arrow keys
+      // (`useMenuFocus`). jsdom does not synthesize the browser's
+      // Enter-to-click activation for native buttons, so this asserts what
+      // jsdom can see: focus reaches the item by keyboard, and activating
+      // the FOCUSED element (what Enter dispatches in a real browser)
+      // performs the reveal.
+      const trigger = rowMenuTrigger('Completed work');
+      expect(trigger.tagName).toBe('BUTTON');
+      expect(trigger.getAttribute('tabindex')).toBeNull();
+      trigger.focus();
+      fireEvent.click(trigger);
+      const menu = screen.getByRole('menu', {
+        name: 'Actions for Completed work',
       });
-      // A native button: in the Tab order (no tabindex override) and
-      // activated from the keyboard. jsdom does not synthesize the browser's
-      // Enter-to-click activation for native buttons, so this asserts the two
-      // halves jsdom can see: focus reaches the control, and activating the
-      // FOCUSED element (what Enter dispatches in a real browser) performs
-      // the navigation.
-      expect(control.tagName).toBe('BUTTON');
-      expect(control.getAttribute('tabindex')).toBeNull();
-      control.focus();
-      expect(document.activeElement).toBe(control);
+      const items = within(menu).getAllByRole('menuitem');
+      await waitFor(() => expect(document.activeElement).toBe(items[0]));
+      const target = items.findIndex(
+        (item) => item.textContent === 'Show details & evidence',
+      );
+      expect(target).toBeGreaterThanOrEqual(0);
+      // End then Down wraps to the top; Down from there walks to the item.
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'End' });
+      fireEvent.keyDown(document.activeElement as HTMLElement, {
+        key: 'ArrowDown',
+      });
+      for (let step = 0; step < target; step += 1)
+        fireEvent.keyDown(document.activeElement as HTMLElement, {
+          key: 'ArrowDown',
+        });
+      expect(document.activeElement?.textContent).toBe(
+        'Show details & evidence',
+      );
       fireEvent.click(document.activeElement as HTMLElement);
       await waitFor(() =>
         expect(document.activeElement).toBe(
@@ -4421,9 +4356,7 @@ describe('SessionsView', () => {
       renderView('done', 'evidence', 1, onFocusConsumed);
       expect(onFocusConsumed).not.toHaveBeenCalled();
 
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Evidence for Other work' }),
-      );
+      activateEvidence('Other work');
 
       // The click really did arm a reveal — for `other`, not for `done`.
       await waitFor(() =>
@@ -4444,9 +4377,7 @@ describe('SessionsView', () => {
       );
       await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
       expect(onFocusConsumed).toHaveBeenCalledTimes(1);
-      const evidenceButton = screen.getByRole('button', {
-        name: 'Evidence for Completed work',
-      });
+      const evidenceButton = rowMenuTrigger('Completed work');
       evidenceButton.focus();
       // the region host clears the consumed focus from the intent it holds
       // (`ActivityRegionShell`) under the same token: no second reveal
@@ -4554,12 +4485,14 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
-      screen.getByText('Your conversations and tasks will appear here.'),
+      screen.getByText(
+        'Start a task with New task, or open a chat. What runs shows up here.',
+      ),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);
   });
 
-  test('shows delegated work in its own default group without opening a session', () => {
+  test('keeps delegated work in its state lane, findable through the Kind filter, without opening a session', () => {
     sessions = [
       activitySession({
         displayTitle: 'Review in the background',
@@ -4577,7 +4510,15 @@ describe('Activity presentation (sessions moved under Home)', () => {
       Array.from(container.querySelectorAll('.split-pane__section-header')).map(
         (node) => node.textContent,
       ),
-    ).toEqual(['Delegated/background work · 1', 'Conversations · 1']);
+    ).toEqual(['From other apps · 2']);
+    fireEvent.change(screen.getByLabelText('Kind'), {
+      target: { value: 'tasks' },
+    });
+    expect(
+      Array.from(container.querySelectorAll('.split-pane__item-name-text')).map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(['Review in the background']);
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
@@ -4597,10 +4538,21 @@ describe('Activity presentation (sessions moved under Home)', () => {
       }),
     ];
     renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
-    expect(screen.getByText('Paired device · Mobile app')).toBeTruthy();
-    fireEvent.click(screen.getByRole('tab', { name: 'By task' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
+    const startedFrom = screen.getByLabelText(
+      'Started from',
+    ) as HTMLSelectElement;
+    expect(
+      Array.from(startedFrom.options).map((option) => option.textContent),
+    ).toContain('Paired device · Mobile app (1)');
+    fireEvent.change(startedFrom, {
+      target: { value: 'Paired device · Mobile app' },
+    });
+    expect(
+      screen
+        .getAllByRole('button', { name: /^Phone-started review/ })
+        .find((node) => node.classList.contains('split-pane__item'))
+        ?.textContent,
+    ).toContain('Mobile app');
     expect(usePairedDevicesQuery).not.toHaveBeenCalled();
   });
 
@@ -4622,41 +4574,24 @@ describe('Activity presentation (sessions moved under Home)', () => {
       }),
     ];
     const { container } = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
 
-    // Section headers are flat siblings of the rows they head, so a row's
-    // group is the nearest header before it in document order.
-    const sectionOf = (title: string) => {
-      let section: string | null = null;
-      for (const node of container.querySelectorAll(
-        '.split-pane__section-header, .split-pane__item',
-      )) {
-        if (node.classList.contains('split-pane__section-header')) {
-          section = node.textContent;
-        } else if (node.textContent?.includes(title)) {
-          return section;
-        }
-      }
-      throw new Error(`no row for ${title}`);
-    };
     // The unrecorded row is filed by what IS known (the attached engine),
     // never under a paired device the registry happens to hold.
-    expect(sectionOf('No provenance session')).toBe('Started in Claude Code');
-    expect(container.textContent).not.toContain('Brian’s Pixel');
-    expect(screen.getByText('Also driven from another origin')).toBeTruthy();
-  });
-
-  test('switches axes from the keyboard and preserves the selected session', () => {
-    sessions = [activitySession({ displayTitle: 'Selected review' })];
-    renderView();
-    fireEvent.click(screen.getByRole('button', { name: /Selected review/ }));
-    const taskTab = screen.getByRole('tab', { name: 'By task' });
-    taskTab.focus();
-    fireEvent.keyDown(taskTab, { key: 'ArrowRight' });
-
+    fireEvent.change(screen.getByLabelText('Started from'), {
+      target: { value: 'Started in Claude Code' },
+    });
     expect(
-      screen.getByRole('tab', { name: 'By app' }).getAttribute('aria-selected'),
-    ).toBe('true');
-    expect(screen.getByTestId('session-detail')).toBeTruthy();
+      Array.from(container.querySelectorAll('.split-pane__item-name-text')).map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(['No provenance session']);
+    expect(container.textContent).not.toContain('Brian’s Pixel');
+    fireEvent.change(screen.getByLabelText('Started from'), {
+      target: { value: '' },
+    });
+    expect(
+      container.querySelector('.split-pane__item [data-segment="origin"]')
+        ?.textContent,
+    ).toBe('Browser (also another origin)');
   });
 });

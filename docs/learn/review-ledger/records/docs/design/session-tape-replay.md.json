@@ -18,7 +18,7 @@
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"b3e72cbd7dfc41d54569b368f80db1ea6294dc2d70f99572194abb93b605f040","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"15b1e2490e7c8a652bffaf3a16a297d9df3de75f6d8c61c00fc8f8a993f68c6a","revision":"e7bb11891396b509d47e7c0ba3ba9066a74a03db"},
 
     {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"c516313992221258d93e42c79e982dae296afe29658b4d387b17d4c486ec284e","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348","revision":"5709d8b4ca722477dd326b7806c12ce7bdd6bbf3"},
+    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

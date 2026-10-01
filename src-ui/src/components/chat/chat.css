@@ -1121,7 +1121,10 @@
      branch reds that test on its own tip (verified against 8ae038646: the same
      single offending condition, and no other). Same query, same rule, a sheet
      that is allowed to ask the `(pointer: coarse)` question. */
-  .choice-trigger {
+  /* Doubled for the same reason as `.menu-row.menu-row` above: the base
+     `.choice-trigger` rule (index.css, `min-height: 36px`) is one class too,
+     and bundle order let it win — measured 36px on a 390px phone. */
+  .choice-trigger.choice-trigger {
     min-width: 44px;
     min-height: 44px;
   }

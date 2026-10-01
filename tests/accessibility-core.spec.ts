@@ -99,8 +99,9 @@ test.describe('core journey accessibility gate', () => {
     // the setup launcher renders over `/`'s own `.route-transition`-wrapped
     // HomeView, whose `route-enter` entrance starts at `opacity: 0`. Landing
     // an axe scan mid-entrance intermittently flagged real, passing token
-    // pairs (`.home-view__eyebrow`'s --text-muted-on-bg-primary is 5.16:1
-    // steady-state; the same run measured 3.97:1 mid-fade). Pinning reduced
+    // pairs (`.home-view__eyebrow`'s --text-muted-on-bg-primary was 5.16:1
+    // steady-state, 5.31:1 from @kontourai/ui 1.17; the same run measured
+    // 3.97:1 mid-fade). Pinning reduced
     // motion here removes the artifact the same way it does for the
     // surface-loop tests; it weakens no assertion and allowlists nothing.
     await page.emulateMedia({ reducedMotion: 'reduce' });
