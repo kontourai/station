@@ -18,7 +18,7 @@
 
     {"path":"package.json#/scripts/verify:static","digest":"11d986f344d89ce8a809af289108cb97f7f204e0661fed6f0f1bac572371982d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
 
     {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

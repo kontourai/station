@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"493d8330d26134014b690db7a5881ff34475a7ae84cb9975647fd0c7ceb3d8da","revision":"a320658a37b9537b814c0acb8460e7bf1b6018ea"},
+  "document": {"digest":"c6566404f60690eec25c5c96e689fd94f3f58d811cd54a7930e25d75278fe0ce","revision":"2280a4a98729ba5c06887b2a4a6e738735052c24"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -504,7 +504,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"e033618f2cd0fcf49b20c7f9cfaea4dec369433638ef9ece8b532186c753e306","revision":"c206fcf654c76a66f1e9faae548bdcad5027bf26"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"914c5856fdec89f7f8afaa9939539f9ff6f84b7e83153b04ca2d76cbe366c839","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
 
     {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"4f7082eec56d538dd187d47c08b63f8f76ae91088b25f6982acb6141c06aeaa9","revision":"9d206036da81c95f2a0a65b9e424a2b46180651c"}
   ],
