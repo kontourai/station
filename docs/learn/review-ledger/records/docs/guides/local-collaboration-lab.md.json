@@ -122,7 +122,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"b5d0cfdd54890ea9a0dc179a56a501bcb64f99350b5bd7111bccc40b5a16cf17","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"564f213eaec3b025a0207b61666580bf19d18f21f33bf950fc0dabf24051786f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

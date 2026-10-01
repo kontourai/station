@@ -66,7 +66,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"564f213eaec3b025a0207b61666580bf19d18f21f33bf950fc0dabf24051786f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/runtime/streaming/InjectableStream.ts","digest":"a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

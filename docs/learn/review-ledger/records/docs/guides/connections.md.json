@@ -136,7 +136,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b69b9dadeb2ee6cf31bdc948ce60ee508bbfc6fda3206d388e1c48566cc42de5","revision":"961cd7dc4de593491ef1c5fb7adf2b0fc5bab114"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 

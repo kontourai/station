@@ -44,7 +44,7 @@
 
     {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b69b9dadeb2ee6cf31bdc948ce60ee508bbfc6fda3206d388e1c48566cc42de5","revision":"961cd7dc4de593491ef1c5fb7adf2b0fc5bab114"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

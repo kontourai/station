@@ -356,7 +356,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"564f213eaec3b025a0207b61666580bf19d18f21f33bf950fc0dabf24051786f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -364,7 +364,7 @@
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"4f66110a1392b0188cb64660f42c5c80bf28676060aa46e9e21e7ba29edfba93","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b69b9dadeb2ee6cf31bdc948ce60ee508bbfc6fda3206d388e1c48566cc42de5","revision":"961cd7dc4de593491ef1c5fb7adf2b0fc5bab114"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
     {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"74bb68bb7b32fd0414bbef71ac778852c4b8e77c79008ae437bd64f77d3a0b40","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
