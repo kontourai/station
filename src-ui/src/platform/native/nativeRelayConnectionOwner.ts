@@ -40,6 +40,7 @@ export interface NativeRelayConnectionOwner {
     credentials: Parameters<Account['login']>[0],
   ): ReturnType<Account['login']>;
   acceptInvitation(token: string): ReturnType<Account['acceptInvitation']>;
+  logout(): ReturnType<Account['logout']>;
   retireAccount(): void;
   dispose(): void;
   credential(): ClientCredential;
@@ -131,6 +132,17 @@ export async function prepareNativeRelayConnectionOwner(
           throw new Error('native_account_login_required');
         return bridge.acceptInvitation(token);
       },
+      async logout() {
+        const bridge = accountBridge;
+        if (!bridge?.current())
+          throw new Error('native_account_login_required');
+        try {
+          await application.assertCurrent();
+          return await bridge.logout();
+        } finally {
+          if (accountBridge === bridge) retireAccount();
+        }
+      },
       retireAccount,
       dispose() {
         if (expiryTimer) clearTimeout(expiryTimer);
@@ -184,6 +196,7 @@ export async function prepareNativeRelayConnectionOwner(
             );
             if (
               headers.has('Authorization') ||
+              headers.has('Cookie') ||
               headers.has('Origin') ||
               [...headers.keys()].some((name) =>
                 name.toLowerCase().startsWith('x-station-native-account-'),

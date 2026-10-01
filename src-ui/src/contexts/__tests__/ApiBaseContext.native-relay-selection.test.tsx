@@ -18,6 +18,7 @@ const boundary = vi.hoisted(() => ({
   repository: null as NativeStationProfileStorage | null,
   fetch: vi.fn<typeof fetch>(),
   retired: vi.fn(),
+  logout: vi.fn<() => Promise<{ revoked: true }>>(),
   bindings: [] as string[],
 }));
 vi.mock('../../platform/PlatformProfileContext', () => ({
@@ -62,6 +63,7 @@ vi.mock('../../platform/native/nativeAccountSessionBridge', () => ({
     signal: AbortSignal;
   }) => {
     let current: NativeAccountPublicScope | null = null;
+    let retired = false;
     const listeners = new Set<() => void>();
     return {
       current: () => (input.signal.aborted ? null : current),
@@ -70,6 +72,7 @@ vi.mock('../../platform/native/nativeAccountSessionBridge', () => ({
         return () => listeners.delete(listener);
       },
       async login(credentials: { username: string }) {
+        if (retired) throw new Error('native_account_scope_retired');
         current = Object.freeze({
           instanceId: credentials.username,
           generation: 1,
@@ -103,7 +106,17 @@ vi.mock('../../platform/native/nativeAccountSessionBridge', () => ({
         'X-Station-Native-Account-Proof': 'host-proof',
       }),
       acceptInvitation: async () => ({ data: { accepted: true } }),
+      async logout() {
+        try {
+          return await boundary.logout();
+        } finally {
+          retired = true;
+          current = null;
+          for (const listener of listeners) listener();
+        }
+      },
       retire: () => {
+        retired = true;
         boundary.retired();
         current = null;
         for (const listener of listeners) listener();
@@ -172,6 +185,7 @@ beforeEach(async () => {
     .mockReset()
     .mockImplementation(async () => Response.json({ success: true, data: [] }));
   boundary.retired.mockClear();
+  boundary.logout.mockReset().mockResolvedValue({ revoked: true });
   boundary.bindings.length = 0;
   boundary.repository = new NativeStationProfileStorage({
     async invoke<T>(command: string) {
@@ -296,3 +310,46 @@ it('account 401 retires only account scope; Project 403 preserves account and De
   ).toBe(bindingId);
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it.each(['confirmed', 'unknown'] as const)(
+  'mounts remote logout and fresh reauthentication without retiring Device custody (%s)',
+  async (outcome) => {
+    const { result } = mounted();
+    await act(async () => {
+      await result.current.account.login({
+        username: 'alice',
+        password: 'test-password',
+      });
+    });
+    const before = result.current.scope;
+    expect(before?.isCurrent()).toBe(true);
+    if (outcome === 'unknown')
+      boundary.logout.mockRejectedValueOnce(
+        new Error('remote outcome unknown'),
+      );
+    await act(async () => {
+      const operation = result.current.account.logout();
+      if (outcome === 'confirmed')
+        await expect(operation).resolves.toEqual({ revoked: true });
+      else await expect(operation).rejects.toThrow('remote outcome unknown');
+    });
+    expect(boundary.logout).toHaveBeenCalledTimes(1);
+    expect(before?.isCurrent()).toBe(false);
+    expect(result.current.scope).toBeUndefined();
+    expect(
+      boundary.repository?.captureNativeRequestBinding(
+        'station-profile:relay',
+        origin,
+      )?.bindingId,
+    ).toBe(bindingId);
+    expect(await checkServerHealth(origin)).toBe(true);
+    await act(async () => {
+      await result.current.account.login({
+        username: 'alice',
+        password: 'test-password',
+      });
+    });
+    expect(result.current.scope?.isCurrent()).toBe(true);
+    await listProjectViews(origin, { requestScope: result.current.scope });
+  },
+);
