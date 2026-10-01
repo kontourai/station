@@ -22,7 +22,7 @@ import {
   useNavigation,
   useNavigationActions,
 } from '../../contexts/NavigationContext';
-import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
+import { openChatsStore } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
@@ -30,6 +30,10 @@ import { useBranding } from '../../hooks/useBranding';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
+import {
+  openChatInboxRows,
+  useInboxWorkItems,
+} from '../../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   projectLiveCount,
@@ -144,13 +148,12 @@ function ProjectSidebarImpl() {
     chatDraftsStore.getSnapshot,
   );
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
-  // #765 A1/A2: pass the server session summaries, exactly as the dock inbox
-  // and Sessions view do. Without them `chatLifecycleLabel` has no
-  // correlated turn state and falls back to labelling every open chat
-  // "Running"/Active from local composer state alone — which is how a
-  // session the server had already folded to `failed` kept its "Active"
-  // chip in this sidebar.
-  const openChats = useOpenChats(agents, sessions);
+  // The dock inbox's own items, by the one derivation. #765 A1/A2 passed the
+  // sessions so a chat borrows the server's fold; #3077 goes the whole way:
+  // the row here IS the dock's row for that chat, looked up by its chat id,
+  // so the two inboxes cannot disagree about what a chat is waiting on.
+  const inboxItems = useInboxWorkItems(agents, sessions);
+  const openChats = useMemo(() => openChatInboxRows(inboxItems), [inboxItems]);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
   const openChatFacts = useWorkFacts(recentTasks, sessions);
   // One coarse tick for the rows' relative times, not a new clock per render.

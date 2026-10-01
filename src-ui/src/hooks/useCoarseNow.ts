@@ -17,7 +17,14 @@ export function useCoarseNow(
   const ticking = supplied === undefined && enabled;
   useEffect(() => {
     if (!ticking) return;
-    setNow(Date.now());
+    // Catch up a clock that went stale while not ticking (a sheet reopened
+    // minutes later) by at least one interval; a fresh mount is already
+    // current, and re-setting it a millisecond later would re-render the
+    // host and every row under it for no visible change.
+    setNow((previous) => {
+      const current = Date.now();
+      return current - previous >= intervalMs ? current : previous;
+    });
     const timer = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(timer);
   }, [ticking, intervalMs]);

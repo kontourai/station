@@ -45,7 +45,6 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import {
   type ChatFocusTarget,
   openChatsStore,
-  useOpenChats,
 } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -84,10 +83,11 @@ import {
   isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
-  buildHomeTaskItems,
-  chatTaskSessionId,
-} from '../../views/home/home-view-model';
+  openChatInboxRows,
+  useInboxWorkItems,
+} from '../../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   selectChatReadyAgents,
@@ -561,7 +561,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   // archive#3391: the inboxes name models through the catalog, as Home does.
   const { resolveModelLabel } = useCatalogModelLabel();
-  const openChatItems = useOpenChats(
+  // The one inbox derivation, shared with the sidebar's Open-chats rows.
+  const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,
     resolveModelLabel,
@@ -589,41 +590,25 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [inventory.data],
   );
-  const taskItems = useMemo(() => {
-    const currentSessionIdByConversation = new Map(
-      allSessions.flatMap((session) =>
-        session.conversationId && session.currentSessionId
-          ? [[session.conversationId, session.currentSessionId] as const]
-          : [],
-      ),
-    );
-    return buildHomeTaskItems({
-      chats: {},
-      sessions: orchestrationSessions,
-      agents,
-      chatItems: openChatItems,
-      currentSessionIdByConversation,
-      resolveModelLabel,
-    }).map((item) => {
-      const conversation = inventoryById.get(item.id);
-      if (!conversation) return item;
-      const acknowledgedAt = conversation.acknowledgedAt
-        ? Date.parse(conversation.acknowledgedAt)
-        : Number.NaN;
-      return {
-        ...item,
-        conversationUpdatedAt: conversation.updatedAt,
-        ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
-      };
-    });
-  }, [
-    agents,
-    allSessions,
-    inventoryById,
-    openChatItems,
-    orchestrationSessions,
-    resolveModelLabel,
-  ]);
+  // The inventory's acknowledgement stamps are presentation (which finished
+  // rows are "Just finished"), layered on the shared items; no status word
+  // reads them.
+  const taskItems = useMemo(
+    () =>
+      inboxItems.map((item) => {
+        const conversation = inventoryById.get(item.id);
+        if (!conversation) return item;
+        const acknowledgedAt = conversation.acknowledgedAt
+          ? Date.parse(conversation.acknowledgedAt)
+          : Number.NaN;
+        return {
+          ...item,
+          conversationUpdatedAt: conversation.updatedAt,
+          ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
+        };
+      }),
+    [inboxItems, inventoryById],
+  );
   const acknowledgeTaskConversation = useCallback(
     (item: { id: string; conversationUpdatedAt?: string }) => {
       if (!item.conversationUpdatedAt) return;
@@ -2439,7 +2424,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 !importedSessionId &&
                 (isPaneOpen || isCollapsedDragPreview) &&
                 activeSession?.conversationId &&
-                openChatItems.some(
+                openChatInboxRows(inboxItems).some(
                   (item) => chatTaskSessionId(item) === activeSession.id,
                 ) ? (
                   <ContextPercentage
