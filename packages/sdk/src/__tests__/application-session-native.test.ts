@@ -243,6 +243,47 @@ function invitationHostProvider(
 }
 
 describe('structured native account proof provider', () => {
+  test('host account read proofs cover only the exact member-read capability inventory', async () => {
+    const h = await fixture(hostProvider);
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    for (const path of [
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+      '/api/projects/demo',
+      '/api/projects/demo/shared-work',
+      '/api/projects/demo/shared-work/task_1/document',
+      '/api/projects/demo/shared-work/task_1/history',
+      '/api/projects/demo/shared-work/task_1/publication',
+    ])
+      expect(
+        await h.client.headers(continuation, { method: 'GET', path }),
+      ).toHaveProperty(APPLICATION_SESSION_NATIVE_PROOF_HEADER);
+    for (const path of [
+      '/api/pairing/devices',
+      '/api/config',
+      '/api/projects/demo/git/status',
+      '/api/projects/demo/shared-work/task_1/messages',
+      '/api/projects/demo/shared-work/task_1/document/extra',
+      '/api/projects/%2Fadmin',
+    ])
+      await expect(
+        h.client.headers(continuation, { method: 'GET', path }),
+      ).rejects.toThrow();
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/projects/demo/shared-work/task_1/document',
+      }),
+    ).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
   test('fixed invitation preparation validates the token and host proof without widening GET/HEAD request headers', async () => {
     const prepare = vi.fn();
     const reads = vi.fn();
