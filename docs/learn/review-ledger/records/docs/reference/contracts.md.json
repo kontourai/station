@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"7519433946e0d0dda5ef1da558ea7edc1ed24f4f2299885b8193d57ccf96b80a","revision":"c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96"},
+  "document": {"digest":"5b13d522e73ebe2c69392fb74dc0249ec3db4df10bd209c9809afdc24e13364b","revision":"94e8da3b253080c2450e333ebbe98acfaf35b7b8"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -50,7 +50,7 @@
 
     {"path":"packages/contracts/src/relay-enrollment.ts","digest":"622325708688314a4f708985de77a330c30cfe2615559fc32837f780b7932f22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/runtime-events.ts","digest":"d1fbeb20a129b2fb75e7b08ccd792e228f7b47f52eee85327d0b00ab44b09a0c","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"packages/contracts/src/runtime-events.ts","digest":"f58bc6f78acd49d8857178c91306d6ea19ff790cd453b8dd8ea0d8495ee78114","revision":"94e8da3b253080c2450e333ebbe98acfaf35b7b8"},
 
     {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,11 +102,11 @@
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"d2dbbce6baad16572ca41c29a37b847b0e0afebd6a182003d433c808278a238e","revision":"690cec0e25c1425ed7abb7cf184f4d96bbc2664b"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"3136807972255d53f059e5a6193c707151f8040e92078c404a3a5d23befb6b57","revision":"ea9f9e1dc9de552c1eb05f7c7e4cd60d82fd1841"},
 
-    {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"55135aea0e932c827e5bd7a6ab355dc7bc6969a3ea47cec11dc9aebf116e87ea","revision":"690cec0e25c1425ed7abb7cf184f4d96bbc2664b"},
+    {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"bbfb45fc9d241f43c63c30fdf9a6b6696390b7ab44cbfc6c3b24966e7895b179","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"d13289b347f86e451233a3ce22ee1a68b76c243f887fc2a689be650d423ed78b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
