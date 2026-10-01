@@ -12,11 +12,11 @@
   "document": {"digest":"834366555f8bc88a09ba1905af7d3688e83ab0606d7e362bb81ee142663893e4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
 
     {"path":"src-server/services/__tests__/privacy-inventory.test.ts","digest":"d76754d2b6182ff1bb5f89a1fe3b61719c9654fea01485c5392317b588e3bd38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/services/identity/local-account-provider.ts","digest":"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/identity/local-account-provider.ts","digest":"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
     {"path":"src-server/services/identity/local-account-runtime.ts","digest":"fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

@@ -24,9 +24,9 @@
 
     {"path":"src-server/routes/share/answer-share-routes.ts","digest":"de74fa89e8f9aa5d0770dc33fd1c0d9e95185c61c8a4bd23e94ab6070824a216","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"216f5d6d0204b64003210020e37682f0e79e62f306c7268860dc5e2e9109dd7d","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"695ea92f345988962929764a4072cc5056f51cb0d7280f333d242c42ed3314b1","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
     {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/chat/ShareAnswerButton.tsx","digest":"31619a6ca447e6a2f40821ecdddc1320bd189d8ae33c7bcf5e8884352af035cc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-ui/src/main.tsx","digest":"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
 
     {"path":"src-ui/src/utils/shareUiOrigin.ts","digest":"2678278a09bd74ba8d317c6d1d8f7ba13faef435e0a0844a6f4012105fc2210b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
