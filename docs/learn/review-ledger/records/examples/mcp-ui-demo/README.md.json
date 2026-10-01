@@ -1,0 +1,65 @@
+{
+  "path": "examples/mcp-ui-demo/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README and example-server claim review through stdio tool/resource registration, actual integration resolve/read routes and runtime mount, browser MCPToolUIFrame resolver/resource/bridge caller and shared CSP. Corrected web-only native refusal, default host enablement, script cwd prerequisite, credential requirement and require-versus-inherit approval behavior. Static demo sends no interactive messages; dedicated proxy versus opaque srcdoc boundary stated.",
+
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
+
+  "document": {"digest":"edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"examples/mcp-ui-demo/server.mjs","digest":"bcf0690795e3b8e915f132135d6c957f607ab59eb2fabfeaf923cb6ccff7d1d9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts","digest":"4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Prior receipt, retained without rerun: Actual local stdio MCP client listed status_panel, read its ui resource and invoked its fixture label successfully; Station iframe/host journey not exercised.",
+
+    "Prior receipt, retained without rerun: Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
+
+    "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
+
+    "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
+
+    "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
+
+    "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+
+    "Reviewed exact runtime-routes delta from6676a48ee: plugin-event relay extraction, Project-default helper inlining, control-thread/defaultApproval authority additions and unused re-export removal. MCP tool/UI route mount and approval wiring unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml only removed the root bearing/forage importer entries, and the example's own dependencies are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's runtime-routes changes are the full-access refusal identity middleware and the device revoke/scope-change full-access reset. The integration resolve/read routes, runtime mount, MCP UI resource handling, CSP and approvalPolicy require-versus-inherit behavior are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts. The integration resolve and read routes, the runtime mount and the README's instruction to include the Station's required credentials are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2919) MCPToolUIFrame.tsx un-exports mcpUiToolCallDecision and the isDistinctFrameOrigin re-export with unchanged require/inherit/read-only behavior; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: mcp-ui-resolver.test.ts folded near-duplicate cases (authoritative-empty catalog fallbacks, flat plus nested Survey keys) into existing tests; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

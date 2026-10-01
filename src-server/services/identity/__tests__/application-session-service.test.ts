@@ -499,6 +499,7 @@ describe('native application-session continuation service seam', () => {
     expect(directNative.status).toBe(401);
     const peer = new AbortController();
     const ingress = new VirtualApplicationIngress(origin, undefined, () => ({
+      peerNonce: 'n'.repeat(43),
       stationId,
       connectionEnrollmentId: 'e'.repeat(43),
       routingGeneration: 1,

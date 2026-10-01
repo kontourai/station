@@ -1,0 +1,137 @@
+{
+  "path": "docs/design/browser-preview-pane-mvp.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
+
+  "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
+
+  "document": {"digest":"e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"packages/contracts/src/workspace-browser-pane.ts","digest":"52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"packages/contracts/src/workspace-browser-preview.ts","digest":"ce91e2d481029501f2234191c0b954b05cdb10861295d5c8616318bc2acec29a","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/routes/browser-agent.ts","digest":"eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/browser.ts","digest":"e12b8389875a1696d0f23891aac7213753c9f9c74833e24ebd31829ffe2b2f12","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/routes/device-hosts.ts","digest":"d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/device-toolchain.ts","digest":"08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/device-tools.ts","digest":"551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/live-surface.ts","digest":"f8f3b37a1f955bd3e099478e20035bb14c9f1056e5e25f85360892458e69b462","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/browser-host.ts","digest":"1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/browser-live-surfaces.ts","digest":"6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/browser/browser-local-targets.ts","digest":"daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/browser-project-settings.ts","digest":"6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/browser-service.ts","digest":"537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"90590737c8d5b95e87a390954bbb8ab8d3a7623cdafd802acc09692084db7968","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"f07663905f5dc10c19babc52b1c7bb843731b504bab38e816597f08bbab25138","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/hosts/chromium-server-host.ts","digest":"f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/browser/station-listeners.ts","digest":"09c20a6a69a1fd7da1cc0e958a6d775c2a21f5d295a9811dd46cfce1f99b9720","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/browser/url-policy.ts","digest":"46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/devices/device-access.ts","digest":"c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/devices/device-hub-endpoint.ts","digest":"1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"a12a892c21125c0baf162e09e8c0a0abf2b30dcfc5e8f9aa0f9dc6c2897af1b3","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/devices/device-session-service.ts","digest":"b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/devices/hosts/device-host-registry.ts","digest":"02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/devices/toolchain/device-hub-connection.ts","digest":"0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/devices/toolchain/device-toolchain-service.ts","digest":"af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/live-surface/control-lease.ts","digest":"df337ad357260e1797a26fa32c4f903cca260e973edbb1a47b5b831b5c6d6482","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/live-surface/producer.ts","digest":"e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/live-surface/registry.ts","digest":"903df00489a63767e82604246f8ac9eedd3eb54cc947d08dba33ba459732f341","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-server/services/live-surface/surface-hub.ts","digest":"ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"c88b2dceb6d09d7054a758b75ec2ddd9f51aa781a05237fb36fbbce8d2229e13","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/tools/station-control-browser-tools.ts","digest":"c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"81c979aa34b061b5c9ca39dea2fe8327e387f97ceb079918039dd5311275ae3e","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-ui/src/live-surface/LiveSurfaceCanvas.tsx","digest":"790ccd19b16fa5b4d3911b9b817ecfb3b64c1505bb63dda41776a02762fb85c2","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx","digest":"34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/DeviceWorkspacePane.tsx","digest":"4aa07d6ef893ccb521e25b764cae0c71f64e8b41f1459e7a03aa5f2eabeed092","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx","digest":"5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"}
+  ],
+
+  "checks": [
+    "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically.",
+
+    "Reviewed source deltas: Reviewed comment correction; transpiled executable bytes unchanged.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904's runtime-routes changes are limited to full-access refusal identity middleware and device scope and revoke revocation reporting. Browser routes and grants are untouched. The dated design history and the current-guide link remain correct. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential hook to runtime-routes.ts; prose accurate: the dated preview admission/grant history and current-guide link are unaffected. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) makes DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private in DeviceWorkspacePane and drops a re-export. There is no behaviour change, and the historical Browser pane design claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

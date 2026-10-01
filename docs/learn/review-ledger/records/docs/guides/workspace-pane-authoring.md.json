@@ -1,0 +1,47 @@
+{
+  "path": "docs/guides/workspace-pane-authoring.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete authoring guide against public SDK parser/catalog/renderer selector and route composition. Verified contribution snapshot matching and current standard-data metadata-only presentation, separate plugin/MCP paths, persisted declarations and Home-role boundary. Clarified that the conformance fixture neither mounts a plugin nor executes an MCP resource.",
+
+  "limits": "EXECUTED PASS: public workspace-pane:conformance and focused real route-view fixture tests. No new real plugin approval, arbitrary MCP resource, browser sandbox, Home-role security or native-device qualification; linked security owners retain those boundaries.",
+
+  "document": {"digest":"0c83e2e1f73d29fc6d04a0726d733f39e728a24dd1d97e54b86de1bd167d51be","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+  "sources": [
+    {"path":"packages/contracts/src/workspace-pane-renderer-selection.ts","digest":"bcee7302fa95055622ad01eba66fb19886dd93fa9d033a520b75f1bea0f29db1","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"packages/contracts/src/workspace-pane.ts","digest":"30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"packages/sdk/src/workspace-pane.ts","digest":"1706dcbb2ed329bd68039900289a4fe33308add126c86b140639a27842037013","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"scripts/workspace-pane-conformance.ts","digest":"cb708c1e2e77d23772d3753ed05e4880f3829a38c172efdcaee2e4c0c488c182","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"src-server/routes/plugins/plugin-home-role-routes.ts","digest":"ad2b553accde4e731ec6db42c7d4c69092ccda2a50ed8cfefc6cc6f4d1dcba00","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"src-server/services/plugins/workspace-home-role-service.ts","digest":"4947b9cb1d2e42da4523ab427fdfb54bbf1f8d62db3bc72743f0bc656d1f26bc","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"src-server/services/projects/workspace-pane-catalog.ts","digest":"d46e8e6c91c8e1e5ae10ca584759a673bdc90a8d932352348150d140b2275222","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"src-server/services/projects/workspace-pane-known-declarations.ts","digest":"b6bf90151147637d4f60aac26553a981145103bd7ca5eaca8f4f90b8d0902394","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx","digest":"baa4270e5d8581b93bfff63109a3c2f1659810494671df120d5889d29150e4de","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+
+    {"path":"src-ui/src/workspace-panes/layoutContributionIdentity.ts","digest":"c992282bc5dd022ba5bf623c65295f6aa58cba3ab48504f0ef3da58ce61fb9b7","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"}
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Corrected stale no-production-writer comment against actual distinct-origin consent route; emitted JavaScript unchanged."
+  ]
+}

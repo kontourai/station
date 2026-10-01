@@ -1,5 +1,317 @@
 [
   {
+    "timestampUtc": "2026-09-30T23:10:29Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2464.3",
+    "sha": "4dbf9acbcab04c4695c8ca9799bc1422526cd382",
+    "artifactBuiltAt": "2026-09-30T22:16:49.568Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36783703696",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery failure (run 36783703696)"
+    ],
+    "changelog": {
+      "previousSha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T23:10:26Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2464.3",
+    "sha": "4dbf9acbcab04c4695c8ca9799bc1422526cd382",
+    "artifactBuiltAt": "2026-09-30T22:16:36.969Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36783703696",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery failure (run 36783703696)"
+    ],
+    "changelog": {
+      "previousSha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T23:03:25Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2464.36783703696",
+    "sha": "4dbf9acbcab04c4695c8ca9799bc1422526cd382",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36783703696",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2464.36783703696 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T20:34:00Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2464.2",
+    "sha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+    "artifactBuiltAt": "2026-09-30T19:54:00.917Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36767826654",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36767826654)"
+    ],
+    "changelog": {
+      "previousSha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+      "groups": {
+        "feat": [
+          "[#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary",
+          "[#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review",
+          "[#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices",
+          "[#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts"
+        ],
+        "fix": [
+          "[#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable",
+          "[#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams",
+          "[#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline",
+          "[#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories",
+          "[#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes"
+        ],
+        "other": [
+          "[#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T20:33:57Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2464.2",
+    "sha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+    "artifactBuiltAt": "2026-09-30T19:54:01.809Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36767826654",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36767826654)"
+    ],
+    "changelog": {
+      "previousSha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+      "groups": {
+        "feat": [
+          "[#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary",
+          "[#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review",
+          "[#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices",
+          "[#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts"
+        ],
+        "fix": [
+          "[#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable",
+          "[#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams",
+          "[#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline",
+          "[#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories",
+          "[#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes"
+        ],
+        "other": [
+          "[#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T20:29:52Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2464.36767826654",
+    "sha": "5ecd682d3dda93a00a126e31328fb563f3b427b8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36767826654",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2464.36767826654 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+      "groups": {
+        "feat": [
+          "[#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary",
+          "[#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review",
+          "[#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices",
+          "[#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts"
+        ],
+        "fix": [
+          "[#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable",
+          "[#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams",
+          "[#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline",
+          "[#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories",
+          "[#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes"
+        ],
+        "other": [
+          "[#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T06:25:54Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2464",
+    "sha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+    "artifactBuiltAt": "2026-09-30T05:26:56.248Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36672468094",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36672468094)"
+    ],
+    "changelog": {
+      "previousSha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+      "groups": {
+        "feat": [
+          "[#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride"
+        ],
+        "fix": [
+          "[#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses",
+          "[#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)",
+          "[#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T06:25:51Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2464",
+    "sha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+    "artifactBuiltAt": "2026-09-30T05:26:39.166Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36672468094",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36672468094)"
+    ],
+    "changelog": {
+      "previousSha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+      "groups": {
+        "feat": [
+          "[#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride"
+        ],
+        "fix": [
+          "[#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses",
+          "[#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)",
+          "[#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-09-30T06:22:05Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2464.36672468094",
+    "sha": "e27600d1fcd3ba8b80f793713e7901c35cba4381",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36672468094",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2464.36672468094 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "fa78d02a509c2a30a4347130f54de67cd6f30ba1",
+      "groups": {
+        "feat": [
+          "[#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride"
+        ],
+        "fix": [
+          "[#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses",
+          "[#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)",
+          "[#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-09-29T23:54:41Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2463.3",

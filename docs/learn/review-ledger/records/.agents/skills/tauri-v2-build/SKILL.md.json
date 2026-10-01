@@ -1,0 +1,17 @@
+{
+  "path": ".agents/skills/tauri-v2-build/SKILL.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Contributor, review, disclosure, or verification instructions; retained as normative guidance.",
+
+  "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
+
+  "document": {"digest":"60720ca8ee12e49a775a3707db7ade1bce7a27b0a05b7c4f3ebe90c0a1e935cb","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

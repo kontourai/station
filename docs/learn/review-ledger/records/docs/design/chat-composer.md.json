@@ -1,0 +1,41 @@
+{
+  "path": "docs/design/chat-composer.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Composer interaction and navigability policy with dated audit evidence and corrected current public HTTP entry points.",
+
+  "limits": "Current HTTP schemas and send/per-Agent caller boundaries were checked. Dated UI observations and mobile policy are preserved; no exhaustive composer, approval, accessibility, or physical-device certification.",
+
+  "document": {"digest":"aeb418f15c683c45acf0d100105617212985aaa7f34c61410d860ca6f4e5af7b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"packages/contracts/src/orchestration.ts","digest":"6a830fccf26dcd6512403346a89e568fd8bfed9b77921e40410cf1411f5bd612","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+
+    {"path":"src-server/routes/chat/chat.ts","digest":"530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Dated July audit and full September mobile-contract section byte-identical; current HTTP table/prose corrected.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: chat.ts now constructs the stateless ChatTurnDedupStore facade per request instead of a cached one over the same orchestration store (claims and restart replay unchanged); orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

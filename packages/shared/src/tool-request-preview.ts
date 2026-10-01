@@ -283,6 +283,7 @@ export type ToolRequestGrantInput = {
 };
 
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
+  'askuserquestion',
   'exitplanmode',
 ]);
 /**

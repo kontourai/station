@@ -1,0 +1,39 @@
+{
+  "path": "packages/contracts/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README read. Corrected types-only/no-runtime wording to reflect existing pure parsers, reducers and page builders; checked source-only distribution, direct domain imports and the distinction between structural parsing and authorization.",
+
+  "limits": "No exhaustive semantic or compatibility audit of all contract exports, external runtime matrix or npm publication proof. Existing pure helpers are described, not authorization to move new general-purpose services into contracts.",
+
+  "document": {"digest":"4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+
+  "sources": [
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+    {"path":"packages/contracts/src/child-work.ts","digest":"e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+
+    {"path":"packages/contracts/src/index.ts","digest":"ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+
+    {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
+
+    {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"}
+  ],
+
+  "checks": [
+    "Full README read and targeted production caller/manifest review; no application behavior changes.",
+
+    "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+
+    "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+
+    "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+
+    "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+
+    "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+  ]
+}

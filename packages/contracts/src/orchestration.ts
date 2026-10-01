@@ -3,6 +3,7 @@ import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
+import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -82,6 +83,7 @@ export type OrchestrationCommand =
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      answers?: HarnessQuestionAnswers;
     }
   | { type: 'stopSession'; threadId: string }
   | {
@@ -939,6 +941,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   currentSessionId?: string;
   /** Authoritative unresolved request ids when this summary carries a reader. */
   openRequestIds?: string[];
+  /** Current requests that suspend progress; absent on older hosts. */
+  blockingOpenRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   transitionReason?: SessionTransitionReason;

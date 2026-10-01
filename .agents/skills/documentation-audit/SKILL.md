@@ -56,13 +56,22 @@ unreviewed set. Do not report an inventory, source-path scan, or passing gate as
 a complete semantic review. Preserve useful historical records with their
 status and successor rather than making old evidence appear current.
 
-Update the [review ledger](../../../docs/learn/review-ledger.json) after the
+Update the [review ledger](../../../docs/learn/review-ledger/) after the
 review, recording scope, code/test owners, checks, and limits. Refresh an
 existing record with `npm run docs:review:record -- <path> --note "<what you
-checked>"` rather than editing its hashes. Keep document
-classification separate from source review. A changed document or supporting
-source invalidates the recorded review; inspect that change before replacing
-its hashes. Do not turn a hash refresh into automatic approval of the prose.
+checked>"` rather than editing its files; commit the reviewed bytes first.
+`--show-delta <path>` prints what changed since each input was reviewed, and
+`--rereview` records a deliberate review of unchanged bytes. Drop a citation
+with `--drop-source`, never by hand. Keep document classification separate
+from source review. A changed document or supporting source invalidates the
+recorded review; inspect that change before replacing its hashes. Do not turn a
+hash refresh into automatic approval of the prose.
+
+The ledger is one file per record plus append-only notes files, so reviews of
+different sources or records merge cleanly in the merge queue; see
+[ledger layout and merges](../../../docs/guides/documentation.md#ledger-layout-and-merges).
+If two branches reviewed different bytes of one source, the record conflicts.
+Merge `main` and record a new review of the merged bytes; do not keep one side.
 
 For a diagram, trace every behavioral edge and boundary; label optional paths
 and distinguish request, event, and storage flows. Check rendered output and
