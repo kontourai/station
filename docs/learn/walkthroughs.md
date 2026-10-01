@@ -17,16 +17,20 @@ matters: work can exist before an engine is ready to execute it.
 The Task's shared document and conversation keep revisions and discussion with
 that work. In this example a person saved a document; the room history records
 revision evidence. This does not demonstrate an external Agent editing alongside
-them. The editor's size and clipped heading at the original capture are visible;
-[#2844](https://github.com/kontourai/station/issues/2844) tracks those usability fixes.
+them. The current editor uses the available width and gives a multi-paragraph
+brief room to breathe. [#2844](https://github.com/kontourai/station/issues/2844)
+also tracks heading/focus and revision-label usability; this capture does not
+establish that every part of that issue is resolved.
 
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
-These captures retain their original revision and appearance. The current Task
+The Project capture retains its original revision and appearance. The Task
+document capture was replaced after actual single-user save/send/reopen checks.
+The current Task
 workspace leads with the objective and shared room, keeps technical identity
 behind **Task and workspace details**, and gives the editor and message field
-responsive width. The captures above do not verify that later layout or resolve
-every issue in #2844. The [shared-work delivery ledger](../plans/shared-work-delivery.md)
+responsive width. The captures above do not verify agent participation,
+two-human collaboration, or every issue in #2844. The [shared-work delivery ledger](../plans/shared-work-delivery.md)
 records the broader channel, board, agent and preview work still to deliver.
 
 Continue with [Starter Work](../guides/starter-work.md),

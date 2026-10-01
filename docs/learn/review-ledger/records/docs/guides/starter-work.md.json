@@ -100,13 +100,13 @@
 
     {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"9b32eb0875709ee3cd950de74c5471ad3d62564c13bdad8ba4b1e32f0cec8d0f","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"9a74da9763fba9b8b9ff8cab14a8192141e5a2c1aafe699cd8ac22b566e56e25","revision":"fbb464a6f50ad701f4c11b95cd8badaf73d3b391"},
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/views/project-page/ProjectTasksSection.tsx","digest":"94de8d1f60b9b22d414c30845b61c6b1d8a10548a3e86fed04fb72e7c3b82154","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
+    {"path":"src-ui/src/views/project-page/ProjectTasksSection.tsx","digest":"0523b601d4e3b3eb054b4d2778cc3487e0f65c975ad77419c5487c6858430ce5","revision":"404008de59f4664e8d5c4822bddfb0d3e39ef9a2"},
 
     {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"37939136798ca53c7328477bcb6b1e3a7fb8550c79effd535a8cec5cb5650152","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

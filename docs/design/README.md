@@ -81,6 +81,7 @@ category.
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
+- [shared-task-channels.md](shared-task-channels.md) — Shared Task channels
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
@@ -90,6 +91,5 @@ category.
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
-- [shared-task-channels.md](shared-task-channels.md) — Shared Task channels, task board, agent participation, and previews (active delivery target)
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->
