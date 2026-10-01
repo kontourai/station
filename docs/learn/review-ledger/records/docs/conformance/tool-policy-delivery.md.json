@@ -54,9 +54,9 @@
 
     {"path":"src-ui/src/components/chat/ToolCallDisplay.tsx","digest":"17852c7cbb75da30cbfa81f37c564dca85e07f8756d68767a50e9f0ca0fa8c06","revision":"ef15303ade3f3a2ac68967376f15be29273b58cd"},
 
-    {"path":"src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","digest":"734417e4f0ba23d2b8248c7680d547bff6ca4b6780a858f88a976ef89d16830a","revision":"f61e4efc7c4fd97531847cf798304c8760d3e624"},
+    {"path":"src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","digest":"5b2591cf055d1de8735300d1dfa06b2efd5c5c7c3efb7ae72cc8eacfb50b0402","revision":"b48a658e11513c3a589d6baec960a1a37ec531de"},
 
-    {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"574d7293d1a388be6db73f5d6c84ceeec7b5a07ff5eae0db73c00cf8086a42c9","revision":"f61e4efc7c4fd97531847cf798304c8760d3e624"},
+    {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"da3bc42c05c5689aa8381d8da14071a677500bbdef7ca13a861c638f333edb12","revision":"b48a658e11513c3a589d6baec960a1a37ec531de"},
 
     {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"13ac147c892452af633509b7ead455d767dc65abf781edc3ae5413161a9a381e","revision":"f61e4efc7c4fd97531847cf798304c8760d3e624"}
   ],
