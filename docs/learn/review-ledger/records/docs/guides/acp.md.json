@@ -9,14 +9,14 @@
 
   "limits": "Dated Kiro observations remain historical. This record does not rerun a live ACP engine or establish vendor compatibility for every advertised extension.",
 
-  "document": {"digest":"a902573fcf2c8caab6097af31941a73700df2906868bbbef1f2f13a97de5e02c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"82993f72a0cd60d9ab6fe06f633aaeb0b641b172f0c6d63e3b4cc8a331b2d59f","revision":"415983fc439133fdcebf838ce33b60b428500c1b"},
 
   "sources": [
     {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"276fb15119631c1140f8a94c0298294099563f41ad62344629705e8148ce97f0","revision":"4cfca300a183ebcff5a7339b29046666d08b38ae"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"7a846e575ccca5aeb934e703a02d119643a46a942407d528ad1f081a591aed68","revision":"e1ce3538d977a5e3bbde7395e08aebe66e29781c"},
 
     {"path":"src-server/services/acp/acp-probe.ts","digest":"7a91bac3e7d7fd693285d50c20990448323f1db7e3c0ba97edde486b0d8de86c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

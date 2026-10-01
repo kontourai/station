@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
     {"path":"packages/contracts/src/workspace-composition.ts","digest":"3a63323df9da3e2d7e4f6a4c304f05c08bc81b85083f7466c6d59af904e81082","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"2d63e7beb88ffd715811a385ce541ca9f9613c22ccb0797afffcee57625e8a4c","revision":"b4bc680b3c35d1559da59ffe73aa3808d8b82427"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"5ffda91dce823e9a7e4d489251257792383550f853faf8f159d2e3024a9a59d8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"59272a6d227bd7febd99d0f0a8a8a4cf306a2a7c34b30d952e1565c679da3b50","revision":"47f976a2ce8085003c1d010080c93dff57cd8665"},
 
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

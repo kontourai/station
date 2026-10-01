@@ -9,10 +9,10 @@
 
   "limits": "Browser-matrix descriptions name source coverage, not a newly executed full Playwright matrix. No live engine steering or physical native-device result; redaction preserves protocol fields and is not arbitrary sensitive-text detection.",
 
-  "document": {"digest":"4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"87ac109f06cde681893f91242a4daaef98e91c1ab30b135462d082912f740309","revision":"a6d7d02ef33822966cd68257c7a6466e9797989e"},
 
   "sources": [
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
     {"path":"src-server/providers/adapters/acp-steer.ts","digest":"df5aea2d6a0c2d6f8aace66a72bb8b748511b0221d8ee00cb6cc9a5ed98461dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -20,7 +20,7 @@
 
     {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"b3e72cbd7dfc41d54569b368f80db1ea6294dc2d70f99572194abb93b605f040","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"c516313992221258d93e42c79e982dae296afe29658b4d387b17d4c486ec284e","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"2516bd8de859719e8c3dd6ae6fbd3b7b4a36d673dc981830b7016e2686c39966","revision":"e1ce3538d977a5e3bbde7395e08aebe66e29781c"},
 
     {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"62b998f27a529bd30545b11de5b1cc0448a2b9f041070aeaba59bf25e61cb6bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
