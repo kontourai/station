@@ -26,12 +26,16 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
 import { subscribeCenterChatPageRequests } from '../../app-shell/chat-placement';
-import { useDeviceSettingsActions } from '../../contexts/DeviceSettingsContext';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from '../../contexts/DeviceSettingsContext';
 import {
   type ShortcutWhen,
   useKeyboardShortcuts,
@@ -46,6 +50,8 @@ import { NO_SESSION_PANELS_KEY } from '../../lib/coding-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
+import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
+import { RegionChromeSlotsContext } from '../../workspace-panes/RegionChromeSlots';
 import type {
   WorkspacePaneHostCatalogRequest,
   WorkspacePaneHostPopOut,
@@ -71,14 +77,16 @@ import {
 } from '../icons/Glyph';
 import { Empty } from '../state';
 import {
-  CODING_LOWER_DEFAULT_HEIGHT,
   CODING_LOWER_MIN_HEIGHT,
   CODING_SIDE_DEFAULT_WIDTH,
   CODING_SIDE_MIN_WIDTH,
+  CODING_TRANSCRIPT_MIN_WIDTH,
   clampCodingLowerHeight,
   clampCodingSideWidth,
+  codingLowerDefaultHeight,
   codingLowerMaxHeight,
   codingSideMaxWidth,
+  codingTranscriptWidth,
   resizeCodingPanelFromKeyboard,
   useCodingSessionPanels,
 } from './codingPanels';
@@ -171,6 +179,12 @@ export interface CodingWorkbenchProps {
    */
   notice?: ReactNode;
   paneLabel(instance: WorkspacePaneInstance): string;
+  /**
+   * What a pane's name abbreviates — a File Preview's full path behind its
+   * file name (#3047). The rail's tooltip and the panel head's title; null
+   * when the name is the whole story.
+   */
+  paneDetail?(instance: WorkspacePaneInstance): string | null;
   hostOpen: WorkspacePaneHostOpenAction | null;
   onOpenCatalog(request: WorkspacePaneHostCatalogRequest): void;
   browserPreviewAvailability?: WorkspacePaneAvailability;
@@ -240,6 +254,7 @@ export function CodingWorkbench({
   terminal,
   notice,
   paneLabel,
+  paneDetail,
   hostOpen,
   onOpenCatalog,
   browserPreviewAvailability,
@@ -321,10 +336,12 @@ export function CodingWorkbench({
     projectId,
     projectSlug,
     // A File Preview deep link is the Chat position's to open, as it was the
-    // Coding tab's: on a drill-in the Files pane that wrote the intent has
-    // already opened its own preview, and opening it here too would open it
-    // twice.
-    paneHostOpen: page === 'chat' ? hostOpen : null,
+    // Coding tab's: on a drill-in, or beside Chat past the wide fold, the
+    // Files pane that wrote the intent has already opened its own preview,
+    // and opening it here too would open it twice (every preview is its own
+    // occurrence). So the position consumes an intent only while no pane is
+    // beside Chat — a cold link's, not a pane's.
+    paneHostOpen: page === 'chat' && !sideOpen ? hostOpen : null,
     // A phone's Chat is the dock, maximized while the Chat page is the page.
     ownsMobileDock: page === 'chat',
   });
@@ -738,8 +755,9 @@ export function CodingWorkbench({
     sideDraft ?? panels.sideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
     roomWidth,
   );
+  const lowerDefault = codingLowerDefaultHeight(roomHeight);
   const lowerHeight = clampCodingLowerHeight(
-    lowerDraft ?? panels.terminalHeight ?? CODING_LOWER_DEFAULT_HEIGHT,
+    lowerDraft ?? panels.terminalHeight ?? lowerDefault,
     roomHeight,
   );
   const sideMax = codingSideMaxWidth(roomWidth);
@@ -751,6 +769,102 @@ export function CodingWorkbench({
       return edge === 'right' ? window.innerWidth : window.innerHeight;
     return rect[edge];
   };
+
+  // ── The inbox beside an open tool (#3046 round). A tool that would leave
+  // the transcript under its floor folds the inbox for its stay and unfolds
+  // it when the tool closes — unless the reader has folded or unfolded it
+  // themselves while a tool was open, which is their choice for this
+  // session (`panels.inbox`) and is never overridden.
+  const inboxOpen = useDeviceSettings().inboxOpen;
+  const ownInboxWrite = useRef<boolean | null>(null);
+  const autoFolded = useRef(false);
+  const writeInbox = useCallback(
+    (value: boolean) => {
+      ownInboxWrite.current = value;
+      setDeviceSetting('inboxOpen', value);
+    },
+    [setDeviceSetting],
+  );
+  const committedSideWidth = panels.sideWidth;
+  useEffect(() => {
+    if (!wide) return;
+    if (!sideOpen) {
+      if (autoFolded.current) {
+        autoFolded.current = false;
+        writeInbox(true);
+      }
+      return;
+    }
+    if (!inboxOpen || panels.inbox !== null || autoFolded.current) return;
+    const inbox =
+      chatPageRef.current?.querySelector<HTMLElement>('.chat-dock-inbox');
+    const measured = inbox?.getBoundingClientRect().width || null;
+    const width = clampCodingSideWidth(
+      committedSideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
+      roomWidth,
+    );
+    if (
+      codingTranscriptWidth(roomWidth, width, measured) <
+      CODING_TRANSCRIPT_MIN_WIDTH
+    ) {
+      autoFolded.current = true;
+      writeInbox(false);
+    }
+  }, [
+    committedSideWidth,
+    inboxOpen,
+    panels.inbox,
+    roomWidth,
+    sideOpen,
+    wide,
+    writeInbox,
+  ]);
+  const lastInbox = useRef(inboxOpen);
+  useEffect(() => {
+    if (lastInbox.current === inboxOpen) return;
+    lastInbox.current = inboxOpen;
+    if (ownInboxWrite.current === inboxOpen) {
+      ownInboxWrite.current = null;
+      return;
+    }
+    // The reader's own move while a tool is beside Chat: theirs to keep.
+    if (wide && sideOpen) {
+      autoFolded.current = false;
+      updatePanels({ inbox: inboxOpen });
+    }
+  }, [inboxOpen, sideOpen, updatePanels, wide]);
+
+  // ── One bar: the breadcrumb names the conversation, and Chat's own
+  // toolbar (its project context, Open/New, the dock menu) renders into the
+  // bar's two slots beside it (#3046) rather than as a second row.
+  const chatBar = centerChat && page === 'chat';
+  const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
+  const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
+  const chatBarSlots = useMemo(
+    () => ({ leading: barLeading, trailing: barTrailing, namesPane: true }),
+    [barLeading, barTrailing],
+  );
+  // The panel heads: the pane's own controls join the head row.
+  const [sideHeadLeading, setSideHeadLeading] = useState<HTMLElement | null>(
+    null,
+  );
+  const [sideHeadTrailing, setSideHeadTrailing] = useState<HTMLElement | null>(
+    null,
+  );
+  const sideHeadSlots = useMemo(
+    () => ({ leading: sideHeadLeading, trailing: sideHeadTrailing }),
+    [sideHeadLeading, sideHeadTrailing],
+  );
+  const [lowerHeadLeading, setLowerHeadLeading] = useState<HTMLElement | null>(
+    null,
+  );
+  const [lowerHeadTrailing, setLowerHeadTrailing] =
+    useState<HTMLElement | null>(null);
+  const lowerHeadSlots = useMemo(
+    () => ({ leading: lowerHeadLeading, trailing: lowerHeadTrailing }),
+    [lowerHeadLeading, lowerHeadTrailing],
+  );
+  const drillInDetail = drilledIn ? (paneDetail?.(drilledIn) ?? null) : null;
 
   const pageState = (candidate: 'chat' | 'drill-in', active: boolean) => ({
     'data-active': active ? 'true' : 'false',
@@ -826,50 +940,65 @@ export function CodingWorkbench({
       }
     >
       <div className="coding-workbench__main">
-        <nav className="coding-workbench__bar" aria-label="Coding navigation">
-          <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
-            <li className="coding-workbench__crumb">
-              <button
-                type="button"
-                className="coding-workbench__crumb-link"
-                onClick={openInbox}
-              >
-                Inbox
-              </button>
-            </li>
-            <li className="coding-workbench__crumb">
-              {page === 'drill-in' ? (
+        <div className="coding-workbench__bar">
+          <nav className="coding-workbench__nav" aria-label="Coding navigation">
+            <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
+              <li className="coding-workbench__crumb">
                 <button
                   type="button"
                   className="coding-workbench__crumb-link"
-                  onClick={returnToChatPage}
+                  onClick={openInbox}
                 >
-                  {chatTitle}
+                  Inbox
                 </button>
-              ) : (
-                <span
-                  className="coding-workbench__crumb-current"
-                  aria-current="page"
-                >
-                  {chatTitle}
-                </span>
-              )}
-            </li>
-            {page === 'drill-in' ? (
-              <li className="coding-workbench__crumb">
-                <span
-                  className="coding-workbench__crumb-current"
-                  aria-current="page"
-                  ref={currentCrumbRef}
-                  tabIndex={-1}
-                >
-                  {drillInLabel}
-                </span>
               </li>
-            ) : null}
-          </ol>
+              <li className="coding-workbench__crumb">
+                {page === 'drill-in' ? (
+                  <button
+                    type="button"
+                    className="coding-workbench__crumb-link"
+                    onClick={returnToChatPage}
+                  >
+                    {chatTitle}
+                  </button>
+                ) : (
+                  <span
+                    className="coding-workbench__crumb-current"
+                    aria-current="page"
+                  >
+                    {chatTitle}
+                  </span>
+                )}
+              </li>
+              {page === 'drill-in' ? (
+                <li className="coding-workbench__crumb">
+                  <span
+                    className="coding-workbench__crumb-current"
+                    aria-current="page"
+                    ref={currentCrumbRef}
+                    tabIndex={-1}
+                  >
+                    {drillInLabel}
+                  </span>
+                </li>
+              ) : null}
+            </ol>
+          </nav>
+          {chatBar ? (
+            <div
+              className="coding-workbench__bar-leading"
+              ref={setBarLeading}
+            />
+          ) : null}
+          <span className="coding-workbench__bar-spacer" />
+          {chatBar ? (
+            <div
+              className="coding-workbench__bar-trailing"
+              ref={setBarTrailing}
+            />
+          ) : null}
           {page === 'drill-in' ? paneMenu : null}
-        </nav>
+        </div>
         <p className="coding-workbench__announcement" aria-live="polite">
           {announcement}
         </p>
@@ -904,15 +1033,17 @@ export function CodingWorkbench({
               {...pageState('chat', page === 'chat')}
             >
               {centerChat ? (
-                <ChatWorkspacePane
-                  placement="fullscreen"
-                  // The dock's Chat, moved to the centre: the dock's scope
-                  // (every conversation), not the Chat layout's Project-bound one.
-                  conversationScope="ambient"
-                  onScreen={page === 'chat'}
-                  ownsDockShortcuts={false}
-                  onPresentationTitleChange={setChatTitle}
-                />
+                <RegionChromeSlotsContext.Provider value={chatBarSlots}>
+                  <ChatWorkspacePane
+                    placement="fullscreen"
+                    // The dock's Chat, moved to the centre: the dock's scope
+                    // (every conversation), not the Chat layout's Project-bound one.
+                    conversationScope="ambient"
+                    onScreen={page === 'chat'}
+                    ownsDockShortcuts={false}
+                    onPresentationTitleChange={setChatTitle}
+                  />
+                </RegionChromeSlotsContext.Provider>
               ) : (
                 <DockChatNotice />
               )}
@@ -949,10 +1080,19 @@ export function CodingWorkbench({
                   <h2
                     ref={sideHeadingRef}
                     className="coding-workbench__panel-title"
+                    title={drillInDetail ?? undefined}
                     tabIndex={-1}
                   >
                     {drillInLabel}
                   </h2>
+                  <div
+                    className="coding-workbench__head-slot coding-workbench__head-slot--leading"
+                    ref={setSideHeadLeading}
+                  />
+                  <div
+                    className="coding-workbench__head-slot"
+                    ref={setSideHeadTrailing}
+                  />
                   {paneMenu}
                   <Tooltip label={`Close ${drillInLabel}`} placement="bottom">
                     <button
@@ -966,7 +1106,15 @@ export function CodingWorkbench({
                   </Tooltip>
                 </header>
               ) : null}
-              <div className="coding-workbench__panel-body">{children}</div>
+              <div className="coding-workbench__panel-body">
+                {wide ? (
+                  <PaneHeadSlotsContext.Provider value={sideHeadSlots}>
+                    {children}
+                  </PaneHeadSlotsContext.Provider>
+                ) : (
+                  children
+                )}
+              </div>
             </section>
           </div>
           {wide && terminal && lowerVisited ? (
@@ -978,7 +1126,7 @@ export function CodingWorkbench({
                   value={lowerHeight}
                   min={CODING_LOWER_MIN_HEIGHT}
                   max={lowerMax}
-                  reset={CODING_LOWER_DEFAULT_HEIGHT}
+                  reset={lowerDefault}
                   measure={(_clientX, clientY) => roomEdge('bottom') - clientY}
                   onDraft={(height) =>
                     setLowerDraft(clampCodingLowerHeight(height, roomHeight))
@@ -1011,6 +1159,14 @@ export function CodingWorkbench({
                   >
                     {terminalLabel}
                   </h2>
+                  <div
+                    className="coding-workbench__head-slot coding-workbench__head-slot--leading"
+                    ref={setLowerHeadLeading}
+                  />
+                  <div
+                    className="coding-workbench__head-slot"
+                    ref={setLowerHeadTrailing}
+                  />
                   <Tooltip label={`Close ${terminalLabel}`} placement="bottom">
                     <button
                       type="button"
@@ -1025,7 +1181,9 @@ export function CodingWorkbench({
                   </Tooltip>
                 </header>
                 <div className="coding-workbench__panel-body">
-                  {terminal.render()}
+                  <PaneHeadSlotsContext.Provider value={lowerHeadSlots}>
+                    {terminal.render()}
+                  </PaneHeadSlotsContext.Provider>
                 </div>
               </section>
             </>
@@ -1047,6 +1205,7 @@ export function CodingWorkbench({
             : undefined
         }
         paneLabel={paneLabel}
+        paneDetail={paneDetail}
         badges={badges}
         onOpenView={openView}
         onAddPane={hostOpen ? requestCatalog : undefined}
@@ -1213,6 +1372,7 @@ function CodingViewRail({
   currentPaneId,
   pressed,
   paneLabel,
+  paneDetail,
   badges,
   onOpenView,
   onAddPane,
@@ -1224,6 +1384,7 @@ function CodingViewRail({
   /** In `panels` mode: the open panes' instance ids, each to its panel's id. */
   pressed?: Readonly<Record<string, string>>;
   paneLabel(instance: WorkspacePaneInstance): string;
+  paneDetail?(instance: WorkspacePaneInstance): string | null;
   badges: Readonly<Record<string, number>>;
   onOpenView(instance: WorkspacePaneInstance, viaKeyboard: boolean): void;
   onAddPane?: () => void;
@@ -1239,8 +1400,17 @@ function CodingViewRail({
             ? label
             : `${label}, ${count} changed ${count === 1 ? 'file' : 'files'}`;
         const panelId = pressed?.[instance.instanceId];
+        // The tooltip says the whole of what the name abbreviates (a
+        // preview's full path, #3047); the accessible name stays the name.
+        const detail = paneDetail?.(instance) ?? null;
+        const tip =
+          detail === null || detail === label
+            ? name
+            : count === undefined
+              ? detail
+              : `${detail} — ${name.slice(label.length + 2)}`;
         return (
-          <Tooltip key={instance.instanceId} label={name} placement="left">
+          <Tooltip key={instance.instanceId} label={tip} placement="left">
             <button
               type="button"
               className="coding-workbench__rail-item"

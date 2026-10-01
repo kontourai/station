@@ -1634,19 +1634,61 @@ per conversation.** Below the fold nothing above changes.
 - **Quiet chrome.** The rail is unchanged in shape: past the fold its items
   are toggles (`aria-pressed`, `aria-controls` naming the panel) with the
   open ones solid, the Terminal's among them; below it they keep
-  `aria-current`. Each panel has one 36px head — its name as a focusable
-  heading, the drill-in ⋯ where it has one, an icon-only close — and no
-  labelled button, so the button cap is untouched. Opening from the keyboard
+  `aria-current`. Each panel has one 36px head — its name as the panel's one
+  heading, focusable, the pane's own controls in the head's slots, the
+  drill-in ⋯ where it has one, an icon-only close — and no labelled button,
+  so the button cap is untouched. Opening from the keyboard
   moves focus to the panel's heading and closing returns it to the rail
   item; a pointer leaves focus alone; nothing traps it. The side panel
   enters with the stack's push slide, which reduced motion collapses as it
   does the page slide. All of it lives in the workbench's own stylesheet in
   the lazily loaded layout chunk, not the entry CSS.
 
-Limits: a pane opened BY a pane (a File Preview from Files) is the host's
-own named open, which still pushes an entry past the fold; the lower panel
-is the Terminal's alone (no other pane docks below); and the fold ignores
-whether the Project sidebar is collapsed.
+- **A pane opened by a pane lands beside Chat the same way.** Past the fold
+  the host runs with `navigationSelection="replace"`: its own named opens
+  (a File Preview from Files) correct the entry in place like a rail pick,
+  so Back never steps through side-panel changes. The Files row selection
+  itself (`setLayout` with a preview intent for the layout already on
+  screen) is written in place in both modes — choosing a file is not a page
+  — which also removes the second entry a file click used to push below the
+  fold before the drill-in's own. The Chat position consumes a preview
+  intent only while no pane is beside Chat (a cold link's), since every
+  preview is its own occurrence and the Files pane opens its own.
+- **The transcript keeps 480px beside a tool** (`CODING_TRANSCRIPT_MIN_WIDTH`,
+  the same floor the fold budgets for Chat once the inbox is folded). A tool
+  that would leave the transcript narrower folds the inbox (`inboxOpen`
+  false) for its stay and unfolds it when the tool closes, measuring the
+  inbox as rendered or by its own 240–360px rule. A fold or unfold the
+  reader makes by hand while a tool is open is remembered for the session
+  (`inbox` in the record) and never overridden: no fold, no restore, and
+  the choice applied again when the session returns. The crumb's Inbox is
+  such a choice.
+- **One bar (#3046).** The breadcrumb names the conversation, and Chat's
+  own toolbar renders into the bar's two slots beside it through
+  `RegionChromeSlots` with `namesPane` — the full-screen Chat joins a bar
+  that names it and ignores a region's bar as before — omitting its identity
+  (the crumb is the title) and keeping Open/New icon-only, named and tipped
+  with their chords (`ChatDockWorkspaceActions iconOnly`). The dock's own
+  Chat header elsewhere is unchanged. On a drill-in page the bar is the
+  pane's again (the slots are not offered).
+- **One head per panel.** The side and lower panel heads offer
+  `PaneHeadSlots` (`workspace-panes/PaneHeadSlots.tsx`): Files renders its
+  "+" into the head's trailing slot and no title row; the Terminal renders
+  its tab strip and "+" into the leading slot and no bar of its own. A pane
+  on its own (a drill-in page, a region) keeps its own rows. A strip with one
+  terminal tab still shows it: the tab is where its rename, close and mode
+  toggle live, and hiding it would hide them.
+- **Rail names (#3047).** A File Preview item is named by its file; its
+  tooltip, and the panel head's title, carry the full path
+  (`filePreviewPanePresentationPath`). The lower panel opens at three tenths
+  of the room (`CODING_LOWER_DEFAULT_FRACTION`), between 160px and Chat's
+  240px floor, and is remembered and resizable as before.
+
+Limits: the lower panel is the Terminal's alone (no other pane docks below);
+the fold ignores whether the Project sidebar is collapsed; a shared link that
+names both a pane and a preview intent opens the pane and leaves the intent
+to the Files pane's row; and the inbox fold is decided when a tool opens or is
+resized, not on every viewport change.
 
 ## Failure shapes this design is meant to prevent
 

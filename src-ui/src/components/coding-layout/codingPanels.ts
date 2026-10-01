@@ -38,10 +38,54 @@ const CODING_WIDE_MEDIA_QUERY = '(min-width: 1280px)';
 const CODING_CHAT_MIN_WIDTH = 480;
 export const CODING_SIDE_MIN_WIDTH = 320;
 export const CODING_SIDE_DEFAULT_WIDTH = 440;
+/**
+ * The transcript column — where the reader works — keeps this much beside
+ * an open tool, or the inbox folds for the tool's stay (#3046 round). The
+ * same 480 as Chat's floor in the fold derivation: the inbox at its 240px
+ * floor is what the fold budgets for Chat beyond the transcript, so once
+ * the inbox is folded the whole floor is the transcript's.
+ */
+export const CODING_TRANSCRIPT_MIN_WIDTH = 480;
+/** The inbox's own width rule (`ChatDockInboxPanel.css`), for an unmeasured one. */
+const CODING_INBOX_WIDTH = { min: 240, fraction: 0.24, max: 360 };
 /** Below Chat's transcript and composer, the lower panel stops here. */
 const CODING_CHAT_MIN_HEIGHT = 240;
 export const CODING_LOWER_MIN_HEIGHT = 160;
-export const CODING_LOWER_DEFAULT_HEIGHT = 280;
+/**
+ * The lower panel opens at this much of the room: at 860px that is 258px —
+ * about eleven terminal rows under the panel's head and the strip — and
+ * leaves the transcript seventy percent, which a fixed 280px did not on a
+ * laptop. Between its floor and Chat's, as any resize is.
+ */
+const CODING_LOWER_DEFAULT_FRACTION = 0.3;
+
+export function codingLowerDefaultHeight(roomHeight: number): number {
+  return clampCodingLowerHeight(
+    roomHeight * CODING_LOWER_DEFAULT_FRACTION,
+    roomHeight,
+  );
+}
+
+/**
+ * The transcript column's width beside an open tool: the room less the rail,
+ * the separator, the tool and the inbox — the inbox as measured, or by its
+ * own rule when it has no box yet.
+ */
+export function codingTranscriptWidth(
+  roomWidth: number,
+  sideWidth: number,
+  inboxWidth: number | null,
+): number {
+  const inbox =
+    inboxWidth ??
+    Math.min(
+      CODING_INBOX_WIDTH.max,
+      Math.max(CODING_INBOX_WIDTH.min, roomWidth * CODING_INBOX_WIDTH.fraction),
+    );
+  return (
+    roomWidth - CODING_RAIL_WIDTH - CODING_SEPARATOR_SIZE - sideWidth - inbox
+  );
+}
 /** The rail and the separator, which the side panel's room excludes. */
 const CODING_RAIL_WIDTH = 44;
 const CODING_SEPARATOR_SIZE = 8;

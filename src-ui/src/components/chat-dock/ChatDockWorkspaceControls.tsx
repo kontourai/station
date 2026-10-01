@@ -1,3 +1,4 @@
+import { Tooltip } from '@kontourai/ui/react';
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -85,9 +86,53 @@ export function ChatDockSessionInventoryHost({
 export function ChatDockWorkspaceActions({
   onOpenConversation,
   onNewChat,
-}: Pick<Controls, 'onOpenConversation' | 'onNewChat'>) {
+  iconOnly = false,
+}: Pick<Controls, 'onOpenConversation' | 'onNewChat'> & {
+  /**
+   * Icon-only, named and tipped (#3046): in a bar that names the pane, the
+   * two verbs keep their glyphs and give up their words, so the bar stays
+   * within the button cap and the title keeps the width.
+   */
+  iconOnly?: boolean;
+}) {
   const openShortcut = useShortcutDisplay('dock.openConversation');
   const newShortcut = useShortcutDisplay('dock.newChat');
+  if (iconOnly) {
+    const openHint = withShortcutHint(
+      'Open conversation',
+      'dock.openConversation',
+      () => openShortcut,
+    );
+    const newHint = withShortcutHint(
+      'New chat',
+      'dock.newChat',
+      () => newShortcut,
+    );
+    return (
+      <div className="chat-dock__tab-actions chat-dock__tab-actions--icons">
+        <Tooltip label={openHint} placement="bottom">
+          <button
+            type="button"
+            className="chat-dock__new chat-dock__open chat-dock__new--icon"
+            aria-label="Open conversation"
+            onClick={onOpenConversation}
+          >
+            <MessageGlyph />
+          </button>
+        </Tooltip>
+        <Tooltip label={newHint} placement="bottom">
+          <button
+            type="button"
+            className="chat-dock__new chat-dock__new--icon"
+            aria-label="New chat"
+            onClick={onNewChat}
+          >
+            <NewChatGlyph />
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
   return (
     <div className="chat-dock__tab-actions">
       <button

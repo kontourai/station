@@ -91,9 +91,11 @@ export interface WorkspacePaneHostTreeProps {
    * entry). Default true; a region host passes false — its selection
    * authority is the region model (see the controller's option); the Coding
    * navigation stack passes `'explicit'`, whose URL names a pane only when a
-   * user or an open named one.
+   * user or an open named one; past its wide fold it passes `'replace'`,
+   * where even a named one corrects the entry in place (#3040: a pane
+   * beside Chat is not a page, so Back never steps through panel changes).
    */
-  navigationSelection?: boolean | 'explicit';
+  navigationSelection?: boolean | 'explicit' | 'replace';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */

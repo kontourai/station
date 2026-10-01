@@ -95,6 +95,7 @@ import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspac
 import {
   admitRestoredFilePreviewPaneInstance,
   filePreviewPanePresentationLabel,
+  filePreviewPanePresentationPath,
   removeRemovedFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneInstance';
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
@@ -1473,10 +1474,26 @@ function BuiltinCodingLayoutHost({
       />
     ) : null;
   };
-  const stackPaneLabel = (instance: WorkspacePaneInstance) =>
-    presentationLabel(instance) ??
-    builtinWorkspacePaneName(instance.descriptorId) ??
-    'Pane';
+  // A File Preview is named by its file (#3047): the rail item says the
+  // name, its tooltip and the panel head's title the whole path.
+  const stackPaneDetail = (instance: WorkspacePaneInstance) =>
+    projectId
+      ? filePreviewPanePresentationPath(
+          projectId,
+          projectSlug,
+          instance,
+          window.localStorage,
+        )
+      : null;
+  const stackPaneLabel = (instance: WorkspacePaneInstance) => {
+    const path = stackPaneDetail(instance);
+    if (path) return path.slice(path.lastIndexOf('/') + 1) || path;
+    return (
+      presentationLabel(instance) ??
+      builtinWorkspacePaneName(instance.descriptorId) ??
+      'Pane'
+    );
+  };
   return (
     <CodingWorkbench
       projectId={projectId}
@@ -1504,6 +1521,7 @@ function BuiltinCodingLayoutHost({
           : undefined
       }
       paneLabel={stackPaneLabel}
+      paneDetail={stackPaneDetail}
       hostOpen={hostOpen}
       onOpenCatalog={requestCatalog}
       browserPreviewAvailability={browserPreviewEntry?.availability}
@@ -1536,7 +1554,10 @@ function BuiltinCodingLayoutHost({
           document={document}
           runtime={workspacePaneRuntime.current}
           compact={compact}
-          navigationSelection="explicit"
+          // Past the wide fold a pane the host opens itself (a File Preview
+          // from Files) lands beside Chat like a rail pick: the entry is
+          // corrected in place, never pushed (#3040).
+          navigationSelection={wide ? 'replace' : 'explicit'}
           // A drill-in is its page: the pane and nothing else. No tab strip, no
           // save notice, no pane-actions chrome — the stack's breadcrumb, rail
           // and ⋯ carry what the reader needs (`CodingWorkbench`).

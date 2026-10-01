@@ -374,6 +374,14 @@ export interface CodingSessionPanels {
   sideWidth: number | null;
   terminalOpen: boolean;
   terminalHeight: number | null;
+  /**
+   * The inbox as the reader left it BY HAND while a tool was beside Chat
+   * (#3046 round): `null` means no such choice, and the layout may collapse
+   * the inbox itself to keep the transcript its floor and reopen it when the
+   * tool closes; `true`/`false` is the reader's own choice for this session,
+   * which the layout never overrides.
+   */
+  inbox: boolean | null;
   at: number;
 }
 

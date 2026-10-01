@@ -99,7 +99,7 @@ interface WorkspacePaneHostControllerOptions {
    * of its own (the Chat page) and a catalog refresh must not navigate the
    * reader away from it. Reads are the same as `true`.
    */
-  navigationSelection?: boolean | 'explicit';
+  navigationSelection?: boolean | 'explicit' | 'replace';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   lockManager?: WorkspacePaneHostLockManager | null;
@@ -194,9 +194,15 @@ export function useWorkspacePaneHostController({
       cause: 'named' | 'reconciled' = 'reconciled',
     ) => {
       if (!navigationSelection) return;
-      if (navigationSelection === 'explicit' && cause === 'reconciled') {
+      if (navigationSelection !== true && cause === 'reconciled') {
         if (workspacePaneHostSelectionIsNamed(document))
           replaceWorkspacePaneHostSelection(document, instanceId);
+        return;
+      }
+      // `replace`: a named open or tab choice corrects the entry in place
+      // too (#3040 — a tool beside Chat is never a page of its own).
+      if (navigationSelection === 'replace') {
+        replaceWorkspacePaneHostSelection(document, instanceId);
         return;
       }
       writeWorkspacePaneHostSelection(document, instanceId);

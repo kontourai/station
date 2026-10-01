@@ -513,3 +513,94 @@
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-primary);
 }
+
+/* ── One bar (#3046): the breadcrumb, then Chat's own toolbar in two slots
+   beside it, then the drill-in's ⋯ when a drill-in is the page. */
+.coding-workbench__nav {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.coding-workbench__bar-spacer {
+  flex: 1 1 auto;
+}
+
+.coding-workbench__bar-leading,
+.coding-workbench__bar-trailing,
+.coding-workbench__head-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.coding-workbench__bar-leading:empty,
+.coding-workbench__bar-trailing:empty,
+.coding-workbench__head-slot:empty {
+  display: none;
+}
+
+.coding-workbench__head-slot--leading {
+  flex: 1 1 auto;
+}
+
+/* The slots inherit the bar's quiet: the dock header's own bar chrome does
+   not apply here, and its icon-only verbs sit as 32px ghost buttons. */
+.coding-workbench__bar .chat-dock__tab-actions--icons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.coding-workbench__bar .chat-dock__new--icon {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+}
+
+.coding-workbench__bar .chat-dock__new--icon:hover {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}
+
+.coding-workbench__bar .chat-dock__new--icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* A pane's controls in the head row: the terminal's strip loses its own dark
+   bar and takes the head's colours; the Files "+" is a 32px target. */
+.coding-workbench__panel-head .coding-layout__terminal-bar--head {
+  height: auto;
+  padding: 0;
+  background: transparent;
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab {
+  color: var(--text-secondary);
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab:hover {
+  color: var(--text-primary);
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab--active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.coding-workbench__panel-head .coding-layout__terminal-tab-close,
+.coding-workbench__panel-head .coding-layout__terminal-tab-add {
+  color: var(--text-secondary);
+}
+
+.coding-workbench__panel-head .file-tree-panel__action {
+  min-width: 32px;
+  height: 32px;
+  font-size: var(--text-lg);
+}

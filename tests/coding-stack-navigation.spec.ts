@@ -308,6 +308,14 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     expect(
       Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000),
     ).toBeLessThanOrEqual(0.01);
+    // A 0.01ms animation is still "current" on the frame it starts; count
+    // after the frame it ends in, not during it.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     expect(
       await page.evaluate(
         () =>
@@ -587,6 +595,14 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     await openCodingView(page, 'Diff');
     await openCodingView(page, 'Terminal');
     await expect(lowerPanel(page)).toBeVisible();
+    // The Diff folded the inbox (the transcript's floor); unfold it by hand
+    // to pick another conversation — the reader's choice for this session.
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await page
+      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
+      .click();
+    await expect(inbox(page)).toBeVisible();
 
     await inbox(page)
       .getByRole('button', { name: /Tidy the README/ })
@@ -598,6 +614,13 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     await expect(page).not.toHaveURL(/[?&]pane=/);
     await openCodingView(page, 'Files');
     await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    // This conversation has no choice of its own yet, so Files folded the
+    // inbox; unfold it to go back.
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await page
+      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
+      .click();
 
     await inbox(page)
       .getByRole('button', { name: /Dev Agent Chat/ })
@@ -637,5 +660,140 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     await expect(crumbs(page)).toContainText('Diff');
     await page.setViewportSize({ width: 1440, height: 900 });
     await expect(composer).toHaveValue('a draft the reader has not sent');
+  });
+});
+
+/**
+ * #3046 / #3047 round: one bar above the transcript, the inbox folding for a
+ * tool that would crowd it, and a file opened from Files landing beside Chat.
+ */
+test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from Files', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const bar = (page: Page) => page.locator('.coding-workbench__bar');
+  const historyLength = (page: Page) =>
+    page.evaluate(() => window.history.length);
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('one bar above the transcript: the title once, Chat’s verbs as named icons beside the breadcrumb', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(crumbs(page)).toContainText('Dev Agent Chat');
+    // No second header row under the bar.
+    await expect(centreChat(page).locator('.chat-dock__header')).toHaveCount(0);
+    await expect(
+      centreChat(page).locator('.chat-dock__header-identity'),
+    ).toHaveCount(0);
+    await expect(bar(page).getByText('Dev Agent Chat')).toHaveCount(1);
+    const open = bar(page).getByRole('button', { name: 'Open conversation' });
+    const create = bar(page).getByRole('button', { name: 'New chat' });
+    await expect(open).toBeVisible();
+    await expect(create).toBeVisible();
+    await expect(open).toHaveText('');
+    await expect(create).toHaveText('');
+    await expect(
+      bar(page).getByRole('button', { name: 'More dock actions' }),
+    ).toBeVisible();
+    // The bar is one row: every control shares the breadcrumb's line.
+    const crumb = (await crumbs(page).boundingBox())!;
+    const verb = (await create.boundingBox())!;
+    expect(
+      Math.abs(verb.y + verb.height / 2 - (crumb.y + crumb.height / 2)),
+    ).toBeLessThan(12);
+  });
+
+  test('a tool that would crowd the transcript folds the inbox, unfolds it on close, and never overrides the reader’s own choice', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(inbox(page)).toHaveCount(0);
+    const transcript = (await centreChat(page).boundingBox())!;
+    expect(transcript.width).toBeGreaterThanOrEqual(480);
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(inbox(page)).toBeVisible();
+
+    // The reader expands it by hand while the tool is open: their choice.
+    await openCodingView(page, 'Files');
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await page
+      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
+      .click();
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Files');
+    await expect(inbox(page)).toBeVisible();
+  });
+
+  test('a file opened from Files lands beside Chat by replace, named by its file and tipped with its path', async ({
+    page,
+  }) => {
+    await page.route('**/api/coding/files**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [
+            {
+              name: 'src',
+              path: 'src',
+              type: 'directory',
+              children: [{ name: 'app.ts', path: 'src/app.ts', type: 'file' }],
+            },
+          ],
+        }),
+      }),
+    );
+    await page.route('**/api/projects/dev/file-preview', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            path: 'src/app.ts',
+            status: 'ready',
+            renderKind: 'text',
+            content: 'export const app = true;\n',
+          },
+        }),
+      }),
+    );
+    await landOnChat(page);
+    const length = await historyLength(page);
+    await openCodingView(page, 'Files');
+    // A root directory opens expanded; the file is one click away.
+    await sidePanel(page).getByText('app.ts', { exact: true }).click();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+    await expect(page).toHaveURL(/[?&]pane=/);
+    const item = codingViewItem(page, 'app.ts');
+    await expect(item).toHaveAttribute('aria-pressed', 'true');
+    // The tooltip shows on hover (CSS), and says the whole path.
+    await item.hover();
+    await expect(item.locator('xpath=..').getByRole('tooltip')).toBeVisible();
+    await expect(item.locator('xpath=..').getByRole('tooltip')).toHaveText(
+      'src/app.ts',
+    );
+    // Back leaves the layout; it does not step through the panel.
+    await page.goBack();
+    await expect(page).not.toHaveURL(/layouts\/code/);
   });
 });

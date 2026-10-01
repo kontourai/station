@@ -41,6 +41,7 @@ describe('coding-panels-record (#3051)', () => {
       sideWidth: 500,
       terminalOpen: false,
       terminalHeight: null,
+      inbox: null,
       at: 10,
     });
     expect(readCodingSessionPanels(ab, 'conv-b')).toEqual({
@@ -48,8 +49,16 @@ describe('coding-panels-record (#3051)', () => {
       sideWidth: null,
       terminalOpen: true,
       terminalHeight: 300,
+      inbox: null,
       at: 20,
     });
+    // The reader's own inbox choice is a field like the others.
+    expect(
+      readCodingSessionPanels(
+        writeCodingSessionPanels(ab, 'conv-a', { inbox: true }, 30),
+        'conv-a',
+      ).inbox,
+    ).toBe(true);
     // A patch that changes nothing is the same record (no store write).
     expect(writeCodingSessionPanels(ab, 'conv-a', { side: 'diff' }, 30)).toBe(
       ab,
@@ -123,6 +132,7 @@ describe('coding-panels-record (#3051)', () => {
         'bad-side': { side: 42 },
         'bad-width': { sideWidth: -1 },
         'bad-open': { terminalOpen: 'yes' },
+        'bad-inbox': { inbox: 'yes' },
         'bad-at': { at: 'now' },
         '': { side: 'diff' },
       },
@@ -135,6 +145,7 @@ describe('coding-panels-record (#3051)', () => {
           sideWidth: 400,
           terminalOpen: true,
           terminalHeight: null,
+          inbox: null,
           at: 5,
         },
         sparse: CLOSED_CODING_SESSION_PANELS,

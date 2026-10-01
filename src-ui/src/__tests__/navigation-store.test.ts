@@ -578,6 +578,35 @@ describe('navigationStore File Preview intent', () => {
       'previewPath=src%2FApp.tsx',
     );
   });
+
+  test('choosing a file in the layout already on screen replaces the entry; reaching another layout with one pushes', () => {
+    navigationStore.navigate('/projects/demo/layouts/coding', {
+      previewPath: null,
+      previewLineStart: null,
+      previewLineEnd: null,
+    });
+    const index = navigationStore.getHistoryIndex();
+    navigationStore.setLayout('demo', 'coding', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/one.ts' },
+    });
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(new URL(window.location.href).search).toContain(
+      'previewPath=src%2Fone.ts',
+    );
+    navigationStore.setLayout('demo', 'coding', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/two.ts' },
+    });
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(new URL(window.location.href).search).toContain(
+      'previewPath=src%2Ftwo.ts',
+    );
+    // Another layout is a page.
+    navigationStore.setLayout('demo', 'review', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/two.ts' },
+    });
+    expect(navigationStore.getHistoryIndex()).toBe(index + 1);
+    expect(window.location.pathname).toBe('/projects/demo/layouts/review');
+  });
 });
 
 describe('normalizeDockMode (legacy persisted-value migration, #1043)', () => {

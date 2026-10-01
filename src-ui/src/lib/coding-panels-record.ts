@@ -20,6 +20,7 @@ export const CLOSED_CODING_SESSION_PANELS: CodingSessionPanels = {
   sideWidth: null,
   terminalOpen: false,
   terminalHeight: null,
+  inbox: null,
   at: 0,
 };
 
@@ -49,17 +50,20 @@ function parseSessionPanels(value: unknown): CodingSessionPanels | null {
   const terminalHeight = finiteOrNull(value.terminalHeight);
   const terminalOpen =
     value.terminalOpen === undefined ? false : value.terminalOpen;
+  const inbox =
+    value.inbox === undefined || value.inbox === null ? null : value.inbox;
   const at = value.at === undefined ? 0 : value.at;
   if (
     side === undefined ||
     sideWidth === undefined ||
     terminalHeight === undefined ||
     typeof terminalOpen !== 'boolean' ||
+    (inbox !== null && typeof inbox !== 'boolean') ||
     typeof at !== 'number' ||
     !Number.isFinite(at)
   )
     return null;
-  return { side, sideWidth, terminalOpen, terminalHeight, at };
+  return { side, sideWidth, terminalOpen, terminalHeight, inbox, at };
 }
 
 /**
@@ -106,7 +110,7 @@ export function writeCodingSessionPanels(
   const current = readCodingSessionPanels(record, sessionKey);
   const next: CodingSessionPanels = { ...current, ...patch, at: now };
   const unchanged = (
-    ['side', 'sideWidth', 'terminalOpen', 'terminalHeight'] as const
+    ['side', 'sideWidth', 'terminalOpen', 'terminalHeight', 'inbox'] as const
   ).every((field) => current[field] === next[field]);
   if (unchanged && Object.hasOwn(record.sessions, sessionKey)) return record;
   return evictCodingSessionPanels({

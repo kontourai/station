@@ -772,6 +772,7 @@ describe('device-settings-store', () => {
             sideWidth: 500,
             terminalOpen: false,
             terminalHeight: null,
+            inbox: null,
             at: 3,
           },
         },

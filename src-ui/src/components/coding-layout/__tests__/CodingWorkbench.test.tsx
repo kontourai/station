@@ -9,11 +9,13 @@ import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspa
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { useRegionChromeSlots } from '../../../workspace-panes/RegionChromeSlots';
 import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
@@ -34,6 +36,12 @@ const harness = vi.hoisted(() => ({
   chatProps: null as null | Record<string, unknown>,
   /** How many times Chat has mounted: the one instance must survive a panel. */
   chatMounts: 0,
+  /** The bar slots the workbench hands Chat's toolbar (#3046). */
+  chatSlots: null as null | {
+    leading: HTMLElement | null;
+    trailing: HTMLElement | null;
+    namesPane?: boolean;
+  },
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
@@ -44,6 +52,8 @@ vi.mock('../../chat-dock/ChatDock', () => ({
   }) => {
     const { onPresentationTitleChange } = props;
     harness.chatProps = props;
+    const slots = useRegionChromeSlots();
+    harness.chatSlots = slots;
     useEffect(() => {
       harness.chatMounts += 1;
     }, []);
@@ -55,6 +65,15 @@ vi.mock('../../chat-dock/ChatDock', () => ({
         <div className="chat-input">
           <textarea aria-label="Message" />
         </div>
+        <aside className="chat-dock-inbox">inbox</aside>
+        {slots?.trailing
+          ? createPortal(
+              <button type="button" aria-label="New chat">
+                <svg aria-hidden="true" />
+              </button>,
+              slots.trailing,
+            )
+          : null}
       </div>
     );
   },
@@ -191,9 +210,11 @@ async function historyBackSettled() {
 beforeEach(() => {
   harness.isMobile = false;
   harness.chatMounts = 0;
+  harness.chatSlots = null;
   harness.shortcuts.clear();
   harness.showSurface.mockReset();
   deviceSettingsStore.reset('codingPanels');
+  deviceSettingsStore.reset('inboxOpen');
   navigationStore.navigate(ROUTE, {
     pane: null,
     paneScope: null,
@@ -865,13 +886,16 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(lower.getAttribute('aria-valuemin')).toBe('160');
     // jsdom's 768px viewport: 768 - 8 - 240.
     expect(lower.getAttribute('aria-valuemax')).toBe('520');
-    expect(lower.getAttribute('aria-valuenow')).toBe('280');
+    // Three tenths of jsdom's 768px: 230.
+    expect(lower.getAttribute('aria-valuenow')).toBe('230');
     fireEvent.keyDown(lower, { key: 'ArrowUp' });
-    expect(lower.getAttribute('aria-valuenow')).toBe('296');
-    expect(pages.style.getPropertyValue('--coding-lower-height')).toBe('296px');
+    expect(lower.getAttribute('aria-valuenow')).toBe('246');
+    expect(pages.style.getPropertyValue('--coding-lower-height')).toBe('246px');
     fireEvent.keyDown(lower, { key: 'ArrowLeft' });
-    expect(lower.getAttribute('aria-valuenow')).toBe('296');
-    expect(remembered('~')?.terminalHeight).toBe(296);
+    expect(lower.getAttribute('aria-valuenow')).toBe('246');
+    expect(remembered('~')?.terminalHeight).toBe(246);
+    fireEvent.keyDown(lower, { key: 'Enter' });
+    expect(lower.getAttribute('aria-valuenow')).toBe('230');
   });
 
   test('each session keeps its own panels: switching restores them, a new session starts closed, and the memory is the device setting on disk', async () => {
@@ -985,5 +1009,122 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(chatPage().getAttribute('data-active')).toBe('false');
     expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
     expect(harness.chatMounts).toBe(mounts);
+  });
+});
+
+describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names (#3046, #3047)', () => {
+  test('the bar hands Chat its two slots and says it names the pane; a drill-in page offers none', async () => {
+    const wideView = renderStack({ wide: true });
+    expect(harness.chatSlots?.namesPane).toBe(true);
+    const bar = window.document.querySelector('.coding-workbench__bar')!;
+    // Chat's toolbar lands IN the bar, beside the breadcrumb, not in a
+    // second row under it.
+    const newChat = screen.getByRole('button', { name: 'New chat' });
+    expect(bar.contains(newChat)).toBe(true);
+    expect(newChat.textContent).toBe('');
+    expect(
+      bar.querySelectorAll('.coding-workbench__crumb-current'),
+    ).toHaveLength(1);
+    // The breadcrumb is the one title.
+    expect(
+      within(bar as HTMLElement).getAllByText(harness.chatTitle),
+    ).toHaveLength(1);
+
+    // On a drill-in page (below the fold) the bar is the pane's: no slot.
+    wideView.unmount();
+    renderStack({ wide: false });
+    await drillInto('Diff');
+    expect(harness.chatSlots?.leading).toBeNull();
+    expect(harness.chatSlots?.trailing).toBeNull();
+  });
+
+  test('a tool that would crowd the transcript folds the inbox for its stay and unfolds it when the tool closes', async () => {
+    // jsdom's 1024px room: 1068 - 44 - 8 - 440 - 245 (the inbox's own rule)
+    // leaves the transcript 331, under its 480 floor.
+    renderStack({ wide: true });
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    // Folded by the layout, not chosen: nothing is remembered as a choice.
+    expect(remembered('~')?.inbox).toBeNull();
+    await drillInto('Files');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    await drillInto('Files');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+  });
+
+  test('a room with space for both leaves the inbox alone', async () => {
+    const width = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      value: 2200,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      renderStack({ wide: true });
+      await drillInto('Diff');
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        value: width,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  test('the reader’s own fold or unfold while a tool is open is their choice for the session, and is never overridden', async () => {
+    navigationStore.navigate(ROUTE, { chat: 'conv-choice' });
+    renderStack({ wide: true });
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    // The reader expands the chat list (the dock menu's own write).
+    act(() => deviceSettingsStore.set('inboxOpen', true));
+    await act(async () => undefined);
+    expect(remembered('conv-choice')?.inbox).toBe(true);
+    // Switching the tool does not fold it again; closing does not "restore".
+    await drillInto('Files');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    await drillInto('Files');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    // And the other way: folded by hand stays folded after the tool closes.
+    act(() => deviceSettingsStore.set('inboxOpen', false));
+    await act(async () => undefined);
+    expect(remembered('conv-choice')?.inbox).toBe(false);
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+  });
+
+  test('a rail item is named by its label and tipped with what the label abbreviates', () => {
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          paneDetail={(instance) =>
+            instance.instanceId === files.instanceId ? 'src/app/files.ts' : null
+          }
+          badges={{ [diff.descriptorId]: 2 }}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    const tip = (name: string) =>
+      railItem(name).parentElement?.querySelector('[role="tooltip"]')
+        ?.textContent;
+    expect(tip('Files')).toBe('src/app/files.ts');
+    expect(railItem('Files').getAttribute('aria-label')).toBe('Files');
+    expect(tip('Diff, 2 changed files')).toBe('Diff, 2 changed files');
   });
 });

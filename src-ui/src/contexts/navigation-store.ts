@@ -973,7 +973,8 @@ class NavigationStore {
       : null;
     // A plain layout switch clears every File Preview query field. The routed
     // Project identity is authoritative, so a mismatched intent is not emitted.
-    this.navigate(rememberedTab ? `${base}/${rememberedTab}` : base, {
+    const pathname = rememberedTab ? `${base}/${rememberedTab}` : base;
+    const previewFields = {
       previewPath:
         options?.openFilePreviewIntent?.projectSlug === projectSlug
           ? (previewParams?.previewPath ?? null)
@@ -986,7 +987,21 @@ class NavigationStore {
         options?.openFilePreviewIntent?.projectSlug === projectSlug
           ? (previewParams?.previewLineEnd ?? null)
           : null,
-    });
+    };
+    // Choosing a file in the layout already on screen is a row selection,
+    // not a page: the fields are written in place. The page change, where
+    // there is one, is the pane host's own selection write — a pushed
+    // drill-in below the Coding layout's wide fold, a replaced side panel
+    // past it (#3040) — and a selection that also pushed here made Back step
+    // through the chosen file before the pane it opened.
+    if (
+      options?.openFilePreviewIntent &&
+      pathname === window.location.pathname
+    ) {
+      this.updateParams(previewFields);
+      return;
+    }
+    this.navigate(pathname, previewFields);
   }
 
   setConversation(id: string | null) {
