@@ -90,9 +90,13 @@ port range, quotas, and resource limits. The sample uses non-default host ports
 The relay UDP range 49160-49200 must also be forwarded through the host and
 firewall.
 
-Use a Linux host with Docker Compose v2 and a Station source checkout. Choose a
-DNS name for the broker, point it at the host, and obtain a certificate whose
-SAN contains that name. The same certificate is used by HTTPS and TURN/TLS.
+Use a Linux host with Docker Compose v2 and a Station source checkout. The
+example binds ingress and TURN to loopback. For an intentional remote deployment,
+choose a DNS name, set `PUBLIC_BIND_ADDRESS` to an externally reachable host
+interface, set `TURN_EXTERNAL_IP` to its actual public IPv4 address, and arrange
+the host firewall/NAT for the listed ports. Then obtain a certificate whose SAN
+contains the DNS name. The same certificate is used by HTTPS and TURN/TLS. Do
+not use the loopback-only local setup as remote reachability evidence.
 Put the certificate and private key in a root-owned directory outside the
 checkout. The pinned coturn image runs as `nobody:nogroup`; make the directory
 traversable by its group and the key readable only by root and that group
@@ -151,10 +155,12 @@ JSON
 The sample values are placeholders, not credentials. Restrict ownership and
 permissions to the broker's runtime UID/GID 1000, and keep the database and
 configuration directories private. Set `TURN_EXTERNAL_IP` to the host's actual
-public IPv4 address. The compose network maps TURN's fixed container address
-to that public address; choose a different bridge subnet in `compose.yaml` if
-it conflicts with the host's Docker networks. Before serving, set the source
-build identity from the checkout and build the image:
+public IPv4 address for remote operation. For a local diagnostic setup, leave
+both bind addresses at loopback. The compose network maps TURN's fixed
+container address to the configured host address; choose a different bridge
+subnet in `compose.yaml` if it conflicts with the host's Docker networks.
+Before serving, set the source build identity from the checkout and build the
+image:
 
 ```sh
 chown -R 1000:1000 private state
