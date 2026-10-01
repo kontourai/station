@@ -1,6 +1,11 @@
 import type {
+  PullRequest,
+  PullRequestCheck,
+  PullRequestCheckState,
+  PullRequestChecksObservation,
   PullRequestMergeMethod,
   PullRequestMergeResult,
+  PullRequestReviewCommentsObservation,
   PullRequestReviewInput,
   PullRequestReviewOutcome,
 } from '@kontourai/station-contracts/pull-request-provider';
@@ -20,7 +25,13 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { BrowserIconButton } from '../../workspace-panes/browser-pane/BrowserIconButton';
 import { Button } from '../Button';
+import {
+  ArrowLeftGlyph,
+  ExternalLinkGlyph,
+  RefreshGlyph,
+} from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
@@ -54,6 +65,255 @@ export function pullRequestExternalLabel(url: string): string {
   if (hostname === 'gitlab.com' || hostname === 'www.gitlab.com')
     return 'Open on GitLab';
   return 'Open in browser';
+}
+
+const MERGEABILITY_COPY: Record<PullRequest['mergeability'], string> = {
+  mergeable: 'Merges cleanly into',
+  conflicting: 'Has conflicts with',
+  unknown: 'The provider has not yet reported whether it merges cleanly into',
+};
+
+const CHECK_STATE_LABEL: Record<PullRequestCheckState, string> = {
+  failure: 'Failed',
+  pending: 'Pending',
+  cancelled: 'Cancelled',
+  success: 'Passed',
+  neutral: 'Neutral',
+  skipped: 'Skipped',
+};
+/** Failures first: the reader's next action is there. */
+const CHECK_STATE_ORDER: PullRequestCheckState[] = [
+  'failure',
+  'pending',
+  'cancelled',
+  'success',
+  'neutral',
+  'skipped',
+];
+
+const ATTENTION_STATES = new Set<PullRequestCheckState>([
+  'failure',
+  'pending',
+  'cancelled',
+]);
+
+function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
+  if (checks.length === 0) return null;
+  return (
+    <ul className="pull-request-review__checks">
+      {checks.map((check, index) => (
+        <li
+          // Names repeat across workflows; position disambiguates.
+          key={`${check.group ?? ''}:${check.name}:${index}`}
+          data-check-state={check.state}
+        >
+          <span
+            className={`pull-request-review__check-state pull-request-review__check-state--${check.state}`}
+          >
+            <span
+              className="pull-request-review__check-dot"
+              aria-hidden="true"
+            />
+            {CHECK_STATE_LABEL[check.state]}
+          </span>
+          <span className="pull-request-review__check-name">
+            {check.name}
+            {check.group ? (
+              <span className="pull-request-review__muted">
+                {' '}
+                · {check.group}
+              </span>
+            ) : null}
+          </span>
+          {check.url ? (
+            <BrowserIconButton
+              className="pull-request-review__icon"
+              aria-label={`Open ${check.name} details`}
+              title={`Open ${check.name} details`}
+              onClick={() => void openExternalLink(check.url!)}
+            >
+              <ExternalLinkGlyph />
+            </BrowserIconButton>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The provider's checks for the observed head. Counts come from the list
+ * itself, and each state is written in words, not colour alone. Absent
+ * means this server did not observe checks, which is said as such.
+ */
+function PullRequestChecks({
+  checks,
+}: {
+  checks: PullRequestChecksObservation | undefined;
+}) {
+  if (!checks)
+    return (
+      <p className="pull-request-review__muted">
+        This Station did not report checks for this pull request.
+      </p>
+    );
+  if (checks.state === 'unavailable')
+    return <p className="pull-request-review__muted">{checks.reason}</p>;
+  if (checks.checks.length === 0)
+    return (
+      <p className="pull-request-review__muted">
+        The provider reports no checks for this head.
+      </p>
+    );
+  const counts = CHECK_STATE_ORDER.map(
+    (state) =>
+      [state, checks.checks.filter((c) => c.state === state).length] as const,
+  ).filter(([, count]) => count > 0);
+  const sorted = [...checks.checks].sort(
+    (a, b) =>
+      CHECK_STATE_ORDER.indexOf(a.state) - CHECK_STATE_ORDER.indexOf(b.state),
+  );
+  // What needs the reader stays open; settled checks fold away, counted.
+  const needsAttention = sorted.filter((check) =>
+    ATTENTION_STATES.has(check.state),
+  );
+  const settled = sorted.filter((check) => !ATTENTION_STATES.has(check.state));
+  return (
+    <>
+      <p role="status" className="pull-request-review__checks-summary">
+        {counts
+          .map(
+            ([state, count]) =>
+              `${count} ${CHECK_STATE_LABEL[state].toLowerCase()}`,
+          )
+          .join(' · ')}
+        {checks.partial
+          ? '. Only part of the checks could be read; open the forge for the rest.'
+          : ''}
+      </p>
+      <CheckList checks={needsAttention} />
+      {settled.length > 0 && (
+        <details className="pull-request-review__settled">
+          <summary>
+            {needsAttention.length === 0 ? 'Show' : 'Show the other'}{' '}
+            {settled.length} passed, neutral or skipped check
+            {settled.length === 1 ? '' : 's'}
+          </summary>
+          <CheckList checks={settled} />
+        </details>
+      )}
+    </>
+  );
+}
+
+/**
+ * Inline comments the diff cannot place: outdated, on a file it omits, or on
+ * a line outside the hunks it shows.
+ */
+function UnplacedReviewComments({
+  comments,
+  placed,
+}: {
+  comments: PullRequestReviewCommentsObservation | undefined;
+  placed: PlacedLines;
+}) {
+  if (!comments) return null;
+  if (comments.state === 'unavailable')
+    return <p className="pull-request-review__muted">{comments.reason}</p>;
+  const unplaced = comments.comments.filter(
+    (comment) =>
+      comment.line === null ||
+      !placed.get(comment.path)?.[comment.side].has(comment.line),
+  );
+  return (
+    <>
+      {comments.partial && (
+        <p className="pull-request-review__muted">
+          Only part of the inline review comments could be read. Open the forge
+          for the rest.
+        </p>
+      )}
+      {unplaced.length > 0 && (
+        <details className="pull-request-review__unplaced">
+          <summary>
+            {unplaced.length} inline comment{unplaced.length === 1 ? '' : 's'}{' '}
+            not on the current diff
+          </summary>
+          <ol className="pull-request-review__discussion">
+            {unplaced.map((comment) => (
+              <li key={comment.id}>
+                <strong>{comment.author}</strong> on <code>{comment.path}</code>
+                {comment.line === null ? ' (outdated)' : ''}
+                <div className="pull-request-review__body">{comment.body}</div>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+    </>
+  );
+}
+
+/**
+ * Paths with hunks in a unified patch: the new name (`+++ b/x`) and, for a
+ * deletion or rename, the old one (`--- a/x`).
+ */
+/** The lines of each file a unified patch shows, per diff side. */
+type PlacedLines = ReadonlyMap<
+  string,
+  {
+    readonly additions: ReadonlySet<number>;
+    readonly deletions: ReadonlySet<number>;
+  }
+>;
+
+/**
+ * Which (path, side, line) the diff surface can anchor a comment to: the
+ * lines inside the patch's hunks, numbered as each side numbers them. A
+ * comment on a changed file but outside every hunk is as unplaceable as one
+ * on a file the patch omits, and must be listed rather than lost.
+ */
+function placedLines(patch: string): PlacedLines {
+  const files = new Map<
+    string,
+    { additions: Set<number>; deletions: Set<number> }
+  >();
+  let current: { additions: Set<number>; deletions: Set<number> } | undefined;
+  let oldLine = 0;
+  let newLine = 0;
+  for (const line of patch.split('\n')) {
+    const header = /^\+\+\+ (?:b\/)?(.+)$/.exec(line);
+    if (header) {
+      const path = header[1] === '/dev/null' ? undefined : header[1];
+      current = path
+        ? (files.get(path) ?? { additions: new Set(), deletions: new Set() })
+        : undefined;
+      if (path && current) files.set(path, current);
+      continue;
+    }
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      continue;
+    }
+    if (!current || line.startsWith('\\')) continue;
+    if (line.startsWith('+')) {
+      current.additions.add(newLine);
+      newLine += 1;
+    } else if (line.startsWith('-')) {
+      current.deletions.add(oldLine);
+      oldLine += 1;
+    } else if (line.startsWith(' ') || line === '') {
+      // Context carries both numbers; an empty line is blank context.
+      if (line === '' && !(oldLine > 0 && newLine > 0)) continue;
+      current.additions.add(newLine);
+      current.deletions.add(oldLine);
+      newLine += 1;
+      oldLine += 1;
+    }
+  }
+  return files;
 }
 
 const loadDiff = () =>
@@ -232,27 +492,43 @@ function ReviewOwner({
   };
   return (
     <section className="pull-request-review" aria-label="Pull request review">
-      <ResponsiveSurfaceActions className="pull-request-review__actions">
+      <div className="pull-request-review__bar">
         {onBack && (
-          <Button onClick={() => guard(onBack)}>Back to pull requests</Button>
+          <BrowserIconButton
+            className="pull-request-review__icon"
+            aria-label="Back to pull requests"
+            title="Back to pull requests"
+            onClick={() => guard(onBack)}
+          >
+            <ArrowLeftGlyph />
+          </BrowserIconButton>
         )}
-        <Button
+        <h2 className="pull-request-review__title">
+          {data?.pullRequest.title ?? `#${target.ref}`}
+        </h2>
+        <BrowserIconButton
+          className="pull-request-review__icon"
+          aria-label="Refresh"
+          title="Refresh the review from the provider"
           disabled={review.isFetching || pending || !scope?.isCurrent()}
           onClick={() => void review.refetch()}
         >
-          Refresh
-        </Button>
+          <RefreshGlyph />
+        </BrowserIconButton>
         {data?.pullRequest.url ? (
-          // Beside Refresh rather than in the body, so the way to the forge
-          // is the first thing on screen. On the web it opens a new tab. In
-          // the Station app the host opens what its policy admits (#2480:
-          // any https link, once that widening lands), and any refusal shows
-          // the link with a Copy action rather than nothing.
-          <Button onClick={() => void openExternalLink(data.pullRequest.url)}>
-            {pullRequestExternalLabel(data.pullRequest.url)}
-          </Button>
+          // The way to the forge stays on the bar. In the Station app the host
+          // opens what its policy admits (#2480), and any refusal shows the
+          // link with a Copy action rather than nothing.
+          <BrowserIconButton
+            className="pull-request-review__icon"
+            aria-label={pullRequestExternalLabel(data.pullRequest.url)}
+            title={pullRequestExternalLabel(data.pullRequest.url)}
+            onClick={() => void openExternalLink(data.pullRequest.url)}
+          >
+            <ExternalLinkGlyph />
+          </BrowserIconButton>
         ) : null}
-      </ResponsiveSurfaceActions>
+      </div>
       {!scope?.isCurrent() ? (
         <ErrorState
           variant="compact"
@@ -278,7 +554,6 @@ function ReviewOwner({
         />
       ) : (
         <>
-          <h2>{data.pullRequest.title}</h2>
           <p>
             {target.host}/{target.owner}/{target.repository} · #{target.ref} ·{' '}
             {data.pullRequest.state}
@@ -292,6 +567,15 @@ function ReviewOwner({
             Head <code>{data.headSha}</code> · Observed{' '}
             {new Date(data.observedAt).toLocaleString()}
           </p>
+          <h3>Status</h3>
+          <p
+            className="pull-request-review__mergeability"
+            data-mergeability={data.pullRequest.mergeability}
+          >
+            {MERGEABILITY_COPY[data.pullRequest.mergeability]}{' '}
+            <code>{data.pullRequest.targetBranch}</code>.
+          </p>
+          <PullRequestChecks checks={data.checks} />
           <ResponsiveSurfaceActions className="pull-request-review__actions">
             <Button onClick={addReviewContextToChat} disabled={!activeChat}>
               Add review context to open chat
@@ -322,6 +606,9 @@ function ReviewOwner({
                   componentProps={{
                     diff: data.diff.patch,
                     observationKey: identity,
+                    ...(data.reviewComments?.state === 'available'
+                      ? { providerComments: data.reviewComments.comments }
+                      : {}),
                   }}
                   pending={<SkeletonBlock label="Preparing changed files" />}
                 />
@@ -334,6 +621,14 @@ function ReviewOwner({
               description={data.diff.reason}
             />
           )}
+          <UnplacedReviewComments
+            comments={data.reviewComments}
+            placed={
+              data.diff.state === 'available'
+                ? placedLines(data.diff.patch)
+                : new Map()
+            }
+          />
           <h3>Discussion</h3>
           {data.discussionPartial && (
             <p>

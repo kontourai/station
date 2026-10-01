@@ -95,6 +95,10 @@ export const EditGlyph = /* @__PURE__ */ glyph(
 export const EngineGlyph = /* @__PURE__ */ glyph(
   'm9 1.8-6 7h4l-1 5.4 7-8H9l0-4.4Z',
 );
+/** An arrow leaving a box: opens on the forge, in the browser. */
+export const ExternalLinkGlyph = /* @__PURE__ */ glyph(
+  'M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3',
+);
 export const FolderGlyph = /* @__PURE__ */ glyph(
   'M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z',
 );
