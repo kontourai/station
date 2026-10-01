@@ -289,7 +289,14 @@ export class SessionEventReads {
       protocolVersion: 1,
       session: eventWindowSessionSummary(fullSession),
       events: window.events.map((event) => ({
-        sequence: event.sequence,
+        // The GLOBAL sequence, in the same space as `watermark` (the
+        // thread-filtered stream head) and as the live SSE ids a reader
+        // stitches past it. The per-thread `sequence` beside a global
+        // watermark made a reader that orders by `sequence` interleave this
+        // page with live frames wrongly — the legacy (no-lineage) conversation
+        // branch below and the client's 404 fallback both serve this shape to
+        // the conversation reader.
+        sequence: event.globalSequence,
         event: event.payload,
         // archive#3386: the read's own budget report. Dropping it here is
         // what made the elision silent — the client receives identity fields
