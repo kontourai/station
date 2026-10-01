@@ -719,23 +719,38 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     },
   );
 
-  test('a parent swapped for a link to another folder in the SAME scope is still refused: the path is not the one admitted', async () => {
-    const { base, adapter } = await setup();
-    const { folder, swapParent } = layout();
-    support.beforeSpawn = () => swapParent('ws/other');
-    const request = DISPATCH['POST /delegations']({
-      kind: 'directory',
-      cwd: folder,
-    });
-    const response = await post(
-      base,
-      request.path,
-      as('delegated-custody', 'op-caller-global'),
-      request.body,
-    );
-    expect([response.status, response.code]).toEqual([403, ROLE]);
-    expect(adapter.starts).toEqual([]);
-  });
+  // The link's target is in the caller's own scope, so the scope rule alone
+  // would admit it: only the comparison with the admitted canonical path
+  // refuses. Before the start is prepared, that comparison is the route
+  // decision's; after it, the recorded path's.
+  test.each([
+    ['before the start is prepared', 'afterAdmission'],
+    ['after the start was prepared', 'beforeSpawn'],
+  ] as const)(
+    'a parent swapped for a link to another folder in the SAME scope %s is still refused: the path is not the one admitted',
+    async (_when, seam) => {
+      const { base, adapter } = await setup();
+      const { folder, swapParent } = layout();
+      let swapped = false;
+      support[seam] = () => {
+        swapParent('ws/other');
+        swapped = true;
+      };
+      const request = DISPATCH['POST /delegations']({
+        kind: 'directory',
+        cwd: folder,
+      });
+      const response = await post(
+        base,
+        request.path,
+        as('delegated-custody', 'op-caller-global'),
+        request.body,
+      );
+      expect(swapped).toBe(true);
+      expect([response.status, response.code]).toEqual([403, ROLE]);
+      expect(adapter.starts).toEqual([]);
+    },
+  );
 
   test('a folder that leaves the caller’s scope without moving (a Project now contains it) is refused at the spawn', async () => {
     const { base, adapter } = await setup();
