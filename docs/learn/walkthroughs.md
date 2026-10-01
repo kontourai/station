@@ -47,9 +47,11 @@ reach an agent app that owns its own loop. The tabs separate those responsibilit
 This screenshot uses **sample API responses**. Its Ready label shows how that
 state is presented; it is not a successful test against a live model service.
 The detail pane exposes the endpoint, chosen model, last check and test action.
-The screenshot shows the resting selection. Hovering that selection currently
-reduces its text contrast; [#2843](https://github.com/kontourai/station/issues/2843)
-tracks the shared style fix.
+The replacement screenshot shows the resting selection. Earlier captures
+recorded reduced selected-row hover contrast; [#2843](https://github.com/kontourai/station/issues/2843)
+tracks that usability work. The shared SplitPane stylesheet now preserves normal
+text colors over a selected-row tint and retains that treatment on hover. This
+capture alone does not measure hover contrast across every consuming view.
 
 ![The Models page with an example local connection selected.](media/connections-models.png)
 
