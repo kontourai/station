@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
-    {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"9a70df390bdb6e3bac0d63ad93f19ed6829ca2317790b80b2522aff14b743abb","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"4b5c978700d19e3d99a85002f83eb502582380d9b1e31fcfc696c5a7e35b74ed","revision":"d85d50244f03fafcd0453f70c29878b39049e1dd"},
 
     {"path":"src-ui/src/hooks/useChatInput.ts","digest":"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -108,7 +108,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockModalStack.tsx","digest":"30292eee3830872a07acd638a3c65ffea109690df23d03dff7b95b7f8e1da243","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","digest":"6a6d78f2870f21429d85591b121b19884e0d17d401b202973d800da125b63732","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"},
+    {"path":"src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","digest":"af9fb765b7619841de6afd4fb9159b9f3c6953f445475e071051a1953c98ecb6","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
 
     {"path":"src-ui/src/contexts/scheduler-job-dialog-store.ts","digest":"5c3d2e50f1eac439eb4b5264550c6d37fbab65344ec37350ad36dd4a9e2b63fa","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
@@ -116,7 +116,11 @@
 
     {"path":"src-ui/src/contexts/NavigationContext.tsx","digest":"f90ed428c8bb37d073472434d51f63dbdaaad162bbf9a4d79ff045de68f7ddab","revision":"312fbe2956ee34b535485d4556146503e65cb168"},
 
-    {"path":"src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","digest":"0391d1c6158fc16ed650c4baa0f276834d0fc62b446521e5fe61ac4817ccacce","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"}
+    {"path":"src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","digest":"0e98ba1584875cd32d90a6529417fd660b2ded2d01d22a603f0d1601c13da37f","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
+
+    {"path":"src-ui/src/hooks/useNewChatSelectionModel.ts","digest":"79d62da2bce71d836669cfc7836952c832e88aa7e23a95566712733b566a86a7","revision":"df34c2497051350c571a5b33d841277ff2fba301"},
+
+    {"path":"src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx","digest":"566b9dea66cb2c32635c55440662a8a089db3bf5c3ebd7b0889a573d93542129","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"}
   ],
 
   "checks": [
