@@ -26,11 +26,12 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionOverflowMenu } from '../components/ActionOverflowMenu';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { ImageInspector } from '../components/ImageInspector';
 import { CheckGlyph, CopyGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
-import { OverflowMenu } from '../components/OverflowMenu';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
@@ -664,14 +665,13 @@ function FilePreviewGoToLine({
       <Button type="submit" size="sm" disabled={!value}>
         Go
       </Button>
-      <Button
-        variant="icon"
+      <IconButton
         aria-label="Close go to line"
         title="Close (Esc)"
         onClick={onClose}
       >
         ×
-      </Button>
+      </IconButton>
       {notice && <span role="status">{notice}</span>}
     </form>
   );
@@ -1426,19 +1426,18 @@ export function FilePreviewPane({
             </button>
           </fieldset>
         )}
-        <Button
-          variant="icon"
+        <IconButton
           className="workspace-file-preview__icon"
           aria-label={copied ? 'Path copied' : 'Copy path'}
           title={copied ? 'Copied' : `Copy path (${state.path})`}
           onClick={copyPath}
         >
           {copied ? <CheckGlyph /> : <CopyGlyph />}
-        </Button>
-        <OverflowMenu
+        </IconButton>
+        <ActionOverflowMenu
           label="More file actions"
-          className="workspace-file-preview__icon"
-          items={[
+          triggerClassName="icon-button workspace-file-preview__icon"
+          actions={[
             {
               key: 'reveal',
               label: 'Reveal in Files',
@@ -1471,6 +1470,7 @@ export function FilePreviewPane({
               key: 'wrap',
               label: 'Wrap lines',
               checked: wrap,
+              glyph: wrap ? <CheckGlyph /> : undefined,
               onSelect: () => updateWrap(!wrap),
             },
             {
