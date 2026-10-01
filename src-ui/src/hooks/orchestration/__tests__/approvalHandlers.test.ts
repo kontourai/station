@@ -22,9 +22,11 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
-const { handleRequestOpenedEvent, handleRequestDeliveryEvent } = await import(
-  '../approvalHandlers'
-);
+const {
+  handleRequestOpenedEvent,
+  handleRequestDeliveryEvent,
+  handleRequestResolvedEvent,
+} = await import('../approvalHandlers');
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -114,6 +116,115 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
       'Allow Bash for this session',
       'Deny',
     ]);
+  });
+
+  test('#2916: a plan exit offers no session grant', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: 'ExitPlanMode',
+        toolInput: { plan: 'Step 1' },
+      }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Deny',
+    ]);
+  });
+
+  const folderRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+  test.each([
+    [
+      'a Claude read-only tool with the engine folder rule',
+      { toolName: 'Grep', suggestions: [folderRule] },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Claude read-only tool with nothing to forward (an ask rule)',
+      { toolName: 'Read' },
+      undefined,
+    ],
+    [
+      'a Bash read outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/etc/hosts',
+        suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+            behavior: 'allow',
+            destination: 'session',
+          },
+        ],
+      },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Bash redirect writing outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/work/b/out.txt',
+        suggestions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Allow access to this folder for this session',
+    ],
+    [
+      'a plain Claude file edit',
+      {
+        toolName: 'Edit',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Auto-accept file edits for this session',
+    ],
+    [
+      'a file edit asked in plan mode',
+      {
+        toolName: 'Edit',
+        permissionMode: 'plan',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      undefined,
+    ],
+    [
+      'a sensitive-file edit with nothing to forward',
+      { toolName: 'Edit', suggestions: [] },
+      undefined,
+    ],
+    [
+      'a Bash call forced by an ask rule',
+      {
+        toolName: 'Bash',
+        matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
+      },
+      undefined,
+    ],
+  ])('#2915: labels the session grant for %s', (_case, payload, label) => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...payload, toolInput: { path: '/work/b' } }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual(
+      label ? ['Allow Once', label, 'Deny'] : ['Allow Once', 'Deny'],
+    );
   });
 
   test('reads an MCP wire name as a person would in the grant label', () => {
@@ -507,4 +618,62 @@ describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () =
       ],
     });
   });
+});
+
+test('nonblocking question events do not pause or revive chat and do not keep another approval waiting', () => {
+  updateChat.mockClear();
+  showToolApproval.mockClear();
+  getChatForExecutionSession.mockReturnValue({
+    title: 'Conversation',
+    pendingApprovals: [],
+    orchestrationStatus: 'running',
+  });
+  handleRequestOpenedEvent('http://localhost:1', {
+    eventId: 'async-open',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:00Z',
+    method: 'request.opened',
+    requestId: 'async-q',
+    requestType: 'approval',
+    title: 'Question',
+    blocking: false,
+  });
+  expect(updateChat).not.toHaveBeenCalled();
+  expect(showToolApproval).not.toHaveBeenCalled();
+  getChatForExecutionSession.mockReturnValue({
+    pendingApprovals: ['permission'],
+    orchestrationStatus: 'awaiting-approval',
+  });
+  handleRequestResolvedEvent({
+    eventId: 'permission-close',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:01Z',
+    method: 'request.resolved',
+    requestId: 'permission',
+    status: 'approved',
+  });
+  expect(updateChat.mock.lastCall?.[1]).toMatchObject({
+    pendingApprovals: [],
+    orchestrationStatus: 'running',
+  });
+  updateChat.mockClear();
+  getChatForExecutionSession.mockReturnValue({
+    pendingApprovals: [],
+    orchestrationStatus: 'idle',
+  });
+  handleRequestResolvedEvent({
+    eventId: 'async-close',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:02Z',
+    method: 'request.resolved',
+    requestId: 'async-q',
+    status: 'cancelled',
+    blocking: false,
+  });
+  expect(updateChat.mock.lastCall?.[1]).not.toHaveProperty(
+    'orchestrationStatus',
+  );
 });

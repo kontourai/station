@@ -368,3 +368,17 @@ test('overlapping inspectors share immediate exact-event dispatch admission', as
     ).toHaveLength(1),
   );
 });
+
+test('a harness question opens its session instead of offering an empty approval', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response({ ...open, requiresAnswers: true })),
+  );
+  mount();
+  expect(
+    await screen.findByText(
+      'Open the session to answer the agent’s questions.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /Allow|Approve/ })).toBeNull();
+});

@@ -109,6 +109,17 @@ own distinct risk, such as a transport or lifecycle failure the owner cannot
 reach. Prefer extending a table-driven case or shared fixture over adding a
 near-duplicate test.
 
+The manual [native protected Project pilot](native-shell-verification.md#native-protected-project-pilot)
+uses real macOS WebView/IPC/Keychain boundaries and an isolated StationRuntime
+with the real local account provider, broker, TURN and Pion. Its helper accepts
+the Project invitation through the account API and verifies active Viewer
+membership before native pairing; registration alone is not membership. Keep
+bootstrap HTTP, protected DataChannel traffic and cleanup observations separate.
+A development run with uncommitted harness inputs is preliminary evidence;
+record a final source/binary-bound result only after freezing those inputs.
+This manual lane is separate from the default sweep and does not qualify fresh
+relay-only enrollment or ordinary native UI activation.
+
 The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
 `stored` is a localStorage observation and there is no alternative assertion.
 It is a syntax check, not a general assertion-strength proof. Seed legacy values
@@ -202,6 +213,29 @@ rather than leaving a bare `complete: false`.
 
 Changed-test execution discovers Vitest's related files first, combines them
 with the enabled explicit manifest targets, and runs each selected file once.
+Two kinds of explicit target are derived from the tree rather than hand-kept:
+a test that reads a source file's text selects on that file, and a test that
+spawns a `scripts/*.mjs` entry point (itself, or through a test helper)
+selects on the script and on every file the script imports, directly or
+transitively (#2922). Vitest's import graph sees neither edge; the
+hand-maintained manifest keeps the edges these derivations cannot see. A
+file imported by the scripts of more than 16 spawning tests, such as the
+`module-entry.mjs` entry shim, defers those tests to the `test-full` lane
+instead of running them inline, so one shared-helper edit cannot exceed the
+`ci:fast` budget. When that deferral is the only reason a lane is deferred,
+the other changed files keep their related discovery and only the deferring
+file leaves the inline run. Any other deferral, such as an escalation or an
+unavailable related path, still defers the whole related selection.
+
+Every test worker starts without the triggering event's environment:
+`vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
+and the Station variables workflows derive from the event
+(`scripts/lib/ci-event-environment.mjs`). A test therefore behaves the same
+in a pull request's checks, in the merge queue and locally; a test about an
+event sets the variables it needs explicitly. The one deliberate exception is
+the real-ledger documentation freshness checks: `vitest.setup.ts` keeps the
+removed variables on the process object, and their `JOB_ENV` adds them back,
+so a pull request stays scoped and the merge queue stays advisory.
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
@@ -316,33 +350,34 @@ on every push. When the push range touches a measured transfer input
 `packages/contracts/src/**`, `packages/sdk/src/client/**`, `package.json`,
 the lockfile, the gate scripts themselves, or the transfer fixtures) it runs
 `npm run transfer:gate`, which captures the orchestration transfer matrix twice
-on an exact `origin/main` baseline and once on the candidate and compares them
-against `scripts/fixtures/orchestration-transfer/budget.json`. The gate is not
+on an exact baseline at the merge base of `origin/main` and the candidate, and
+once on the candidate, and compares them against
+`scripts/fixtures/orchestration-transfer/budget.json`. The gate is not
 among the required CI checks, so a push that skips it with `--no-verify` lands
-unverified on `main`. Do not skip it; use the two knobs below.
+unverified on `main`. Do not skip it; use the knobs below.
 
-**The baseline root comes from `STATION_TRANSFER_BASELINE_ROOT`.** The hook
-invokes the gate with no arguments, so `--baseline-root` is unreachable from a
-push; only the environment variable is. Prepare an exact, dependency-verified
-sibling once per base SHA, then export the variable when you push:
+**The gate finds its own baseline (#2925).** With
+`STATION_TRANSFER_BASELINE_ROOT` unset, the gate resolves the merge base and
+reuses any registered worktree that is detached at exactly that SHA, is clean,
+passes `dependencies:verify`, and is named `…transfer-baseline-<sha>` with any
+abbreviation of seven or more hex characters (`4294-transfer-baseline-<sha>`,
+or a lane's own `<lane>-transfer-baseline-<sha>[-<date>]`). A worktree at any
+other commit is never used, whatever its name claims. When none exists, the
+refusal prints the one command that prepares and installs it; run it and push
+again:
 
 ```bash
-BASE=$(git rev-parse origin/main)
-BASELINE=$(cd .. && pwd)/4294-transfer-baseline-${BASE:0:12}   # from a lane worktree under ../station-worktrees/
-# from the primary checkout use: BASELINE=$(cd .. && pwd)/station-worktrees/4294-transfer-baseline-${BASE:0:12}
-npm run transfer:gate -- --prepare-baseline --baseline-root "$BASELINE" --base "$BASE"
-(cd "$BASELINE" && npm run dependencies:ci && npm run dependencies:verify)   # its OWN locked deps; not a symlink
-STATION_TRANSFER_BASELINE_ROOT="$BASELINE" npm run transfer:gate            # direct run
-STATION_TRANSFER_BASELINE_ROOT="$BASELINE" git push -u origin <branch>       # what the hook reads
+npm run transfer:gate -- --prepare-baseline --baseline-root "$BASELINE" --base "$MERGE_BASE" \
+  && (cd "$BASELINE" && npm run dependencies:ci && npm run dependencies:verify)
+git push -u origin <branch>                                                    # no variable needed
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" git push -u origin <branch>       # explicit override
 ```
 
 Both roots must be clean, at the exact SHAs, with dependencies matching their
-lockfiles; the gate never installs anything. Pass an absolute path: the
-suggested `../station-worktrees/…` form is relative to the gate's working
-directory, and from a lane worktree that already lives under
-`station-worktrees/` it nests a second `station-worktrees/` inside the lane.
-When `origin/main` moves, prepare a new baseline for the new SHA (the name
-carries the first twelve characters of the base).
+lockfiles; the gate never installs anything. The suggested baseline is a
+sibling of the primary checkout under `station-worktrees/`, never nested
+inside a checkout. Because the baseline is the merge base, `origin/main`
+moving does not invalidate it; merging `origin/main` into the candidate does.
 
 **Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
 capture is bounded by a liveness timeout that defaults to 60 000 ms,
@@ -691,7 +726,7 @@ Two consequences worth stating plainly:
 - **Bump the container in lockstep with `@playwright/test`**, and expect a
   re-baseline to be part of that change. A rebuilt base image published under
   the same tag is a different renderer wearing the same name, which is why the
-  pin is a digest rather than `v1.62.1-noble`.
+  pin is a digest rather than `v1.63.0-noble`.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version

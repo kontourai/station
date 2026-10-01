@@ -1,5 +1,6 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type {
   AdoptedSessionResult,
   InterruptTurnResult,
@@ -46,6 +47,7 @@ import {
   type SessionBuilderRunView,
   type SessionFlowRunView,
 } from '../client/orchestration';
+import { StationRequestTimeoutError } from '../client/request-deadline';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -583,6 +585,23 @@ export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessi
   return Object.freeze({ idempotencyKey: randomCorrelationId() });
 }
 
+/** Station answered and refused the continuation: certain, with its status. */
+function rejectedContinuation(
+  status: number,
+  detail?: string,
+): AdoptSessionError {
+  const statusMessage =
+    status === 401 || status === 403
+      ? `Permission denied by Station (HTTP ${status}).`
+      : `Station rejected the continuation request (HTTP ${status}).`;
+  return new AdoptSessionError({
+    failureClass: 'certain-response',
+    message: detail ? `${statusMessage} ${detail}` : statusMessage,
+    retryable: true,
+    status,
+  });
+}
+
 export async function adoptOrchestrationSession(input: {
   sourceThreadId: string;
   apiBase?: string;
@@ -634,6 +653,19 @@ export async function adoptOrchestrationSession(input: {
   try {
     result = (await response.json()) as typeof result;
   } catch (error) {
+    // A request deadline that fired while the body was read. After 2xx
+    // headers Station may have created the continuation (uncertain, as when
+    // it fires before the headers); after a refusal Station did answer, so
+    // the refusal is certain and carries its status.
+    if (error instanceof StationRequestTimeoutError)
+      throw response.ok
+        ? new AdoptSessionError({
+            failureClass: 'uncertain-no-response',
+            message: 'Station did not answer before the request ended.',
+            retryable: true,
+            cause: error,
+          })
+        : rejectedContinuation(response.status);
     if (response.ok) {
       // A 2xx whose body cannot be read may have CREATED the continuation
       // (the native relay resolves on headers; the stream can reset while
@@ -648,19 +680,8 @@ export async function adoptOrchestrationSession(input: {
     }
     result = {};
   }
-  if (!response.ok || !result.success) {
-    const detail = result.error?.trim();
-    const statusMessage =
-      response.status === 401 || response.status === 403
-        ? `Permission denied by Station (HTTP ${response.status}).`
-        : `Station rejected the continuation request (HTTP ${response.status}).`;
-    throw new AdoptSessionError({
-      failureClass: 'certain-response',
-      message: detail ? `${statusMessage} ${detail}` : statusMessage,
-      retryable: true,
-      status: response.status,
-    });
-  }
+  if (!response.ok || !result.success)
+    throw rejectedContinuation(response.status, result.error?.trim());
   return result.data as AdoptedSessionResult;
 }
 
@@ -964,6 +985,7 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  answers?: HarnessQuestionAnswers;
   apiBase?: string;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
@@ -975,6 +997,7 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.answers ? { answers: input.answers } : {}),
     },
     input.apiBase,
   );

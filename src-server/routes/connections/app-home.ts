@@ -673,7 +673,14 @@ export function createAppHomeRoutes(deps?: {
         dir,
       );
       if (result.kind === 'unsupported') {
-        return c.json({ success: false, error: result.reason }, 409);
+        return c.json(
+          {
+            success: false,
+            error: result.reason,
+            data: { outcome: result.kind },
+          },
+          409,
+        );
       }
       if (
         result.kind === 'already-signed-in' ||
@@ -689,7 +696,14 @@ export function createAppHomeRoutes(deps?: {
         );
       }
       if (result.kind === 'busy') {
-        return c.json({ success: false, error: result.reason }, 429);
+        return c.json(
+          {
+            success: false,
+            error: result.reason,
+            data: { outcome: result.kind },
+          },
+          429,
+        );
       }
       if (result.kind === 'closed') {
         return c.json(

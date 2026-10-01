@@ -144,10 +144,35 @@ export function verifyExpectedManifest(envelope, keys, expectedPayload) {
     expectedChannel: RING,
   });
   if (canonicalManifestJson(payload) !== canonicalManifestJson(expectedPayload))
-    throw new Error(
-      `manifest payload for ${String(payload.version)} is not the payload this run signed (${String(expectedPayload?.version)})`,
-    );
+    throw new ManifestMismatchError(payload.version, expectedPayload?.version);
   return payload;
+}
+
+/** A validly signed manifest whose payload is not the one this run signed. */
+export class ManifestMismatchError extends Error {
+  constructor(fetchedVersion, expectedVersion) {
+    super(
+      `manifest payload for ${String(fetchedVersion)} is not the payload this run signed (${String(expectedVersion)})`,
+    );
+    this.fetchedVersion = fetchedVersion;
+  }
+}
+
+/**
+ * True only for the one failure waiting can fix: a validly signed rolling
+ * manifest that is still an OLDER Nightly than the one just published, i.e.
+ * the asset host serving the replaced bytes from cache. A bad signature, a
+ * wrong key or a newer or equal version is not staleness and fails at once.
+ */
+export function isStaleRollingManifest(error, expectedPayload) {
+  if (!(error instanceof ManifestMismatchError)) return false;
+  try {
+    return (
+      compareNightlyVersions(error.fetchedVersion, expectedPayload?.version) < 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -259,6 +284,9 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
  * GETs `url`, retrying while a just-uploaded release asset is still
  * propagating. A 404 is returned as null only when `allowMissing` is set.
  */
+const REVERIFY_ATTEMPTS = 30;
+const REVERIFY_DELAY_MS = 10_000;
+
 export async function fetchBytes(
   url,
   { fetchImpl = fetch, attempts = 10, delayMs = 6000, allowMissing = false },
@@ -378,8 +406,12 @@ async function main(argv) {
     case 'verify': {
       const expected = readJson(values['expected-payload']);
       const remote = /^https:\/\//.test(values.manifest ?? '');
-      // A just-replaced rolling asset can briefly serve the previous bytes,
-      // so a remote read retries a mismatch before failing.
+      // A just-replaced rolling asset can serve the previous bytes for a
+      // while: GitHub's asset host cached the old manifest for longer than a
+      // minute after the replacement on 2026-09-30, so a remote read retries a
+      // stale (older) manifest for up to REVERIFY_ATTEMPTS * REVERIFY_DELAY_MS
+      // (5 minutes). Any other failure, or staleness that outlasts that,
+      // fails the job at once.
       for (let attempt = 1; ; attempt += 1) {
         const envelope = await readManifest(values.manifest);
         try {
@@ -389,8 +421,13 @@ async function main(argv) {
           );
           return;
         } catch (error) {
-          if (!remote || attempt >= 10) throw error;
-          await sleep(6000);
+          if (
+            !remote ||
+            attempt >= REVERIFY_ATTEMPTS ||
+            !isStaleRollingManifest(error, expected)
+          )
+            throw error;
+          await sleep(REVERIFY_DELAY_MS);
         }
       }
     }

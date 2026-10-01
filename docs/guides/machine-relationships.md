@@ -211,7 +211,12 @@ remain separate acceptance work.
   — authenticated reads, two-second per-peer deadline, bounded fan-out, and
   separate unavailable/authentication-required results.
 - [Delegation caller](../../src-server/tools/station-control-delegation.ts)
-  — remote target admission and authenticated request forwarding.
+  — remote target admission and authenticated request forwarding. A
+  station-control tool names the saved Environment to this Station's own route;
+  the route forwards through the
+  [remote forwarder](../../src-server/services/remote-stations/remote-station-forwarder.ts),
+  which attaches the peer bearer in-process and bounds each request to the
+  other Station.
 - [Fleet completion service](../../src-server/services/inference/fleet-inference-service.ts),
   [routes and receipt policy](../../src-server/routes/inference/fleet-inference.ts),
   and [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)

@@ -461,7 +461,7 @@ export async function fetchConversationById(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const result = (await response.json().catch(() => null)) as {
+  const result = (await response.json().catch(unlessDeadline(() => null))) as {
     success?: boolean;
     data?: ConversationLookup;
     error?: string;
@@ -672,3 +672,4 @@ export function useDeleteConversationMutation(
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, StationHttpError } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';

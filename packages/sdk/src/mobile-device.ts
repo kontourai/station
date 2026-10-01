@@ -11,6 +11,7 @@ import {
   type MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
 import { type ClientRequestOptions, getJson, mutateJson } from './client/http';
+import { rethrowDeadline } from './client/request-deadline';
 
 export type {
   DeviceHostCheckResult,
@@ -104,7 +105,8 @@ async function data(response: Response): Promise<Record<string, unknown>> {
   let envelope: Record<string, unknown> | undefined;
   try {
     envelope = object(await response.json());
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     /* generic public error */
   }
   const code = SESSION_FAILURES.find((known) => known === envelope?.code);
@@ -468,7 +470,8 @@ async function hostData(response: Response): Promise<Record<string, unknown>> {
   let envelope: Record<string, unknown> | undefined;
   try {
     envelope = object(await response.json());
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     /* generic refusal */
   }
   const code =

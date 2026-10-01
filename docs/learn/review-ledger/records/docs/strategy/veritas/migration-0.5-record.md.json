@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/veritas/migration-0.5-record.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Read the complete record, its purpose and evidence boundaries; retained the stated rationale and linked current owners.",
+
+  "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
+
+  "document": {"digest":"d3417746b3447c3ce3eb345f68cce3263782314ef458e392face2650a9083f2f","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

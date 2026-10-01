@@ -24,6 +24,7 @@ business rules in your application and use a documented Station boundary.
 | Your task | Start here | Evidence to retain |
 | --- | --- | --- |
 | Call Station from another application | [API reference](../reference/api.md), [SDK reference](../reference/sdk.md), [contracts](../reference/contracts.md) | Exact client/server versions, authenticated request, expected result, and a refused unauthorized request |
+| Define and execute Agents from code | [Agent development](agent-development.md), [headless example](../../examples/headless-agent/README.md) | Public headless bundle, authorized execution, refused unauthorized request, observed lifecycle and uncertainty |
 | Add a workspace experience or tool | [Build your first plugin](build-your-first-plugin.md), [plugin guide](plugins.md) | Installed example, declared permissions, successful use, revocation, and removal behavior |
 | Automate an operator workflow | [CLI reference](../reference/cli.md) | Exact command, exit status, retry behavior, and redacted output |
 | Supply deployment account authentication | [Authentication adapters](deployment-authentication.md) | Exact provider contract, current session verification, refusal and revocation evidence; Project membership remains separate |

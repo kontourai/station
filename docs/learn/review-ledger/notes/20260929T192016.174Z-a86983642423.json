@@ -1,0 +1,23 @@
+{
+  "revision": "cda5879b28558d002561d656b869c4f7b05bc4ca",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Fold section re-checked against migrate-review-ledger.mjs: media.json merged per capture field three-way against the merge base, the old-layout side keeping review fields; a field both sides changed stops the command before any write (resolveConflictedManifest throws before writeFileSync); capture-only branches fold via the base ledger; in-place check edits carried, both-edited or branch-removed notes reported. The standards file now links docs/learn/review-ledger/ledger.json under an owner attestation. Tests: the three fold tests in documentation-freshness.test.ts, each fault-injected."},
+
+    {"path":".veritas/README.md","note":"The protected standards change is one contextLinks entry of the documentation rule (docs/learn/review-ledger.json -> docs/learn/review-ledger/ledger.json), attested by the owner as policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c; no rule, severity, match or evidence requirement changed. This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"The protected standards change is one contextLinks entry of the documentation rule (docs/learn/review-ledger.json -> docs/learn/review-ledger/ledger.json), attested by the owner as policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c; no rule, severity, match or evidence requirement changed. The plan describes the 2026-09-27 activation and its attestation process, which a later link-only attestation leaves true; it does not cite the ledger path."},
+
+    {"path":"docs/guides/code-quality.md","note":"The protected standards change is one contextLinks entry of the documentation rule (docs/learn/review-ledger.json -> docs/learn/review-ledger/ledger.json), attested by the owner as policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c; no rule, severity, match or evidence requirement changed. This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."},
+
+    {"path":"docs/guides/development.md","note":"The protected standards change is one contextLinks entry of the documentation rule (docs/learn/review-ledger.json -> docs/learn/review-ledger/ledger.json), attested by the owner as policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c; no rule, severity, match or evidence requirement changed. This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."},
+
+    {"path":"docs/guides/testing.md","note":"The protected standards change is one contextLinks entry of the documentation rule (docs/learn/review-ledger.json -> docs/learn/review-ledger/ledger.json), attested by the owner as policy-change-2026-09-29T19-01-51-362Z-1ded87f34c0c; no rule, severity, match or evidence requirement changed. This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."},
+
+    {"path":"docs/README.md","note":"This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."},
+
+    {"path":"docs/guides/integrating-station.md","note":"This page links the documentation guide by role (and its keep-reviews-fresh / findings anchors, which still exist); the guide change only rewords the fold section (field-by-field media.json merge, capture-only branches, removed notes), so the linked claims hold."}
+  ]
+}

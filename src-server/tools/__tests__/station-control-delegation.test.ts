@@ -23,6 +23,99 @@ import type { ForegroundInvocationAdmission } from '../../services/orchestration
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { ReceiverExecutionRefusal } from '../../services/projects/project-contribution-service.js';
 
+/**
+ * #2377 slice C2b: another Station is reached only through the one remote
+ * seam runtime composition passes to these functions. This suite exercises
+ * the SERVER side of a cross-Station call (the route's forward), so every
+ * exported entry point is called with a real `RemoteStationForwarder` over
+ * this fixture: the saved SSH profile `installRemoteStationFetch` describes,
+ * else the peer credential for `environment-remote`. A tool's own call (no
+ * forwarder) relays to this Station's route instead; that path is pinned in
+ * `station-control-delegation-relay.test.ts`.
+ */
+const remoteFixture = vi.hoisted(() => ({
+  ssh: undefined as
+    | undefined
+    | {
+        profile: Record<string, unknown>;
+        state: { phase: 'connected'; localUrl: string };
+      },
+}));
+
+vi.mock('../station-control-delegation.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../station-control-delegation.js')>();
+  const { createRemoteStationForwarder } = await import(
+    '../../services/remote-stations/remote-station-forwarder.js'
+  );
+  const remote = createRemoteStationForwarder({
+    ssh: {
+      list: () => (remoteFixture.ssh ? [remoteFixture.ssh as never] : []),
+      connect: async () => remoteFixture.ssh as never,
+    },
+    peers: {
+      get: (environmentId: string) =>
+        environmentId === 'environment-remote'
+          ? {
+              environmentId,
+              apiBase: 'http://127.0.0.1:45123',
+              scope: 'orchestration:read orchestration:operate',
+              credential: 'peer-secret',
+              label: 'Station B',
+              createdAt: 0,
+              updatedAt: 0,
+            }
+          : null,
+    },
+  });
+  type Remote = typeof remote;
+  return {
+    ...actual,
+    discoverDelegationOptions: (input: never, r?: Remote) =>
+      actual.discoverDelegationOptions(input, r ?? remote),
+    delegateTask: (input: never, service?: never, r?: Remote) =>
+      actual.delegateTask(input, service, r ?? remote),
+    executeExecutionTargetMessage: (
+      input: never,
+      service?: never,
+      admission?: never,
+      r?: Remote,
+    ) =>
+      actual.executeExecutionTargetMessage(
+        input,
+        service,
+        admission,
+        r ?? remote,
+      ),
+    continueExecutionTargetMessage: (
+      input: never,
+      service?: never,
+      r?: Remote,
+    ) => actual.continueExecutionTargetMessage(input, service, r ?? remote),
+    continueDelegatedTask: (input: never, service?: never, r?: Remote) =>
+      actual.continueDelegatedTask(input, service, r ?? remote),
+    respondToDelegatedTaskRequest: (
+      input: never,
+      service?: never,
+      r?: Remote,
+    ) => actual.respondToDelegatedTaskRequest(input, service, r ?? remote),
+    interruptDelegatedTask: (input: never, service?: never, r?: Remote) =>
+      actual.interruptDelegatedTask(input, service, r ?? remote),
+    listDelegatedTasks: (input: never, service?: never, r?: Remote) =>
+      actual.listDelegatedTasks(input, service, r ?? remote),
+    observeDelegatedTask: (input: never, service?: never, r?: Remote) =>
+      actual.observeDelegatedTask(input, service, r ?? remote),
+    observeDelegatedTaskEvents: (input: never, service?: never, r?: Remote) =>
+      actual.observeDelegatedTaskEvents(input, service, r ?? remote),
+    refreshPeerDelegationActivity: (input: never, service: never, r?: Remote) =>
+      actual.refreshPeerDelegationActivity(input, service, r ?? remote),
+  };
+});
+
+beforeEach(() => {
+  remoteFixture.ssh = undefined;
+});
+
 process.env.STATION_API_BASE = 'http://control-delegation.test';
 process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
 
@@ -429,56 +522,23 @@ function installRemoteStationFetch(
     existingSessionCwd?: string;
   },
 ) {
+  remoteFixture.ssh = {
+    profile: {
+      id: 'profile-1',
+      name: 'Brian media',
+      environmentId: 'environment-remote',
+      remoteHome:
+        discovery && 'remoteHome' in discovery
+          ? discovery.remoteHome
+          : '/home/brian',
+      verifiedProjectPath: discovery?.verifiedProjectPath ?? '/srv/station',
+    },
+    state: { phase: 'connected', localUrl: REMOTE_API },
+  };
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
     if (url === `${CURRENT_API}/.well-known/station/v1`) {
       return json({ environmentId: 'environment-current' });
-    }
-    if (url === `${CURRENT_API}/api/environments/ssh`) {
-      return json({
-        success: true,
-        data: [
-          {
-            profile: {
-              id: 'profile-1',
-              name: 'Brian media',
-              environmentId: 'environment-remote',
-              remoteHome:
-                discovery && 'remoteHome' in discovery
-                  ? discovery.remoteHome
-                  : '/home/brian',
-              verifiedProjectPath:
-                discovery?.verifiedProjectPath ?? '/srv/station',
-            },
-            state: { phase: 'connected', localUrl: REMOTE_API },
-          },
-        ],
-      });
-    }
-    if (url === `${CURRENT_API}/api/environments/ssh/profile-1/connect`) {
-      return json({
-        success: true,
-        data: {
-          profile: {
-            id: 'profile-1',
-            name: 'Brian media',
-            environmentId: 'environment-remote',
-            remoteHome:
-              discovery && 'remoteHome' in discovery
-                ? discovery.remoteHome
-                : '/home/brian',
-            verifiedProjectPath:
-              discovery?.verifiedProjectPath ?? '/srv/station',
-          },
-          state: { phase: 'connected', localUrl: REMOTE_API },
-        },
-      });
-    }
-    if (
-      url ===
-      `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-    ) {
-      return json({ success: false, error: 'not found' }, 404);
     }
     const projectPrefix = `${REMOTE_API}/api/projects/`;
     const projectSlug = url.startsWith(projectPrefix)
@@ -1049,24 +1109,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
       }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'station:peer',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
-      }
       if (url === `${REMOTE_API}/api/orchestration/delegations`) {
         return json({
           success: true,
@@ -1131,24 +1173,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
       }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'station:peer',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
-      }
       if (
         url ===
         `${REMOTE_API}/api/orchestration/delegations/task-peer-847-observe`
@@ -1183,24 +1207,6 @@ describe('Station Control canonical Environment + Agent execution', () => {
       const url = String(input);
       if (url === `${CURRENT_API}/.well-known/station/v1`) {
         return json({ environmentId: 'environment-current' });
-      }
-      if (url === `${CURRENT_API}/api/environments/ssh`) {
-        return json({ success: true, data: [] });
-      }
-      if (
-        url ===
-        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-      ) {
-        return json({
-          success: true,
-          data: {
-            environmentId: 'environment-remote',
-            apiBase: REMOTE_API,
-            scope: 'station:peer',
-            credential: 'peer-secret',
-            label: 'Station B',
-          },
-        });
       }
       if (
         url === `${REMOTE_API}/api/orchestration/delegations/task-peer-legacy`
@@ -1249,7 +1255,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(fallbackSignal).toBeInstanceOf(AbortSignal);
   });
 
-  test('relays target-side delegation validation errors without a fallback', async () => {
+  // #2377 C2b review: the target Station's words are replaced by this
+  // Station's fixed copy and the status (they reach an agent's tool result);
+  // there is still exactly one request and no fallback.
+  test('reports a target-side validation error as fixed copy, without a fallback', async () => {
     installRemoteStationFetch('/api/orchestration/delegations', undefined);
     // Replace only the canonical target response with a rejection while the
     // SSH resolution requests continue through the installed implementation.
@@ -1267,7 +1276,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     await expect(
       delegateTask({ prompt: 'Run tests', target: savedTarget() }),
-    ).rejects.toThrow('Agent is not currently launchable.');
+    ).rejects.toThrow(
+      'The selected Station could not start the delegated task (HTTP 400)',
+    );
     expect(
       fetchMock.mock.calls.filter(([url]) =>
         String(url).endsWith('/api/orchestration/delegations'),
@@ -4290,24 +4301,6 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
         if (url === `${CURRENT_API}/.well-known/station/v1`) {
           return json({ environmentId: 'environment-current' });
         }
-        if (url === `${CURRENT_API}/api/environments/ssh`) {
-          return json({ success: true, data: [] });
-        }
-        if (
-          url ===
-          `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-        ) {
-          return json({
-            success: true,
-            data: {
-              environmentId: 'environment-remote',
-              apiBase: REMOTE_API,
-              scope: 'orchestration:read orchestration:operate',
-              credential: 'peer-secret',
-              label: 'Station B',
-            },
-          });
-        }
         if (url === `${REMOTE_API}/.well-known/station/v1`) {
           return json({
             environmentId: 'environment-remote',
@@ -4432,24 +4425,6 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
           const url = String(input);
           if (url === `${CURRENT_API}/.well-known/station/v1`) {
             return json({ environmentId: 'environment-current' });
-          }
-          if (url === `${CURRENT_API}/api/environments/ssh`) {
-            return json({ success: true, data: [] });
-          }
-          if (
-            url ===
-            `${CURRENT_API}/api/environments/peers/environment-remote/credential`
-          ) {
-            return json({
-              success: true,
-              data: {
-                environmentId: 'environment-remote',
-                apiBase: REMOTE_API,
-                scope: 'orchestration:read orchestration:operate',
-                credential: 'peer-secret',
-                label: 'Station B',
-              },
-            });
           }
           if (
             url ===
@@ -4818,13 +4793,17 @@ describe('readRelayingLocalRefusal', () => {
     });
   });
 
+  // #2377 C2b review: another Station's words are dropped as well as its
+  // code; only the status survives, in this Station's fixed copy.
   test.each(['peer', 'ssh'])(
-    'a %s Station’s coded refusal keeps its words and loses its code',
+    'a %s Station’s coded refusal loses its code and its words',
     async (kind) => {
       const error = await failed(kind, refusal());
 
       expect((error as { code?: unknown }).code).toBeUndefined();
-      expect(error.message).toBe('Delegation depth exceeded.');
+      expect(error.message).toBe(
+        'The selected Station refused the request (HTTP 403)',
+      );
       expect(error.cause).toBeUndefined();
     },
   );

@@ -2,8 +2,9 @@
 
 These captures put the architecture next to the application. They use isolated
 Station instances and sample data. Each caption distinguishes persisted behavior
-from a controlled response or provider fixture. The source files and capture
-revisions are recorded in [the media manifest](media.json).
+from a controlled response or provider fixture. The capture revisions are
+recorded in [the media manifest](media.json), and each capture's reviewed source
+files in the [review ledger](review-ledger/captures/docs/learn/media/).
 
 ## Projects and Tasks
 

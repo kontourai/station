@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/pane-or-shell.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Adopted pane/shell criterion and runtime trust policy; surface inventory explicitly scoped to its migration stage.",
+
+  "limits": "Current destination/router ownership checked. No exhaustive placement, migration, iframe-security, or runtime-tier compatibility proof.",
+
+  "document": {"digest":"628156637ea2f89baab9ba73c53100e6313754b0361c80e37bff94c90ed9ef23","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+  "sources": [
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+
+    {"path":"src-ui/src/views/ConsoleBoardView.tsx","digest":"e14ca1407b38aceb789eb055c85247c2d9e893c145adced46b2835a88953f6c6","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner and inventory qualification.",
+
+    "Reviewed integration deltas: src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged."
+  ]
+}

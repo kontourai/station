@@ -41,6 +41,7 @@ export function conversationPartToContentParts(
     approvalId: part.approvalId,
     approvalThreadId: part.approvalThreadId,
     approvalEventId: part.approvalEventId,
+    approvalSessionGrant: part.approvalSessionGrant,
     approvalStatus: part.approvalStatus,
   } as ContentPart;
   // Preserve the same tool-result identity and sanitized blocks as the live

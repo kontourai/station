@@ -642,7 +642,18 @@ export function buildOrchestrationSessionSummary(options: {
       ? { currentSessionId: options.currentSessionId }
       : {}),
     ...(options.openRequestIds
-      ? { openRequestIds: [...options.openRequestIds] }
+      ? {
+          openRequestIds: [...options.openRequestIds],
+          blockingOpenRequestIds: options.openRequestIds.filter(
+            (id) =>
+              !options.events?.some(
+                (event) =>
+                  event.method === 'request.opened' &&
+                  event.requestId === id &&
+                  event.blocking === false,
+              ),
+          ),
+        }
       : {}),
     ...(delegation ? { delegation } : {}),
     ...(inputOrigin ? { inputOrigin } : {}),
@@ -1267,6 +1278,7 @@ export function buildAgentRunSummary(options: {
   const hasOpenRequest = events.some(
     (event) =>
       event.method === 'request.opened' &&
+      event.blocking !== false &&
       event.requestId &&
       !lastResolvedRequestIds.has(event.requestId),
   );
@@ -1877,9 +1889,11 @@ function deriveAgentRunStatus(options: {
         if (event.to === 'errored') status = 'failed';
         break;
       case 'request.opened':
+        if (event.blocking === false) break;
         status = 'waiting_for_approval';
         break;
       case 'request.resolved':
+        if (event.blocking === false) break;
         // archive#1284 (HIGH 1): honor the resting state the PRODUCER
         // stamps, when it stamps one. `request.resolved` folding to
         // `running` unconditionally is right for the ordinary case — a real

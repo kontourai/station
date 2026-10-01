@@ -8,6 +8,7 @@
 
 import { apiErrorMessage } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 interface RunsEnvelope<T> {
   success: boolean;
@@ -32,7 +33,8 @@ async function unwrapRunsResponse<T>(response: Response): Promise<T> {
   let result: RunsEnvelope<T> | null = null;
   try {
     result = (await response.json()) as RunsEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new Error(`Runs API error: ${response.status}`);
   }
   if (!response.ok || !result.success) {

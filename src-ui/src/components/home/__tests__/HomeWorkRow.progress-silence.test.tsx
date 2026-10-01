@@ -82,7 +82,8 @@ describe('HomeWorkRow turn progress observation (station#4054)', () => {
         runningChildWork: { count: 1, producers: ['engine-subagent'] },
       },
     });
-    expect(screen.getByText('Active')).toBeTruthy();
+    expect(screen.getByText('Running')).toBeTruthy();
+    expect(screen.queryByText('Active')).toBeNull();
     expect(screen.getByText('Background work running')).toBeTruthy();
     expect(screen.queryByText('Stopped')).toBeNull();
   });
