@@ -67,6 +67,23 @@ describe('createClaudeEngineProcess', () => {
     expect(spawned.stdin).toBe(child.stdin);
   });
 
+  test('a stream far larger than the pipe buffers reaches the SDK whole through the tap', async () => {
+    const { spawned, child } = start();
+    // The SDK must read the tap's output: left unread, the tap would fill
+    // and stall the engine's stdout.
+    expect(spawned.stdout).not.toBe(child.stdout);
+    const line = Buffer.from(
+      `${JSON.stringify({ type: 'assistant', text: 'é'.repeat(2000) })}\n`,
+    );
+    const lines = 512;
+    const read = readAll(spawned.stdout);
+    for (let index = 0; index < lines; index += 1) child.stdout.write(line);
+    child.stdout.end();
+    const received = await read;
+    expect(received.length).toBe(line.length * lines);
+    expect(received.subarray(-line.length).equals(line)).toBe(true);
+  });
+
   test('an stdout error reaches the reader', async () => {
     const { spawned, child } = start();
     const read = readAll(spawned.stdout);

@@ -168,13 +168,25 @@ describe('ClaudePermissionFrameTap', () => {
   test('ignores other control requests, other frames and unknown field shapes', async () => {
     const asks = new ClaudePermissionAsks();
     await forward(new ClaudePermissionFrameTap(asks), [
-      // Another control request subtype that happens to mention the marker.
+      // Another control request subtype whose body names the subtype as a
+      // value, so the line passes the cheap marker check and is parsed.
       `${JSON.stringify({
         type: 'control_request',
         request_id: 'req-hook',
-        request: { subtype: 'hook_callback', note: '"can_use_tool"' },
+        request: {
+          subtype: 'hook_callback',
+          callback_id: 'can_use_tool',
+          decision_reason_type: 'rule',
+        },
       })}\n`,
-      // A message that quotes a frame inside a string.
+      // A message that is no control frame but names it too.
+      `${JSON.stringify({
+        type: 'assistant',
+        request_id: 'req-assistant',
+        request: { subtype: 'can_use_tool', tool_name: 'Bash', input: {} },
+        note: 'can_use_tool',
+      })}\n`,
+      // A message that quotes a whole frame inside a string.
       `${JSON.stringify({ type: 'assistant', text: safetyCheckFrame })}\n`,
       // A reason type that is not a string: nothing is recorded.
       claudeCanUseToolFrame('req-odd-type', {
