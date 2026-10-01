@@ -58,7 +58,7 @@
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"5685b2ffdec3e6ca482cc06b89b340af3fe0d922455e152f855748470ba70469","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"00e78e23711f9ced933d8122b89c2d543908729287dd3e3717d56cbbbf84601e","revision":"647868f882dfecc365336d5ff45adad83cbfb2a3"},
 
     {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 

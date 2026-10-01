@@ -9,7 +9,7 @@
 
   "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
 
-  "document": {"digest":"423609fdfe703a3f2af1908b4f10198632a6b5f83d17cb12ced61b6849806dca","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+  "document": {"digest":"c059c4caf5104cfcadc5b665c07c375a6b32685536d96abbf406bb01c7ab1e6b","revision":"647868f882dfecc365336d5ff45adad83cbfb2a3"},
 
   "sources": [
     {"path":"docs/ui/responsive-action-surfaces.txt","digest":"fb70b5b67c507e121e1c8a03cbbe74ac88532effc67aeb3e503569ee817d15b1","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
