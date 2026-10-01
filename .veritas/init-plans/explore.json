@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "mode": "explore",
-  "target_root": "/Users/brian/dev/github/kontourai/governance-rollout-worktrees/station",
+  "target_root": ".",
   "project_name": "station",
   "evidenceCheck": "npm run verify",
   "repo_insights": {

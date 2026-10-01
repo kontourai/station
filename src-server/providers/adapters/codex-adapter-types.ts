@@ -55,6 +55,8 @@ export interface PendingRpcRequest {
 export type JsonRpcId = string | number;
 
 export interface PendingApprovalRequest {
+  openedEventId?: string;
+  blocking?: boolean;
   rpcRequestId: JsonRpcId;
   method: string;
   title: string;

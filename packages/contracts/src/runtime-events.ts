@@ -680,6 +680,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
 export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   method: 'request.opened';
   requestId: string;
+  /** False for an asynchronous question; absent retains blocking behavior. */
+  blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
   description?: string;
@@ -706,6 +708,8 @@ export type ApprovalAcknowledgement = 'engine' | 'in-process' | 'none';
 export interface RequestResolvedEvent extends CanonicalRuntimeEventBase {
   method: 'request.resolved';
   requestId: string;
+  /** False for an asynchronous question; absent retains blocking behavior. */
+  blocking?: boolean;
   status: ApprovalStatus;
   response?: Record<string, unknown>;
   /**

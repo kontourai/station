@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/skill-writable-projection.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"3deaef95e6b3c8a7b8f6e737e0e7dcfdd8f5661c863b46707dbe00509e67758c","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

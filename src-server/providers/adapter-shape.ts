@@ -6,6 +6,7 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
+import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
   EngineId,
@@ -327,7 +328,11 @@ export interface ProviderAdapterShape {
      * Who answered (#2344). Only adapters that record the decision
      * themselves read it; the command receipt carries it for every engine.
      */
-    context?: { clientOrigin?: ClientOrigin },
+    context?: {
+      clientOrigin?: ClientOrigin;
+      answers?: HarnessQuestionAnswers;
+      expectedRequestEventId?: string;
+    },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;
   listSessions(): Promise<ProviderSession[]>;

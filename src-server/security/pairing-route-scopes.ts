@@ -56,6 +56,7 @@
  */
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
+  PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -90,6 +91,60 @@ import {
   RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
+
+/**
+ * The exact `/api/pairing` leaves a promoted device may act on
+ * (archive#1887): read the pending-request list, and confirm or deny ONE
+ * pending request.
+ *
+ * Matched positively and exactly — no prefix, no wildcard. `/api/pairing` is
+ * where the authority to mint further authority lives, so a route added under
+ * it later must be denied to promoted devices by default and admitted only by
+ * someone editing this list on purpose. The id segment is bounded to the
+ * shapes the routes actually accept so a traversal-ish path cannot widen the
+ * match.
+ */
+const PAIRING_APPROVAL_LEAVES: readonly {
+  method: string;
+  pattern: RegExp;
+}[] = [
+  { method: 'GET', pattern: /^\/api\/pairing\/requests$/ },
+  {
+    method: 'POST',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}\/confirm$/,
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}$/,
+  },
+];
+
+export function isPairingApprovalLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  // Compare against the path only; a query string must never participate in
+  // an authorization match.
+  const path = request.path.split('?')[0] ?? request.path;
+  return PAIRING_APPROVAL_LEAVES.some(
+    (leaf) => leaf.method === method && leaf.pattern.test(path),
+  );
+}
+
+/** Scope satisfaction only; credential authority must be checked first. */
+export function pairingScopeSatisfiesHttpRoute(
+  grantedScope: string,
+  requiredScope: PairingScope,
+  request: { method: string; path: string },
+): boolean {
+  return (
+    pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isPairingApprovalLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+  );
+}
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -784,6 +839,30 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/pairing:manage',
     method: '*',
     prefix: '/api/pairing',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/pairing/native-device-bindings/:bindingId:manage',
+    method: 'GET',
+    prefix: '/api/pairing/native-device-bindings/:bindingId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/auth/native-device-bindings/:bindingId/receipt:${method}:read`,
+    method,
+    prefix: '/api/auth/native-device-bindings/:bindingId/receipt',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit' as const,
+  })),
+  {
+    id: '/api/pairing/native-device-bindings/:bindingId/approve:manage',
+    method: 'POST',
+    prefix: '/api/pairing/native-device-bindings/:bindingId/approve',
+    exact: true,
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
@@ -2172,16 +2251,6 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
-    // #2601: the child delegation context this Station derives for the
-    // verified station-control caller, read by the tools before forwarding to
-    // a saved Environment. Internal-only at the route exactly like its sibling
-    // above: every non-internal principal gets a 404 whatever its scope, and
-    // an internal request without a verified per-session token gets
-    // `{ delegation: null }`, so a paired credential learns nothing.
-    {
-      method: 'GET',
-      path: '/api/orchestration/station-control/caller/delegation',
-    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.

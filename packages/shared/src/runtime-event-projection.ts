@@ -4,6 +4,8 @@ import type {
   ConversationMessage,
   MessagePart,
 } from './conversation-message.js';
+import { readHarnessQuestionnaire } from './harness-questions.js';
+import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
 function repeatedRuntimeErrorText(message: string, count: number) {
@@ -893,6 +895,7 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'request.opened': {
+        if (readHarnessQuestionnaire(ev.payload?.questionnaire)) break;
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
         // #2316: a request id is answerable only by the session that minted
@@ -933,6 +936,9 @@ export function projectRuntimeEventsToMessages(
           target.approvalId = ev.requestId;
           target.approvalThreadId = ev.threadId;
           target.approvalEventId = ev.eventId;
+          target.approvalSessionGrant = toolRequestSessionGrantFromPayload(
+            ev.payload,
+          );
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {

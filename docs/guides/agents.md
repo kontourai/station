@@ -146,6 +146,23 @@ every possible tool outcome:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
 
+### Questions from agent harnesses
+
+Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as inline
+question cards in the Session. Select an option, choose several where the
+harness supports it, or choose Other to enter a custom answer. Question tabs
+let you jump between prompts. Use Tab and the native choice
+keys; Ctrl/Cmd+Enter advances to the next question or the review. Review and
+edit every answer before sending the batch. Answering a question never grants
+permission to later tool calls, including under wildcard auto-approval.
+
+Non-private drafts are saved on this device for the exact request and verified
+Station authority. Without that verification or available storage, the draft
+stays in the tab. Private answers are masked during review and aren't saved as
+drafts; this does not promise secrecy in the engine's own history. A failed
+send keeps the entered answers. Optional Codex questions remain answerable
+without pausing the running Session.
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
@@ -341,10 +358,27 @@ log.api('message');  // Enable: localStorage.debug = 'app:*'
 
 ### Theming & Colors
 
-Use the theme variables in `src-ui/src/index.css`, such as `--text-primary`,
-`--bg-secondary`, `--border-primary`, and `--accent-primary`. Status styles also
-use semantic theme tokens rather than hardcoded hex colors. Follow the owning
-component's button style and [frontend guidance](../patterns/frontend.md).
+UI, brand and copy rules live in the `@kontourai/ui`
+[design constitution (DESIGN.md)](https://github.com/kontourai/ui/blob/main/DESIGN.md).
+New styles use its `--k-*` tokens; existing components also use the theme
+variables in `src-ui/src/index.css`, such as `--text-primary`,
+`--bg-secondary`, `--border-primary` and `--accent-primary`. Never hard-code
+hex colors.
+
+For status, map the domain value to a tone with the helpers in
+[station-tones.ts](../../src-ui/src/components/kontour/station-tones.ts) and
+render it with `StatusBadge` or `Badge` from `@kontourai/ui/react`, which
+take a `tone` and always show the label. Station restyles the positive,
+caution, negative and active `.tone-*` classes with AA-checked pairs. Custom status
+styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
+`--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
+`--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
+soft fill), and always carry a text label; color only reinforces it. The
+installed package (1.16.0) also defines `--k-status-contrast` (text on a
+status fill), the `--k-trust-*` trust-state inks, fills and line styles, and
+the `--k-action` and `--k-focus` interaction roles; check
+`node_modules/@kontourai/ui/tokens/tokens.css` before using a token. Follow the
+owning component's button style and [frontend guidance](../patterns/frontend.md).
 
 ### Styling
 

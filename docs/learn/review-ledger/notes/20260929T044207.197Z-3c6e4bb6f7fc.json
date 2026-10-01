@@ -1,0 +1,55 @@
+{
+  "revision": "df950bd9f41b1227b3de566dbf5e396aa8bf3a2a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"2026-09-28 test-audit refresh (PR #2918): sources changed only by execution-target-execution.ts (canonicalHandoffEffectDigest unexported); orchestration-service.ts (comment rewording and the dropped never-read provider argument); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."},
+
+    {"path":"docs/architecture.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/glossary.md","note":"2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected."},
+
+    {"path":"docs/glossary.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked documents changed only in branding entries: plugins.md getTheme comment, api.md theme paragraph, sdk.md useBrandingQuery entry. SDK BrandingData.theme became unknown and fetchBranding rejects non-OK or unsuccessful answers; provider-interfaces adds the BrandingTheme type; main.tsx adds the branding pre-render apply. This guide makes no branding claim; its routing remains accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed docs/guides/documentation.md, covered by its notes above; this branch changed docs/guides/plugins.md, docs/reference/api.md, docs/reference/sdk.md, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."},
+
+    {"path":"docs/guides/integrating-station.md","note":"2026-09-28 test-audit refresh (PR #2918): sources changed only by api.md (legacy-provider receipt sentence removed); claims unaffected."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/reference/contracts.md","note":"2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); pull-request-review.test.ts (adds discussion-ordering fixtures); claims unaffected."},
+
+    {"path":"docs/reference/contracts.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/reference/sdk.md","note":"Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Added a useBrandingQuery entry: theme is unknown and unvalidated, and an error answer rejects. Checked against systemRuntime.ts (BrandingData.theme: unknown) and systemRuntimeRequests.ts (fetchBranding throws StationHttpError on non-OK and Error on success:false). main.tsx applies the validated cached branding theme at module scope before renderApp and mounts BrandingThemeBridge inside RegionModelProvider; imports, provider order and every other boot step are unchanged. Prose accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/reference/sdk.md","note":"Merge of origin/main 7ab099f3d into the white-label branding branch: both sides refreshed this record for disjoint inputs. origin/main changed src-server/routes/orchestration/orchestration.ts, covered by its notes above; this branch changed the document, packages/sdk/src/query-domains/systemRuntime.ts, packages/sdk/src/query-domains/systemRuntimeRequests.ts, src-ui/src/main.tsx, covered by the #2836 note. Neither side's delta touches the other's claims; digests recomputed on the merged tree; the merge changes no prose."},
+
+    {"path":"docs/reference/sdk.md","note":"2026-09-28 test-audit refresh (PR #2918): sources changed only by orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."},
+
+    {"path":"docs/reference/sdk.md","note":"removed the never-minted stdio-env-token channel and unused stdio caller-token adoption (stdio station-control children were already caller-less; the child env still strips STATION_CONTROL_CALLER_TOKEN and still receives the internal token and server-supplied tenant). No SDK claim depends on the station-control stdio caller path, so the prose remains accurate. Source review only. 2026-09-28 follow-up: src-server/security/pairing-route-scopes.ts changed only in doc comments (the verified-caller projection route has no production client since stdio children stopped carrying a caller token); no documented claim affected. Source review only."},
+
+    {"path":"docs/reference/sdk.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/user/work-board.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Integration source review through 9a698720fac4563179f8db914677b0cc412e29cd (#2836 white-label branding theme): Linked sdk.md gained only the useBrandingQuery entry. Classification unchanged. Source review is separate from executed test evidence."},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"packages/sdk/README.md","note":"2026-09-28 test-audit refresh (PR #2918): sources changed only by plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); claims unaffected."},
+
+    {"path":"packages/sdk/README.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"scripts/AGENTS.md","note":"Carried forward after merging origin/main into #2938, whose ledger conflicted: this page's review against #2938's delta (narrow mergeability contract/route, repository-keyed SDK hook, optional refetchOnWindowFocus, vitest manifest entry) was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."}
+  ]
+}

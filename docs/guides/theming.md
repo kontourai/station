@@ -31,13 +31,25 @@ applies local adoption rules. `:root.is-dev-build` and `data-app-channel`
 selectors override the brand/contrast pair and the interaction roles
 (`--k-action`, `--k-action-contrast`, `--k-focus`), and select channel logo
 assets. These are existing Station channel overrides, not new shared product
-themes. `--accent-primary` and `--text-on-accent` read the action role with a
-brand fallback, and the focus-visible outline reads `--k-focus` with an
-`--accent-primary` fallback, so the same rules work whether or not the
-installed package defines the roles (1.12.0 does not).
+themes. `--accent-primary` and `--text-on-accent` read the action role. The
+installed package defines the roles (equal to the shipped brand), so the
+`--k-brand` fallback written beside them does not apply. The focus-visible
+outline reads `--k-focus` only where something chose a focus colour: a
+white-label theme that sets it for the current mode (the root then carries
+`data-brand-focus`) or a Dev, Beta or Nightly build. Everywhere else it reads
+`--accent-primary`, so a device accent recolours buttons, links and the focus
+ring. The package always defines `--k-focus`, which is why the choice is keyed
+on that marker instead of on the property being defined.
 [branding-role-cascade.test.ts](../../src-ui/src/__tests__/branding-role-cascade.test.ts)
-measures those fallbacks and contrast-checks every channel value in a real
-browser.
+measures the resolved roles and contrast-checks every channel value in a real
+browser against the rules a white-label theme must pass, including the brand
+as text. The sidebar channel badge and the package `.eyebrow` paint the brand
+as text; interactive text such as the Readiness and Trust panel links reads
+the action role. Where a channel's own hue fails as text in a mode, that mode
+uses a nearby shade for the brand and the roles.
+[channel-text-contrast.test.tsx](../../src-ui/src/__tests__/channel-text-contrast.test.tsx)
+renders those surfaces and measures each text colour against the background it
+sits on, including the raised panel rows and the sidebar hover fill.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
 
@@ -63,7 +75,12 @@ A branding provider's `getTheme()` answer is applied by
 `--k-brand`, `--k-brand-contrast`, `--k-action`, `--k-action-contrast` and
 `--k-focus` on the document element, for the current `data-theme` mode. It is
 all or nothing: an unknown key, a non-hex value or a failed contrast check in
-either mode keeps the defaults. `main.tsx` applies the last validated copy from
+either mode keeps the defaults. The check is `validateBrandOverride` from
+`@kontourai/ui/contrast`; Station adds the flat-key input shape and two
+stricter text-contrast rules for the action fill and the brand. A mode that
+sets only the brand also gets it as its action role, because the installed
+tokens define `--k-action` and would otherwise keep buttons and links on the
+shipped colour. `main.tsx` applies the last validated copy from
 localStorage before the first render, re-validating it, and
 [BrandingThemeBridge](../../src-ui/src/components/BrandingThemeBridge.tsx)
 replaces it once the branding query answers. A device accent still sets

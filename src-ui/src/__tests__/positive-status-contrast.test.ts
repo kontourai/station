@@ -70,13 +70,20 @@ function oldForeground(channel: Channel, theme: Theme): string {
   if (channel === 'default') {
     return themedHex(KIT_TOKENS, '--k-brand-contrast', theme);
   }
-  const rule = STATION_CSS.match(
-    new RegExp(
-      `:root\\[data-app-channel="${channel}"\\]\\s*{[^}]*--k-brand-contrast:\\s*(#[0-9a-f]{6})`,
-      'i',
-    ),
+  // A channel's light block wins in light mode when it sets the token;
+  // otherwise its base block applies to both modes.
+  const block = (suffix: string) =>
+    STATION_CSS.match(
+      new RegExp(
+        `:root\\[data-app-channel="${channel}"\\]${suffix}\\s*{[^}]*--k-brand-contrast:\\s*(#[0-9a-f]{6})`,
+        'i',
+      ),
+    )?.[1];
+  return (
+    (theme === 'light' ? block('\\[data-theme="light"\\]') : undefined) ??
+    block('') ??
+    ''
   );
-  return rule?.[1] ?? '';
 }
 
 describe('StatusBadge tone contrast (station#923)', () => {
@@ -87,23 +94,23 @@ describe('StatusBadge tone contrast (station#923)', () => {
     const expected: Record<Tone, Record<Channel, [number, number]>> = {
       positive: {
         default: [10.43, 4.81],
-        beta: [1.92, 4.81],
-        nightly: [1.92, 4.81],
+        beta: [10.43, 4.81],
+        nightly: [10.43, 4.81],
       },
       caution: {
         default: [10.7, 5.93],
-        beta: [1.87, 5.93],
-        nightly: [1.87, 5.93],
+        beta: [10.7, 5.93],
+        nightly: [10.7, 5.93],
       },
       negative: {
         default: [7.4, 5.07],
-        beta: [2.71, 5.07],
-        nightly: [2.71, 5.07],
+        beta: [7.4, 5.07],
+        nightly: [7.4, 5.07],
       },
       active: {
         default: [8.06, 4.71],
-        beta: [2.49, 4.71],
-        nightly: [2.49, 4.71],
+        beta: [8.06, 4.71],
+        nightly: [8.06, 4.71],
       },
     };
 

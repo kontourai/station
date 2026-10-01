@@ -1,0 +1,85 @@
+{
+  "path": "docs/guides/integrating-station.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
+
+  "limits": "No cloud sizing, current price quote, AWS/GCP deployment, Marketplace approval/API acceptance, service availability, commercial/legal qualification, two-tenant isolation or complete provider audit. Local persistence checks do not establish tenant-safe PostgreSQL repositories. Historical costs and normative integration acceptance criteria were not converted to shipped behavior.",
+
+  "document": {"digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
+
+  "sources": [
+    {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"docs/guides/deployment-authentication.md","digest":"cd5a91770198de74499dd8e87bb4a27ba0a0769108bfd51d7f900bf571026fbf","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
+
+    {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+
+    {"path":"docs/guides/plugins.md","digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
+
+    {"path":"docs/guides/workspace-packages.md","digest":"01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"docs/reference/api.md","digest":"e3135b335388bcb5a7c827a25a5b4ff2a4a9066c779a4cf24068d08a67e2dbcd","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"docs/reference/cli.md","digest":"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"docs/reference/contracts.md","digest":"c03ab6d3f5c0283c243cff3e5881aaf27150994665cf8927a46008da98fb6d9f","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"docs/reference/sdk.md","digest":"0ebd9e5a18cc2c27fcde954b6b8e5885c5e13246ea7dc36fa5569e1ce8b6fe0d","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
+
+    {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts","digest":"a67abcae97b3b45a0a58b235eae5384682c4c921f32f118bade7ef5b51977c0b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"src-server/runtime/bootstrap/hosted-persistence-boundary.ts","digest":"458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+  ],
+
+  "checks": [
+    "Source/caller review on 2026-09-27 completed for the whole document, separating implemented behavior, policy requirements and historical evidence. Current root document bytes at 45fcdd5230b0b5e5028e469864ab70693e6088b0 matched the lane before this prose correction; reviewed implementation remains the frozen 6fa523e4d5b5a265a9e545edcbba6f5602193bef integration.",
+
+    "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
+
+    "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
+
+    "Reviewed integration deltas: docs/reference/api.md: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. docs/reference/sdk.md: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Updated prebuilt installer-owned upgrades and retained loose-archive/service refusals; unrelated command, API and triage contracts remain unchanged.",
+
+    "Reviewed landing deltas through 111744681: Reconciled typed refusal fields, actual Error inheritance/constructors, shape-only stationEnvelope classification and opaque status-0/cancellation behavior. Preserved prior helper truthiness, data-validation and host-action indeterminate caveats.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/guides/deployment-authentication.md, docs/reference/sdk.md, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: plugins.md added proposal-named local-folder .git exclusion, cli.md documented archive service units and upgrade, and contracts.md qualified plugin-foreground-work as having no server implementation yet. This guide only routes to those references, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added the cli.md reference for `station environment access devices|scope|scopes` and the host-only full-access scope management. The guide only routes integrators to the CLI/API/SDK/plugin references and states hosted-delivery requirements, and none of that changed. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 adds a paragraph to docs/guides/plugins.md about proposal-staged folders staying stripped after reinstall. This guide only links the plugin guide from its routing table and makes no claim about git metadata staging. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) deletes the legacy ambient boot helpers from packages/sdk/src/boot.ts and rewrites the docs/reference/sdk.md boot paragraph. Resolution verified: the merged sdk.md keeps the branch wording and drops the legacy-helper sentence, matching source. boot.ts now exports only BOOT_SEED_KEYS, BootPayload, fetchBootPayloadAt and seedBootPayloadGuarded, and packages/sdk/package.json has no ./boot export, as sdk.md says. Prose accurate: this guide only routes to the SDK reference and does not name boot helpers. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c adds the 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md. This guide only routes operator automation to the CLI reference and names the evidence to keep, and that routing still holds. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) added the launcher-run service update and the Check for server updates prose to docs/reference/cli.md, and the archive install kinds and requestServiceUpdateProgress/useServiceUpdateProgressQuery to docs/reference/sdk.md. Both merged documents read coherently with the branch text, with no duplicated or contradictory paragraphs. This guide only links to them for task routing. Prose accurate. Source review is separate from executed test evidence.",
+
+    "The documentation maintenance link remains valid; the added freshness section does not change the integration delivery expectations.",
+
+    "The documentation maintenance link remains valid after the mode wording change."
+  ]
+}

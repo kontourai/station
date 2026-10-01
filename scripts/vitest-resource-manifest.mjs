@@ -123,6 +123,13 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/learning-atlas.browser.test.ts',
+  // Starts a nested Vitest run of its probe under a simulated merge-queue env.
+  'scripts/__tests__/ci-event-environment.test.ts',
+  // Builds disposable Git repositories to prove the real-ledger freshness
+  // check keeps the job's event mode through the worker env scrub.
+  'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
+  // Runs the token helper as a child against a loopback GitHub and a fake `security`.
+  'scripts/__tests__/gh-app-token.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.
@@ -657,6 +664,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  // #2977: runs release.yml's assemble-draft admission step as a real bash
+  // child against a download-artifact-shaped fixture root.
+  'scripts/__tests__/release-admit-producer-assets.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
   // #1797 adds two more runs for the desktop `.icns`, whose writer was the
@@ -946,6 +956,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // development-only pseudo-locale module cannot ship, so it owns one bounded
   // child process and must not contend with ordinary UI tests.
   'src-ui/src/i18n/__tests__/LocaleContext.test.tsx',
+  // #2937: builds a disposable git checkout (fetch and push remotes differ)
+  // and resolves it through the real pull-request context resolver.
+  'src-ui/src/__tests__/SessionPullRequestConflictChip.pushurl.test.tsx',
   // station#2928: executes vite.config.ts (including its git child probe)
   // and a real Vite middleware server against a per-suite temporary cache.
   'src-ui/src/__tests__/vite-sdk-client-alias.test.ts',

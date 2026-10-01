@@ -28,6 +28,26 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-30T23:10:29Z | nightly-desktop | 0.1.11-nightly.2464.3 | `4dbf9ac` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36783703696) |
+| 2026-09-30T23:10:26Z | nightly-android | 0.1.11-nightly.2464.3 | `4dbf9ac` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36783703696) |
+| 2026-09-30T23:03:25Z | nightly-npm | 0.6.0-nightly.2464.36783703696 | `4dbf9ac` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36783703696) |
+| 2026-09-30T20:34:00Z | nightly-desktop | 0.1.11-nightly.2464.2 | `5ecd682` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
+| 2026-09-30T20:33:57Z | nightly-android | 0.1.11-nightly.2464.2 | `5ecd682` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
+| 2026-09-30T20:29:52Z | nightly-npm | 0.6.0-nightly.2464.36767826654 | `5ecd682` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36767826654) |
+| 2026-09-30T06:25:54Z | nightly-desktop | 0.1.11-nightly.2464 | `e27600d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36672468094) |
+| 2026-09-30T06:25:51Z | nightly-android | 0.1.11-nightly.2464 | `e27600d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36672468094) |
+| 2026-09-30T06:22:05Z | nightly-npm | 0.6.0-nightly.2464.36672468094 | `e27600d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36672468094) |
+| 2026-09-29T23:54:41Z | nightly-desktop | 0.1.11-nightly.2463.3 | `fa78d02` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36637714147) |
+| 2026-09-29T23:54:39Z | nightly-android | 0.1.11-nightly.2463.3 | `fa78d02` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36637714147) |
+| 2026-09-29T23:19:11Z | nightly-npm | 0.6.0-nightly.2463.36637714147 | `fa78d02` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36637714147) |
+| 2026-09-29T13:27:53Z | nightly-desktop | 0.1.11-nightly.2463.2 | `0690c93` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36569268737) |
+| 2026-09-29T13:27:50Z | nightly-android | 0.1.11-nightly.2463.2 | `0690c93` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36569268737) |
+| 2026-09-29T13:20:39Z | nightly-npm | 0.6.0-nightly.2463.36569268737 | `0690c93` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36569268737) |
+| 2026-09-29T06:59:09Z | nightly-desktop | 0.1.11-nightly.2463.1 | `e8cbb94` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/36526165983) |
+| 2026-09-29T06:54:46Z | nightly-npm | 0.6.0-nightly.2463.36526165983 | `e8cbb94` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36526165983) |
+| 2026-09-29T05:51:27Z | nightly-desktop | 0.1.11-nightly.2463 | `99f9520` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36520805311) |
+| 2026-09-29T05:51:25Z | nightly-android | 0.1.11-nightly.2463 | `99f9520` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36520805311) |
+| 2026-09-29T05:21:53Z | nightly-npm | 0.6.0-nightly.2463.36520805311 | `99f9520` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36520805311) |
 | 2026-09-29T00:28:17Z | nightly-desktop | 0.1.11-nightly.2462.3 | `ec29a87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36497491629) |
 | 2026-09-29T00:28:15Z | nightly-android | 0.1.11-nightly.2462.3 | `ec29a87` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36497491629) |
 | 2026-09-29T00:19:44Z | nightly-npm | 0.6.0-nightly.2462.36497491629 | `ec29a87` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36497491629) |
@@ -188,6 +208,500 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-30T23:10:29Z · nightly-desktop · 0.1.11-nightly.2464.3
+
+- Ship SHA: `4dbf9acbcab04c4695c8ca9799bc1422526cd382`
+- Artifact built at: `2026-09-30T22:16:49.568Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery failure (run 36783703696)
+
+### Changelog
+
+Commits since `5ecd682` ([full sha](https://github.com/kontourai/station/commit/5ecd682d3dda93a00a126e31328fb563f3b427b8)):
+
+**Fixes**
+
+- [#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token
+
+## 2026-09-30T23:10:26Z · nightly-android · 0.1.11-nightly.2464.3
+
+- Ship SHA: `4dbf9acbcab04c4695c8ca9799bc1422526cd382`
+- Artifact built at: `2026-09-30T22:16:36.969Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery failure (run 36783703696)
+
+### Changelog
+
+Commits since `5ecd682` ([full sha](https://github.com/kontourai/station/commit/5ecd682d3dda93a00a126e31328fb563f3b427b8)):
+
+**Fixes**
+
+- [#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token
+
+## 2026-09-30T23:03:25Z · nightly-npm · 0.6.0-nightly.2464.36783703696
+
+- Ship SHA: `4dbf9acbcab04c4695c8ca9799bc1422526cd382`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2464.36783703696 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `5ecd682` ([full sha](https://github.com/kontourai/station/commit/5ecd682d3dda93a00a126e31328fb563f3b427b8)):
+
+**Fixes**
+
+- [#2967](https://github.com/kontourai/station/pull/2967) fix(docs,ci): merge-friendly review ledger, PR/queue parity, and automation token
+
+## 2026-09-30T20:34:00Z · nightly-desktop · 0.1.11-nightly.2464.2
+
+- Ship SHA: `5ecd682d3dda93a00a126e31328fb563f3b427b8`
+- Artifact built at: `2026-09-30T19:54:00.917Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36767826654)
+
+### Changelog
+
+Commits since `e27600d` ([full sha](https://github.com/kontourai/station/commit/e27600d1fcd3ba8b80f793713e7901c35cba4381)):
+
+**Features**
+
+- [#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary
+- [#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review
+- [#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices
+- [#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts
+
+**Fixes**
+
+- [#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable
+- [#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams
+- [#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline
+- [#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories
+- [#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes
+
+**Docs**
+
+- [#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes
+
+**Other**
+
+- [#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot
+
+## 2026-09-30T20:33:57Z · nightly-android · 0.1.11-nightly.2464.2
+
+- Ship SHA: `5ecd682d3dda93a00a126e31328fb563f3b427b8`
+- Artifact built at: `2026-09-30T19:54:01.809Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36767826654)
+
+### Changelog
+
+Commits since `e27600d` ([full sha](https://github.com/kontourai/station/commit/e27600d1fcd3ba8b80f793713e7901c35cba4381)):
+
+**Features**
+
+- [#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary
+- [#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review
+- [#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices
+- [#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts
+
+**Fixes**
+
+- [#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable
+- [#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams
+- [#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline
+- [#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories
+- [#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes
+
+**Docs**
+
+- [#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes
+
+**Other**
+
+- [#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot
+
+## 2026-09-30T20:29:52Z · nightly-npm · 0.6.0-nightly.2464.36767826654
+
+- Ship SHA: `5ecd682d3dda93a00a126e31328fb563f3b427b8`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2464.36767826654 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e27600d` ([full sha](https://github.com/kontourai/station/commit/e27600d1fcd3ba8b80f793713e7901c35cba4381)):
+
+**Features**
+
+- [#3023](https://github.com/kontourai/station/pull/3023) feat(sdk): establish a headless Agent development boundary
+- [#3021](https://github.com/kontourai/station/pull/3021) feat(chat): answer harness questions with compact cards and batch review
+- [#3018](https://github.com/kontourai/station/pull/3018) feat(connections): sign engine credential profiles in from paired devices
+- [#2984](https://github.com/kontourai/station/pull/2984) feat(inbox): split live work into Needs you / Running / Idle, and cue unsent composer drafts
+
+**Fixes**
+
+- [#3029](https://github.com/kontourai/station/pull/3029) fix(pairing): make promoted mobile approval actionable
+- [#3025](https://github.com/kontourai/station/pull/3025) fix(chat): omit raw failed tool output from outward streams
+- [#3019](https://github.com/kontourai/station/pull/3019) fix(native): give chat dispatch a bounded response-header deadline
+- [#3020](https://github.com/kontourai/station/pull/3020) fix(deps): patch brace expansion and URI normalization advisories
+- [#3013](https://github.com/kontourai/station/pull/3013) fix(nightly): give the rolling-manifest re-verify five minutes to see the new bytes
+
+**Docs**
+
+- [#3022](https://github.com/kontourai/station/pull/3022) docs: record published Knowledge consumer fixes
+
+**Other**
+
+- [#3028](https://github.com/kontourai/station/pull/3028) test(ci): compare one Vitest discovery snapshot
+
+## 2026-09-30T06:25:54Z · nightly-desktop · 0.1.11-nightly.2464
+
+- Ship SHA: `e27600d1fcd3ba8b80f793713e7901c35cba4381`
+- Artifact built at: `2026-09-30T05:26:56.248Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36672468094)
+
+### Changelog
+
+Commits since `fa78d02` ([full sha](https://github.com/kontourai/station/commit/fa78d02a509c2a30a4347130f54de67cd6f30ba1)):
+
+**Features**
+
+- [#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride
+
+**Fixes**
+
+- [#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses
+- [#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)
+- [#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)
+
+## 2026-09-30T06:25:51Z · nightly-android · 0.1.11-nightly.2464
+
+- Ship SHA: `e27600d1fcd3ba8b80f793713e7901c35cba4381`
+- Artifact built at: `2026-09-30T05:26:39.166Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36672468094)
+
+### Changelog
+
+Commits since `fa78d02` ([full sha](https://github.com/kontourai/station/commit/fa78d02a509c2a30a4347130f54de67cd6f30ba1)):
+
+**Features**
+
+- [#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride
+
+**Fixes**
+
+- [#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses
+- [#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)
+- [#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)
+
+## 2026-09-30T06:22:05Z · nightly-npm · 0.6.0-nightly.2464.36672468094
+
+- Ship SHA: `e27600d1fcd3ba8b80f793713e7901c35cba4381`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2464.36672468094 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `fa78d02` ([full sha](https://github.com/kontourai/station/commit/fa78d02a509c2a30a4347130f54de67cd6f30ba1)):
+
+**Features**
+
+- [#2952](https://github.com/kontourai/station/pull/2952) feat(ui): bump @kontourai/ui to 1.16.0 and validate branding themes with its validateBrandOverride
+
+**Fixes**
+
+- [#3015](https://github.com/kontourai/station/pull/3015) fix(chat): keep provider diagnostics off outward chat responses
+- [#2942](https://github.com/kontourai/station/pull/2942) fix(claude): keep session grants off escalations and plan exits (#2915, #2916)
+- [#2979](https://github.com/kontourai/station/pull/2979) fix(release): admit draft assets from an explicit producer artifact allowlist (#2977)
+
+## 2026-09-29T23:54:41Z · nightly-desktop · 0.1.11-nightly.2463.3
+
+- Ship SHA: `fa78d02a509c2a30a4347130f54de67cd6f30ba1`
+- Artifact built at: `2026-09-29T22:55:57.445Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36637714147)
+
+### Changelog
+
+Commits since `0690c93` ([full sha](https://github.com/kontourai/station/commit/0690c93997c7abf1c0e410be6166e5f615cefd4b)):
+
+**Features**
+
+- [#2920](https://github.com/kontourai/station/pull/2920) feat(station-control): one remote-Station forwarding seam, bounded and peer-text-free (#2377 C2b)
+
+**Fixes**
+
+- [#2599](https://github.com/kontourai/station/pull/2599) fix(deps): land the runtime/UI and GitHub Actions bumps with the changes their guards need
+- [#2975](https://github.com/kontourai/station/pull/2975) fix(update): follow the https redirects GitHub serves the release manifest through
+- [#2954](https://github.com/kontourai/station/pull/2954) fix(cli): keep recorded ports when station upgrade re-runs install.sh
+
+**Docs**
+
+- [#2973](https://github.com/kontourai/station/pull/2973) docs(adr): ADR 0020 distribution — two trains, channels as pointers, installer-first (#2958)
+- [#2968](https://github.com/kontourai/station/pull/2968) docs(adr): record packaged-build evidence for ADR 0015 NOT_VERIFIED items (#2957)
+
+**Other**
+
+- [#2955](https://github.com/kontourai/station/pull/2955) chore(veritas): record a repository-relative target_root in the init plan
+
+## 2026-09-29T23:54:39Z · nightly-android · 0.1.11-nightly.2463.3
+
+- Ship SHA: `fa78d02a509c2a30a4347130f54de67cd6f30ba1`
+- Artifact built at: `2026-09-29T22:20:22.559Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36637714147)
+
+### Changelog
+
+Commits since `0690c93` ([full sha](https://github.com/kontourai/station/commit/0690c93997c7abf1c0e410be6166e5f615cefd4b)):
+
+**Features**
+
+- [#2920](https://github.com/kontourai/station/pull/2920) feat(station-control): one remote-Station forwarding seam, bounded and peer-text-free (#2377 C2b)
+
+**Fixes**
+
+- [#2599](https://github.com/kontourai/station/pull/2599) fix(deps): land the runtime/UI and GitHub Actions bumps with the changes their guards need
+- [#2975](https://github.com/kontourai/station/pull/2975) fix(update): follow the https redirects GitHub serves the release manifest through
+- [#2954](https://github.com/kontourai/station/pull/2954) fix(cli): keep recorded ports when station upgrade re-runs install.sh
+
+**Docs**
+
+- [#2973](https://github.com/kontourai/station/pull/2973) docs(adr): ADR 0020 distribution — two trains, channels as pointers, installer-first (#2958)
+- [#2968](https://github.com/kontourai/station/pull/2968) docs(adr): record packaged-build evidence for ADR 0015 NOT_VERIFIED items (#2957)
+
+**Other**
+
+- [#2955](https://github.com/kontourai/station/pull/2955) chore(veritas): record a repository-relative target_root in the init plan
+
+## 2026-09-29T23:19:11Z · nightly-npm · 0.6.0-nightly.2463.36637714147
+
+- Ship SHA: `fa78d02a509c2a30a4347130f54de67cd6f30ba1`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2463.36637714147 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `0690c93` ([full sha](https://github.com/kontourai/station/commit/0690c93997c7abf1c0e410be6166e5f615cefd4b)):
+
+**Features**
+
+- [#2920](https://github.com/kontourai/station/pull/2920) feat(station-control): one remote-Station forwarding seam, bounded and peer-text-free (#2377 C2b)
+
+**Fixes**
+
+- [#2599](https://github.com/kontourai/station/pull/2599) fix(deps): land the runtime/UI and GitHub Actions bumps with the changes their guards need
+- [#2975](https://github.com/kontourai/station/pull/2975) fix(update): follow the https redirects GitHub serves the release manifest through
+- [#2954](https://github.com/kontourai/station/pull/2954) fix(cli): keep recorded ports when station upgrade re-runs install.sh
+
+**Docs**
+
+- [#2973](https://github.com/kontourai/station/pull/2973) docs(adr): ADR 0020 distribution — two trains, channels as pointers, installer-first (#2958)
+- [#2968](https://github.com/kontourai/station/pull/2968) docs(adr): record packaged-build evidence for ADR 0015 NOT_VERIFIED items (#2957)
+
+**Other**
+
+- [#2955](https://github.com/kontourai/station/pull/2955) chore(veritas): record a repository-relative target_root in the init plan
+
+## 2026-09-29T13:27:53Z · nightly-desktop · 0.1.11-nightly.2463.2
+
+- Ship SHA: `0690c93997c7abf1c0e410be6166e5f615cefd4b`
+- Artifact built at: `2026-09-29T12:47:27.096Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36569268737)
+
+### Changelog
+
+Commits since `e8cbb94` ([full sha](https://github.com/kontourai/station/commit/e8cbb9412176d0fd372de92ef455132e952a409f)):
+
+**Features**
+
+- [#2892](https://github.com/kontourai/station/pull/2892) feat(relay): add opt-in native application signaling bridge
+
+**Fixes**
+
+- [#2943](https://github.com/kontourai/station/pull/2943) fix(container,docs): restore the docs build inputs and the public Pages link
+
+## 2026-09-29T13:27:50Z · nightly-android · 0.1.11-nightly.2463.2
+
+- Ship SHA: `0690c93997c7abf1c0e410be6166e5f615cefd4b`
+- Artifact built at: `2026-09-29T12:47:05.040Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36569268737)
+
+### Changelog
+
+Commits since `99f9520` ([full sha](https://github.com/kontourai/station/commit/99f9520b0fde970a123c4dabc22137a55747aa17)):
+
+**Features**
+
+- [#2892](https://github.com/kontourai/station/pull/2892) feat(relay): add opt-in native application signaling bridge
+
+**Fixes**
+
+- [#2943](https://github.com/kontourai/station/pull/2943) fix(container,docs): restore the docs build inputs and the public Pages link
+- [#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces
+- [#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)
+
+**Other**
+
+- [#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review
+
+## 2026-09-29T13:20:39Z · nightly-npm · 0.6.0-nightly.2463.36569268737
+
+- Ship SHA: `0690c93997c7abf1c0e410be6166e5f615cefd4b`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2463.36569268737 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e8cbb94` ([full sha](https://github.com/kontourai/station/commit/e8cbb9412176d0fd372de92ef455132e952a409f)):
+
+**Features**
+
+- [#2892](https://github.com/kontourai/station/pull/2892) feat(relay): add opt-in native application signaling bridge
+
+**Fixes**
+
+- [#2943](https://github.com/kontourai/station/pull/2943) fix(container,docs): restore the docs build inputs and the public Pages link
+
+## 2026-09-29T06:59:09Z · nightly-desktop · 0.1.11-nightly.2463.1
+
+- Ship SHA: `e8cbb9412176d0fd372de92ef455132e952a409f`
+- Artifact built at: `2026-09-29T06:10:14.929Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36526165983)
+- Note: android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:36526165983:play-upload-or-query (the provider effect may already be live))
+
+### Changelog
+
+Commits since `99f9520` ([full sha](https://github.com/kontourai/station/commit/99f9520b0fde970a123c4dabc22137a55747aa17)):
+
+**Fixes**
+
+- [#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces
+- [#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)
+
+**Other**
+
+- [#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review
+
+## 2026-09-29T06:54:46Z · nightly-npm · 0.6.0-nightly.2463.36526165983
+
+- Ship SHA: `e8cbb9412176d0fd372de92ef455132e952a409f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2463.36526165983 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `99f9520` ([full sha](https://github.com/kontourai/station/commit/99f9520b0fde970a123c4dabc22137a55747aa17)):
+
+**Fixes**
+
+- [#2944](https://github.com/kontourai/station/pull/2944) fix(ui): channel brand text meets AA on its real surfaces
+- [#2940](https://github.com/kontourai/station/pull/2940) fix(ui): keep the approval card legible at narrow width, with accessible button states (#2917)
+
+**Other**
+
+- [#2951](https://github.com/kontourai/station/pull/2951) test(docs): stop the atlas browser test from dequeuing PRs over another PR's stale review
+
+## 2026-09-29T05:51:27Z · nightly-desktop · 0.1.11-nightly.2463
+
+- Ship SHA: `99f9520b0fde970a123c4dabc22137a55747aa17`
+- Artifact built at: `2026-09-29T04:25:21.790Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36520805311)
+
+### Changelog
+
+Commits since `ec29a87` ([full sha](https://github.com/kontourai/station/commit/ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe)):
+
+**Features**
+
+- [#2902](https://github.com/kontourai/station/pull/2902) feat(ui): apply validated white-label branding theme; action/focus roles with fallbacks
+
+**Fixes**
+
+- [#2938](https://github.com/kontourai/station/pull/2938) fix(pull-requests): observe session PR conflicts with one narrow, coalesced read per repository (#2937)
+- [#2931](https://github.com/kontourai/station/pull/2931) fix(verification): report the narrow-diff fixture's changed paths
+- [#2921](https://github.com/kontourai/station/pull/2921) fix(codex): session grants never auto-approve escalations; approval titles cannot be spoofed (#2911)
+
+**Docs**
+
+- [#2946](https://github.com/kontourai/station/pull/2946) docs(agents): point status styling at the kit tones, not hex
+
+**Other**
+
+- [#2945](https://github.com/kontourai/station/pull/2945) refactor: remove dead station-control stdio caller token and isLocalRuntimeCaller; key terminal query-credential failures on the normalized peer
+- [#2918](https://github.com/kontourai/station/pull/2918) test: test-audit Server services (batches 42, 43, 44, 51, 54, 56, 60, 65)
+
+## 2026-09-29T05:51:25Z · nightly-android · 0.1.11-nightly.2463
+
+- Ship SHA: `99f9520b0fde970a123c4dabc22137a55747aa17`
+- Artifact built at: `2026-09-29T04:24:54.524Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36520805311)
+
+### Changelog
+
+Commits since `ec29a87` ([full sha](https://github.com/kontourai/station/commit/ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe)):
+
+**Features**
+
+- [#2902](https://github.com/kontourai/station/pull/2902) feat(ui): apply validated white-label branding theme; action/focus roles with fallbacks
+
+**Fixes**
+
+- [#2938](https://github.com/kontourai/station/pull/2938) fix(pull-requests): observe session PR conflicts with one narrow, coalesced read per repository (#2937)
+- [#2931](https://github.com/kontourai/station/pull/2931) fix(verification): report the narrow-diff fixture's changed paths
+- [#2921](https://github.com/kontourai/station/pull/2921) fix(codex): session grants never auto-approve escalations; approval titles cannot be spoofed (#2911)
+
+**Docs**
+
+- [#2946](https://github.com/kontourai/station/pull/2946) docs(agents): point status styling at the kit tones, not hex
+
+**Other**
+
+- [#2945](https://github.com/kontourai/station/pull/2945) refactor: remove dead station-control stdio caller token and isLocalRuntimeCaller; key terminal query-credential failures on the normalized peer
+- [#2918](https://github.com/kontourai/station/pull/2918) test: test-audit Server services (batches 42, 43, 44, 51, 54, 56, 60, 65)
+
+## 2026-09-29T05:21:53Z · nightly-npm · 0.6.0-nightly.2463.36520805311
+
+- Ship SHA: `99f9520b0fde970a123c4dabc22137a55747aa17`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2463.36520805311 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `ec29a87` ([full sha](https://github.com/kontourai/station/commit/ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe)):
+
+**Features**
+
+- [#2902](https://github.com/kontourai/station/pull/2902) feat(ui): apply validated white-label branding theme; action/focus roles with fallbacks
+
+**Fixes**
+
+- [#2938](https://github.com/kontourai/station/pull/2938) fix(pull-requests): observe session PR conflicts with one narrow, coalesced read per repository (#2937)
+- [#2931](https://github.com/kontourai/station/pull/2931) fix(verification): report the narrow-diff fixture's changed paths
+- [#2921](https://github.com/kontourai/station/pull/2921) fix(codex): session grants never auto-approve escalations; approval titles cannot be spoofed (#2911)
+
+**Docs**
+
+- [#2946](https://github.com/kontourai/station/pull/2946) docs(agents): point status styling at the kit tones, not hex
+
+**Other**
+
+- [#2945](https://github.com/kontourai/station/pull/2945) refactor: remove dead station-control stdio caller token and isLocalRuntimeCaller; key terminal query-credential failures on the normalized peer
+- [#2918](https://github.com/kontourai/station/pull/2918) test: test-audit Server services (batches 42, 43, 44, 51, 54, 56, 60, 65)
 
 ## 2026-09-29T00:28:17Z · nightly-desktop · 0.1.11-nightly.2462.3
 

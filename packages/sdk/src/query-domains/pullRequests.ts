@@ -1,5 +1,6 @@
 import type {
   PullRequest,
+  PullRequestBranchMergeability,
   PullRequestClientContext,
   PullRequestCommentInput,
   PullRequestListQuery,
@@ -37,6 +38,16 @@ export const pullRequestContextQueryKey = (
   thread?: string,
   workingDirectory?: string,
 ) => ['pull-request-context', project, thread ?? '', workingDirectory ?? ''];
+/**
+ * Keyed by project and repository, never by session: every row observing one
+ * repository shares one cache entry (#2937).
+ */
+export const pullRequestMergeabilityQueryKey = (
+  project: string,
+  provider: string,
+  host: string,
+  repo: string,
+) => ['pull-request-mergeability', project, provider, host, repo];
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = await _getApiBase();
   const r = await authenticatedFetch(`${base}/api/pull-requests/${path}`, init);
@@ -100,6 +111,46 @@ export function usePullRequestsQuery(
         !!owner &&
         !!repo &&
         !!context?.project &&
+        (config?.enabled ?? true),
+    },
+  );
+}
+/**
+ * The repository's open pull requests narrowed to source branch and
+ * mergeability (#2937): a conflict indicator's read, which the server answers
+ * without fetching bodies, commits, reviews or comments. It resolves the
+ * checkout from the project alone, because the answer is repository-scoped.
+ */
+export function usePullRequestMergeabilityQuery(
+  provider: string,
+  host: string,
+  owner: string,
+  repo: string,
+  project: string,
+  config?: QueryConfig<PullRequestResult<PullRequestBranchMergeability[]>>,
+) {
+  return useApiQuery(
+    pullRequestMergeabilityQueryKey(
+      project,
+      provider,
+      host,
+      `${owner}/${repo}`,
+    ),
+    () =>
+      request<PullRequestResult<PullRequestBranchMergeability[]>>(
+        withContext(
+          `${encodeURIComponent(provider)}/${encodeURIComponent(host)}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/mergeability`,
+          { project },
+        ),
+      ),
+    {
+      ...config,
+      enabled:
+        !!provider &&
+        !!host &&
+        !!owner &&
+        !!repo &&
+        !!project &&
         (config?.enabled ?? true),
     },
   );

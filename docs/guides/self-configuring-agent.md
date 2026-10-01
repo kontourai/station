@@ -61,7 +61,8 @@ scope and check unconfined execution across the conversation's lineage,
 including reserved successors.
 
 Saved-Environment discovery and remote dispatch require a bound operator caller.
-Remote task reads, event reads, and interrupts carry the same restriction.
+Remote task listings, task reads, event reads, and interrupts carry the same
+restriction.
 For a non-operator caller, `respond_to_task_request` requires bound assurance,
 the same task owner, and that owner's Project `approve` action. Global-scope
 approval requires a bound operator. The separate Session `respondToRequest`
@@ -280,7 +281,9 @@ Give such work to a top-level conversation instead of a delegated child.
 
 When `delegate_task` or `send_message` targets another Station, this Station
 requires a bound operator caller, derives the child's context, and forwards it
-without an attestation.
+without an attestation. The tool itself never contacts the other Station or
+holds its credential: it names the saved Environment to this Station's own
+route, and the route forwards the call after its scope check.
 The receiving Station stores it as the sending Station's assertion. There is
 one known gap: a receiver older than this change strips the unknown
 `delegation` field from `POST /api/orchestration/delegations`. On that

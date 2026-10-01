@@ -1,0 +1,37 @@
+{
+  "path": "scripts/__tests__/fixtures/sbom/README.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "The parsed SPDX schema is identical to pinned upstream JSON despite repository formatting differences. SPDX-LICENSE is byte-identical to upstream LICENSE. Offline schema consumption is present in the SBOM tests; no license text was changed.",
+
+  "limits": "Schema equality and retained license bytes are provenance checks, not legal advice or a completed SBOM/release validation.",
+
+  "document": {"digest":"663c1854f89d925a27f9340924c3c0cc76b266acaf79ba0db6ba87b8fa7b3f55","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+  "sources": [
+    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"scripts/__tests__/fixtures/sbom/SPDX-LICENSE","digest":"017e38491cccbd2bdb6da0a32a33db9ec245b5dab30fdcd09f2c742c975e5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/fixtures/sbom/spdx-2.3.schema.json","digest":"bb5028fb04407b880448b7052ca3792b56cac3126d1fa728bb071732baee3604","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/release-sbom-generation.test.ts","digest":"32ec8766c0ab9e4238e56a71f99a29a59a9485da7c80d7eff005a6dcaafaa4c1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
+    "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Integration source review through e0314c727: package.json script additions and the bearing/forage dependency removal do not touch the SPDX schema fixture or its license. The pinned @cyclonedx/cyclonedx-npm dependency the README relies on for CycloneDX 1.6 is unchanged. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

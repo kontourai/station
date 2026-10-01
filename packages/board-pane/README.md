@@ -25,6 +25,10 @@ The implementation uses these package surfaces:
 - `@kontourai/console-ui` — the published `BoardView` and `deriveBoard`.
 - `@kontourai/ui` — the shared `Empty`/`Skeleton` primitives.
 
+Style with the `@kontourai/ui` `--k-*` tokens under its
+[DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md) rules; don't
+hard-code colors, spacing, radii or font sizes.
+
 The [boundary test](./src/__tests__/package-boundary.test.ts) rejects application
 internal imports; it does not prove that every dependency behavior is unchanged.
 `ConsoleBoardPaneHost` is an alias for `WorkspacePaneHostContract`: navigation

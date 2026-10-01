@@ -1,0 +1,17 @@
+{
+  "path": "docs/adr/0002-use-two-agent-types.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Architecture decision record; preserve its rationale and stated scope.",
+
+  "limits": "A decision or dated cutover account is not a current implementation or platform verification. Follow the glossary, module map, and owning code for current behavior.",
+
+  "document": {"digest":"ae50ebe41e49f9920b37b6df1872d109a05de9533c0cce4ed9e3182c71809eb2","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

@@ -344,12 +344,15 @@ import {
 } from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native-device-proof-binding-routes.js';
+import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
+import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import {
   PairingFailureLimiter,
@@ -358,6 +361,7 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
+  pairingScopeSatisfiesHttpRoute,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
@@ -529,6 +533,7 @@ import { ConversationPullRequestLinkStore } from '../../services/pull-requests/c
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   SecretBindingAdministration,
@@ -551,6 +556,10 @@ import {
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  type NativeDeviceProofBindingService,
+  NativeDeviceProofOperatorAuthority,
+} from '../../services/ssh/native-device-proof-binding-service.js';
 import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
@@ -610,7 +619,6 @@ import {
 } from '../../utils/outward-error.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import {
-  createCallerDelegationDeriver,
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
@@ -709,6 +717,19 @@ export async function pullRequestSessionForReader<
 
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
+  nativeDeviceProofBindings?: NativeDeviceProofBindingService;
+  /**
+   * #2893 opt-in native Device request-proof pilot. Composed only behind an
+   * explicit opt-in with a supported provider/session capability; absent
+   * means every presented Device proof header refuses closed.
+   */
+  nativeDeviceProofPilot?: {
+    binding: import('../../security/native-device-request-authority.js').NativeDeviceProofBindingLookup;
+    pairing: import('../../security/native-device-request-authority.js').NativeDeviceProofPairingLookup;
+    replayStore: import('../../services/identity/native-device-proof-verifier.js').NativeDeviceProofReplayStore;
+    nowSeconds?: () => number;
+    authority?: NativeDeviceRequestAuthority;
+  };
   projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
@@ -1174,7 +1195,26 @@ export function configureRuntimeRoutes(
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
+  // #2893: the one native Device request authority for this runtime. Absent
+  // unless the pilot was explicitly composed; proof headers then refuse closed.
+  const nativeDeviceProofAuthority = context.nativeDeviceProofPilot
+    ? context.nativeDeviceProofPilot.authority instanceof
+      NativeDeviceRequestAuthority
+      ? context.nativeDeviceProofPilot.authority
+      : new NativeDeviceRequestAuthority(context.nativeDeviceProofPilot)
+    : undefined;
+  const resolveNativeDeviceBinding = nativeDeviceProofAuthority
+    ? (request: Request) => {
+        const current = nativeDeviceProofAuthority.resolveCurrent(request);
+        return current ? { device: current.device } : undefined;
+      }
+    : undefined;
   const runtimeSecurity = {
+    // #2893: native Device proof admission exists only when the pilot was
+    // explicitly composed; otherwise proof headers refuse closed.
+    ...(nativeDeviceProofAuthority
+      ? { nativeDeviceProof: nativeDeviceProofAuthority }
+      : {}),
     deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
@@ -1262,6 +1302,18 @@ export function configureRuntimeRoutes(
   const peerCredentialStore = new PeerCredentialStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #2377 slice C2b: the one seam through which delegation dispatch reaches
+  // another Station. Only this composition holds it: the dispatch routes
+  // forward a saved Environment through it after their scope check, and no
+  // station-control tool (or HTTP route) ever receives a peer bearer. Built
+  // here, at startup, so an invalid STATION_REMOTE_REQUEST_TIMEOUT_MS fails
+  // the boot with its own message. (The peer store above has other
+  // in-process readers for their own peer calls.)
+  const remoteStations = createRemoteStationForwarder({
+    ssh: context.sshEnvironmentService,
+    peers: peerCredentialStore,
+    warn: (message) => context.logger.warn(message),
+  });
   const actionOperations = context.actionOperations;
   // Command callbacks do not receive the Hono Request, but execute inside
   // the same verified ingress async context. Build their authority at call
@@ -1464,6 +1516,17 @@ export function configureRuntimeRoutes(
       environmentSecurityService: context.environmentSecurityService,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
+      ...(resolveNativeDeviceBinding
+        ? {
+            resolveNativeDevice: (request: Request) => {
+              const current =
+                nativeDeviceProofAuthority!.resolveCurrent(request);
+              return current
+                ? { accountBinding: current.accountBinding }
+                : undefined;
+            },
+          }
+        : {}),
     });
   const conversationReadAuthorityForContext = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
@@ -1612,6 +1675,9 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
+    ...(resolveNativeDeviceBinding
+      ? { resolveNativeDevice: resolveNativeDeviceBinding }
+      : {}),
   });
   // Station #90 lane D (station #122): a station-control tool's verified caller
   // names a session; the principal it acts for, its project and its
@@ -2173,9 +2239,6 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createStationControlCallerRoutes({
       resolveRecord: resolveStationControlCallerRecord,
-      deriveCallerDelegation: createCallerDelegationDeriver(
-        requestDelegationSources,
-      ),
     }),
   );
   context.app.route(
@@ -2187,6 +2250,24 @@ export function configureRuntimeRoutes(
   // that carries no stored values is not tiered with the route that reads
   // and writes them.
   context.app.route('/api/settings', createSettingsRegistryRoutes());
+
+  if (context.nativeDeviceProofBindings) {
+    context.app.route(
+      '/api/auth/native-device-bindings',
+      createNativeDeviceProofSelfReceiptRoutes({
+        bindings: context.nativeDeviceProofBindings,
+        security: context.environmentSecurityService,
+      }),
+    );
+    context.app.route(
+      '/api/pairing/native-device-bindings',
+      createNativeDeviceProofBindingRoutes({
+        bindings: context.nativeDeviceProofBindings,
+        operatorAuthority: new NativeDeviceProofOperatorAuthority(),
+        security: context.environmentSecurityService,
+      }),
+    );
+  }
 
   configureDevicePairingHostRoutes(
     context.app,
@@ -3637,6 +3718,7 @@ export function configureRuntimeRoutes(
         createWebhookTurnStarter({
           readAuthorityFor: readAuthorityForExecution,
           orchestrationService: context.orchestrationService,
+          remoteStations,
         }),
       ),
     }),
@@ -3754,6 +3836,7 @@ export function configureRuntimeRoutes(
         delegateTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       // #485: the receiver's durable attempt-claim owner, threaded through
@@ -3812,6 +3895,8 @@ export function configureRuntimeRoutes(
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          undefined,
+          remoteStations,
         ),
       ),
       // #2601: a dispatch's delegation context comes from its verified
@@ -3897,49 +3982,59 @@ export function configureRuntimeRoutes(
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
-      discoverDelegationOptions: stationServerEntry(discoverDelegationOptions),
+      discoverDelegationOptions: stationServerEntry((input) =>
+        discoverDelegationOptions(input, remoteStations),
+      ),
       continueDelegatedTask: stationServerEntry((input) =>
         continueDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       respondToDelegatedTaskRequest: stationServerEntry((input) =>
         respondToDelegatedTaskRequest(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       interruptDelegatedTask: stationServerEntry((input) =>
         interruptDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       listDelegatedTasks: stationServerEntry((input) =>
         listDelegatedTasks(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       observeDelegatedTask: stationServerEntry((input) =>
         observeDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       refreshDelegatedTaskActivity: stationServerEntry((input) =>
         refreshPeerDelegationActivity(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       observeDelegatedTaskEvents: stationServerEntry((input) =>
         observeDelegatedTaskEvents(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       presence: context.orchestrationStreamPresence,
@@ -4057,26 +4152,35 @@ export function configureRuntimeRoutes(
     request: Request,
   ): ProjectMembershipAuthority => ({
     async current() {
-      if (
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          context.environmentSecurityService,
-        )
-      )
-        throw new ProjectMembershipRefusal('forbidden');
+      // #2893: a proven native Device keeps a pilot-specific currentness
+      // path — the shared resolver re-reads binding, paired Device and
+      // account binding; it never rides the credential principal check.
+      const nativeDevice =
+        nativeDeviceProofAuthority?.resolveCurrent(request) ?? undefined;
+      const principalCurrent = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request) !== undefined
+        : isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          );
+      if (!principalCurrent) throw new ProjectMembershipRefusal('forbidden');
       const account =
         await context.deploymentAuthentication?.service.authenticate(request);
-      if (
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          context.environmentSecurityService,
-        )
-      )
-        throw new ProjectMembershipRefusal('forbidden');
+      const refreshedNativeDevice = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request)
+        : undefined;
+      const stillCurrent = nativeDevice
+        ? refreshedNativeDevice !== undefined
+        : isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          );
+      if (!stillCurrent) throw new ProjectMembershipRefusal('forbidden');
       if (account?.kind === 'authenticated') {
         const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
-        const binding =
-          runtime?.authority === 'device-credential'
+        const binding = refreshedNativeDevice
+          ? refreshedNativeDevice.accountBinding
+          : runtime?.authority === 'device-credential'
             ? context.environmentSecurityService.identifyDevice(
                 runtime.credential,
               )?.principalBinding
@@ -6121,10 +6225,10 @@ export function configureRuntimeRoutes(
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary
       // (`authorizeCredential`, via the exported predicate) and then the
-      // scope table's tier for the confirm/deny leaves (read from the table
-      // itself, not restated — live verification caught a device that passes
-      // the boundary with `access:approve` while the table still 403s it
-      // because the scope-edit promotion path cannot retain `access:manage`).
+      // scope requirement for the confirm/deny leaves, including the narrow
+      // explicit approval grant. The same matcher runs at ingress and delayed
+      // revalidation, so an operator-promoted device need not carry management
+      // authority to decide a pending request.
       // The attested internal principal (station-control/MCP) bypasses both
       // gates in `configureRuntimeHttp`, so it decides too; an absent
       // principal or an unmapped table entry fails closed.
@@ -6152,7 +6256,10 @@ export function configureRuntimeRoutes(
           );
         return (
           grantedScope !== undefined &&
-          pairingScopeIncludes(grantedScope, requiredScope)
+          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
+            method: 'POST',
+            path: '/api/pairing/requests/request/confirm',
+          })
         );
       },
     }),

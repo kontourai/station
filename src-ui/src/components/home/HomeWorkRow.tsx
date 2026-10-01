@@ -55,7 +55,7 @@ export function renderHomeWorkRow({
   const lastProgressAt = task.turnProgress?.lastProgressEventAt;
   const progressSilence = task.turnProgress?.progressSilence;
   return (
-    <li key={task.stableId}>
+    <li key={task.stableId} data-row-key={task.stableId}>
       <div className="home-view__row">
         <button
           type="button"
