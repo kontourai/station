@@ -237,6 +237,26 @@ describe('TaskOutputModule', () => {
     expect(await module().list('task-a')).toEqual([]);
   });
 
+  test('cascade refuses a Task that reappears while the output lock is acquired', async () => {
+    const { home, workspace, module, setTaskPresent, setTaskCreatedAt } =
+      fixture();
+    writeFileSync(join(workspace, 'one.txt'), 'one');
+    await module().create('task-a', {
+      operationId: 'before-cascade',
+      relativePath: 'one.txt',
+      title: 'One',
+    });
+    setTaskPresent(false);
+    const pending = module().deleteForTask('task-a');
+    setTaskCreatedAt('2026-10-01T01:00:00.000Z');
+    setTaskPresent(true);
+    await expect(pending).rejects.toBeInstanceOf(TaskOutputUnavailableError);
+    const retained = JSON.parse(
+      readFileSync(join(home, 'task-outputs', 'index.json'), 'utf8'),
+    );
+    expect(retained.outputs).toHaveLength(1);
+  });
+
   test('Task replacement during descriptor read refuses publication', async () => {
     const { workspace, module, setTaskCreatedAt } = fixture();
     writeFileSync(join(workspace, 'one.txt'), 'one');

@@ -533,6 +533,10 @@ export class TaskOutputModule {
       );
     }
     await this.withLock(() => {
+      if (this.input.taskGraphService.readTask(taskId))
+        throw new TaskOutputUnavailableError(
+          'Task outputs require completed Task deletion',
+        );
       const { store } = this.reconcileStoreLocked();
       store.outputs = store.outputs.filter(
         (output) => output.taskId !== taskId,
