@@ -389,12 +389,13 @@ describe.skipIf(!chromiumAvailable)(
           await audit(preset, false);
         // 2 Agents rails + 4 Activity rails + 1 plain rail.
         expect(selectedRows).toBe(7);
+        // Violations first, so a contrast regression reports the contrast.
+        expect(violations).toEqual([]);
+        expect(incomplete).toEqual([]);
         expect(passedPerRow).toHaveLength(selectedRows);
         // Every row has at least a name and a second text node (subtitle or
         // badge); a row with fewer passes is one axe was not looking at.
         expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
-        expect(violations).toEqual([]);
-        expect(incomplete).toEqual([]);
       },
     );
 
@@ -405,9 +406,9 @@ describe.skipIf(!chromiumAvailable)(
           preset,
           true,
         );
-        expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
+        expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
       },
     );
   },
