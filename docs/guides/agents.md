@@ -60,7 +60,7 @@ External delivery follows the [engine policy contract](../conformance/tool-polic
 
 - `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
-- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals
+- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
 `tools.aliases` is retired. Older files still load because the loader removes
@@ -163,12 +163,39 @@ drafts; this does not promise secrecy in the engine's own history. A failed
 send keeps the entered answers. Optional Codex questions remain answerable
 without pausing the running Session.
 
+### What autoApprove never covers
+
+A pattern allows plain calls to a matching tool. It never answers a request
+that reaches beyond the call or a plan exit, even when the pattern is `*`. On
+Claude Code these always reach a person:
+
+- a path outside the session's working directories (a `Read` pattern means
+  reading the workspace, not reading anywhere), or a suggestion to widen them;
+- a call forced to ask by a `permissions.ask` rule;
+- a read or file-edit safety check the engine raises and Station can tell
+  apart from a plain call (the engine allows reads inside the working
+  directories itself, so any Read, Glob, Grep or LSP ask it raises prompts);
+- `ExitPlanMode`, so a plan is always reviewed.
+
+On ACP engines a plan exit (a `switch_mode` tool call, or `ExitPlanMode`)
+always prompts, and answering it "for this session" allows that one exit
+only. ACP reports no other escalation signal. Codex and Muse do not
+honour `autoApprove`. A sensitive-file edit the engine asks about in its
+default mode carries the same signal as a plain edit, so a matching pattern
+still allows it ([delivery boundary](../conformance/tool-policy-delivery.md)).
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
 or a delegated child session that cannot grant approvals — never waits on an
 approval request. Station's engine either allows the call without asking or
 denies it.
+
+External engines differ. On Claude Code and ACP, `autoApprove` does not cover
+escalations or plan exits, even for `*` ([what autoApprove never covers](#what-autoapprove-never-covers)).
+A headless run on those engines that reaches one waits on an approval request
+until someone answers it (for example from the approval inbox). A delegated
+child that cannot grant approvals is denied the call at once.
 
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime
