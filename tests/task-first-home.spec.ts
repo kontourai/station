@@ -1,5 +1,9 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type {
+  BrowserPaneAccessView,
+  BrowserSessionView,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
@@ -125,6 +129,30 @@ async function mockTaskFirstHome(
   await page.route('**/config/app', (route) => route.fulfill(json(APP_CONFIG)));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/browser/projects/station/access'
+    ) {
+      const access: BrowserPaneAccessView = {
+        projectId: project.id,
+        role: 'operator',
+        principalKey: 'operator',
+        operator: true,
+        browser: 'not-ready',
+      };
+      await route.fulfill(json(access));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/browser/sessions' &&
+      new URL(route.request().url()).searchParams.get('project') ===
+        project.slug
+    ) {
+      const sessions: BrowserSessionView[] = [];
+      await route.fulfill(json({ sessions }));
+      return;
+    }
     // `PluginRegistry.ts:207-212` destructures `{ plugins }` off the RAW body
     // and iterates it; the `{success,data}` envelope this handler falls back to
     // makes it throw, degrade, and present the non-dismissible "Extensions
