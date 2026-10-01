@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"09291425e24aed4f593952220666e2d848bee287859ea92f4a49aab19dc927fa","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
+  "document": {"digest":"24cc56d62d81ab5447cca23b42e85098c6d1dfca2b8a542335f0a5b787981369","revision":"6a80212ea87b0321ad4843619e5bfa1325e6ce0b"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -166,7 +166,7 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"47898934e3b182ae59427a48f1de85997fd91ebf2aa8387b861d78c3741e3705","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -254,7 +254,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"c2221be7d14a06e971db54808f2210f94bec84ffb03da82f6e8e9e6e888cb6b6","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"1b56157f2d23de7bc5dbf5ea07bfc455a44a3790bbf51a9ee9c158cd233f259a","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
 
@@ -358,7 +358,11 @@
 
     {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"0f7440eb3188e285a3237c28483b8dbb8a8cc06a9b517c66968788927ac45f65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+
+    {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"}
   ],
 
   "checks": [
