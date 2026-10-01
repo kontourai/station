@@ -2115,13 +2115,13 @@ export class AcpAdapter implements ProviderAdapterShape {
           rawInput: params.toolCall?.rawInput,
           // The engine's ACP kind, so a card with no bound transcript row
           // still says whether it gates a command, an edit or a read.
+          // #2933: surfaces also compute the session grant they offer from
+          // it; a `switch_mode` kind offers none. Only a kind in the ACP
+          // vocabulary is published: an unknown one is dropped, not coerced.
           ...(engineToolKind(params.toolCall?.kind)
             ? { toolKind: engineToolKind(params.toolCall?.kind) }
             : {}),
           options: params.options,
-          // #2933: surfaces compute the session grant they offer from the
-          // payload; a `switch_mode` kind offers none.
-          ...(params.toolCall?.kind ? { toolKind: params.toolCall.kind } : {}),
         },
       });
 
