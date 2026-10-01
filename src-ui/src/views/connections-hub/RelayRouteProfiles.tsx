@@ -3,6 +3,7 @@ import {
   useConnections,
 } from '@kontourai/station-connect';
 import type { StationProfile } from '@kontourai/station-contracts';
+import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
@@ -79,7 +80,18 @@ interface NativeAccountOperation {
     readonly password: string;
   };
   readonly invitation?: string;
+  readonly capturedScope?: NonNullable<
+    ReturnType<typeof useHostRequestAuthorityScope>
+  >;
 }
+
+const REMOTE_LOGOUT_UNCONFIRMED_COPY =
+  'Station could not confirm whether the remote account session was revoked.';
+
+type InvitationAcceptedCallback = (
+  receipt: ProjectInvitationAcceptance,
+  capturedScope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>,
+) => void;
 
 function grantQueryKey(profile: StationProfile) {
   const route = profile.relayRoute!;
@@ -122,18 +134,13 @@ function relayProfileMatchesEvidence(
   );
 }
 
-interface NativeAccountOperation {
-  readonly kind: 'login' | 'invitation' | 'logout' | 'retire';
-  readonly selectionIdentity: string;
-  readonly activationEpoch: string;
-  readonly credentials?: {
-    readonly username: string;
-    readonly password: string;
-  };
-  readonly invitation?: string;
-}
-
-function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
+function NativeRelayGrantControls({
+  profile,
+  onInvitationAccepted,
+}: {
+  profile: StationProfile;
+  onInvitationAccepted?: InvitationAcceptedCallback;
+}) {
   const [enrollmentStarted, setEnrollmentStarted] = useState(false);
   const queryClient = useQueryClient();
   const [invitation, setInvitation] = useState('');
@@ -296,7 +303,10 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
           }}
         />
       ) : null}
-      <NativeRelayAccountSessionPanel profile={profile} />
+      <NativeRelayAccountSessionPanel
+        profile={profile}
+        onInvitationAccepted={onInvitationAccepted}
+      />
       <label>
         One-time routing invitation
         <textarea
@@ -333,8 +343,10 @@ function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
 
 export function NativeRelayAccountSessionPanel({
   profile,
+  onInvitationAccepted,
 }: {
   readonly profile: StationProfile;
+  readonly onInvitationAccepted?: InvitationAcceptedCallback;
 }) {
   const { captureCredentialEvidence, isCredentialEvidenceCurrent } =
     useConnections();
@@ -362,7 +374,6 @@ export function NativeRelayAccountSessionPanel({
       requestScope.isCurrent(),
   );
   const account = useNativeRelayAccountSession();
-  const queryClient = useQueryClient();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [invitation, setInvitation] = useState('');
@@ -401,7 +412,19 @@ export function NativeRelayAccountSessionPanel({
     setUsername('');
     setPassword('');
     setInvitation('');
-  }, [accountScopeIdentity]);
+    if (!hasAccountSession) {
+      setError((current) =>
+        current === REMOTE_LOGOUT_UNCONFIRMED_COPY ? current : null,
+      );
+      setNotice((current) =>
+        current?.startsWith(
+          'Station account session is active for this selected route.',
+        )
+          ? null
+          : current,
+      );
+    }
+  }, [accountScopeIdentity, hasAccountSession]);
 
   useEffect(
     () => () => {
@@ -484,15 +507,18 @@ export function NativeRelayAccountSessionPanel({
       return account.acceptInvitation(operation.invitation);
     },
     onSuccess: (accepted, id) => {
-      if (!isCurrentAccountOperation(id)) return;
+      const operation = operationsRef.current.get(id);
+      if (
+        !isCurrentAccountOperation(id) ||
+        operation?.kind !== 'invitation' ||
+        !operation.capturedScope?.isCurrent()
+      )
+        return;
       setError(null);
       setNotice(
         `Access was added for Project ${accepted.scope.localProjectSlug}. Device approval remains separate.`,
       );
-      if (requestScope?.isCurrent())
-        void queryClient.invalidateQueries({
-          queryKey: ['projects', 'list', requestScope.apiBase],
-        });
+      onInvitationAccepted?.(accepted, operation.capturedScope);
     },
     onError: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
@@ -520,9 +546,7 @@ export function NativeRelayAccountSessionPanel({
     },
     onError: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
-      setError(
-        'Station could not confirm whether the remote account session was revoked.',
-      );
+      setError(REMOTE_LOGOUT_UNCONFIRMED_COPY);
     },
     onSettled: (_, __, id) => settleAccountOperation(id),
   });
@@ -587,6 +611,7 @@ export function NativeRelayAccountSessionPanel({
                   const id = registerAccountOperation({
                     kind: 'invitation',
                     invitation,
+                    capturedScope: requestScope,
                   });
                   setInvitation('');
                   acceptInvitation.mutate(id);
@@ -682,7 +707,11 @@ function NativeRelayGrantSummary({ state }: { state: NativeRelayGrantState }) {
   );
 }
 
-export function RelayRouteProfiles() {
+export function RelayRouteProfiles({
+  onInvitationAccepted,
+}: {
+  readonly onInvitationAccepted?: InvitationAcceptedCallback;
+} = {}) {
   const { isTauri } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
   const connectionContext = useConnections();
@@ -864,6 +893,7 @@ export function RelayRouteProfiles() {
           <NativeRelayGrantControls
             key={`grant:${profile.name.toLowerCase()}:${profile.endpoint}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
             profile={profile}
+            onInvitationAccepted={onInvitationAccepted}
           />
           <RelayRouteKeyApproval
             key={`${profile.name}:${profile.updatedAt}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}

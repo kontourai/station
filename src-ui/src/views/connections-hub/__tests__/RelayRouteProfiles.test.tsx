@@ -17,6 +17,7 @@ import {
   NATIVE_RELAY_ENROLLMENT_STATUS_PATH,
   NATIVE_RELAY_ENROLLMENT_VERSION,
 } from '@kontourai/station-contracts/native-relay-enrollment';
+import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -544,13 +545,19 @@ function configureEnrollmentReadyRoute() {
   return { liveStore };
 }
 
-function renderRoutes() {
+function renderRoutes(
+  onInvitationAccepted?: NonNullable<
+    NonNullable<
+      Parameters<typeof RelayRouteProfiles>[0]
+    >['onInvitationAccepted']
+  >,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const element = () => (
     <QueryClientProvider client={queryClient}>
-      <RelayRouteProfiles />
+      <RelayRouteProfiles onInvitationAccepted={onInvitationAccepted} />
     </QueryClientProvider>
   );
   const rendered = render(element());
@@ -1181,11 +1188,8 @@ describe('RelayRouteProfiles', () => {
   test('mounts account sign-in only on the matching selected native route and keeps credentials transient', async () => {
     configureEnrollmentReadyRoute();
     selectNativeRelayRoute();
-    const { queryClient } = renderRoutes();
-    queryClient.setQueryData(
-      ['projects', 'list', 'https://station.example', 'selected-route-account'],
-      [],
-    );
+    const onInvitationAccepted = vi.fn();
+    const { queryClient } = renderRoutes(onInvitationAccepted);
     await screen.findByRole('region', {
       name: 'Station account for Home Station',
     });
@@ -1227,15 +1231,21 @@ describe('RelayRouteProfiles', () => {
     expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith(
       'one-time-account-invitation',
     );
-    await waitFor(() =>
-      expect(
-        queryClient.getQueryState([
-          'projects',
-          'list',
-          'https://station.example',
-          'selected-route-account',
-        ])?.isInvalidated,
-      ).toBe(true),
+    expect(onInvitationAccepted).toHaveBeenCalledTimes(1);
+    expect(onInvitationAccepted).toHaveBeenCalledWith(
+      {
+        scope: {
+          stationId,
+          localProjectId: 'member-project-local-id',
+          localProjectSlug: 'shared-project',
+          portableProjectId: 'portable-project-id',
+        },
+        grantsDeviceAccess: false,
+      } satisfies ProjectInvitationAcceptance,
+      expect.objectContaining({
+        apiBase: 'https://station.example',
+        authorityKey: 'selected-route-account',
+      }),
     );
     expect(
       (screen.getByLabelText('Account invitation token') as HTMLInputElement)
@@ -1376,6 +1386,52 @@ describe('RelayRouteProfiles', () => {
       screen.queryByText(/confirmed this account session was revoked/),
     ).toBeNull();
     expect(mocks.accountRetire).not.toHaveBeenCalled();
+  });
+
+  test('does not forward an accepted invitation after the selected route epoch changes', async () => {
+    configureEnrollmentReadyRoute();
+    selectNativeRelayRoute();
+    mocks.accountSessionActive = true;
+    const acceptedReceipt: ProjectInvitationAcceptance = {
+      scope: {
+        stationId,
+        localProjectId: 'member-project-local-id',
+        localProjectSlug: 'shared-project',
+        portableProjectId: 'portable-project-id',
+      },
+      grantsDeviceAccess: false,
+    };
+    let resolveAcceptance: (receipt: ProjectInvitationAcceptance) => void =
+      () => {};
+    const pendingAcceptance = new Promise<ProjectInvitationAcceptance>(
+      (resolve) => {
+        resolveAcceptance = resolve;
+      },
+    );
+    mocks.accountAcceptInvitation.mockReturnValue(pendingAcceptance);
+    const onInvitationAccepted = vi.fn();
+    const rendered = renderRoutes(onInvitationAccepted);
+
+    fireEvent.change(await screen.findByLabelText('Account invitation token'), {
+      target: { value: 'pending-account-invitation' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Accept account invitation' }),
+    );
+    await waitFor(() =>
+      expect(mocks.accountAcceptInvitation).toHaveBeenCalled(),
+    );
+
+    selectNativeRelayRoute('Other Station');
+    await act(async () => rendered.rerenderRoutes());
+    selectNativeRelayRoute();
+    await act(async () => rendered.rerenderRoutes());
+
+    await act(async () => {
+      resolveAcceptance(acceptedReceipt);
+      await pendingAcceptance;
+    });
+    expect(onInvitationAccepted).not.toHaveBeenCalled();
   });
 
   test('aborts the owned attempt and network signal when the user cancels', async () => {
