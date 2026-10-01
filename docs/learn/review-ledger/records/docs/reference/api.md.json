@@ -366,7 +366,7 @@
 
     {"path":"src-server/services/projects/task-output-module.ts","digest":"8e548f679e27457b848fd88dffaf11bf4e54fa775c6c5bd614462599b8f7a4d4","revision":"dac129f874d7edf85a1834f2295412bc8f9603e1"},
 
-    {"path":"src-server/routes/orchestration/__tests__/task-outputs.routes.test.ts","digest":"930fc6db72108287c0721ab0b3e3b6b4f00b0f1b38fe6c176f5739491d2ec55b","revision":"8fb86e238ff256f452a6d28ef6392e211082c7cd"}
+    {"path":"src-server/routes/orchestration/__tests__/task-outputs.routes.test.ts","digest":"dac877f95ec1617e3ffd7e9f1184736b2b5583b72fcd033b8b52e7557ba53323","revision":"3a241015cbd3cdaff6f29f9d0b90d3fddcdd026a"}
   ],
 
   "checks": [
