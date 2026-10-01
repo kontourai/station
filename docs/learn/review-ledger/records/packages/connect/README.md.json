@@ -9,12 +9,12 @@
 
   "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability. Native diagnostic echo is identified only as a source export, not a validated physical-device diagnostic journey.",
 
-  "document": {"digest":"ad9c5fe804fe6d45843985d8afed0350ca9e482ef4d97e0fce0426e285cde3a4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+  "document": {"digest":"eef92e8fa24eb95332e0cc7c3fe85de13611b9a93820e2b732eb8a3345a77e6a","revision":"a320658a37b9537b814c0acb8460e7bf1b6018ea"},
 
   "sources": [
-    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+    {"path":"packages/connect/package.json","digest":"f9a3187cebc1e432ca28f10546e12fb42089b27fe8229b8c12bf90d996790b80","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"319457cad042e01307526040fad469b533aa6a72d18bacb241cf9dc789613167","revision":"e07612aa080603f8c715a4a92a7dcc8dfc18838e"},
 
     {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
@@ -24,7 +24,7 @@
 
     {"path":"packages/connect/src/core/browserPionConnection.ts","digest":"85e30d796461ad69a6134b42e5a0066e5a04e34846765a8c6a4262ff35ead8e0","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb","revision":"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7"},
 
     {"path":"packages/connect/src/core/selfHostedBrowser.ts","digest":"4b7329608a945e6723f69b1607992b6c5b2b6bfba209e9ed1eb98ef62c0d0487","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
@@ -34,7 +34,19 @@
 
     {"path":"packages/connect/tsconfig.json","digest":"1dcde2ae94b6f60717ece7e76c02f9585a5193fc5fcace5bc62d6b5a02da2bdb","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
+
+    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
+
+    {"path":"src-ui/src/platform/native/NativeRelayEntryBoundary.tsx","digest":"881077a6e1702484e1dc19315757d53146c77447f280f7eac2dd913045ed3014","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayApplicationRuntime.ts","digest":"04857ec439a3c5b793fb9a82ee8bfe9849679ccb89df34f8a8fbdfd8a097a65a","revision":"6471b7f229e228d593c2d0f0df755b7d1738d387"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"268af2688c9c33defe919973c66f3db74583e2784f573982ee86cf5bc590c052","revision":"f62ff6926d9335e9a2a0b7d3004b19c1a816ce39"},
+
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"30fc7cf489c1c95bca502e5788652c5587ef0a5a41574c8d6c2801161a44fca1","revision":"0bb218725cf9a3ad377f81c566d45a7359ca9cf6"}
   ],
 
   "checks": [
