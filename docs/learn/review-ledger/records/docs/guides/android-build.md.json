@@ -62,7 +62,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -100,15 +100,15 @@
 
     {"path":"scripts/write-native-client-build-manifest.mjs","digest":"c714550ba6e986fa63031d97b3ede83633078dfa964c8a2707faa534ac66152c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/Cargo.lock","digest":"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/Cargo.toml","digest":"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
     {"path":"src-desktop/build.rs","digest":"c84c7e3eb7611b715b601e3ff67863a60d4274198abe5605f8f347d9fd647883","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

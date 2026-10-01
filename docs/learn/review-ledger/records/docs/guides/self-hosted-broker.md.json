@@ -36,7 +36,7 @@
 
     {"path":"scripts/self-hosted-connector-identity.ts","digest":"ee28b6effe541e06b4cce903e44fcbd2c3452649b0620e0a23391eb22cda977d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"aee5c0f359f3db35ffcddf1ccbe01113bdb6272692842bc1027ceb40155cf144","revision":"3a136e6f4d3361984c84553b962b1fa5b8a63c62"},
+    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

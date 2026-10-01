@@ -54,7 +54,7 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"aee5c0f359f3db35ffcddf1ccbe01113bdb6272692842bc1027ceb40155cf144","revision":"3a136e6f4d3361984c84553b962b1fa5b8a63c62"},
+    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
