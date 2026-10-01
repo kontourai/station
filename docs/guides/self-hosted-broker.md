@@ -423,11 +423,16 @@ Native source `1e99a85da` adds a fixed main-window RPC accepting only a saved
 profile name and expected revision. Its worker reconstructs an existing
 paired-Device-free routing owner, retains the installation proof key and grant
 bearer in native custody, and rechecks profile, trust and exact grant around the
-bounded request. It returns only the validated end-user ICE receipt. This source
-still requires IPC registration in the combined native shell; no Rust execution
-or installed-shell proof is claimed by this receipt.
+bounded request. It returns only the validated end-user ICE receipt. The
+combined [native shell](../../src-desktop/src/lib.rs) now registers
+`station_native_relay_ice_configuration` on desktop and mobile; its
+[consumer bridge](../../src-ui/src/platform/native/nativeRelayIceConfigurationBridge.ts)
+and selected application/enrollment owners fetch fresh configuration before
+peer creation. The dated `1e99a85da` source receipt alone did not establish
+execution. Later combined Rust and simulator build/install receipts establish
+their own narrower boundaries, not a public native application peer.
 
-Root's recorded operator run at `2026-10-01T05:26:12.821173Z` used deployed source
+The recorded operator run at `2026-10-01T05:26:12.821173Z` used deployed source
 `9f7109de5a265cd7339a7498eac1a0562d3bf506`. Its metadata-only
 `public-ice-endpoint-receipt.json` records valid connector and receipt-reuse HTTP
 200, unauthenticated and foreign-scope HTTP 401, a 600-second TTL, no returned
@@ -437,6 +442,15 @@ operator, separate from the consumer tests above. Its
 `applicationOrNativePeerTested` field is false. It does not qualify encrypted
 application traffic, fresh native onboarding, physical iOS Nightly, or the
 community Docker bundle.
+
+The later isolated normal Station receipt at source
+`d8dd1a41494a9ffbfe42d6f994b3f7f30cc132d4` records actual public registration
+(lease revision 1), renewal (revision 15), a real fixed-text Project publisher
+exit of 0, settled owned processes and confirmed native routing-grant cleanup.
+It explicitly records no fresh native client, public application traffic or
+physical second-person result. The failed early-init scope is preserved
+separately; [the fixture guide](../../tests/tauri-shell/native-fresh-relay-fixture.md)
+explains why a loopback HTTP 200 could coexist with an expired connector lease.
 
 ## Native routing grant foundation (v2)
 
@@ -495,8 +509,9 @@ read/retry, and both diagnostic and application-named signaling binding/open/rea
 Those main-window
 commands reload the saved profile and approved Station trust in the host;
 the renderer does not supply trusted keyring identity. Profile removal and
-startup also have pending-cleanup hooks. Ordinary UI does not select a native
-application route. The separate manual
+startup also have pending-cleanup hooks. The ordinary
+[selected native route owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+now composes bounded health and member application reads. The separate manual
 [native Project pilot](native-shell-verification.md#native-protected-project-pilot)
 composes protected application traffic for bounded debug-shell verification.
 
@@ -509,13 +524,20 @@ host verifies the Station transcript and signs one bounded Device request after
 peer preparation; the opt-in Connect adapter carries it over the application
 DataChannel. Returning an opaque Station proof alone does not verify it or prove
 DTLS connectivity. Broker signaling remains separate from Device/account
-authorization and application transport; ordinary UI activation remains gated.
+authorization and application transport. Source route selection and its
+account/member consumer are mounted; actual fresh native activation and
+physical-device qualification still require their own proof.
 
 The separate [desktop account proof-key foundation](../design/native-capabilities.md#desktop-account-proof-key-foundation)
 uses its own keyring namespace, additionally bound to a Station and approved
 Device identity. Bounded host account operations now have Tauri commands and a
-typed SDK proof provider used by the manual pilot. There is no ordinary
-production sign-in UI caller. The broker's routing proof key and grant
+typed SDK proof provider used by the manual pilot and the production
+[account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts).
+The [native account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+is its ordinary UI caller. Host/server account expiry is clamped to the earlier
+deadline, and fixed invitation acceptance/native revoke operations do not widen
+the GET/HEAD read signer. A failed or lost logout acknowledgment removes local
+account scope but does not claim remote completion or retire the Device. The broker's routing proof key and grant
 maintenance do not become account proof or account authority through that
 foundation. See the pilot's retained verification limits before treating a
 development run as packaged or relay-only onboarding evidence.
@@ -769,8 +791,10 @@ reprovisioning as described above.
 The browser has saved-route, TURN, and fresh account/Device enrollment UI;
 the lab's separate `--station-ui` profile exercises that journey. This server
 configuration does not itself approve a client, enroll its Device, or grant
-Project access. Native route selection, packaging, and managed service
-operations remain separate work. Transport-lab evidence and normal operator
+Project access. Native saved-route selection, guided Device setup and bounded
+account/member-read UI now have source consumers. Simulator build/install and
+the observed Station manager broker entry are separate from fresh enrollment,
+public application, physical Nightly, packaging and managed-service proof. Transport-lab evidence and normal operator
 entrypoint evidence must name the configuration and revision actually tested.
 
 ## Follow the implementation

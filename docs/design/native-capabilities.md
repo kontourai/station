@@ -79,10 +79,13 @@ bearers and Rust performs bounded authenticated requests without returning
 bearer values to the WebView. That source boundary is not physical-device
 qualification of every platform store.
 
-Native broker grants now have a host renewal command and a Desktop-only saved-route
-supervisor. They maintain already approved, redeemed routing grants while the
-renderer is visible; they do not enable native application-route selection or
-account/Device enrollment. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
+Native broker grants have a host renewal command and a saved-route supervisor
+composed by [ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx) on
+desktop and mobile. They maintain already approved, redeemed routing grants
+while the renderer is visible; renewal grants no application, Device, account
+or Project authority. The separate [selected-route owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+and [fresh enrollment ceremony](native-relay-enrollment.md) supply those distinct
+source paths. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
 
 The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 `__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
@@ -112,9 +115,13 @@ broker URL, bearer, key, nonce, Project authority, proof claims or audience.
 Uncertain `open` results are recovered by reading the same handle; the client
 does not open a second peer. The adapter is separate from diagnostic signaling.
 Connect verifies the Station proof before applying the answer, then uses the
-host signer for bounded per-request Device proof. Neither the saved route nor
-this opt-in library surface is enabled by default. Account continuation remains
-separate, so this is not account proof or a complete authenticated Project flow.
+host signer for bounded per-request Device proof. Station composes this in its
+[application runtime](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts)
+for an explicitly selected native saved route. Its read surface is limited to
+Station health, authority and member Project/shared-work reads; fixed account
+challenge/exchange/revoke and invitation acceptance are separate control leaves.
+Account continuation and Project membership remain independent. A mounted
+consumer is not proof of a completed fresh native or physical Project journey.
 
 Rust verifies the exact Station-signed nonce, connection identity, offer/answer
 digests and both DTLS fingerprints. It owns transcript state and one proof per
@@ -134,8 +141,12 @@ separate from account sign-in and enrollment.
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
 is included in desktop and mobile builds. The vault remains Rust-internal; the
 [account operation owner](../../src-desktop/src/native_account_operations.rs)
-reaches it through three main-window commands, with no raw signing IPC. This
-does not select a native transport or enable ordinary sign-in/recovery actions.
+reaches it through five main-window commands, with no raw signing IPC. The
+[production account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
+composes those commands with the selected encrypted native application owner;
+the [account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+is its ordinary UI caller. This source composition does not qualify fresh
+onboarding or a physical device.
 
 The vault uses a separate OS-keyring service and account namespace from the
 broker routing proof key. Its owner binds the app identifier, channel, client
@@ -154,19 +165,26 @@ fixed challenge body and opaque handle. `station_native_account_exchange_prepare
 accepts closed opaque challenge data and local username/password credentials;
 Rust derives identity, hashes, JTI and time and returns the complete exchange
 body and matching proof header. `station_native_account_request_headers` accepts
-opaque native continuation data and only canonical GET/HEAD Project targets.
-No caller-supplied audience, Device, surface, hash or signing bytes reach these
-operations.
+opaque native continuation data and only the canonical GET/HEAD health and
+member-read inventory. `station_native_account_accept_invitation_prepare`
+accepts one canonical invitation token for its fixed POST leaf;
+`station_native_account_revoke_prepare` prepares only the empty-body native
+revoke leaf. No caller-supplied audience, Device, surface, hash or signing bytes
+reach these operations.
 
 Sixteen process-local contexts are bounded to fifteen minutes and the current
-grant lifetime. One exchange consumes a context before signing; challenge IDs
+grant lifetime. Preparation exposes its actual `contextExpiresAtMs`; the SDK
+captures it once and clamps the continuation/public scope to the earlier
+host/server expiry. A delayed sign-in cannot extend that host context. One exchange consumes a context before signing; challenge IDs
 remain consumed for the full host challenge window independently of shorter
 untrusted expiry hints. Current profile, Device/epoch, trust, grant and binding
 are checked through the shared live-owner callback. Effective challenge or
 continuation expiry and the actual account key are checked again after key/sign
 waits before a result returns. Refusal preserves the key. An existing account-bound
 paired Device and approved native Device binding are server prerequisites;
-this does not bootstrap fresh relay-only enrollment or an unsupported provider.
+that Device can come from existing pairing or the separately acknowledged
+[native enrollment ceremony](native-relay-enrollment.md). The account operation
+does not itself bootstrap a Device or an unsupported provider.
 
 The source includes memory-backend tests and an opt-in macOS Keychain test.
 Unit checks do not establish IPC, account continuation, mobile custody or
@@ -200,8 +218,9 @@ the profile revision, Station, Device, trust, route and surface exact. No
 renderer caller currently uses this command. It does not submit operator
 approval, reconcile a server receipt, bind a peer session or sign a request. A
 key and owner tuple do not establish operator approval. Server-side Device
-authorization exists in the opt-in pilot; request-signing IPC and a packaged
-Project journey remain integration requirements. The software key is decoded
+authorization exists in the opt-in pilot; the separate native peer owner now
+supplies fixed request-signing IPC for a reconciled approved Device. A fresh
+packaged or physical Project journey remains a qualification requirement. The software key is decoded
 inside Rust for signing; this is not hardware-backed non-exportability.
 
 The separate main-window command `station_native_device_binding_self_receipt`
@@ -305,8 +324,20 @@ It does not qualify ordinary native onboarding, fresh relay-only enrollment,
 signed or physical iOS Nightly, public TLS/TURN/NAT reachability, a hosted service,
 or physical two-human use. No timeout increase or CSP relaxation was used.
 
+A newer development iOS simulator build/install receipt names source
+`99b6eec01dda1d7149816678f0d8e395725267f3`, application
+`io.kontourai.station.dev.instance` on the `dev` channel, and executable SHA-256
+`c1d16b63032c3e47808191cef5a420462f3391d97d72fa28584dd1b5901cba3d`.
+It built, installed and opened on October 1, 2026. The actual Station manager
+now renders **Set up a broker route**, whose click opens the real
+[relay profiles](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+through [GuidedConnect](../../src-ui/src/components/GuidedConnect.tsx). This
+proves that entry was reachable on the exercised simulator build; it proves no
+fresh enrollment, public application traffic or physical Nightly operation.
+See the [shell verification evidence](../guides/native-shell-verification.md).
+
 Source tests and the macOS Keychain roundtrip do not establish
-packaged or physical-device Project access.
+physical-device Project access.
 
 ### Pairing deep-link threat review (station#1957)
 
@@ -374,10 +405,11 @@ was reviewed on 2026-08-08; it is not a current dependency inventory:
 
 ## Explicitly unverified
 
-Native distribution, signing, installation, real-device behavior, durable
-mobile credentials, inbound native shares, remote-push delivery, and
-background mobile agents are
-NOT_VERIFIED. #818 adds source-controlled Android/iOS Tauri configuration and
+Physical release distribution, signing/store delivery, real-device credential
+lifecycle, inbound native shares, remote-push delivery and background mobile
+agents remain **NOT_VERIFIED** by the receipts on this page. Development
+simulator build/install and the older paired simulator IPC journey are narrower
+observed results, not physical Nightly acceptance. #818 adds source-controlled Android/iOS Tauri configuration and
 a fail-closed GitHub workflow contract, not credential-backed distribution
 proof. The only secretless mobile output is an unsigned iOS simulator archive
 marked verification-only; it is never a distributable asset. The 2026-07-25

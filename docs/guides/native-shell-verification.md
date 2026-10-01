@@ -1,7 +1,8 @@
 # Native shell verification
 
 This contributor and operator guide separates source-level, browser, and
-physical-native evidence for desktop startup recovery. It is intentionally not
+physical-native evidence for native startup, credential/transport boundaries
+and desktop recovery. It is intentionally not
 admitted to public Pages: it names implementation seams and verification
 boundaries rather than providing an end-user recovery path. Use [Recover a
 desktop start](../user/native-recovery.md) for that public path.
@@ -74,7 +75,7 @@ No such run is claimed by this documentation review. It does not prove a Pion
 application route, account/Device continuation, a second person or machine,
 release packaging, or hosted deployment.
 
-Desktop also starts a saved-route grant-renewal supervisor from
+Desktop and mobile also start a saved-route grant-renewal supervisor from
 [`ApiBaseProvider`](../../src-ui/src/contexts/ApiBaseContext.tsx). It checks
 host-owned grant status, renews existing grants while the app is visible, and
 rechecks on focus, visibility and online events. It does not approve a new
@@ -166,7 +167,8 @@ use raw UUID bytes; candidate-record and credential metadata hashes use their
 string fields. Unverified cleanup is a failure, and retained artifacts
 are not permission to delete unrelated Keychain entries.
 
-This lane does not enable ordinary native route/sign-in UI or qualify mobile,
+This dated manual lane does not establish later ordinary native route/sign-in
+UI, and does not qualify mobile,
 Windows/Linux, packaged release use, remote internet connectivity, production
 TURN/TLS, external identity providers or two-person collaboration.
 
@@ -388,6 +390,38 @@ no established app-owned persisted panic capture or current reproducible trigger
 so preserve the package,
 system crash report, timestamp, channel, and launch method rather than claiming
 the normal shell log explains it.
+
+## Current development simulator and public fixture receipts
+
+On October 1, 2026, source
+`99b6eec01dda1d7149816678f0d8e395725267f3` built, installed and opened as
+`io.kontourai.station.dev.instance` on the `dev` channel in an iOS simulator.
+The executable SHA-256 was
+`c1d16b63032c3e47808191cef5a420462f3391d97d72fa28584dd1b5901cba3d`.
+The retained `ios-first-run-build-install-receipt.json` limits its scope to that
+simulator build/install. The actual Station manager's **Set up a broker route**
+action opened real [relay profiles](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+through [GuidedConnect](../../src-ui/src/components/GuidedConnect.tsx). That
+observed UI entry still performed no fresh enrollment or public application
+operation. It is not a physical iPhone, signed Nightly or release receipt.
+
+The separate `public-fixture-registration-renewal-receipt.json` records normal
+isolated Station source `d8dd1a41494a9ffbfe42d6f994b3f7f30cc132d4`, public broker
+registration at lease revision 1, subsequent renewal at revision 15, and actual
+fixed-text shared-work publication. Its cleanup receipt confirms owned process
+settlement and native routing-grant cleanup. It records no native client or
+application peer. The preserved earlier run expired its initial lease before
+registration; a reachable local listener did not qualify that failed public path.
+
+Use the [fresh fixture guide](../../tests/tauri-shell/native-fresh-relay-fixture.md)
+and [normal runtime wrapper](../../scripts/native-fresh-relay-fixture.ts) for
+artifact-first/provision-last preparation, real operator/provider owners,
+private diagnostics and explicit cleanup. The
+[default-host WebView harness](../../tests/tauri-shell/native-fresh-relay-acceptance-webview.ts)
+is protocol support, not evidence that it ran or that normal user actions passed.
+Record main-WebView ceremony, selected relay pair, fresh peer, typed membership,
+actual shared document/history, account/Device retirement and physical second
+person separately before claiming fresh relay-only acceptance.
 
 ## Physical evidence matrix
 

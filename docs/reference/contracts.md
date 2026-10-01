@@ -31,7 +31,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
 | `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
-| `@kontourai/station-contracts/native-relay-enrollment` | Additive native fresh-enrollment challenge, exact candidate, fixed HPKE recipient, sealed delivery and activation shapes; source foundation only, with no mounted fresh native enrollment or renderer-visible Device bearer |
+| `@kontourai/station-contracts/native-relay-enrollment` | Native challenge/candidate, fixed HPKE recipient, ciphertext delivery, signed activation/status, retained fixed request and owned transition/resume DTOs. Declarations grant no authority; server/native/UI owners compose them separately, and no Device bearer crosses renderer IPC |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
@@ -40,6 +40,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
@@ -105,6 +106,27 @@ retirement records; its unavailable forms contain no protected owner identity.
 Station does not turn feedback, an accepted request, or transport success into
 a promotion verdict. An empty effect-observation set means not observed, never
 successful.
+
+## Native relay and account composition
+
+The [native enrollment contract](../../packages/contracts/src/native-relay-enrollment.ts)
+separates installation routing proof, recipient/Device/account keys, operator
+approval and signed activation. A prepared fixed request names its peer and
+retained request handle; an active host result names an owned transition and
+configured profile revision. Resume metadata is only a hint until the host
+checks the exact owned transition. The [mounted owners](../design/native-relay-enrollment.md)
+implement that validation; importing a declaration does not enable ingress.
+
+The [application-session contract](../../packages/contracts/src/application-session.ts)
+has a distinct native target without browser Origin and a fixed native revoke
+leaf. Its revocation result confirms remote provider revocation only after the
+real owner validates it. [ProjectInvitationAcceptance](../../packages/contracts/src/project-membership.ts)
+returns exact Project scope and `grantsDeviceAccess: false`; membership is not
+inferred from transport success. The provider's optional
+[pending enrollment registration hook](../../packages/contracts/src/deployment-authentication.ts)
+is server-private, invitation-gated and returns a still-pending real person.
+Unsupported providers fail closed; it neither invents a principal nor changes
+browser cookie flows.
 
 ## Scheduler deferral events
 
