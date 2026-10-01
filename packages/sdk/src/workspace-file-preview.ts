@@ -35,6 +35,7 @@ export {
   WORKSPACE_FILE_PREVIEW_PANE_VERSION,
 } from '@kontourai/station-contracts/workspace-file-preview';
 export {
+  isRepositoryBusyError,
   type ProjectWorkspacePaneAvailabilityProjection,
   type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,

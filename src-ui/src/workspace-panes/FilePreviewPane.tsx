@@ -2,6 +2,7 @@ import { WORKSPACE_CODING_FILE_BROWSER_PANE_RENDERER_NAME } from '@kontourai/sta
 import { parseWorkspaceOpenFilePreviewIntent } from '@kontourai/station-contracts/workspace-file-preview';
 import {
   downloadProjectWorkspaceFilePreview,
+  isRepositoryBusyError,
   isWorkspaceFilePreviewImageDataUrl,
   useProjectWorkspaceFileChangesQuery,
   useProjectWorkspaceFilePreviewQuery,
@@ -1035,6 +1036,21 @@ function FilePreviewChanges({
   });
   if (query.isLoading)
     return <SkeletonBlock count={3} label="Reading changes against HEAD" />;
+  if (isRepositoryBusyError(query.error))
+    // Not a refusal and nothing wrong with the file: the repository was
+    // being written each time Station read it (the query already asked
+    // again), and a read is only answered from one that held still.
+    return (
+      <div role="status">
+        <p>
+          The repository was being changed while Station read it. Nothing is
+          wrong with it; try again in a moment.
+        </p>
+        <Button size="sm" onClick={() => void query.refetch()}>
+          Try again
+        </Button>
+      </div>
+    );
   if (query.isError || !query.data)
     return (
       <div role="alert">

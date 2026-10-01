@@ -37,6 +37,9 @@ const downloadFilePreviewMock = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk/workspace-file-preview', () => ({
   useProjectWorkspaceFilePreviewQuery: previewQuery,
   useProjectWorkspaceFileChangesQuery: changesQuery,
+  // The SDK's classifier branches on the envelope's `code`; so does this.
+  isRepositoryBusyError: (error: unknown) =>
+    (error as { code?: string } | undefined)?.code === 'repository-busy',
   WORKSPACE_FILE_PREVIEW_MAX_BYTES: 512 * 1024,
   isWorkspaceFilePreviewImageDataUrl: (value: unknown, mimeType: unknown) =>
     typeof value === 'string' &&
@@ -1638,6 +1641,7 @@ index 3b18e51..a0423896 100644
         isLoading: false,
         isError: true,
         data: undefined,
+        error: new Error('HTTP 502'),
         refetch,
       });
       renderWithClient();
@@ -1646,6 +1650,30 @@ index 3b18e51..a0423896 100644
         "could not read this file's changes",
       );
       fireEvent.click(screen.getByRole('button', { name: 'Retry changes' }));
+      expect(refetch).toHaveBeenCalled();
+    });
+
+    test('a repository that was being written is said to be busy, not failed or refused, and can be asked again', () => {
+      readySource();
+      const refetch = vi.fn();
+      changesQuery.mockReturnValue({
+        isLoading: false,
+        isError: true,
+        data: undefined,
+        error: Object.assign(new Error('HTTP 503'), {
+          status: 503,
+          code: 'repository-busy',
+        }),
+        refetch,
+      });
+      renderWithClient();
+      fireEvent.click(screen.getByRole('button', { name: /^Changes vs HEAD/ }));
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.getByRole('status').textContent).toContain(
+        'was being changed while Station read it',
+      );
+      expect(screen.queryByText(/could not read|not read/)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(refetch).toHaveBeenCalled();
     });
 

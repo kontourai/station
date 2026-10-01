@@ -153,8 +153,11 @@ match the exact built-in contract. Source is coloured by the shared Shiki
 highlighter (the chat highlight worker) and rendered as text, never markup; the
 2,000-line render cap and any refusal to colour are stated in the pane. Its
 Changes view reads that one file against HEAD through the preview route's own
-path and Session rules (`file-preview/changes`), under the same repository
-config refusal as the coding diff, and refuses an oversized patch.
+path and Session rules (`file-preview/changes`), through the same confined
+repository read as the coding diff (the Project's own repository, a judged
+copy of its config, the output discarded when the repository changed under
+the read; a repository being written answers busy, which the pane offers to
+ask again), and refuses an oversized patch.
 _Avoid_: an editor, browser, native file handle, or renderer supplied by persistence
 
 **Readiness panel**:

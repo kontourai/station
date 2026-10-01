@@ -290,6 +290,18 @@ export async function readProjectWorkspaceFileChanges(
 }
 
 /**
+ * The changes read's `503 repository-busy`: the repository was being
+ * written each time Station read it, and a read is only answered from one
+ * that held still. Not a refusal and not a result; the same read a moment
+ * later usually succeeds, and `retryAfterMs` says when the server suggests.
+ */
+export function isRepositoryBusyError(
+  error: unknown,
+): error is StationHttpError {
+  return error instanceof StationHttpError && error.code === 'repository-busy';
+}
+
+/**
  * `GET /api/projects/:slug/resolution` — station#1502 slice 4.
  *
  * What THIS Station can truthfully say about the project's resources: the
