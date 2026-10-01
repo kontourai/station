@@ -77,11 +77,20 @@ export async function prepareNativeRelayConnectionOwner(
     const publish = () => {
       if (expiryTimer) clearTimeout(expiryTimer);
       const current = accountBridge?.current();
-      if (current)
+      if (current) {
+        const retainedBridge = accountBridge;
         expiryTimer = setTimeout(
-          publish,
+          () => {
+            if (
+              accountBridge === retainedBridge &&
+              Date.parse(current.expiresAt) <= Date.now()
+            )
+              retireAccount();
+            else publish();
+          },
           Math.max(0, Date.parse(current.expiresAt) - Date.now()),
         );
+      }
       publishNativeRelayAccountScope(key, accountBridge?.current() ?? null);
       notifyCredentialChanged(input.origin);
     };
