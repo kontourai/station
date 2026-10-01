@@ -192,7 +192,7 @@
 
     {"path":"scripts/lib/portable-server-archive.mjs","digest":"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"f985b4362195469503556100853e8ed5a3766de1b725ce5c75a8e4b439200038","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
+    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"bf725d365318f670cdc54f2f4354bec8d1041f3c9866ac72439f3e0d11ff5e1f","revision":"4a67fd3e4060f01379184350cdfd49637bba8d0e"},
 
     {"path":"packages/shared/src/sqlite-store-integrity.ts","digest":"eed69a82721f6f84ff9d703b4bcdaee9ff8bd9fba045a4d874be8f402276aaa4","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"}
   ],
