@@ -336,9 +336,11 @@ fn with_locked_saved_relay_profile<T>(
         LockedTrustProfileSnapshot,
     ) -> RedemptionResult<T>,
 ) -> RedemptionResult<T> {
-    with_locked_saved_relay_profile_store(app, profile_name, |profile, locked_snapshot, _store| {
-        operation(profile, locked_snapshot)
-    })
+    with_locked_saved_relay_profile_store(
+        app,
+        profile_name,
+        |profile, locked_snapshot, _store, _path| operation(profile, locked_snapshot),
+    )
 }
 
 fn with_locked_saved_relay_profile_store<T>(
@@ -348,6 +350,7 @@ fn with_locked_saved_relay_profile_store<T>(
         NativeRelayProfileSnapshot,
         LockedTrustProfileSnapshot,
         &super::CredentialProfileStore,
+        &std::path::Path,
     ) -> RedemptionResult<T>,
 ) -> RedemptionResult<T> {
     let path =
@@ -384,6 +387,7 @@ fn with_locked_saved_relay_profile_store<T>(
             revision: profile.revision,
         },
         &store,
+        &path,
     )
 }
 
@@ -7108,7 +7112,7 @@ pub(crate) async fn station_native_device_binding_candidate(
         with_locked_saved_relay_profile_store(
             &app,
             &profile_name,
-            |profile, locked_snapshot, store| {
+            |profile, locked_snapshot, store, path| {
                 if profile.revision != expected_profile_revision {
                     return Err(NativeRedemptionError::StaleProfile);
                 }
@@ -7140,6 +7144,7 @@ pub(crate) async fn station_native_device_binding_candidate(
                 let candidate = super::with_active_device_identity_in_locked_profile(
                     &app,
                     store,
+                    path,
                     |identity, active_profile_name, client_instance_id, exact_origin, environment_id| {
                         let authority = device_candidate_authority_from_current_owners(
                             &profile,
@@ -7245,7 +7250,7 @@ pub(crate) fn with_existing_native_device_candidate<T>(
     let result = with_locked_saved_relay_profile_store(
         app,
         profile_name,
-        |profile, locked_snapshot, store| {
+        |profile, locked_snapshot, store, path| {
             if profile.revision != expected_profile_revision {
                 return Err(NativeRedemptionError::StaleProfile);
             }
@@ -7275,6 +7280,7 @@ pub(crate) fn with_existing_native_device_candidate<T>(
             super::with_active_device_identity_in_locked_profile(
                 app,
                 store,
+                path,
                 |identity, active_profile_name, client_instance_id, exact_origin, environment_id| {
                     let authority = device_candidate_authority_from_current_owners(
                         &profile,

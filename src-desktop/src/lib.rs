@@ -2530,10 +2530,12 @@ pub(crate) fn resolve_current_device_identity_for_active_station(
 /// saved-profile file lock. The callback runs with the authority mutex held;
 /// callers must preserve the profile-file -> authority lock order. This lets
 /// a compound native operation reuse one parsed profile snapshot instead of
-/// recursively taking `profiles.json`'s lock.
+/// recursively taking `profiles.json`'s lock. Its path comes from that same
+/// locked snapshot: resolving the mobile path again would retake its genesis lock.
 pub(crate) fn with_active_device_identity_in_locked_profile<T>(
     app: &AppHandle,
     store: &CredentialProfileStore,
+    profile_path: &std::path::Path,
     operation: impl FnOnce(
         &native_device_custody::CurrentDeviceIdentity,
         &str,
@@ -2556,7 +2558,7 @@ pub(crate) fn with_active_device_identity_in_locked_profile<T>(
         .map_err(|error| DeviceCustodyError::NotAuthorized(error.code.to_owned()).to_string())?;
     if native_device_custody::has_active_retirement(
         host.custody(),
-        &host.path().map_err(|error| error.to_string())?,
+        profile_path,
         &context.reference,
     )
     .map_err(|_| DeviceCustodyError::MetadataStore.to_string())?
