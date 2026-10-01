@@ -231,8 +231,10 @@ failure mode instead of an adapter-level design choice.
 
 Credential profiles extend the app-home boundary without turning it into a second
 credential vault. The persisted connection record carries only an opaque profile `ref`,
-an optional **management-only** label, explicit group/enrollment metadata, default-off
-automatic policy, and the current non-secret application projection. Credential material
+an optional display label, explicit group/enrollment metadata, default-off
+automatic policy, and the current non-secret application projection. The dedicated
+engine sign-in read exposes only refs, labels, auth state and observed device-code
+support to an explicitly granted device; management metadata stays restricted. Credential material
 stays in the selected engine credential owner rather than the recovery registry; it is never copied into
 the connection registry, response, CLI output, receipt, log, or metric. A ref is not an
 account selector or an account identity.

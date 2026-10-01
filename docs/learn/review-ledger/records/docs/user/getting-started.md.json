@@ -9,14 +9,14 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"d2d1dc2108ffb1a57aea691fc00d46eb451f39b5e122ddaeb22a21ae4e2be935","revision":"614b823795c9613223a0da34e209fb852b72e91d"},
+  "document": {"digest":"267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/guides/starter-work.md","digest":"2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"docs/guides/release-channel-ports.md","digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
-    {"path":"docs/learn/media.json","digest":"2bb330c54cea965807ff90b4e315a0157230687f876a03a0d3d2be10fdff4b43","revision":"06b6e52074502f71a5703f21ad83a96b62e272bd"},
+    {"path":"docs/guides/starter-work.md","digest":"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"docs/learn/media/inspect-request.png","digest":"389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"91c5c5749543ab72af57313c6c3f7256469d6d88eed881aad5886ded2f8c9026","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -92,19 +92,11 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/guides/release-channel-ports.md","digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"docs/learn/media.json#/captures/0","digest":"1d9e84ec3e04ca70b00f9f6c19301264c638e901b32e5e70ccacc858d402ca9d","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"src-ui/src/components/home/HomeActionSection.tsx","digest":"48524299ff95b2d675ac5a296515bece34c05d2c02abe644ceb68a4bda433a07","revision":"42811285ef04d069daf576d46253ac833573f848"},
+    {"path":"docs/learn/media.json#/captures/3","digest":"75f3273ae5d8cb21aa6612ef17f80d01155cf729dd5267763b888f5a2ca8c55a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"src-ui/src/views/agent-editor/AgentEditorStateViews.tsx","digest":"805b03c798f8573206c8ad80a79f439953bbedd94604afe0877dfcab3360d4db","revision":"42811285ef04d069daf576d46253ac833573f848"},
-
-    {"path":"src-ui/src/views/home/useHomeViewModel.ts","digest":"5f160c90ad37a0dd915d4adb6a7597bb84ad6aa9b001c590202ad4829baab151","revision":"42811285ef04d069daf576d46253ac833573f848"},
-
-    {"path":"src-ui/src/views/home/HomeSurface.tsx","digest":"c84ddf1b9c13f98d4f275a6c983fde7e3c6524c861ff8a3cc558a373aa50a01f","revision":"614b823795c9613223a0da34e209fb852b72e91d"},
-
-    {"path":"src-ui/src/components/scheduler/JobFormModal.tsx","digest":"0d1b5b17f8658e66850652d8f1e24e455370adaeb769f495363171db460f9e24","revision":"52a7a90d631c5c5a5e45095904b56ea175d1f35a"},
-
-    {"path":"src-ui/src/views/ScheduleView.tsx","digest":"8dd2c41c8ffc64b4f085f17015f21f6944e4132e8bab7b2fac14bdcb98eff987","revision":"614b823795c9613223a0da34e209fb852b72e91d"}
+    {"path":"docs/learn/media.json#/captures/4","digest":"dfc26872dbfdc817f3357443a00abacdc81b64eed43326ecb0e5b7569a0ec62a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
   ],
 
   "checks": [

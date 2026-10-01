@@ -364,6 +364,15 @@ reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
 `inference:invoke` and later promotions. Operator-specific route authority is a
 separate check, not a claim that this credential carries every scope.
 
+The engine sign-in exception admits a currently verified operator only to
+GET `/api/connections/agent/:id/device-code-profiles` and GET/POST/DELETE
+`/api/connections/agent/:id/enrolment/:ref/device-code`. A paired device needs
+an explicit `engine:login` grant. The profile read projects references, display
+labels, authentication state and observed device-code support; it excludes
+host paths, commands, environment variables, recovery policy and diagnostics.
+It checks live authority before reads and before publishing results. A sign-in
+grant alone does not admit credential management or manual enrolment reads.
+
 ### Coding routes: command execution and client paths (#2412)
 
 `/api/coding/**` runs git, reads files and runs shell commands in a Project's
