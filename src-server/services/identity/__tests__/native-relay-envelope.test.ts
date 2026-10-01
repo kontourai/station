@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import {
   Aes128Gcm,
   CipherSuite,
@@ -13,6 +12,9 @@ import {
 import { compactVerify, exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
+import hpkeVector from '../../../../src-desktop/src/fixtures/native-enrollment-hpke-p256-base.json' with {
+  type: 'json',
+};
 import {
   type NativeRelayDeviceBundle,
   sealNativeRelayEnrollmentDelivery,
@@ -31,17 +33,7 @@ const vector = z
     info: z.string(),
     encryption: z.object({ ct: z.string(), pt: z.string(), aad: z.string() }),
   })
-  .parse(
-    JSON.parse(
-      readFileSync(
-        new URL(
-          '../../../../src-desktop/src/fixtures/native-enrollment-hpke-p256-base.json',
-          import.meta.url,
-        ),
-        'utf8',
-      ),
-    ),
-  );
+  .parse(hpkeVector);
 
 async function fixture() {
   const station = await generateKeyPair('ES256', { extractable: true });
