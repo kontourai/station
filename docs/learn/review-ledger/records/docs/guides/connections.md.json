@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"e3e13dfd94c7b6a754a987647f7516b1b5c2d24112e550321f21c59ceca41080","revision":"7a327814d48d76faaca497206b6529d781d111dd"},
+  "document": {"digest":"a5432938117841d30b86589947b09c719e2453db6ad9f4f8fe727fe82f359871","revision":"2ab3c6e171e1cae8222f85e17416538a99019390"},
 
   "sources": [
     {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
@@ -230,9 +230,9 @@
 
     {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"f5df4b3706df44a90bf6babbb73952515bb1d84fb313aab97f13de7952b42b56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","digest":"edda2b1462cde43d6df25ed97c5a5d330771ff09b6a7bd17c15f83bd2c559da2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","digest":"c1350a4c05e6b64cfe609a2cb3ff6103269a17769743e59e38837d4e395796aa","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"50c6bcec6f7ccec9a532892aea3967860a52cb29a26f76705b1db717995a10e2","revision":"651e14a68fbaa9404da3987f74cd5e4819416dd8"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"914c5856fdec89f7f8afaa9939539f9ff6f84b7e83153b04ca2d76cbe366c839","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
 
     {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"e98d62efbf392040c5a52522440698e6d285fd23d9563ee1c1ce4106c81f18f0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -248,7 +248,9 @@
 
     {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
 
-    {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
+    {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
+    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"c868e6e6c5e5c6d301af2cd3c48d150c22ec389919a0c726e611bafefd9f6fa7","revision":"7a327814d48d76faaca497206b6529d781d111dd"}
   ],
 
   "checks": [

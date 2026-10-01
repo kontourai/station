@@ -9,7 +9,7 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+  "document": {"digest":"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0","revision":"fbf6a786c7c77831e16ee1ee3f239b295da5e907"},
 
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
@@ -30,7 +30,7 @@
 
     {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"},
 
     {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
 
