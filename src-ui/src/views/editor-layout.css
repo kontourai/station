@@ -1792,3 +1792,35 @@
   );
   overflow-y: auto;
 }
+
+.credential-device-login {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+  color: var(--k-text);
+}
+.credential-device-login p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.credential-device-login a {
+  color: var(--k-action);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+.credential-device-login__code {
+  font-family: var(--k-font-mono);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.credential-device-login__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+
+.credential-device-login .button {
+  min-height: 44px;
+}

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/sdk-envelope-execution-agents-tasks.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for SDK refusal metadata and execution error subclasses; current behavior and limits are reviewed in the SDK reference.",
+
+  "limits": "A changeset is not proof of a published version, executed consumer journey or authenticated responder identity.",
+
+  "document": {"digest":"b79b1991a04b8b368130986c4f93a9ab07163ce45e0fa35bae469d3e7e0270fb","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
+
+  "sources": [],
+
+  "checks": []
+}

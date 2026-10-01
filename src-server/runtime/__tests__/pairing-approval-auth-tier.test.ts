@@ -7,11 +7,13 @@ import type {
   DevicePairingRequest,
   PairedDevice,
 } from '@kontourai/station-contracts';
-import { pairingScopeIncludes } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
-import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
+import {
+  pairingScopeSatisfiesHttpRoute,
+  requiredPairingScope,
+} from '../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isRuntimeRequestPrincipalCurrent,
@@ -164,7 +166,10 @@ async function createHarness() {
         const grantedScope = security.resolveGrantedScope(principal.credential);
         return (
           grantedScope !== undefined &&
-          pairingScopeIncludes(grantedScope, requiredScope)
+          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
+            method: 'POST',
+            path: '/api/pairing/requests/request/confirm',
+          })
         );
       },
     }),
@@ -386,17 +391,9 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
     expect(operatorConfirm.status).toBe(200);
   });
 
-  /*
-   * Caught by the live re-verify, not by the first round of this suite: the
-   * ONLY public promotion mechanism (`POST /api/pairing/devices/:id/scope`)
-   * submits a complete replacement scope, and `access:manage` is
-   * default-grant-only (`scope_not_grantable`), so a device promoted that
-   * way holds `access:approve` WITHOUT `access:manage` — it passes the
-   * pairing family's authority boundary and is then 403'd by the scope
-   * table's `/api/pairing` tier. `viewerCanDecide` must compose BOTH gates,
-   * or it renders buttons for a session the table refuses.
-   */
-  test('a device promoted through the real scope route (approve without manage) is 403d by the table, and viewerCanDecide says false', async () => {
+  // The real scope editor cannot grant legacy access:manage. Explicit approval
+  // must still reach only pending-request decisions, through the actual boundary.
+  test('a scope-route promotion lists, confirms and denies pending requests without management authority', async () => {
     const harness = await createHarness();
     const paired = await harness.pairDevice('Scope-route promoted');
     const scopeChange = await harness.request(
@@ -416,15 +413,14 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
     );
     expect(scopeChange.status).toBe(200);
     const pending = await harness.createPendingRequest('New watch');
-
-    const confirm = await harness.request(
-      `/api/pairing/requests/${pending.requestId}/confirm`,
-      cookieInit(paired.credential, 'POST'),
+    const listed = await harness.request(
+      '/api/pairing/requests',
+      cookieInit(paired.credential, 'GET'),
       '203.0.113.41',
     );
-    expect(confirm.status).toBe(403);
-    expect(await confirm.json()).toEqual({
-      error: { code: 'insufficient_scope' },
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      requests: [expect.objectContaining({ requestId: pending.requestId })],
     });
 
     const items = await attentionPairingItems(
@@ -432,9 +428,30 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
       cookieInit(paired.credential, 'GET'),
       '203.0.113.41',
     );
-    expect(items).toEqual([
-      expect.objectContaining({ viewerCanDecide: false }),
-    ]);
+    expect(items).toEqual([expect.objectContaining({ viewerCanDecide: true })]);
+    const confirm = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      { ...cookieInit(paired.credential, 'POST'), body: '{}' },
+      '203.0.113.41',
+    );
+    expect(confirm.status).toBe(200);
+
+    const deniedRequest = await harness.createPendingRequest('Other phone');
+    const denied = await harness.request(
+      `/api/pairing/requests/${deniedRequest.requestId}`,
+      cookieInit(paired.credential, 'DELETE'),
+      '203.0.113.41',
+    );
+    expect(denied.status).toBe(200);
+    const management = await harness.request(
+      '/api/pairing/devices',
+      cookieInit(paired.credential, 'GET'),
+      '203.0.113.41',
+    );
+    expect(management.status).toBe(403);
+    expect(await management.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
   });
 
   test('an access:approve-promoted device session decides, and its attention read says so', async () => {

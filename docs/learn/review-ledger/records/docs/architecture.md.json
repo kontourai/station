@@ -1,0 +1,135 @@
+{
+  "path": "docs/architecture.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
+
+  "limits": "Source and focused fixtures, not every function in the linked owners or live provider/engine/tool-server, collector, voice, device, proxy deployment or native package qualification. Diagram syntax and anchors were checked; final visual layout review remains separate.",
+
+  "document": {"digest":"e403d3522a0b1c4e8f4cf0788f91923acfc8c1a846d295429482eafc5780a20f","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
+
+  "sources": [
+    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+    {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
+
+    {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+
+    {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/package.json","digest":"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+
+    {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/runtime/agents/agent-engine-classification.ts","digest":"cec04bb10726e4ce741930da266458c95fa1f53acd475d8d696a5271c32f7c6d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/delegation.ts","digest":"68f406b4334bf5b4ed0bb64efc3a7149199fa6b8dcbab9aca17213dba5c3e363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"631cd108f28ca17190a9a8fed8f36eda83d4695ceb8766de438f0e21c148a83f","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+
+    {"path":"src-server/runtime/streaming/InjectableStream.ts","digest":"a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/tools/tool-executor.ts","digest":"3acb6e34cbb9e134d85acc405b4dacfc48d3f0520974a7ec15ce4d0f6cd2c9df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"c94ea32c0e391978d340cbfab4e5d9ee37fea207aac329580b68f2125a640c90","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+
+    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+
+    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/coding-layout/TerminalPanel.tsx","digest":"971647009fb435dcdb7370c484b0e1e3a7d94112a08de080cae4b06ec2a79983","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Full original and rewritten article read; independent parent review traced key event subscription/replay, private-engine/MCP, voice and provider boundaries.",
+
+    "31 tests across documentation foundations, voice URL and streaming pipeline suites passed.",
+
+    "Actual reader preserved 30 anchors without duplicates; seven Mermaid diagrams parsed after a caught and corrected label syntax error.",
+
+    "Parent refined the voice source link to distinguish the querying adapter from its pure URL helper.",
+
+    "Replaced generic retired-hook warning with the concrete host-context/query distinction; useSendMessage and useConversations remain public context hooks.",
+
+    "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged. Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Reviewed source changes: Removed node-storage, added optional native-diagnostic-echo source subpath; corrected README and confirmed reference is non-exhaustive. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
+
+    "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/services/execution-target/execution-target-execution.ts: Before recording a carried pick, actual foreground executor checks effective full access for resolved thread/Agent; missing resolver conservatively refuses Default/never without grant. Existing recordApprovalMode and grant paths retained. Approval design C1 and API authority explanation cover changed behavior. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/connect/package.json, packages/sdk/package.json, src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed its injection seam without changing the exported attributes or endpoint-gated startup. plugin-install-transaction.ts added git-metadata exclusion for agent-proposed installs (#2719). The overview's optional OTel and plugin boundary claims remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 wires the live full-access grantor check (runtime-initialize) and adds refusal-identity middleware plus device-revocation reset wiring (runtime-routes). resetFullAccessGrantedBy now records a new Ask approval-mode decision in orchestration-service. The overview's diagrams and its claims on durable versus live events, the dispatch receipt, and approval and authority separation still hold. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage module-private in packages/cli/src/distribution.ts, and cf43e14d0 (#2731) adds recognizeCredential (runtime-routes.ts) plus a 403 insufficient_scope answer for a live but unadmitted credential (runtime-http.ts); prose accurate: distribution.ts still defines the published-CLI versus checkout boundary, and the HTTP-composition and credential/scope admission descriptions don't name a refusal status. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

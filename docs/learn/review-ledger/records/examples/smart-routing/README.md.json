@@ -1,0 +1,25 @@
+{
+  "path": "examples/smart-routing/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full pure helper and HTTP registration reviewed; executed documented input and corrected actual budget-intent reason. Explicit-tier precedence, optional host telemetry and no model launch clarified.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "document": {"digest":"8de08e0eb74f14ce0ea9670f9765242ab8549a0d595c95d9dcedc8b25d229d86","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+  "sources": [
+    {"path":"examples/smart-routing/plugin.json","digest":"5d74489c9ceb41a3cf5852795d3e0bb2127ce6385c2c0010c9a4274fd4b45ef7","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+    {"path":"examples/smart-routing/plugin.mjs","digest":"02fbf49cc2480dc0395ea82969fba6c033f0e208ffe4fe2836f7c2e362f17012","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+  ]
+}
