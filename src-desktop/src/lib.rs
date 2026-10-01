@@ -7,6 +7,7 @@ mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
+mod native_enrollment;
 #[cfg(not(mobile))]
 mod desktop_companion;
 #[cfg(not(mobile))]

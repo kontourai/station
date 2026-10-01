@@ -32,6 +32,7 @@
     "./device-tools": "./src/device-tools.ts",
     "./native-push": "./src/native-push.ts",
     "./native-device-proof": "./src/native-device-proof.ts",
+    "./native-relay-enrollment": "./src/native-relay-enrollment.ts",
     "./presence": "./src/presence.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",
