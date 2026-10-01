@@ -1215,7 +1215,7 @@ describe('EventStore', () => {
      * banner's event, a method this guard never inspects at all).
      */
     describe('legitimate re-appends against a PRE-STAGE-2 (old-format) owner never trip the guard', () => {
-      const oldFormatOwner = 'brian'; // a bare OS-alias string, not a PrincipalRef id.
+      const oldFormatOwner = 'casey'; // a bare OS-alias string, not a PrincipalRef id.
 
       test('a reconnect session.configured with no metadata.userId at all is accepted', () => {
         store.appendEvent(

@@ -47,6 +47,7 @@ import { LazyBoundary } from './LazyBoundary';
 import { requestNewBoard } from './project-sidebar/new-board-events';
 import { Empty, ErrorState, SkeletonBlock } from './state';
 import './CommandPalette.css';
+import { showChatPageOrDock } from '../app-shell/chat-placement';
 import type {
   formatSettingsMessage,
   localizedSettingsTargetLabel,
@@ -401,7 +402,7 @@ export function CommandPalette() {
       label: 'Open chat dock',
       group: 'Actions',
       keywords: ['chat', 'dock', 'open', 'new'],
-      run: () => setDockState(true),
+      run: () => showChatPageOrDock(() => setDockState(true)),
     });
     // archive#2652: the tour is re-triggerable from here, which is also what
     // its last step tells the user. `requestFirstRunTour` dispatches the same

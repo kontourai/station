@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { selectCodingPane } from './helpers/coding-stack';
 import {
   dismissSetupLauncher,
   seedOrchestrationRoutes,
@@ -28,7 +29,7 @@ async function seedSiblingConfig(page: Page) {
 }
 
 async function openReadinessTab(page: Page) {
-  await page.getByRole('tab', { name: 'Readiness' }).click();
+  await selectCodingPane(page, 'Readiness');
 }
 
 const READINESS_SNAPSHOT = {

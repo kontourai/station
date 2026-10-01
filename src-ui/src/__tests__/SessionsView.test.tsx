@@ -4557,7 +4557,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
   });
 
   test('keeps an unrecorded origin out of device groups and discloses mixed origins on the row', () => {
-    pairedDevices = [{ id: 'phone-1', name: 'Brian’s Pixel' }];
+    pairedDevices = [{ id: 'phone-1', name: 'Casey’s Pixel' }];
     sessions = [
       activitySession({ displayTitle: 'No provenance session' }),
       activitySession({
@@ -4585,7 +4585,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
         (node) => node.textContent,
       ),
     ).toEqual(['No provenance session']);
-    expect(container.textContent).not.toContain('Brian’s Pixel');
+    expect(container.textContent).not.toContain('Casey’s Pixel');
     fireEvent.change(screen.getByLabelText('Started from'), {
       target: { value: '' },
     });

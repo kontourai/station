@@ -152,8 +152,9 @@ function fixtureRails(): string[] {
   ) => ({
     id,
     name: `SLOW refactor the chart module (${state})`,
-    // The avatar SessionsView renders, not a stand-in: its initials sit on
-    // the icon's own chip, which is what a reader sees on a selected row.
+    // The avatar SessionsView renders. In this fixture it contributes no
+    // text: its brand mark is lazy and has not loaded when the markup is
+    // captured, so the tile is empty (#3093).
     icon: <AgentIcon agent={AGENTS[1]} size="small" />,
     // Kept short on purpose: the row clamps this line to two, and text the
     // clamp clips is text axe cannot judge. It must fit under any platform's
@@ -192,7 +193,15 @@ function fixtureRails(): string[] {
     sessionRow('attention', 'Needs attention'),
   ];
   const plainItems = [
-    { id: 'plain', name: 'A skill', subtitle: 'Workspace · 3 files' },
+    {
+      id: 'plain',
+      name: 'A skill',
+      subtitle: 'Workspace · 3 files',
+      // Text that sets no colour of its own, so it inherits the row's: the
+      // one node here that measures `.split-pane__item--selected`'s `color`,
+      // and the one a scan taken mid-transition gets wrong (#3074).
+      icon: <span>SK</span>,
+    },
     { id: 'other', name: 'Another skill', subtitle: 'Registry' },
   ];
   return [
@@ -251,7 +260,7 @@ describe.skipIf(!chromiumAvailable)(
       hover: boolean,
     ): Promise<{
       selectedRows: number;
-      passedInSelected: number;
+      passedPerRow: number[];
       violations: string[];
       incomplete: string[];
     }> {
@@ -259,13 +268,17 @@ describe.skipIf(!chromiumAvailable)(
         viewport: { width: 1000, height: 2400 },
       });
       try {
-        await page.setContent(
-          html.replace(
-            '<html>',
-            `<html data-theme="${preset.theme}"${preset.channel === 'dev' ? ' class="is-dev-build"' : preset.channel === 'release' ? '' : ` data-app-channel="${preset.channel}"`}>`,
-          ),
-        );
+        await page.setContent(html);
+        // Loaded before the preset is stamped, so that the settle wait below
+        // is all that separates the stamp from the scan.
         await page.addScriptTag({ path: AXE_PATH });
+        await page.evaluate(({ theme, channel }) => {
+          const root = document.documentElement;
+          root.setAttribute('data-theme', theme);
+          if (channel === 'dev') root.classList.add('is-dev-build');
+          else if (channel !== 'release')
+            root.setAttribute('data-app-channel', channel);
+        }, preset);
         const selectedRows = await page
           .locator('.split-pane__item--selected')
           .count();
@@ -274,6 +287,28 @@ describe.skipIf(!chromiumAvailable)(
           // rule keeps the selected treatment; axe reads the live state.
           await page.locator('.split-pane__item--selected').nth(3).hover();
         }
+        // The page parses unstamped (dark defaults), so stamping the preset
+        // starts the rows' own `transition: color`, and the hover starts
+        // their `background` one. Scanned before those end, axe reads the
+        // previous theme's text colour, or a blend, on the new surface
+        // (#3074). Measure the settled state: wait for everything the page
+        // is running to finish, except a looping animation, which never does
+        // (the rule `tests/helpers/accessibility.ts` uses).
+        await page.evaluate(async () => {
+          for (;;) {
+            const running = document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  animation.effect?.getTiming().iterations !== Infinity,
+              );
+            if (running.length === 0) return;
+            await Promise.allSettled(
+              running.map((animation) => animation.finished),
+            );
+          }
+        });
         const result = await page.evaluate(async () => {
           const axe = (
             window as unknown as {
@@ -328,15 +363,22 @@ describe.skipIf(!chromiumAvailable)(
                 }),
               })),
             ),
-            passed: run.passes.reduce(
-              (total, group) => total + group.nodes.length,
-              0,
+            // Passes counted per selected row, not in total: a total lets
+            // well-covered rows hide one axe rated nothing in.
+            passedPerRow: Array.from(
+              document.querySelectorAll('.split-pane__item--selected'),
+              (row) =>
+                run.passes
+                  .flatMap((group) => group.nodes)
+                  .filter((node) =>
+                    row.contains(document.querySelector(node.target[0])),
+                  ).length,
             ),
           };
         });
         return {
           selectedRows,
-          passedInSelected: result.passed,
+          passedPerRow: result.passedPerRow,
           violations: result.violations,
           incomplete: result.incomplete,
         };
@@ -348,24 +390,30 @@ describe.skipIf(!chromiumAvailable)(
     test.each(PRESETS)(
       '$channel channel, $theme theme: every text node in a selected row is AA',
       async (preset) => {
-        const { selectedRows, passedInSelected, violations, incomplete } =
+        const { selectedRows, passedPerRow, violations, incomplete } =
           await audit(preset, false);
         // 2 Agents rails + 4 Activity rails + 1 plain rail.
         expect(selectedRows).toBe(7);
-        // Name, subtitle spans, badges: far more than one text node per row
-        // must have been measured, or axe was looking at nothing.
-        expect(passedInSelected).toBeGreaterThanOrEqual(selectedRows * 2);
+        // Violations first, so a contrast regression reports the contrast.
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
+        expect(passedPerRow).toHaveLength(selectedRows);
+        // Every row has at least a name and a second text node (subtitle or
+        // badge); a row with fewer passes is one axe was not looking at.
+        expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
       },
     );
 
     test.each(PRESETS.filter((preset) => preset.channel === 'release'))(
       'release channel, $theme theme: a hovered selected row stays AA',
       async (preset) => {
-        const { violations, incomplete } = await audit(preset, true);
+        const { passedPerRow, violations, incomplete } = await audit(
+          preset,
+          true,
+        );
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
+        expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
       },
     );
   },
