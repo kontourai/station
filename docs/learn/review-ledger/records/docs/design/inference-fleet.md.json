@@ -12,7 +12,7 @@
   "document": {"digest":"01a56a31c8549da9335caf67355dec6c35d928cd5c73e6bfd564f802d5a84d9e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
   "sources": [
-    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"package.json","digest":"cc56c4930c0b6b4e80c14edea0df616e7479f33007fd109971f6f77cfcbb357e","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
 
     {"path":"packages/contracts/src/datum-secret-reference.ts","digest":"df9649cef3586ffc1a91a59d9b9d7ecb0e2a56111854fc54b5f89f0be781d647","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
