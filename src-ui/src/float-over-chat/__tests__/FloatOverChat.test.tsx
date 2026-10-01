@@ -113,6 +113,8 @@ function session(
 }
 
 let sessions: BrowserSessionView[] = [];
+/** Answers the fake server received for held dialogs. */
+const dialogAnswers: unknown[] = [];
 /** How far the fake server's clock is from this device's. */
 let serverSkewMs = 0;
 /** Off: the fake server omits `serverNow` (an older server). */
@@ -181,8 +183,18 @@ function renderFloat(
   // RTL's cleanup detaches a container it was handed; a re-render after one
   // puts the chat body back where the queries look.
   if (!area.isConnected) document.body.appendChild(area);
-  const transport = vi.fn(async (input: unknown) => {
+  const transport = vi.fn(async (input: unknown, init?: RequestInit) => {
     const url = new URL(String(input));
+    // A person's answer to a held dialog: the page moves on, so the dialog
+    // is no longer on the session.
+    if (
+      init?.method === 'POST' &&
+      url.pathname === `/api/browser/sessions/${SESSION}/dialog`
+    ) {
+      dialogAnswers.push(JSON.parse(String(init.body)));
+      sessions = sessions.map(({ pendingDialog: _answered, ...rest }) => rest);
+      return Response.json({ success: true, data: sessions[0] });
+    }
     if (url.pathname === '/api/browser/projects/alpha/access')
       return Response.json(accessReply.body ?? { success: false }, {
         status: accessReply.status,
@@ -278,6 +290,7 @@ beforeEach(() => {
     },
   };
   sessionsReplies = [];
+  dialogAnswers.length = 0;
   serverSkewMs = 0;
   stampServerNow = true;
   h.autoFloat = undefined;
@@ -293,6 +306,47 @@ afterEach(() => {
   vi.restoreAllMocks();
   client.clear();
   document.body.innerHTML = '';
+});
+
+describe('a dialog the page holds for the person driving from the float', () => {
+  test('is shown and answerable in the float, with Open in pane, and answering it clears it', async () => {
+    h.tone = 'you';
+    // As the real opener answers: an outcome, here a success.
+    h.opener.mockReturnValue({ ok: true });
+    sessions = [
+      session({
+        pendingDialog: {
+          dialogId: 'd4',
+          type: 'confirm',
+          message: 'Remove the blue mug?',
+          openedAt: '2026-09-22T12:00:05.000Z',
+        },
+      }),
+    ];
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    const dialog = await screen.findByRole('alertdialog');
+    expect(area.contains(dialog)).toBe(true);
+    expect(within(dialog).getByText('example.com says')).toBeTruthy();
+    expect(within(dialog).getByText('Remove the blue mug?')).toBeTruthy();
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Open in pane' }),
+    );
+    expect(h.opener).toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    await waitFor(() =>
+      expect(dialogAnswers).toEqual([{ dialogId: 'd4', accept: true }]),
+    );
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  test('no held dialog: no card over the float', async () => {
+    const { area } = chatArea();
+    renderFloat(area);
+    await screen.findByTestId('float-canvas');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
 });
 
 describe('auto-float', () => {

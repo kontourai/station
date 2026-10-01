@@ -1,4 +1,5 @@
 import type { AttentionItem } from '@kontourai/station-sdk';
+import { attentionKindLabel } from '../../utils/attention';
 import { AttentionCard } from '../attention/AttentionCard';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
@@ -15,11 +16,18 @@ export function SessionDetailAttention({
   errorMessage,
   onRetry,
   items,
+  answerHere = true,
 }: {
   checkFailed: boolean;
   errorMessage: string;
   onRetry: () => void;
   items: AttentionItem[];
+  /**
+   * False for a paired-Station (peer) record: the item's inline reply and
+   * actions address the LOCAL thread id, which names nothing here, so the
+   * reason is shown and the answering is left to the Station that owns it.
+   */
+  answerHere?: boolean;
 }) {
   if (checkFailed) {
     return (
@@ -46,9 +54,23 @@ export function SessionDetailAttention({
       aria-label="Needs your attention"
     >
       <p className="sessions-detail__eyebrow">Needs your attention</p>
-      {items.map((item) => (
-        <AttentionCard key={item.id} item={item} />
-      ))}
+      {answerHere
+        ? items.map((item) => <AttentionCard key={item.id} item={item} />)
+        : items.map((item) => (
+            <article
+              key={item.id}
+              className="attention-item"
+              data-testid="attention-item-elsewhere"
+            >
+              <div className="attention-item__type">
+                {attentionKindLabel(item.kind)}
+              </div>
+              <div className="attention-item__message">{item.title}</div>
+              <div className="attention-item__detail">
+                Answer this on the paired Station that runs the task.
+              </div>
+            </article>
+          ))}
     </section>
   );
 }

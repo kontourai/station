@@ -92,6 +92,12 @@ export * from './session-outputs';
 export * from './skills';
 export * from './task-basis';
 export * from './task-outputs';
+export {
+  fetchTaskRoomAgentRequests,
+  submitTaskRoomAgentRequest,
+  TaskRoomWorkNotSentError,
+  TaskRoomWorkProtocolError,
+} from './task-room-work';
 export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './unified-search';

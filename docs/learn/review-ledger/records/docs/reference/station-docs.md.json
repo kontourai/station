@@ -36,7 +36,7 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"450af4fe4d55c49c64b64b858c38c7c81decb2df43c46e99940be9a0299c7140","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"47e7ab1939ae8b015c9885d465c9deda5ac45543c8a1d67d2f2195a0017f5de9","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"27cfd3498b4543c9d1f04538671ffeb60dc245442284d6983cc97c20f901d113","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

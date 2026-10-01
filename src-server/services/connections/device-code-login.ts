@@ -321,6 +321,7 @@ export class DeviceCodeLoginManager {
   async start(
     engine: EnrolmentEngine,
     profileDir: string,
+    isCurrent: () => boolean = () => true,
   ): Promise<DeviceCodeStartResult> {
     this.#prune();
     const existing = this.#sessions.get(profileDir);
@@ -337,7 +338,12 @@ export class DeviceCodeLoginManager {
     const pending: PendingStart = { profileDir, cancelled: false };
     this.#pending.add(pending);
     try {
-      return await this.#startAfterChecks(engine, profileDir, pending);
+      return await this.#startAfterChecks(
+        engine,
+        profileDir,
+        pending,
+        isCurrent,
+      );
     } finally {
       this.#pending.delete(pending);
     }
@@ -347,6 +353,7 @@ export class DeviceCodeLoginManager {
     engine: EnrolmentEngine,
     profileDir: string,
     pending: PendingStart,
+    isCurrent: () => boolean,
   ): Promise<DeviceCodeStartResult> {
     const capabilities = await this.#deps.capabilities(engine);
     const evidence = mechanismEvidence(capabilities, 'device-code');
@@ -383,7 +390,7 @@ export class DeviceCodeLoginManager {
     // A cancel or shutdown that landed during those awaits found no session;
     // honour it here rather than spawning after the caller was told nothing
     // was waiting.
-    if (pending.cancelled || this.#closed) {
+    if (pending.cancelled || this.#closed || !isCurrent()) {
       const now = this.#deps.now().toISOString();
       return {
         kind: 'cancelled',
@@ -433,6 +440,10 @@ export class DeviceCodeLoginManager {
     // the environment is being prepared. It found no child to kill; spawning
     // now would start a process that nothing tracks or bounds.
     if (session.settled) {
+      return { kind: 'cancelled', record: session.record };
+    }
+    if (!isCurrent()) {
+      this.cancel(profileDir);
       return { kind: 'cancelled', record: session.record };
     }
     const args = [

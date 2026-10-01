@@ -306,3 +306,10 @@
   font-size: 0.8125rem;
   margin: 0;
 }
+
+/* A floated browser: the live view, with a page's held dialog laid over it. */
+.float-over-chat__browser {
+  height: 100%;
+  position: relative;
+  width: 100%;
+}

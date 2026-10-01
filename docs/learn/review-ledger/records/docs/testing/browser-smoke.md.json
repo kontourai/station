@@ -34,11 +34,11 @@
 
     {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"414d50fbeed49521d78dd80bbe1cc878097e70ea72d1dbbd537686f5f07c76f8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"90e9da8c2b40784d4082a076f6c3e926800ccecb79e1a1f28249675379424507","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
 
     {"path":"tests/csp-shell.spec.ts","digest":"d970b0c1d9081b74d24dccd4faa3a8a4d87f97b38c6c05074ed0824ba1b287b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+    {"path":"tests/e2e-manifest.mjs","digest":"f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f","revision":"426153191586e330abfdfca99debbeab43855d09"},
 
     {"path":"tests/helpers/browser-health.ts","digest":"67b5cf9fe4f17a137bea6daeffc4a3cd81433f2058938f9d0bcf90a91efc3921","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

@@ -227,7 +227,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
                   name: 'Brian Media',
                   environmentId: 'env-media',
                   verifiedProjectPath:
-                    '/home/brian/dev/github/kontourai/station',
+                    '/home/user/dev/github/kontourai/station',
                 },
                 state: { phase: 'disconnected' },
               },

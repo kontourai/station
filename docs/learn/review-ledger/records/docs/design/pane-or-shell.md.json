@@ -9,10 +9,10 @@
 
   "limits": "Current destination/router ownership checked. No exhaustive placement, migration, iframe-security, or runtime-tier compatibility proof.",
 
-  "document": {"digest":"628156637ea2f89baab9ba73c53100e6313754b0361c80e37bff94c90ed9ef23","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+  "document": {"digest":"c1440d672ee51e914ea0b0d2267d6e53b4abca7d8602ac01a0feda9c09aeeec8","revision":"2e8ddc0f774480d55159bdb07436537747a27032"},
 
   "sources": [
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 

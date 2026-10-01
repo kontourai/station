@@ -1020,11 +1020,19 @@ export function buildActiveChatTaskItems({
         kind: 'chat' as const,
         kindLabel: 'Direct chat' as const,
         // Match the dock session-title convention (useDerivedSessions):
-        // untitled chats read "<Agent> Chat", not the bare agent name —
-        // title is not persisted across reloads, so this fallback is the
-        // steady-state name for rehydrated sessions.
+        // untitled chats read "<Agent> Chat", not the bare agent name.
+        // Title is not persisted across reloads, so before that fallback a
+        // chat takes its correlated session's name — the server's
+        // `displayTitle`, through `sessionTitle`, the one name Activity and
+        // Home list that session under. Only when the session HAS one:
+        // `sessionTitle`'s own fallbacks ("Station session") say less than
+        // "<Agent> Chat".
         title:
-          chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
+          chat.title?.trim() ||
+          (currentExecution?.displayTitle?.trim()
+            ? sessionTitle(currentExecution)
+            : undefined) ||
+          (agentLabel ? `${agentLabel} Chat` : 'Task'),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
         modelLabel: resolveModelLabel(model),

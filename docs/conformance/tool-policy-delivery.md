@@ -29,7 +29,9 @@ skipped its working-directory check. The hook states no
 opinion, and the engine asks `canUseTool` for anything it does not allow
 itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
 (`switch_mode` kind or `ExitPlanMode`). A session answer to an ACP plan exit is
-a one-call accept (the agent's allow-once option) and mints no session grant;
+an `accept` and mints no Station session grant. Its response mapper prefers
+`allow_once` but falls back to `allow_always` when that is the only allow option,
+so Station cannot guarantee one-call behavior in that agent;
 the request payload carries `toolKind`, so a `switch_mode` request offers no
 session option. In a delegated child that cannot grant approvals
 (`delegation.denyApprovals`), a request either adapter would otherwise open is
