@@ -44,7 +44,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"cc56c4930c0b6b4e80c14edea0df616e7479f33007fd109971f6f77cfcbb357e","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
+    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
