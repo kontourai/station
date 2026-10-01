@@ -4,6 +4,13 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { APICallError } from 'ai';
+import {
+  findModelProviderError,
+  MODEL_PROVIDER_CREDENTIALS_REJECTED,
+  modelProviderErrorStatus,
+  modelProviderFailureMessage,
+} from '../../providers/model-provider-failure.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { outwardTransportError } from '../../utils/outward-error.js';
 import { parseToolName } from '../../utils/tool-name-normalizer.js';
@@ -18,6 +25,7 @@ import {
   isAutoApproved,
   isIntrinsicStationEngineGrant,
 } from '../tools/tool-executor.js';
+import { STREAM_ABORTED_BY_CLIENT } from './chat-error-marker.js';
 
 /**
  * Create elicitation callback for tool approval
@@ -235,7 +243,53 @@ export async function writeSSEChunk(
   streamWriter: any,
   chunk: any,
 ): Promise<void> {
-  await streamWriter.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  await streamWriter.write(
+    `data: ${JSON.stringify(outwardStreamChunk(chunk))}\n\n`,
+  );
+}
+
+/**
+ * The cause an engine's `{ type: 'error' }` stream part reports, when the
+ * part is one. VoltAgent does not throw for a model error that arrives after
+ * output has started; it emits this part carrying the raw provider error
+ * (an ai-sdk `APICallError`, whose serialized form holds the request URL,
+ * the whole prompt and the response body). The `/chat` route treats it
+ * exactly like a thrown error, so it must never be written as a chunk.
+ */
+export function streamErrorPartCause(chunk: unknown): unknown {
+  if (
+    !chunk ||
+    typeof chunk !== 'object' ||
+    (chunk as { type?: unknown }).type !== 'error'
+  ) {
+    return undefined;
+  }
+  return (chunk as { error?: unknown }).error ?? new Error('stream error part');
+}
+
+function isRawErrorValue(value: unknown): boolean {
+  return value instanceof Error || APICallError.isInstance(value);
+}
+
+/**
+ * The rule for every chunk written to a `/chat` client: no raw error object
+ * crosses, and step frames carry only their type. A top-level field holding an `Error` (a `tool-error` part's
+ * `error`, or any future part that carries one) is replaced by the fixed
+ * outward text, since serializing it exposes whatever the error holds.
+ * Chunks without such a field are returned as the same object.
+ */
+function outwardStreamChunk(chunk: unknown): unknown {
+  if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) return chunk;
+  // Step payloads are provider diagnostics; no Station client consumes them.
+  const type = (chunk as { type?: unknown }).type;
+  if (type === 'start-step' || type === 'finish-step') return { type };
+  let next: Record<string, unknown> | undefined;
+  for (const [key, value] of Object.entries(chunk)) {
+    if (!isRawErrorValue(value)) continue;
+    next ??= { ...(chunk as Record<string, unknown>) };
+    next[key] = outwardTransportError('sse');
+  }
+  return next ?? chunk;
 }
 
 /**
@@ -245,23 +299,76 @@ export async function writeSSEDone(streamWriter: any): Promise<void> {
   await streamWriter.write('data: [DONE]\n\n');
 }
 
+function isCredentialShapedError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes('credential') ||
+      error.message.includes('accessKeyId') ||
+      error.message.includes('secretAccessKey'))
+  );
+}
+
 /**
- * Write SSE error
+ * The status a `/chat` failure may carry to a client: the model provider's
+ * own status (`modelProviderErrorStatus`: an ai-sdk `APICallError` only)
+ * when it is a 4xx/5xx integer. Only when no such
+ * status exists does a credential-shaped message stand in as a 401, flagged
+ * `statusInferred` because no HTTP response supplied it.
+ */
+function outwardFailureStatus(error: unknown): {
+  statusCode?: number;
+  statusInferred?: true;
+} {
+  // Through RetryError/AggregateError/cause wrappers, like the /chat
+  // preparation path, so a retried provider error still names its status.
+  const statusCode = modelProviderErrorStatus(findModelProviderError(error));
+  if (statusCode !== undefined) return { statusCode };
+  return isCredentialShapedError(error)
+    ? { statusCode: 401, statusInferred: true }
+    : {};
+}
+
+/**
+ * The failure text a `/chat` turn may persist and serve (the `[CHAT_ERROR]`
+ * transcript marker, `chat-lifecycle.ts`). Never the thrown error's own
+ * message: a provider error's text is remote-controlled and has carried
+ * response bodies and secrets. It is the status sentence when a provider
+ * status is known, the unnumbered credentials sentence when the refusal was
+ * inferred, Station's own abort constant for an abort, else the fixed
+ * outward generic.
+ */
+export function outwardTurnFailureText(error: unknown): string {
+  const { statusCode, statusInferred } = outwardFailureStatus(error);
+  if (statusInferred) return MODEL_PROVIDER_CREDENTIALS_REJECTED;
+  if (statusCode !== undefined) return modelProviderFailureMessage(statusCode);
+  if (error instanceof Error && error.message === STREAM_ABORTED_BY_CLIENT) {
+    return STREAM_ABORTED_BY_CLIENT;
+  }
+  return outwardTransportError('sse');
+}
+
+/**
+ * Write SSE error.
+ *
+ * The text is always the fixed outward generic; the provider's own message
+ * never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
+ * a bare integer carries no provider-controlled text, and it is what lets
+ * the station-agent relay tell the user WHY the turn failed ("rejected the
+ * credentials", "rate-limited") instead of only that it did. An inferred
+ * credential 401 says so with `statusInferred: true`, so no consumer quotes
+ * it as a status the provider returned.
  */
 export async function writeSSEError(
   streamWriter: any,
   error: unknown,
 ): Promise<void> {
-  const isCredentialError =
-    error instanceof Error &&
-    (error.message.includes('credential') ||
-      error.message.includes('accessKeyId') ||
-      error.message.includes('secretAccessKey'));
+  const { statusCode, statusInferred } = outwardFailureStatus(error);
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',
       errorText: outwardTransportError('sse'),
-      statusCode: isCredentialError ? 401 : undefined,
+      statusCode,
+      ...(statusInferred ? { statusInferred } : {}),
     })}\n\n`,
   );
 }

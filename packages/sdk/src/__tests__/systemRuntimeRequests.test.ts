@@ -4,7 +4,7 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
 }));
 
-import { StationHttpError } from '../client/http';
+import { StationHttpError, StationRequestTimeoutError } from '../client/http';
 import { requestCoreUpdateRestartStatus } from '../core-update-restart-status';
 import { getDeploymentCapabilityState } from '../query-domains/systemRuntime';
 import {
@@ -123,6 +123,21 @@ describe('systemRuntimeRequests', () => {
       json: async () => ({ success: false, error: 'provider down' }),
     } as Response);
     await expect(fetchBranding()).rejects.toThrow('provider down');
+  });
+
+  it('passes a deadline that fires mid-body on as the timeout, not a failed answer', async () => {
+    const deadline = new StationRequestTimeoutError(
+      'http://example.test/api/branding',
+      20,
+      { method: 'GET' },
+    );
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw deadline;
+      },
+    } as unknown as Response);
+    await expect(fetchBranding()).rejects.toBe(deadline);
   });
 
   it('passes the provider theme through untouched for the consumer to validate', async () => {

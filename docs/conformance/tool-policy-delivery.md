@@ -2,7 +2,7 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.261; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.278; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
@@ -15,6 +15,10 @@ The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
 `canUseTool` also honors that Agent's matching `tools.autoApprove` patterns.
+Known `AskUserQuestion` callbacks are handled before those grants: answering
+a question requires an exact structured batch and never creates a session
+tool grant. This is a question interaction boundary, not a new consent floor
+for every tool or proof that the engine invokes every callback.
 Stale-generation, delegated-tool, config-protection and approval-guardian
 decisions therefore have a pre-tool delivery path. What it still
 does not deliver is the unattended-grant chain: the staged evaluator hands
@@ -72,6 +76,79 @@ standing-grant button names the tool when the payload supplies one. Empty,
 unsupported or unserializable input can produce no preview; the surface then
 falls back to its title/tool label. The Ask-mode chip copy says the engine asks before calls its own rules
 do not already allow, rather than claiming a floor Station does not impose.
+
+The standing grant covers calls to the tool, never an escalation beyond the
+call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
+SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
+escalations in several shapes, first read in 2.1.261 and re-checked in
+2.1.278. Read, Glob, Grep and LSP ask for a path outside
+the session's working directories without a `blockedPath`. They carry a session
+`Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
+drops the reason's type. Edit and Write outside them suggest `addDirectories`
+(with `acceptEdits` in default mode). The Bash path checks report a
+`blockedPath`, with a `Read` rule for a read and `addDirectories` for a write.
+A directory suggestion is an allow rule for a file tool (Read, Edit, Write,
+MultiEdit, NotebookEdit) or `addDirectories`. A Bash or PowerShell command
+rule is never one, even when it names a path.
+
+One shared computation, `toolRequestSessionGrant`, decides what a session
+answer grants. The adapter honours it and the toast, inline card and inbox
+card label it:
+
+- A plain call to a tool grants every later call to that tool ("Allow Bash for
+  this session"). Only this case mints a Station tool grant.
+- A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
+  mode and full access, allows the call and forwards only the engine's
+  `acceptEdits` mode change ("Auto-accept file edits for this session"). The
+  engine then passes later edits inside the working directories itself and
+  still asks for sensitive files such as `.git/config`, and Station, holding
+  no grant, prompts for those. The adapter records the forwarded mode as both
+  the mode it requested and the engine's current mode, and reports it on
+  `session.configured` metadata. The answer lasts until the user changes mode
+  only when the answering caller holds `setApprovalMode` authority: an answer
+  sent through the orchestration command route. There, once the engine has
+  taken it, the orchestration service records an `auto` approval-mode
+  decision for the conversation (`session.approval-mode-set`), as a composer
+  pick of Auto would. If any decision was recorded after the answer was sent
+  (Ask, Auto or full access), that decision stands and nothing is recorded.
+  It is not recorded over a standing Auto or full access. The composer chip,
+  later turns and their metadata then show Auto, and picking Ask ends it. An
+  answer from another path is sent to the engine as a one-call accept: no mode
+  change is forwarded and nothing is recorded. That covers the delegated
+  `respond_to_task_request` path for a task on this Station, which admits a
+  bound Project approver who may not set the approval mode, and the approval
+  inbox. The inbox card does not offer the option at all. For a task on a
+  saved Environment, the answer reaches that Station through its command
+  route with this Station's enrolled credential, and that Station applies
+  the same rule.
+- A turn applies the conversation's approval mode only when it differs from
+  the mode Station last requested, never merely because the engine moved. An
+  engine that entered plan mode stays there through the user's follow-ups
+  until the plan's review ends it. Picking a different mode is still applied.
+  In plan mode the engine still suggests `acceptEdits` for a sensitive-file
+  safety check, so an edit there offers no session option and forwards no
+  mode change (#2916). The same holds under full access
+  (`bypassPermissions`), where a forwarded `acceptEdits` would drop full
+  access. Station learns of plan entry from the engine's `status`
+  report, which reaches it on the message stream. A permission request raced
+  ahead of that report on the control channel reads the earlier mode, and can
+  still offer the auto-accept option for one edit.
+- An escalation, or any Read, Glob, Grep or LSP ask, forwards only the engine's
+  directory suggestions with `destination: 'session'`, so the approved
+  directory is the engine's state. The button reads "Allow reading this folder
+  for this session" for read rules and "Allow access to this folder for this
+  session" otherwise. An `acceptEdits` suggested alongside is not forwarded.
+- No session option is shown where there is nothing to forward, and a session
+  answer is recorded as a one-call accept. That covers an ask rule, a read
+  safety check, a file-edit safety check once the session is in `acceptEdits`,
+  and `ExitPlanMode` (#2916). A plan exit therefore always prompts, and its
+  suggested mode change is dropped.
+
+Station cannot see the reason type behind an edit ask (the SDK drops it), so
+a file-edit safety check the engine raises while it still suggests
+`acceptEdits`, such as a Windows suspicious-path check, can still offer the
+auto-accept option (#2932). Answering it allows that call and switches the
+session to `acceptEdits`; the engine keeps asking for such paths.
 
 Both surfaces read the payload through the same `toolRequestPreviewFromPayload`,
 whose `TOOL_REQUEST_ARGS_FIELDS` is the one list of the names the adapters publish

@@ -764,7 +764,7 @@ describe('SessionsView', () => {
         (heading) => heading.textContent,
       ),
     ).toEqual(['Needs you · 1']);
-    expect(screen.queryByText(/^Active now ·/)).toBeNull();
+    expect(screen.queryByText(/^Running ·/)).toBeNull();
     expect(
       Array.from(list.querySelectorAll('button'))
         .filter(
@@ -865,8 +865,11 @@ describe('SessionsView', () => {
     expect(
       row?.querySelector('.split-pane__item-subtitle')?.textContent,
     ).toMatch(/^! Waiting on you · Claude Code · demo, \d+d ago$/);
+    // The row is named by its title alone; its status line describes it.
+    // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
-      name: /^An independent session Needs attention Waiting on you · Claude Code · demo, \d+d ago$/,
+      name: 'An independent session',
+      description: /^\s*Needs attention Waiting on you · Claude Code · demo, \d+d ago$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
@@ -3313,7 +3316,8 @@ describe('SessionsView', () => {
     // a run group followed by a flat session in the SAME
     // lane must not re-emit the lane heading. Members carry the lane section
     // now; a member with an undefined section reset the layout's neighbor
-    // comparison and the following flat row duplicated 'Active now · N'.
+    // comparison and the following flat row duplicated 'Running · N'
+    // (then labelled 'Active now · N').
     test('emits the lane heading exactly once when a run group and a flat session share the lane', () => {
       const parent = {
         ...sessions[0],
@@ -3348,7 +3352,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
       const headings = sectionHeadings(container).filter((heading) =>
-        heading.startsWith('Active now'),
+        heading.startsWith('Running'),
       );
       expect(headings).toEqual(['Active now · 3']);
       expect(sectionHeadings(container)).toEqual(['Active now · 3']);

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/portable-continuation-incarnation.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"c386fe38698d258dde891215353f684978435a9b624c807b3c39c5c375cf5cf3","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

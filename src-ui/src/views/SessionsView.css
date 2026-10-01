@@ -157,10 +157,6 @@
   vertical-align: bottom;
 }
 
-.split-pane__item--selected .activity-row-meta .status-glyph {
-  color: var(--text-on-accent);
-}
-
 /* The row's time, on its first line and outside the row button. Tabular so
    a column of times aligns, and never shrunk: the title yields first. */
 .activity-row__time {

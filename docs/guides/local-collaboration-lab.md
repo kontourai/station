@@ -690,6 +690,13 @@ reuse the host's diagnostic signaling service. This Node/Chromium lab does not
 invoke those Tauri commands or establish a native application consumer, account
 sign-in, or protected DataChannel journey.
 
+The separate [native protected Project pilot](native-shell-verification.md#native-protected-project-pilot)
+uses a real macOS Tauri host and the account lab's production runtime fixture.
+Its explicit Device-proof option requires virtual application ingress and a
+broker connector before launching the child; ordinary lab starts do not enable
+it. The native guide owns its command, prerequisites and evidence limits. A
+Node/Chromium diagnostic result does not substitute for that native journey.
+
 ### Source owners
 
 - [Local lab command](../../scripts/local-collaboration-lab.ts) owns stage

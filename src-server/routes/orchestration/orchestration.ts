@@ -372,6 +372,17 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  answers: z
+    .record(
+      z.string().min(1).max(256),
+      z
+        .object({
+          optionIds: z.array(z.string().max(256)).max(32),
+          custom: z.string().max(12000).optional(),
+        })
+        .strict(),
+    )
+    .optional(),
 });
 
 const stopSessionCommandSchema = z.object({
@@ -2495,6 +2506,14 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      // #2377 slice C2b: a tool's discovery on a saved Environment arrives
+      // here; another Station needs a bound operator, decided before the
+      // route connects or forwards anything.
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const data = await deps.discoverDelegationOptions(getBody(c));
         return c.json({ success: true, data });
@@ -2521,6 +2540,12 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2b: as the single-task reads below.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.listDelegatedTasks({
         ...parsed.data,
@@ -4122,6 +4147,12 @@ export function createOrchestrationRoutes(
           ...(ownerAttribution ? { ownerAttribution } : {}),
           ...(command.type === 'adoptSession' && fullAccessGrant
             ? { fullAccessGrant }
+            : {}),
+          // #2915: this route's authorization is the one `setApprovalMode`
+          // uses (an Auto pick needs nothing beyond it), so an answer sent
+          // here may record the Auto posture an edit-mode answer implies.
+          ...(command.type === 'respondToRequest'
+            ? { approvalModeAuthority: true as const }
             : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined

@@ -299,10 +299,12 @@ export class PeerCredentialStore {
   }
 
   /**
-   * Internal accessor for the raw credential — callers MUST gate this behind
-   * an internal-only boundary (never expose over an externally-reachable
-   * route regardless of scope). See
-   * `src-server/routes/environments/peer-credential-routes.ts`.
+   * In-process accessor for the raw credential, for server code that
+   * presents it to the peer itself (the runtime's remote forwarder,
+   * `services/remote-stations/remote-station-forwarder.ts`, among others).
+   * No HTTP route returns it, to any caller, whatever the scope (#2377 C2b
+   * deleted the last one; `runtime-routes-peer-bearer-unreachable.test.ts`
+   * pins that).
    */
   get(environmentId: string): (PeerCredential & { credential: string }) | null {
     const record = this.#read().peers.find(

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/bound-input-file-replies.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"552aedc731d79569ddceb7e4e5be3625ec670336c61f56213aedc68dc839d096","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

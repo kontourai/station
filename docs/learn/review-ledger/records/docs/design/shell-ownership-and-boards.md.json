@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/shell-ownership-and-boards.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted ownership/Board design with staged implementation history and current personal-Board owner routing.",
+
+  "limits": "Personal route/service/view/sidebar lineage checked. Shared Boards, all promotion rules, Review placement, presence, plugin visibility, and cross-device persistence not comprehensively audited.",
+
+  "document": {"digest":"42f5ba00b0f9fbf5ebc1e056a6c23a8f65a403ed91f1069e6b819786642c15c0","revision":"0368881dcab562767c4127b5bee0ebb6356449f3"},
+
+  "sources": [
+    {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-server/routes/me/personal-layouts.ts","digest":"c159dedd5f61ca0b9b5f56e84f11b381dab907b8ab3368c08867dec079bb0867","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-server/services/layouts/personal-layout-service.ts","digest":"8eb0ce41fa821ca92d56f36224fb1e0e09485274315148a1e37971e9195055c7","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"515dd447483a0ceaf679ce64ac253e6053466838b9a026fdb13f84d8a38d44a4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","digest":"df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-ui/src/views/PersonalBoardView.tsx","digest":"ea91263596a16ded25be80f4679e8f4afd48340cd36a6cdcc0cb60246312248e","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
+    "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

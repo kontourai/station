@@ -1,0 +1,27 @@
+{
+  "path": "docs/design/station-topology.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Dated topology decision/current-target distinction preserved with explicit deployment and capability limits; principal and instance owners checked.",
+
+  "limits": "Not a full authorization, tenancy, plugin isolation, multi-human room, broker, inference or remote-execution audit. Original product-target promises remain a decision record.",
+
+  "document": {"digest":"f6bc98daaafe1fa9b46d983cebc2826ef9b867a91b573708b710a3921039ec5f","revision":"9e821273f4e0e4db059222e01744ab9f512418a7"},
+
+  "sources": [
+    {"path":"packages/shared/src/instance-registry.ts","digest":"551ccf7724ce473de8da5150fb8280f3b9474b3c255e48a5370fa6bb3ffc46fc","revision":"9e821273f4e0e4db059222e01744ab9f512418a7"},
+
+    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"d0196ce1fb343a0930c493bdd2ba266fb0783bb49c5805144d00b1f7180a4bc2","revision":"9e821273f4e0e4db059222e01744ab9f512418a7"},
+
+    {"path":"src-server/services/identity/principal-resolver.ts","digest":"479b1c2d15f60ec6e3c1f4b15f2536390ed265a63307c27c9a52329c9c4985e6","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"}
+  ],
+
+  "checks": [
+    "Full original body read; bounded actual-owner/caller review. Purpose classification is separate from whole-document semantic review.",
+
+    "Focused batch: 140 tests across 9 files passed; documentation links397, index, MCP98 and Conduit generated parity passed."
+  ]
+}

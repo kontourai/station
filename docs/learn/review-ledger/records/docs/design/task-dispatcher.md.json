@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/task-dispatcher.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed dispatcher, composition and runtime caller review; corrected adapter inputs, removed stale adapter count, preserved cancellation/uncertain-effect limits.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "document": {"digest":"f9bd229c601cd56e85be31ece9d299bda3e57394f27c539380cc49e8d09492ba","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+  "sources": [
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
+
+    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/projects/__tests__/task-dispatch-composition.test.ts","digest":"c1b3ad60cc891048833519a06190064645c93f6c1bf5270cfc30d67bb76fe32c","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/projects/__tests__/task-dispatcher.test.ts","digest":"70be27a940a27e8de12f6f509382c2172e2de1b7556fcd6905346b3d9b293e3b","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/projects/task-dispatch-composition.ts","digest":"53723bc8fe1804b5dee5d33be3fed9e7912a85d2acc0cb66b35fd419e4ad9638","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Reviewed integration deltas: Completed dispatcher, composition and runtime caller review; corrected adapter inputs, removed stale adapter count, preserved cancellation/uncertain-effect limits.",
+
+    "Final integrated dispatcher/composition, docs MCP and real reader selection: 53 tests passed across four files.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical."
+  ]
+}

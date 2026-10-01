@@ -117,9 +117,9 @@ describe('#2310 Drafts through the rendered dock inbox', () => {
     deviceSettingsStore.reloadFromStorage();
   });
 
-  it('AC1: server Draft summary renders under Drafts, not Active now; history row stays Active now', () => {
+  it('AC1: server Draft summary renders under Drafts, not a live group; history row stays live, as Idle', () => {
     renderInbox(panelItems([SERVER_DRAFT, HISTORY]));
-    const active = screen.getByRole('region', { name: 'Active now' });
+    const active = screen.getByRole('region', { name: 'Idle' });
     const drafts = screen.getByRole('region', { name: 'Drafts' });
     expect(within(drafts).getByText('Draft')).not.toBeNull();
     expect(drafts.textContent).toContain('grok-build');
@@ -146,9 +146,9 @@ describe('#2310 Drafts through the rendered dock inbox', () => {
       />,
     );
     expect(screen.queryByRole('region', { name: 'Drafts' })).toBeNull();
-    expect(
-      screen.getByRole('region', { name: 'Active now' }).textContent,
-    ).toContain('grok-build');
+    expect(screen.getByRole('region', { name: 'Idle' }).textContent).toContain(
+      'grok-build',
+    );
   });
 
   it('AC2 sending device: first turn completed locally, sessions cache NOT refetched, row is not a Draft', () => {

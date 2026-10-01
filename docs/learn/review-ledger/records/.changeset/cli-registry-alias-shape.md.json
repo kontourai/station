@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/cli-registry-alias-shape.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Read the package change description and release intent.",
+
+  "limits": "A changeset does not prove publication, current installation or an end-user outcome.",
+
+  "document": {"digest":"797ff105b8dead58ada0ceb45498e8f2b2ba07facbfef16aa585c00f0aafb6ec","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+
+  "sources": [],
+
+  "checks": []
+}

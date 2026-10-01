@@ -10,7 +10,7 @@ not grant any of those permissions.
 [package.json](./package.json), not an advertised standalone npm installation.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
-`/application-channel`, `/self-hosted-browser`, `/native-diagnostic-echo` and
+`/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
 `/native-application`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 
@@ -42,14 +42,22 @@ and the [host profile adapter](../../src-ui/src/platform/native/stationProfileSt
 ## Optional native application transport
 
 `@kontourai/station-connect/native-application` exports
-`createNativeApplicationTransport`. Its caller supplies host-owned v2 signaling,
-approved Station trust with an authoritative recheck, a Station origin and a
-lifetime signal. The client verifies the Station proof before applying the
+`createNativeApplicationTransport`. Its caller supplies an independent
+host-owned peer adapter, approved Station trust with an authoritative recheck,
+a Station origin and a lifetime signal. The adapter prepares a host-issued
+opaque peer handle and nonce before SDP creation, then opens and reads that same
+peer. The client verifies the complete Station proof before applying the
 answer and exposes `fetch` and `openChannel` over the reliable ordered
-`station-application-v1` DataChannel. It has no direct HTTP fallback and does
-not read the routing grant bearer. Device and account credentials remain with
-their existing owners. This opt-in library does not activate a saved Desktop
-route or establish a packaged native journey.
+`station-application-v1` DataChannel. After opening, `prepareRequest` asks the
+host to sign the exact bounded request for the approved Device; it refuses
+caller-supplied Authorization, Cookie or Device-proof headers. It has no direct
+HTTP fallback and does not read the routing-grant bearer or signing key.
+
+This remains an opt-in library contract. It does not enable a default UI route,
+enroll or activate a Device, authenticate an account, or grant Project access.
+The separate account-continuation proof is still required where applicable.
+Source and focused tests do not establish executed Tauri IPC, packaged-client,
+physical-device or complete authenticated Project-journey evidence.
 
 ## Optional self-hosted browser transport
 
@@ -127,6 +135,13 @@ HTTPS is required except for the explicit loopback HTTP development profile.
 Requests retain the application channel's 16 KiB pilot body limit; responses use
 its bounded, backpressured streaming protocol. This interface is Fetch, not an
 arbitrary WebSocket or terminal proxy.
+
+An admitted channel owner may supply optional `prepareRequest` to add headers
+for that peer's exact request. The adapter keeps the original target/body,
+refuses header replacement and closes on cancellation or failed preparation.
+See the [Connect reference](../../docs/reference/connect.md#application-channel-request-preparation)
+for the copied inputs, bounds and lifetime rules. This does not install a
+native signer or enable ordinary UI transport selection.
 
 The [self-hosted broker guide](../../docs/guides/self-hosted-broker.md) documents
 operator setup. The [free collaboration lab](../../docs/guides/local-collaboration-lab.md)

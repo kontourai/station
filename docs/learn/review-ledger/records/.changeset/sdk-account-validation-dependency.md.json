@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/sdk-account-validation-dependency.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"d41c6386f9130e4d271357adb473116fbeedf91a5db75711a2441d5e9221309f","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}
