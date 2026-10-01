@@ -3431,8 +3431,9 @@ const IDENTITY_WAIT_MAX_EXTENSIONS = 2;
  *
  * `STARTUP_READINESS_TIMEOUT_MS` is a BASE, not a total: only a caller that
  * supplies `childAlive` can extend it, and today that is exactly `start()`'s
- * two waits. Every other budget in the tree that once matched 90s is now an
- * INDEPENDENT supervisor, not a mirror.
+ * waits: the two identity waits and the two TCP listener waits (#2964).
+ * Every other budget in the tree that once matched 90s is now an INDEPENDENT
+ * supervisor, not a mirror.
  */
 export const STARTUP_READINESS_MAX_TIMEOUT_MS =
   STARTUP_READINESS_TIMEOUT_MS +
@@ -4035,19 +4036,48 @@ export async function awaitReadiness(
   }
 }
 
-async function waitForTcpOk(
+/**
+ * Waits for a TCP listener the managed server opens beside its API port (the
+ * terminal and voice sockets). With `childAlive` it takes the same bounded
+ * slow-boot extension as `waitForIdentity` (#2964): while the server is alive
+ * and its identity wait is still legitimately extending, a flat 90 s here
+ * failed the start first ("Timed out waiting for TCP listener") on loaded
+ * hosts. It also stops at once when the child has exited.
+ */
+export async function waitForTcpOk(
   host: string,
   port: number,
   timeoutMs = STARTUP_READINESS_TIMEOUT_MS,
-  signal?: AbortSignal,
+  options?: Pick<
+    IdentityWaitOptions,
+    'childAlive' | 'extensionMs' | 'maxExtensions' | 'log' | 'signal'
+  >,
 ): Promise<void> {
   const probeHost =
     host === '0.0.0.0' ? 'localhost' : host === '::' ? '::1' : host;
-  const deadline = Date.now() + timeoutMs;
+  const extensionMs = options?.extensionMs ?? IDENTITY_WAIT_EXTENSION_MS;
+  const maxExtensions = options?.maxExtensions ?? IDENTITY_WAIT_MAX_EXTENSIONS;
+  const log = options?.log ?? console.log;
+  let deadline = Date.now() + timeoutMs;
+  let extensionsUsed = 0;
   let lastFailure = 'No connection established';
 
-  while (Date.now() < deadline) {
-    throwIfReadinessAborted(signal);
+  while (true) {
+    throwIfReadinessAborted(options?.signal);
+    if (Date.now() >= deadline) {
+      if (
+        !options?.childAlive ||
+        extensionsUsed >= maxExtensions ||
+        !options.childAlive()
+      ) {
+        break;
+      }
+      extensionsUsed += 1;
+      deadline = Date.now() + extensionMs;
+      log(
+        `⏳ Startup readiness deadline extended (+${Math.round(extensionMs / 1000)}s, ${extensionsUsed}/${maxExtensions}) for TCP listener ${probeHost}:${port}: child process alive, last failure "${lastFailure}" — slow boot under load`,
+      );
+    }
     const outcome = await new Promise<{ ok: boolean; failure?: string }>(
       (resolve) => {
         const socket = createConnection({ host: probeHost, port });
@@ -4068,7 +4098,15 @@ async function waitForTcpOk(
     );
     if (outcome.ok) return;
     lastFailure = outcome.failure ?? lastFailure;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Not listening yet and the child is gone: it never will be.
+    if (options?.childAlive && !options.childAlive()) {
+      throw new Error(
+        `Managed server exited before TCP listener ${probeHost}:${port} was ready (${lastFailure})`,
+      );
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(200, Math.max(0, deadline - Date.now()))),
+    );
   }
 
   throw new Error(
@@ -4561,19 +4599,15 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { childAlive: childAliveProbe(serverProc.pid), signal },
         ),
       (signal) =>
-        waitForTcpOk(
-          host,
-          serverPort + 1,
-          STARTUP_READINESS_TIMEOUT_MS,
+        waitForTcpOk(host, serverPort + 1, STARTUP_READINESS_TIMEOUT_MS, {
+          childAlive: childAliveProbe(serverProc.pid),
           signal,
-        ),
+        }),
       (signal) =>
-        waitForTcpOk(
-          host,
-          serverPort + 2,
-          STARTUP_READINESS_TIMEOUT_MS,
+        waitForTcpOk(host, serverPort + 2, STARTUP_READINESS_TIMEOUT_MS, {
+          childAlive: childAliveProbe(serverProc.pid),
           signal,
-        ),
+        }),
       // station#1177 (review MED): the UI wait must validate the SAME boot
       // identity as the server wait — a competing instance's UI answering
       // 200 here let a lost port race look like a successful start. The
