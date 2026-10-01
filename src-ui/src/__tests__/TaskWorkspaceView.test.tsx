@@ -85,6 +85,8 @@ const pluginsResult: {
   data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
 } = { data: [] };
 const bindStarterWork = vi.hoisted(() => vi.fn());
+const roomAgentBinding = vi.hoisted(() => vi.fn());
+const roomAgentSend = vi.hoisted(() => vi.fn());
 const starterQueryClient = vi.hoisted(() => ({
   setQueryData: vi.fn(),
   invalidateQueries: vi.fn(async () => {}),
@@ -134,6 +136,22 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => {
   };
 });
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
+  TaskRoomWorkNotSentError: class extends Error {},
+  useTaskRoomAgentOptionsQuery: () => ({
+    data: { targets: [{ id: 'researcher', name: 'Researcher', ready: true }] },
+    isLoading: false,
+    isError: false,
+  }),
+  useTaskRoomAgentRequestsQuery: () => ({
+    data: { records: [] },
+    isError: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useSubmitTaskRoomAgentRequestMutation: (...args: unknown[]) => {
+    roomAgentBinding(...args);
+    return { isPending: false, mutateAsync: roomAgentSend };
+  },
   useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
   useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
   useProjectTaskRoomHistoryQuery: () => ({
@@ -415,6 +433,60 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     expect(screen.getByDisplayValue('Retained async context')).toBeTruthy();
     expect(screen.getByText(/Task room is unavailable/i)).toBeTruthy();
+  });
+
+  test('the Task conversation invokes an agent in the resolved Project slug and exact Task incarnation', async () => {
+    roomAgentBinding.mockClear();
+    roomAgentSend
+      .mockReset()
+      .mockResolvedValue({ kind: 'recorded', record: { state: 'dispatched' } });
+    roomDiscoveryResult = {
+      data: {
+        kind: 'existing',
+        scope: { taskId: 'task-alpha' },
+        capabilities: {
+          documentRead: true,
+          documentWrite: true,
+          historyRead: true,
+          messageWrite: true,
+          revisionLinks: true,
+          live: true,
+        },
+      },
+      isLoading: false,
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TaskWorkspaceView taskId="task-alpha" />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole('tab', { name: 'Task conversation' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Ask an agent' }),
+    );
+    fireEvent.click(
+      screen.getByRole('option', { name: 'Researcher @researcher' }),
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Probe this idea' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+    await waitFor(() => expect(roomAgentSend).toHaveBeenCalledOnce());
+    expect(roomAgentBinding).toHaveBeenCalledWith(
+      'task-alpha',
+      '2026-07-19T00:00:00.000Z',
+      'alpha',
+      taskWorkspaceAuthorityScope,
+    );
+    expect(roomAgentSend.mock.calls[0][0]).toMatchObject({
+      agentId: 'researcher',
+      prompt: 'Probe this idea',
+    });
   });
 
   test('reopens an exact available answer with its provenance without calling it semantic support', () => {

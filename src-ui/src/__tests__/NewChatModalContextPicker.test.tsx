@@ -111,7 +111,7 @@ const OPTIONS: NewChatModalContextOption[] = [
     value: 'station',
     label: 'Station',
     icon: '📁',
-    workingDirectory: '/Users/brian/dev/station',
+    workingDirectory: '/Users/me/dev/station',
   },
   { value: 'no-cwd', label: 'No CWD Project', icon: '📁' },
 ];

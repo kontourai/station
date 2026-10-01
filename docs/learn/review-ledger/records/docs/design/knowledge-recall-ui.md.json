@@ -24,7 +24,7 @@
 
     {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"packages/sdk/src/index.ts","digest":"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625","revision":"7576509655a6bbef0ef61d5f4645722922b8ec43"},
 
     {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

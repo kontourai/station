@@ -44,7 +44,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
@@ -56,7 +56,7 @@
 
     {"path":"scripts/__tests__/fast-checks-shard-cli.test.ts","digest":"a90b55560ee262930585540e8a6458b4bc6f8de918294fecc012eed2c87487cc","revision":"29fa8649d8b61deb25adf50c4424d9ed0154c5ab"},
 
-    {"path":"scripts/__tests__/guardrail-execution-coverage.test.ts","digest":"075ac3fa336618bc8b83c92ae2b3751c4cc0e9de211c51bc71e96b74af529bdd","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/guardrail-execution-coverage.test.ts","digest":"2190d92cae1d16fd63f0b1bdbbc00e44f0e6884830f9101897ba1ac498d85153","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
 
     {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 

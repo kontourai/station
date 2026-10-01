@@ -117,7 +117,7 @@ function renderHeaderMarkup(): string {
             <ChatDockProjectContext
               projectSlug="demo"
               projectName="Demo Project"
-              workingDirectory="/Users/brian/dev/github/kontourai/demo-project"
+              workingDirectory="/Users/me/dev/github/kontourai/demo-project"
               gitStatus={gitStatus}
               projects={[]}
               onSelectProject={() => {}}

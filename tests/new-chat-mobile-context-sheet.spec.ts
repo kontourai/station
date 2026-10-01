@@ -23,7 +23,7 @@ const PROJECTS = Array.from({ length: PROJECT_COUNT }, (_, index) => ({
   icon: '🚀',
   description: `Workspace ${index}`,
   hasWorkingDirectory: true,
-  workingDirectory: `/Users/brian/dev/project-${index}`,
+  workingDirectory: `/Users/me/dev/project-${index}`,
   layoutCount: 0,
   hasKnowledge: false,
 }));

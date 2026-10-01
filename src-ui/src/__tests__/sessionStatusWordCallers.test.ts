@@ -81,7 +81,8 @@ describe('sessionLifecycleLabel has exactly one caller', () => {
 
   test('the scan actually reaches the rendering surfaces it is guarding', () => {
     // The "unreachable fixture" failure mode: a walk that finds no files
-    // passes for the wrong reason. These four are the sites A1 named.
+    // passes for the wrong reason. These are the sites A1 named that still
+    // exist (the fourth, the delegated-work coordinator card, was removed).
     const scanned = sourceFiles(SRC_ROOT).map((file) =>
       file.slice(SRC_ROOT.length),
     );
@@ -89,7 +90,6 @@ describe('sessionLifecycleLabel has exactly one caller', () => {
       join('views', 'SessionsView.tsx'),
       join('views', 'project-page', 'ProjectLiveWorkSection.tsx'),
       join('components', 'session-detail', 'SessionDetailHeader.tsx'),
-      join('components', 'session-detail', 'DelegatedTaskCoordinator.tsx'),
     ]) {
       expect(scanned).toContain(guarded);
     }
@@ -101,7 +101,6 @@ describe('sessionLifecycleLabel has exactly one caller', () => {
       join('views', 'SessionsView.tsx'),
       join('views', 'project-page', 'ProjectLiveWorkSection.tsx'),
       join('components', 'session-detail', 'SessionDetailHeader.tsx'),
-      join('components', 'session-detail', 'DelegatedTaskCoordinator.tsx'),
     ]) {
       const source = readFileSync(join(SRC_ROOT, guarded), 'utf8');
       expect(

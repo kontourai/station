@@ -105,7 +105,7 @@ function renderRow(msg: ChatMessage) {
         showReasoning={false}
         showToolDetails={false}
         onCopy={() => {}}
-        owner={{ id: 'brian', label: 'Brian Anderson' }}
+        owner={{ id: 'casey', label: 'Casey Example' }}
       />,
     ),
   );

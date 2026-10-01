@@ -65,6 +65,8 @@ import {
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
+import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
+import { EngineAccountOverview } from './EngineAccountOverview';
 import {
   blockingPrerequisite,
   resolveProviderPresentation,
@@ -534,6 +536,12 @@ export function AgentConnectionView({
                */}
             </div>
 
+            {(form.type === 'claude' || form.type === 'codex') && (
+              <EngineAccountOverview
+                connectionId={form.id}
+                engine={form.type}
+              />
+            )}
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}
@@ -696,16 +704,21 @@ export function AgentConnectionView({
                 )}
 
                 {(form.type === 'claude' || form.type === 'codex') && (
-                  <AppHomeProfileField
+                  <CredentialProfileAccess
                     connectionId={form.id}
-                    engineLabel={
-                      engineDisplayLabel(
-                        connectionEngineId(form) ?? form.type,
-                      ) ?? form.name
-                    }
-                    useAppHome={form.config.useAppHome === true}
-                    onToggle={(value) => setConfigField('useAppHome', value)}
-                  />
+                    managementOnly
+                  >
+                    <AppHomeProfileField
+                      connectionId={form.id}
+                      engineLabel={
+                        engineDisplayLabel(
+                          connectionEngineId(form) ?? form.type,
+                        ) ?? form.name
+                      }
+                      useAppHome={form.config.useAppHome === true}
+                      onToggle={(value) => setConfigField('useAppHome', value)}
+                    />
+                  </CredentialProfileAccess>
                 )}
 
                 {runtimeCatalog && (
