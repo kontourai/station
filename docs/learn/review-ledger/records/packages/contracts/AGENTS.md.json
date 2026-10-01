@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/reference/contracts.md","digest":"c03ab6d3f5c0283c243cff3e5881aaf27150994665cf8927a46008da98fb6d9f","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"packages/contracts/package.json","digest":"0d88852a0f507668152064eaf75ce4f1ffa9c3809e56b69042f2b5a1abbcfba2","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"}
   ],
 
   "checks": [

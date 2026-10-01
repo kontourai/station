@@ -28,9 +28,9 @@
 
     {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"7c4354577f3bcca95ec54c836d3250b20c5863aa86fb5f988edd0d61117c39cd","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"packages/shared/package.json","digest":"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
-    {"path":"pnpm-lock.yaml","digest":"f0af8762619b6a2cfa7a8df7ca91b103e66098c02c9f671b4737c65af3a214a6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -52,6 +52,12 @@
 
     {"path":"src-server/utils/logger.ts","digest":"d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
+    {"path":"src-ui/AGENTS.md","digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/__tests__/branding-role-cascade.test.ts","digest":"7f8a4a575fc67363e9964fe8d8e83a0b928572565c07668e7422d961272895a3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/components/BrandingThemeBridge.tsx","digest":"50426a6e110f2f98a3ded606e7435e0ba4c5bbb038a9bcec9e71655324e17a6a","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+
     {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -66,6 +72,8 @@
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
+    {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
     {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
@@ -76,15 +84,7 @@
 
     {"path":"src-ui/src/tokens.css","digest":"18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/AGENTS.md","digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/lib/branding-theme.ts","digest":"179af9035f6f6d294095df773be375bcae31428421f6a2f3f56af6639fd9a2b3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":"src-ui/src/components/BrandingThemeBridge.tsx","digest":"50426a6e110f2f98a3ded606e7435e0ba4c5bbb038a9bcec9e71655324e17a6a","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
-
-    {"path":"src-ui/src/__tests__/branding-role-cascade.test.ts","digest":"7f8a4a575fc67363e9964fe8d8e83a0b928572565c07668e7422d961272895a3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
+    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

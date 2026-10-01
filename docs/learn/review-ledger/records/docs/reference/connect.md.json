@@ -16,13 +16,15 @@
 
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/connect/package.json","digest":"59e9704946b62090199e1797e07a151c67c202813c5abe1f6187505a4fd5f657","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/connect/src/__tests__/ConnectionStore.broker-route.test.ts","digest":"989e74e1b45de8a6814ec51d6bec026eca90c816ce42e4c1b5ad0f07e0bf7deb","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/__tests__/ConnectionStore.test.ts","digest":"29eb842491b162700a15f07cda5ceb47b6d001d0afe5d7afddb14588bc18dfec","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/__tests__/devicePairing.test.ts","digest":"750c33d90f8da137a01070e089cb4c574ece2c5963090674a06d75ad8bd32e25","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"packages/connect/src/core/ConnectionHealthCoordinator.ts","digest":"5dc1d75cc488ffafe720fc3dfad8787103042e3462d581c9806316151624c4b0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -41,6 +43,10 @@
     {"path":"packages/connect/src/core/devicePairing.ts","digest":"1072b18524cd5e982906263d776f3aaf94818b14fea3f83220d40596e175f4ed","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/environmentProof.ts","digest":"34482dbc2db9cc2ed7398658de2f8933b49c290eb3f5668c208491183616c377","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"packages/connect/src/core/nativeConnectionShared.ts","digest":"67212b5369a0e7be572b20be340e47deca9fe4c18fde8d94d9cbc02ac5cebfea","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/storage.ts","digest":"ccc9b390c0ab8521df87d6c37d7e2b519bbe1c0c98c91562be67137d57b155aa","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -94,17 +100,11 @@
 
     {"path":"src-ui/src/lib/serverHealth.ts","digest":"c0840b525e21f5cc637007f2a5047f9629c2d147d87167e6cd470d22c365711d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
+    {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"7111914934e5bdd2a236f497e695795402681ccd1ee4e7d9e54334c5a735574b","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
     {"path":"src-ui/src/platform/native/pairingTransport.ts","digest":"ff3b1d70df749c1ad0db5975df4f138f5ae897630a80d482c2828a623d405613","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"packages/connect/src/core/nativeConnectionShared.ts","digest":"67212b5369a0e7be572b20be340e47deca9fe4c18fde8d94d9cbc02ac5cebfea","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
-    {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"7111914934e5bdd2a236f497e695795402681ccd1ee4e7d9e54334c5a735574b","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
   ],
 
   "checks": [

@@ -12,23 +12,25 @@
   "document": {"digest":"e403d3522a0b1c4e8f4cf0788f91923acfc8c1a846d295429482eafc5780a20f","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
   "sources": [
-    {"path":"packages/cli/package.json","digest":"ecb38859cb77f9bc6f0fe148585c7f0e834f29b73944cf383b993cbf1f2abbd8","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
     {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/connect/package.json","digest":"59e9704946b62090199e1797e07a151c67c202813c5abe1f6187505a4fd5f657","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
-    {"path":"packages/contracts/package.json","digest":"0d88852a0f507668152064eaf75ce4f1ffa9c3809e56b69042f2b5a1abbcfba2","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/package.json","digest":"d145d931b46e4c522f7493ecbe869be6ca825e40fd0c567b281905fa64212ed0","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
     {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/package.json","digest":"7c4354577f3bcca95ec54c836d3250b20c5863aa86fb5f988edd0d61117c39cd","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"packages/shared/package.json","digest":"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
     {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -90,9 +92,7 @@
 
     {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"}
+    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [

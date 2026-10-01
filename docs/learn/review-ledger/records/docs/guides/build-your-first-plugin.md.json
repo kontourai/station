@@ -28,13 +28,13 @@
 
     {"path":"packages/cli/src/dev/watchers.ts","digest":"84d7e142a2ee88d419333d9464bccd8072f126d3746d0c3ae748fb7ae293b70c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/package.json","digest":"d145d931b46e4c522f7493ecbe869be6ca825e40fd0c567b281905fa64212ed0","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
-    {"path":"packages/shared/package.json","digest":"7c4354577f3bcca95ec54c836d3250b20c5863aa86fb5f988edd0d61117c39cd","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"packages/shared/package.json","digest":"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
     {"path":"packages/shared/src/plugin-scaffold.ts","digest":"47f077e8253eb468c8d28cc20f02a36dd78872e5670624b9e1580e01dba50b99","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -9,7 +9,7 @@
 
   "limits": "Actual retained snapshot import/readback: 1149 records, 2089 links; repeat zero creates/links. Source-built Flow Agents candidate 6a24b4ee3fb528ee2abbdba2c861e4b5925a6161 installed through public CLI matched all 123 Kit files and all canonical fields/bytes; full provider projection retained 1149 provenance objects and 2089 labels. Published 6.4.0 failures and local fixes are not a release claim. No live embedding/model/Neo4j/native proof. Later 6.5.0 registry/tag integrity and public installed consumer/update checks were inspected: 30 tests passed, canonical test-store bytes/provenance/link labels preserved and recorded/observed Kit artifact hashes matched. macOS/Node24 only; registry metadata matching is not independent npm attestation verification.",
 
-  "document": {"digest":"795329bc7eebf970ee23c935aefb39752a33158c02683407368ed36ddcc47f8e","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+  "document": {"digest":"795329bc7eebf970ee23c935aefb39752a33158c02683407368ed36ddcc47f8e","revision":"e48e25d6c7787782bb5168862ca17b800ce799e2"},
 
   "sources": [
     {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -20,7 +20,7 @@
 
     {"path":"examples/repository-knowledge-graph/ingest.mjs","digest":"ecc5cf0ae31dc269b62525c2e6a99bbc996c1329c634ec77c94ca1823a2966a9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"088bb39e956453e408b5c8ccee5e2784a0b33c8ce7487e2ef722755b54f14b1a","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
