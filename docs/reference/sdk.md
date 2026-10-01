@@ -97,9 +97,8 @@ It uses the dedicated sign-in read, never the credential-management or manual
 enrolment endpoints. Its cache is partitioned by current request authority;
 failed reads stay visible and are not retried automatically. `EngineLoginProfiles`
 is exported from the same subpath.
-The profile-index hook and DTO are pending the
-[next minor package release](../../.changeset/engine-login-profile-index.md);
-this reference describes their repository source, not availability in SDK 0.8.
+The profile-index hook and DTO are available in repository source and
+scheduled for the next minor package release.
 
 The status query treats an absent login as `null` and polls every two seconds
 only while starting, awaiting approval or verifying. Mutations are never
