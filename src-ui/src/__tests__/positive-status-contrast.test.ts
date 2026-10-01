@@ -26,7 +26,30 @@ function hexValues(source: string, token: string): string[] {
     .filter((value): value is string => Boolean(value));
 }
 
+/**
+ * The kit's own block for a mode, selected by its selector. Occurrence order
+ * is not a contract: @kontourai/ui 1.17 added a dark-island block
+ * (`[data-theme="dark"]:where([data-theme="light"] *)`) between `:root` and
+ * the light block, so "the second occurrence" of a token became a dark value.
+ */
+function kitBlock(theme: Theme): string {
+  const selector = theme === 'dark' ? ':root {' : '[data-theme="light"] {';
+  // At the start of a line, so a longer selector ending the same way (or the
+  // dark-island selector, which contains the light one) cannot match.
+  const start = KIT_TOKENS.search(
+    new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'm'),
+  );
+  if (start < 0) throw new Error(`kit tokens have no "${selector}" block`);
+  return KIT_TOKENS.slice(start, KIT_TOKENS.indexOf('\n}', start));
+}
+
 function themedHex(source: string, token: string, theme: Theme): string {
+  if (source === KIT_TOKENS) {
+    const [value] = hexValues(kitBlock(theme), token);
+    if (!value) throw new Error(`kit ${theme} block does not set ${token}`);
+    return value;
+  }
+  // Station's index.css declares each of these once per mode, dark first.
   const values = hexValues(source, token);
   return values[theme === 'dark' ? 0 : 1]!;
 }
@@ -134,6 +157,17 @@ describe('StatusBadge tone contrast (station#923)', () => {
   });
 
   test('all four quiet treatments clear AA in every channel and theme', () => {
+    // Every pair below clears AA in both modes, so a reader that returned the
+    // dark block for light would pass unnoticed (it did, for the kit-backed
+    // active tone, after @kontourai/ui 1.17). The modes must really differ.
+    for (const [source, token] of Object.values(TONES).map(
+      ({ background }) => background,
+    )) {
+      expect(themedHex(source, token, 'light'), token).not.toBe(
+        themedHex(source, token, 'dark'),
+      );
+    }
+
     // The a11y render ratchet only exercises the DEFAULT channel. Its dark
     // --k-brand-contrast is near-black, so filled tones passed there while the
     // beta/nightly white override failed for owners. Keep channels explicit.

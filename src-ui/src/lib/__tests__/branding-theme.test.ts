@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { contrastRatio, SHIPPED_THEMES } from '@kontourai/ui/contrast';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { resolveCssImports } from '../../../../tests/helpers/css-cascade-fixture';
@@ -62,6 +66,7 @@ describe('validation base theme', () => {
       const names = [
         '--k-bg',
         '--k-panel',
+        '--k-panel-raised',
         '--k-brand',
         '--k-brand-contrast',
         '--k-action',
@@ -206,9 +211,10 @@ describe('resolveBrandingTheme', () => {
     ]);
   });
 
-  test('rejects a brand that passes its pair but not as text on page and panel', () => {
-    // The shared contract rates the brand on the page at 3:1 (a UI
-    // component); Station also uses it as text there (the channel badge).
+  test('rejects a brand that passes its pair but not as text on the page', () => {
+    // Station paints the brand as text on the page (the channel badge). The
+    // shared validator rates that itself at 4.5:1, so the rejection is its
+    // `contrast` record and Station adds no brand rule of its own.
     // #0e8270 is 4.29:1 on the light page and 4.72:1 on the panel.
     const brand = '#0e8270';
     expect(contrastRatio(brand, SHIPPED.light['--k-bg'])).toBeGreaterThan(3);
@@ -217,7 +223,7 @@ describe('resolveBrandingTheme', () => {
       contrastRatio(brand, SHIPPED.light['--k-panel']),
     ).toBeGreaterThanOrEqual(4.5);
     // A readable action of its own, so the brand is not also expanded into
-    // the action role and only the brand rule can reject this theme.
+    // the action role and only the brand-on-page pair can reject this theme.
     const { overrides, violations } = resolveBrandingTheme({
       light: {
         '--k-brand': brand,
@@ -229,13 +235,52 @@ describe('resolveBrandingTheme', () => {
     expect(overrides).toEqual({});
     expect(violations).toEqual([
       expect.objectContaining({
-        kind: 'station-surface-text',
+        kind: 'contrast',
         mode: 'light',
         property: '--k-brand',
-        surface: '--k-bg',
+        pair: ['--k-brand', '--k-bg'],
+        minimum: 4.5,
       }),
     ]);
   });
+
+  test.each(['#9364ff', '#007efa'])(
+    'rejects the dark brand %s, which is under 4.5:1 only on the raised panel',
+    (brand) => {
+      // @kontourai/ui 1.18 rates the brand as text on the raised panel too. A
+      // dark brand that clears the page and the panel but not the raised panel
+      // (relative luminance about 0.2155 to 0.2377) passed before and is now
+      // rejected whole, so the defaults stay.
+      expect(
+        contrastRatio(brand, SHIPPED.dark['--k-bg']),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrastRatio(brand, SHIPPED.dark['--k-panel']),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrastRatio(brand, SHIPPED.dark['--k-panel-raised']),
+      ).toBeLessThan(4.5);
+      const { overrides, violations } = resolveBrandingTheme({
+        dark: {
+          '--k-brand': brand,
+          '--k-brand-contrast': '#06080b',
+          '--k-action': '#60a5fa',
+          '--k-action-contrast': '#06080b',
+        },
+        light: { '--k-focus': '#1d4ed8' }, // valid on its own, still not applied
+      });
+      expect(overrides).toEqual({});
+      expect(violations).toEqual([
+        expect.objectContaining({
+          kind: 'contrast',
+          mode: 'dark',
+          property: '--k-brand',
+          pair: ['--k-brand', '--k-panel-raised'],
+          minimum: 4.5,
+        }),
+      ]);
+    },
+  );
 
   test('a brand-only mode also becomes the action, with its contrast', () => {
     const { overrides, violations } = resolveBrandingTheme({
@@ -432,6 +477,25 @@ describe('applyBrandingTheme snapshot', () => {
 });
 
 describe('logBrandingThemeViolations', () => {
+  test('a raised-panel rejection names the colour, the surface and the ratio it needs', () => {
+    // What a provider has to go on after upgrading: the console line must say
+    // which value failed, against what, by how much.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { violations } = resolveBrandingTheme({
+      dark: {
+        '--k-brand': '#9364ff',
+        '--k-brand-contrast': '#06080b',
+        '--k-action': '#60a5fa',
+        '--k-action-contrast': '#06080b',
+      },
+    });
+    logBrandingThemeViolations(violations);
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      '[branding-theme] theme rejected; keeping the default theme. Nothing from it was applied.',
+      '[branding-theme] rejected (contrast) dark: --k-brand #9364ff on --k-panel-raised #16202d = 4.31:1 (needs 4.5:1 — brand as text on raised panels).',
+    ]);
+  });
+
   test('caps what a hostile theme can write to the console', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const junk: Record<string, string> = {};
@@ -444,6 +508,34 @@ describe('logBrandingThemeViolations', () => {
     expect(warn).toHaveBeenLastCalledWith(
       '[branding-theme] …and 480 more rejection(s)',
     );
+  });
+});
+
+describe('the bundled example provider', () => {
+  test("examples/custom-branding's theme is accepted whole", async () => {
+    // The real provider module, not a copy of its values. It is CommonJS
+    // under an ESM package root, so it is evaluated as CommonJS here, and
+    // its answer crosses JSON as it does over /api/branding.
+    const module = { exports: undefined as unknown };
+    runInNewContext(
+      readFileSync(
+        join(
+          dirname(fileURLToPath(import.meta.url)),
+          '../../../../examples/custom-branding/providers/branding.js',
+        ),
+        'utf8',
+      ),
+      { module },
+    );
+    const provider = (
+      module.exports as () => { getTheme(): Promise<unknown> }
+    )();
+    const theme = JSON.parse(JSON.stringify(await provider.getTheme()));
+    const { overrides, violations } = resolveBrandingTheme(theme);
+    expect(violations).toEqual([]);
+    expect(overrides).toEqual(theme);
+    expect(Object.keys(theme.dark)).toHaveLength(5);
+    expect(Object.keys(theme.light)).toHaveLength(5);
   });
 });
 

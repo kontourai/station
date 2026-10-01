@@ -86,7 +86,7 @@
 
     {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"1b2169b8e7a077f02f4668aacb7051929c50664e6bbb493601a45a619c264e21","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
+    {"path":"tests/task-first-home.spec.ts","digest":"0c8e1da38b6bd6cb5689e57b6596f5b2d5cb6bb390703c3d442e957e8f1baf4d","revision":"2dee75143bca994a270d7038965d1a825bbde516"},
 
     {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 

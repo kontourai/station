@@ -116,6 +116,52 @@ Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
 
+### Task room agent requests
+
+`@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
+`submitTaskRoomAgentRequest`, `TaskRoomWorkProtocolError` and
+`TaskRoomWorkNotSentError`. Submission takes `(apiBase, taskId, projectSlug,
+taskCreatedAt, input, options?)`; input contains `operationId`, `agentId` and
+`prompt`. A fresh versioned request-list read precedes the additive delegation
+create field, so an older Station never silently receives an ordinary
+delegation instead. The response must match the Task and submitted intent.
+The server also checks the expected Task incarnation.
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`useTaskRoomAgentOptionsQuery(projectSlug, scope, enabled?)`,
+`useTaskRoomAgentRequestsQuery(taskId, taskCreatedAt, scope, enabled?)` and
+`useSubmitTaskRoomAgentRequestMutation(taskId, taskCreatedAt, projectSlug, scope)`.
+The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
+or stale scope never falls back to the ambient connection. Request caches
+include connection authority, Task identity and incarnation. Request cards
+poll every five seconds and can be refreshed explicitly; journal changes are
+not currently published through room SSE. Mutation retries are disabled.
+Send refreshes Project-scoped delegation options and requires the selected
+agent to be ready before the version negotiation and create.
+
+`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent.
+After the create starts, an error can mean the execution already exists.
+Retain the exact operation and intent for an explicit retry or inspection;
+never generate a replacement operation automatically. A retry preflight failure
+proves only that retry was not sent; it does not resolve a prior unknown create. Server non-success
+envelopes throw HTTP errors rather than returning every refusal union arm.
+`dispatched` records acknowledgement, not result quality, Task completion or
+customer acceptance.
+
+The existing `useAppendProjectTaskRoomHumanMessageMutation(taskId, config?)`
+accepts an explicit `{ requestScope, taskCreatedAt }` config for the mounted
+Task composer. When provided, it sends through the checked JSON transport,
+includes `expectedTaskCreatedAt` in the message body, refuses missing/stale
+scope and rejects late success after authority loss. The server checks the
+expected incarnation at the history grant's commit admission. Legacy callers
+omitting config still use the ambient API base; other room read/edit hooks
+retain their existing contracts. An old receiver that rejects the additive
+message field cannot silently accept it for a different Task.
+
+These personal-Station clients do not establish invited,
+remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
+
+
 ### Default host bindings and custom hosts
 
 The [default SDK adapter](../../src-ui/src/core/SDKAdapter.tsx) is delivered
@@ -3756,3 +3802,18 @@ current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
 for the wire shape and limits. Inspection preserves `requiresAnswers` for
 clients that must direct the user to the inline question card.
+
+
+## Engine account queries
+
+The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
+selected quota and live login queries, explicit login/account-create mutations,
+and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
+keys partition API base, authority, engine connection and profile. Login retries
+are disabled and live status polls only while a login is pending. Quota refresh
+is explicit. Strict contracts live in
+`@kontourai/station-contracts/engine-accounts`.
+
+These exports require a release containing this change; current source presence
+is not evidence of npm publication. The Connections guide owns account-viewing,
+sign-in, permission and cost-attribution limits.

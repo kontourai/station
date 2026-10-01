@@ -6371,8 +6371,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const tailscaleHeaders = {
       Host: 'station.example.ts.net',
       'Tailscale-Headers-Info': 'https://tailscale.com/s/serve-headers',
-      'Tailscale-User-Login': 'brian@example.test',
-      'Tailscale-User-Name': 'Brian',
+      'Tailscale-User-Login': 'casey@example.test',
+      'Tailscale-User-Name': 'Casey',
       'X-Station-Ingress-Identity': 'caller-spoof',
     };
     expect(await send(tailscaleHeaders)).toBe(200);
@@ -6392,8 +6392,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       JSON.parse(Buffer.from(String(verified), 'base64url').toString('utf8')),
     ).toEqual({
       provider: 'tailscale-serve',
-      login: 'brian@example.test',
-      displayName: 'Brian',
+      login: 'casey@example.test',
+      displayName: 'Casey',
     });
     expect(observed[1]?.['x-station-ingress-identity']).toBeUndefined();
     expect(observed).toHaveLength(2);

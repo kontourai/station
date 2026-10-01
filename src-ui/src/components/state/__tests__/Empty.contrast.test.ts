@@ -18,8 +18,12 @@ function declarations(block: string) {
 
 function tokenSet(theme: 'dark' | 'light') {
   const selector = theme === 'dark' ? ':root' : '[data-theme="light"]';
+  // Anchored at the start of a line and fully escaped. Unescaped, the light
+  // selector is a character class that matches the `t {` of `:root {`, so
+  // "light" silently read the dark block.
   const match = new RegExp(
-    `${selector.replace(/[[]]/g, '\\$&')}\\s*\\{([\\s\\S]*?)\\n\\}`,
+    `^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([\\s\\S]*?)\\n\\}`,
+    'm',
   ).exec(TOKENS);
   expect(match, `${selector} token block must exist`).not.toBeNull();
   return declarations(match![1]);
@@ -60,6 +64,12 @@ describe('shared Empty primitive contrast', () => {
     );
     expect(STYLES).toMatch(
       /\.empty__description\s*\{[\s\S]*?color:\s*var\(--k-text-muted\)/,
+    );
+
+    // Both modes pass AA, so reading one block twice would pass too. The two
+    // blocks must really be different surfaces.
+    expect(tokenSet('light')['--k-panel']).not.toBe(
+      tokenSet('dark')['--k-panel'],
     );
 
     for (const theme of ['dark', 'light'] as const) {

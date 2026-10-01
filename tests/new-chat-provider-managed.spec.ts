@@ -12,7 +12,7 @@ const PROJECTS = [
     icon: '🚀',
     description: 'Project with provider-backed managed chat',
     hasWorkingDirectory: true,
-    workingDirectory: '/Users/brian/dev/github/kontourai',
+    workingDirectory: '/Users/me/dev/github/kontourai',
     layoutCount: 0,
     hasKnowledge: false,
   },
@@ -404,9 +404,9 @@ test('selected project context shows Station via the global provider-managed fal
   );
   await expect(breadcrumb).toHaveAttribute(
     'aria-label',
-    'Working directory: /Users/brian/dev/github/kontourai',
+    'Working directory: /Users/me/dev/github/kontourai',
   );
-  await expect(breadcrumb).toContainText('/Users/brian/dev/github/kontourai');
+  await expect(breadcrumb).toContainText('/Users/me/dev/github/kontourai');
 
   // No project provider defaults, but the global default (ollama-local) still
   // satisfies provider-managed, so the MCP-having Station agent is selectable.
@@ -549,10 +549,10 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
   );
   await expect(dropdownBreadcrumb).toHaveAttribute(
     'aria-label',
-    'Working directory: /Users/brian/dev/github/kontourai',
+    'Working directory: /Users/me/dev/github/kontourai',
   );
   await expect(dropdownBreadcrumb).toContainText(
-    '/Users/brian/dev/github/kontourai',
+    '/Users/me/dev/github/kontourai',
   );
 
   await dropdown.getByRole('button', { name: /No workspace/ }).click();
@@ -722,7 +722,7 @@ test('new chat project path stays overflow-free at 390x844', async ({
   );
   await expect(
     modal.locator('.new-chat-modal__cwd-breadcrumb'),
-  ).toHaveAttribute('title', '/Users/brian/dev/github/kontourai');
+  ).toHaveAttribute('title', '/Users/me/dev/github/kontourai');
   expect(
     await page.evaluate(() => ({
       document: document.documentElement.scrollWidth <= window.innerWidth,

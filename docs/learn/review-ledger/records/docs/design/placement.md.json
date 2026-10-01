@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"5ffda91dce823e9a7e4d489251257792383550f853faf8f159d2e3024a9a59d8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"14b4baff35cb6c07405e97469216982662618507a013f536aa0d34dbe31dd967","revision":"0368881dcab562767c4127b5bee0ebb6356449f3"},
 
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"},
+    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

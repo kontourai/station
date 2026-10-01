@@ -34,7 +34,7 @@
 
     {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"414d50fbeed49521d78dd80bbe1cc878097e70ea72d1dbbd537686f5f07c76f8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"90e9da8c2b40784d4082a076f6c3e926800ccecb79e1a1f28249675379424507","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
 
     {"path":"tests/csp-shell.spec.ts","digest":"d970b0c1d9081b74d24dccd4faa3a8a4d87f97b38c6c05074ed0824ba1b287b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
