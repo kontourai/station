@@ -80,7 +80,7 @@ describe('button-cap gate, as a child process', () => {
     expect(result.status, result.output).toBe(1);
     expect(result.output).toContain(TOOLBAR_KEY);
     expect(result.output).toContain('3 labelled actions');
-    expect(result.output).toContain('overflow menu');
+    expect(result.output).toContain('`overflow` items');
   });
 
   test('passes a baseline-recorded row that did not grow', () => {
@@ -163,6 +163,21 @@ describe('button-cap gate, as a child process', () => {
     expect(result.baseline().rows).toEqual([]);
   });
 
+  test('fails closed on a file that does not parse, naming it', () => {
+    const result = runGate({
+      'Toolbar.tsx': row(TWO),
+      'Broken.tsx': 'export function Broken() { return <div>; }',
+    });
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain('could not parse Broken.tsx');
+  });
+
+  test('the remedy points at ActionRow and explains a renamed row', () => {
+    const result = runGate({ 'Toolbar.tsx': row(THREE) });
+    expect(result.output).toContain('src-ui/src/components/ActionRow.tsx');
+    expect(result.output).toContain('renamed');
+  });
+
   test('fails closed on a tree with nothing to scan', () => {
     const result = runGate({ 'notes.txt': 'no components here' });
     expect(result.status, result.output).toBe(1);
@@ -220,6 +235,49 @@ describe('button-cap scan', () => {
         {mode === 'sign-in' && <Button>Create account</Button>}
         {mode !== 'sign-in' && <Button>Back to sign in</Button>}
         {mode === 'sign-in' && <Button>Forgot password</Button>}`),
+    ).toBe(0);
+  });
+
+  // Review M1: the first proof compared guard TEXT and called each of these
+  // pairs exclusive, hiding a row of three. None is provable, so all count.
+  test.each([
+    [
+      'a negation that binds tighter than its ||',
+      '(!loading || error)',
+      '(loading || error)',
+    ],
+    [
+      'a literal comparison inside an ||',
+      "(ready || kind === 'x')",
+      "(ready || kind === 'y')",
+    ],
+    ['a negated operand of ===', '!left === right', 'left === right'],
+    ['a call, which need not answer the same twice', 'flip()', '!flip()'],
+    ['an optional chain', 'host?.ready', '!host?.ready'],
+    ['an indexed read', 'flags[0]', '!flags[0]'],
+    ['a comparison of two names', 'mode === wanted', 'mode !== wanted'],
+    ['a nullish fallback', '(mode ?? fallback)', '!(mode ?? fallback)'],
+  ])('%s is not proved exclusive', (_name, first, second) => {
+    expect(
+      count(`
+        {${first} && <Button>First</Button>}
+        {${second} && <Button>Second</Button>}
+        <Button>Third</Button>`),
+    ).toBe(3);
+  });
+
+  test('a provable guard stays provable through parentheses and extra conjuncts', () => {
+    expect(
+      count(`
+        {(host.hub.ready) && canAct && <Button>First</Button>}
+        {!host.hub.ready && <Button>Second</Button>}
+        <Button>Third</Button>`),
+    ).toBe(0);
+    expect(
+      count(`
+        {'a' === kind && <Button>First</Button>}
+        {kind === 'b' && <Button>Second</Button>}
+        <Button>Third</Button>`),
     ).toBe(0);
   });
 
@@ -316,6 +374,60 @@ describe('button-cap scan', () => {
         '<ActionRow overflowLabel="More" primary={<Button>Save</Button>} /><Button>Export</Button>',
       ),
     ).toBe(0);
+  });
+
+  test('only a readable menu-opening aria-haspopup exempts a button', () => {
+    const withTrigger = (attribute: string) =>
+      count(`${TWO}<Button ${attribute}>More actions</Button>`);
+    expect(withTrigger('aria-haspopup')).toBe(0);
+    expect(withTrigger('aria-haspopup="menu"')).toBe(0);
+    expect(withTrigger('aria-haspopup={true}')).toBe(0);
+    expect(withTrigger('aria-haspopup="listbox"')).toBe(0);
+    expect(withTrigger('aria-haspopup={false}')).toBe(3);
+    expect(withTrigger('aria-haspopup="dialog"')).toBe(3);
+    expect(withTrigger('aria-haspopup={popup}')).toBe(3);
+  });
+
+  test('a class that merely contains "menu" does not make a container a menu', () => {
+    const container = (attributes: string) =>
+      scanSource(
+        'Bar.tsx',
+        `export function Bar() {
+          return <div ${attributes}>${THREE}</div>;
+        }`,
+      ).length;
+    expect(container('className="context-menu-bar"')).toBe(1);
+    expect(container('className="pane__menu-row"')).toBe(1);
+    expect(container('className="menu-surface"')).toBe(0);
+    expect(container('role="menu" className="context-menu-bar"')).toBe(0);
+  });
+
+  test('an overflow menu that inlines a single command counts as a labelled action', () => {
+    expect(
+      count(
+        `${TWO}<ActionOverflowMenu inlineSingle label="More" actions={a} />`,
+      ),
+    ).toBe(3);
+    expect(count(`${TWO}<ChatDockHeaderMoreMenu actions={a} />`)).toBe(3);
+    expect(count(`${TWO}<ActionOverflowMenu label="More" actions={a} />`)).toBe(
+      0,
+    );
+    expect(
+      count(
+        `${TWO}<ActionOverflowMenu inlineSingle={false} label="More" actions={a} />`,
+      ),
+    ).toBe(0);
+    expect(
+      count(
+        '<ActionRow overflowLabel="More" secondary={x} primary={y} /><ActionOverflowMenu inlineSingle label="More" actions={a} />',
+      ),
+    ).toBe(3);
+  });
+
+  test('a file that does not parse throws, naming the file', () => {
+    expect(() =>
+      scanSource('Broken.tsx', 'export function Broken() { return <div>; }'),
+    ).toThrow(/could not parse Broken\.tsx/);
   });
 
   test('a menu container is where overflow goes and is never a row', () => {

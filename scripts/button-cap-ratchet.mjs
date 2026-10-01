@@ -14,7 +14,7 @@
 //   - It cannot see layout. Three labelled buttons that are siblings in JSX
 //     are counted as one row whether CSS lays them out in a line, a wrap, or
 //     a column. Containers that are plainly not rows are excluded by role or
-//     class (NON_ROW_ROLES, NON_ROW_CLASS_PATTERN): a menu is where the
+//     class (NON_ROW_ROLES, NON_ROW_CLASSES): a menu is where the
 //     overflow GOES, so its rows are never counted.
 //   - It cannot see across components. A header that renders
 //     `<PrimaryActions />` beside `<SecondaryActions />` is two JSX
@@ -25,18 +25,34 @@
 //     nothing about it.
 //   - Mutually exclusive branches count as the larger arm, not the sum:
 //     `{editing ? <Save/> : <Edit/>}` is one action. `cond && <X/>` counts X,
-//     except that `&&` guards the TEXT proves exclusive are not summed:
-//     `x && <A/>` beside `!x && <B/>`, or `kind === 'a' && <A/>` beside
-//     `kind === 'b' && <B/>`. Exclusivity that needs reasoning about values
-//     (two different booleans that never coincide) is not seen and overcounts.
+//     except where the AST proves two `&&` guards exclusive (provableGuard):
+//     a name or dotted chain against its own `!`, or one chain compared with
+//     two different literals, or `===` and `!==` against the same literal.
+//     A guard containing `||`, `??`, a call or anything else is never proved
+//     exclusive, so its actions are summed and may overcount.
 //   - A button holding several text blocks (title over description) is a
 //     card, not a labelled action.
 //   - A control that picks a value rather than performing an action — a tab,
 //     a menu item, an option, a pressed/selected/checked toggle — is a choice,
 //     not an action, and is not counted (CHOICE_ROLES, CHOICE_STATE_ATTRS).
-//   - Only `Button` and `button` are actions. An anchor styled as a button is
-//     not seen. An `ActionRow` counts as its filled `primary` and `secondary`
-//     slots, so a labelled button placed beside one is still counted with it.
+//   - Only `Button` and `button` are actions. An anchor or `Link` styled as
+//     a button, and any other component that renders a button (`CopyButton`,
+//     `IconButton`), is not seen. An `ActionRow` counts as its filled
+//     `primary` and `secondary` slots, and an overflow menu that inlines a
+//     single command counts as one, so a labelled button beside either is
+//     still counted with it.
+//   - A label that does not arrive as children is not seen: `<Button
+//     {...props} />` and `<Button label="Save" />` read as unlabelled, and a
+//     spread is assumed to carry the accessible name.
+//   - What ends a run: any element with children that is not a button or a
+//     one-button wrapper — including a `<span>` divider with text in it. Two
+//     groups of two split by such an element are two runs. Self-closing
+//     elements do not end a run.
+//   - What exempts a button: a choice role, ANY `aria-pressed`,
+//     `aria-selected` or `aria-checked` attribute whatever its value, and
+//     `aria-haspopup` when it is bare, `true`, `"menu"` or `"listbox"`.
+//   - What exempts a container: a menu-like `role`, or the shared menu
+//     primitive's exact classes. A class that merely contains "menu" does not.
 //
 // So a green result means "no NEW statically visible row of three labelled
 // buttons", not "every row on screen shows at most two". The rendered image
@@ -49,7 +65,11 @@
 // `data-testid`). Never a line number: a baseline keyed to lines fails
 // whoever edits the file next. Rows sharing one identity are recorded as a
 // descending list of counts and compared position by position, so there is no
-// ordinal to renumber when one of them is fixed.
+// ordinal to renumber when one of them is fixed. The cost: within one
+// identity the comparison is by count alone, so fixing one such row while
+// adding another of the same size in the same component reads as no change.
+// Renaming a recorded row's file, component or class changes its identity
+// and reports it as new; the entry's `row` is then edited by hand.
 //
 // The gate fails only on GROWTH: a violating row the baseline does not
 // record, or more labelled actions in a recorded one. A recorded row that
@@ -111,12 +131,12 @@ const NON_ROW_ROLES = new Set([
 ]);
 
 /**
- * Class tokens that mark a menu-like surface: the place overflow actions are
- * moved TO. Matched per token, anchored on a word boundary inside the token
- * (`menu-surface`, `pane-commands__menu`), never as a bare substring.
+ * The shared menu primitive's own classes (index.css): the place overflow
+ * actions are moved TO. Exact tokens only. A class that merely contains the
+ * word (`context-menu-bar`, `pane__menu-row`) proves nothing about what the
+ * element is; such a container must say `role="menu"` to be exempt.
  */
-const NON_ROW_CLASS_PATTERN =
-  /(?:^|[-_])(?:menu|popover|dropdown|listbox|palette)(?:$|[-_])/;
+const NON_ROW_CLASSES = new Set(['menu-surface', 'menu-group']);
 
 const ICON_NAME_PATTERN = /(?:icon|glyph|spinner|chevron|caret|avatar|logo)/i;
 const HIDDEN_CLASS_PATTERN = /(?:^|\s)(?:sr-only|visually-hidden)(?:\s|$)/;
@@ -269,6 +289,26 @@ function jsxShowsText(node) {
 }
 
 /**
+ * `aria-haspopup` written as a bare attribute, `true`, `"menu"` or
+ * `"listbox"`. `{false}`, `"dialog"` and a computed value do not exempt: a
+ * button that opens a dialog is an ordinary action, and a value the scan
+ * cannot read is not a proof.
+ */
+function opensMenu(node) {
+  const attribute = findAttribute(node, 'aria-haspopup');
+  if (!attribute) return false;
+  const value = attribute.initializer;
+  if (!value) return true;
+  const literal = ts.isJsxExpression(value) ? value.expression : value;
+  if (!literal) return false;
+  if (literal.kind === ts.SyntaxKind.TrueKeyword) return true;
+  return (
+    ts.isStringLiteralLike(literal) &&
+    ['true', 'menu', 'listbox'].includes(literal.text)
+  );
+}
+
+/**
  * `labelled` — shows text; `icon` — shows no text and carries an accessible
  * name; `choice` — a tab/menu item/toggle, not an action; `menu-trigger` —
  * opens a menu (`aria-haspopup`); `card` — a title-and-description tile;
@@ -288,7 +328,7 @@ export function classifyAction(node) {
   }
   // The trigger of a menu is where the row's overflow lives; labelled or
   // not, it is the remedy and never counts against the row.
-  if (findAttribute(node, 'aria-haspopup')) return 'menu-trigger';
+  if (opensMenu(node)) return 'menu-trigger';
   const children = ts.isJsxElement(node) ? node.children : [];
   // A button built from several text blocks — a title over a description —
   // is a card someone picks, not a labelled action in a row.
@@ -323,7 +363,7 @@ function meaningfulChildren(node) {
 // triggers and self-closing elements neither count nor break.
 const BREAK = Symbol('break');
 
-/** `a && b && <X/>` guards X with `a` and `b`, compared as normalised text. */
+/** `a && b && <X/>` guards X with `a` and `b`. Parentheses are transparent. */
 function conjunctsOf(expression) {
   const node = unwrap(expression);
   if (
@@ -332,33 +372,99 @@ function conjunctsOf(expression) {
   ) {
     return [...conjunctsOf(node.left), ...conjunctsOf(node.right)];
   }
-  return [node.getText().replaceAll(/\s+/g, ' ')];
-}
-
-const COMPARES_LITERAL_PATTERN =
-  /^(.+?) ?([!=]==) ?('[^']*'|"[^"]*"|-?\d+(?:\.\d+)?|true|false|null)$/;
-
-function negationOf(guard) {
-  return guard.startsWith('!') ? guard.slice(1) : `!${guard}`;
+  return [node];
 }
 
 /**
- * Two guards that cannot both hold: `x` against `!x`, one expression compared
- * with two different literals (`kind === 'a'` / `kind === 'b'`), or with the
- * same literal both ways (`mode === 'a'` / `mode !== 'a'`).
- * Only what is provable from the text; anything else is assumed compatible,
- * which overcounts rather than hides a row.
+ * `mode`, `host.hub.state`, `this.props.kind`: a name, or names joined by
+ * dots. Returns its text as a key, or undefined for anything else — a call,
+ * an index, an optional chain — whose two readings need not agree.
  */
+function chainKey(expression) {
+  const node = unwrap(expression);
+  if (ts.isIdentifier(node)) return node.text;
+  if (node.kind === ts.SyntaxKind.ThisKeyword) return 'this';
+  if (
+    ts.isPropertyAccessExpression(node) &&
+    !node.questionDotToken &&
+    ts.isIdentifier(node.name)
+  ) {
+    const owner = chainKey(node.expression);
+    return owner === undefined ? undefined : `${owner}.${node.name.text}`;
+  }
+  return undefined;
+}
+
+function literalKey(expression) {
+  const node = unwrap(expression);
+  if (ts.isStringLiteralLike(node)) return `s:${node.text}`;
+  if (ts.isNumericLiteral(node)) return `n:${Number(node.text)}`;
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return 'true';
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return 'false';
+  if (node.kind === ts.SyntaxKind.NullKeyword) return 'null';
+  return undefined;
+}
+
+/**
+ * The only guard shapes whose exclusivity this scan claims to prove, read off
+ * the AST rather than the text:
+ *
+ *   `chain`                 → { chain, test: 'truthy' }
+ *   `!chain`                → { chain, test: 'falsy' }
+ *   `chain === literal`     → { chain, test: 'is', literal }
+ *   `chain !== literal`     → { chain, test: 'isNot', literal }
+ *
+ * Anything else — `||`, `??`, a nested `&&` under a `!`, a call, an
+ * assignment, `!a === b`, a comparison of two chains — returns undefined and
+ * is never exclusive with anything, so its actions are summed. An earlier
+ * version compared guard TEXT and "proved" `(a || k === 'x')` exclusive with
+ * `(a || k === 'y')`; a wrong proof here hides a row, so the default is to
+ * count.
+ */
+function provableGuard(expression) {
+  const node = unwrap(expression);
+  const chain = chainKey(node);
+  if (chain !== undefined) return { chain, test: 'truthy' };
+  if (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.ExclamationToken
+  ) {
+    const negated = chainKey(node.operand);
+    return negated === undefined
+      ? undefined
+      : { chain: negated, test: 'falsy' };
+  }
+  if (ts.isBinaryExpression(node)) {
+    const operator = node.operatorToken.kind;
+    const test =
+      operator === ts.SyntaxKind.EqualsEqualsEqualsToken
+        ? 'is'
+        : operator === ts.SyntaxKind.ExclamationEqualsEqualsToken
+          ? 'isNot'
+          : undefined;
+    if (!test) return undefined;
+    const pairs = [
+      [node.left, node.right],
+      [node.right, node.left],
+    ];
+    for (const [subject, value] of pairs) {
+      const compared = chainKey(subject);
+      const literal = literalKey(value);
+      if (compared !== undefined && literal !== undefined) {
+        return { chain: compared, test, literal };
+      }
+    }
+  }
+  return undefined;
+}
+
 function guardsExclude(first, second) {
-  if (first === negationOf(second) || `!(${first})` === second) return true;
-  if (`!(${second})` === first) return true;
-  const left = COMPARES_LITERAL_PATTERN.exec(first);
-  const right = COMPARES_LITERAL_PATTERN.exec(second);
-  if (!left || !right || left[1] !== right[1]) return false;
-  const sameLiteral = left[3] === right[3];
-  // `=== 'a'` with `=== 'b'`, or `=== 'a'` with `!== 'a'`.
-  if (left[2] === '===' && right[2] === '===') return !sameLiteral;
-  return left[2] !== right[2] && sameLiteral;
+  if (!first || !second || first.chain !== second.chain) return false;
+  const tests = [first.test, second.test].sort().join('+');
+  if (tests === 'falsy+truthy') return true;
+  if (tests === 'is+is') return first.literal !== second.literal;
+  if (tests === 'is+isNot') return first.literal === second.literal;
+  return false;
 }
 
 function tokensExclude(first, second) {
@@ -428,7 +534,7 @@ function tokensInExpression(expression, guards) {
     if (operator === ts.SyntaxKind.AmpersandAmpersandToken) {
       return tokensInExpression(node.right, [
         ...guards,
-        ...conjunctsOf(node.left),
+        ...conjunctsOf(node.left).map(provableGuard),
       ]);
     }
     if (
@@ -460,6 +566,11 @@ function tokensInChild(child, guards = []) {
     return ['primary', 'secondary']
       .filter((slot) => findAttribute(child, slot))
       .map((slot) => ({ guards, label: `ActionRow ${slot}` }));
+  }
+  // An overflow menu that renders a single folded command INLINE shows that
+  // command's label: one more labelled action whenever it has one row.
+  if (!ts.isJsxFragment(child) && rendersInlineOverflow(child)) {
+    return [{ guards, label: `${tagNameOf(child)} (inline when single)` }];
   }
   const kind = classifyAction(child);
   if (kind !== undefined) {
@@ -497,14 +608,26 @@ function tokensInChild(child, guards = []) {
   return [BREAK];
 }
 
+function rendersInlineOverflow(node) {
+  const tag = tagNameOf(node);
+  if (tag === 'ChatDockHeaderMoreMenu') return true;
+  if (tag !== 'ActionOverflowMenu') return false;
+  const inline = findAttribute(node, 'inlineSingle');
+  if (!inline) return false;
+  const value = inline.initializer;
+  return !(
+    value &&
+    ts.isJsxExpression(value) &&
+    value.expression?.kind === ts.SyntaxKind.FalseKeyword
+  );
+}
+
 function isNonRowContainer(node) {
   if (ts.isJsxFragment(node)) return false;
   const role = staticAttributeText(node, 'role');
   if (role && NON_ROW_ROLES.has(role)) return true;
   const className = staticAttributeText(node, 'className') ?? '';
-  return className
-    .split(/\s+/)
-    .some((token) => NON_ROW_CLASS_PATTERN.test(token));
+  return className.split(/\s+/).some((token) => NON_ROW_CLASSES.has(token));
 }
 
 /**
@@ -589,6 +712,15 @@ export function scanSource(file, content) {
     true,
     ts.ScriptKind.TSX,
   );
+  // Fail closed: the parser recovers from a syntax error by guessing, and a
+  // guessed tree can lose the very buttons this counts.
+  const [parseError] = source.parseDiagnostics ?? [];
+  if (parseError) {
+    const { line } = source.getLineAndCharacterOfPosition(parseError.start);
+    throw new Error(
+      `button-cap ratchet could not parse ${file}:${line + 1}: ${ts.flattenDiagnosticMessageText(parseError.messageText, ' ')}`,
+    );
+  }
   const rows = [];
   const visit = (node) => {
     if (
@@ -751,13 +883,16 @@ function option(name) {
 const REMEDY = [
   '',
   `A header, toolbar or action row shows at most ${LABELLED_ACTION_CAP} labelled actions (#3045).`,
-  'Keep the two that matter most as labelled buttons and move the rest into',
-  'an overflow menu: pass them as `actions` to `ChatDockHeaderMoreMenu`',
-  '(src-ui/src/components/chat-dock/ChatDockHeaderMoreMenu.tsx) with a',
-  '`label` naming the row, as src-ui/src/views/SkillsView.tsx does. An',
-  'icon-only button with an `aria-label` does not count. Do not add the row to',
-  'scripts/button-cap-baseline.json: the baseline records what existed when',
-  'the rule arrived and only goes down.',
+  'Write the row with `ActionRow` (src-ui/src/components/ActionRow.tsx): the',
+  'action the row is for as `primary`, at most one more as `secondary`, and',
+  'the rest as `overflow` items, as src-ui/src/views/SkillsView.tsx does. An',
+  'icon-only button with an `aria-label` does not count.',
+  '',
+  'Do not add the row to scripts/button-cap-baseline.json: the baseline',
+  'records what existed when the rule arrived and only goes down. The one',
+  'exception is a recorded row whose FILE, COMPONENT or CLASS you renamed:',
+  "its identity changed, so it is reported here as new. Edit that entry's",
+  '`row` to the new identity by hand, keeping its count.',
   '',
 ].join('\n');
 
@@ -801,7 +936,16 @@ function main() {
     });
   }
 
-  const rows = scanFiles(files, readFile);
+  let rows;
+  try {
+    rows = scanFiles(files, readFile);
+  } catch (error) {
+    console.error(`FAIL: ${error instanceof Error ? error.message : error}`);
+    console.error(
+      'A file that does not parse is not a clean file; fix the syntax error and re-run.',
+    );
+    process.exit(1);
+  }
   const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
   const baselineRows = groupBaselineEntries(baseline.rows ?? []);
 
