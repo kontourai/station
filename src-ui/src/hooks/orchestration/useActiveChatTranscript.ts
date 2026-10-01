@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
+import { projectedRuntimeErrorRaw } from '../../utils/chatErrorTranslation';
 import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
@@ -82,49 +83,100 @@ function failureMarkerReasons(message: ChatMessage): string[] {
   ];
 }
 
-/** Each projected turn's first moment and whether it shows a failure. */
+interface ProjectedTurnFailure {
+  turnId: string;
+  startedAt: number;
+  /** The turn's projected `runtime.error`, when it shows one. */
+  failure?: { code?: string; message: string };
+}
+
+/** Each projected turn's first moment and the failure it shows, if any. */
 function projectedTurnFailures(
   projected: readonly ChatMessage[],
-): Array<{ startedAt: number; showsFailure: boolean }> {
-  const turns = new Map<string, { startedAt: number; showsFailure: boolean }>();
+): ProjectedTurnFailure[] {
+  const turns = new Map<string, ProjectedTurnFailure>();
   for (const message of projected) {
     if (
       typeof message.turnId !== 'string' ||
       typeof message.timestamp !== 'number'
     )
       continue;
-    const showsFailure =
-      message.contentParts?.some((part) => part.runtimeError === true) ?? false;
+    const part = message.contentParts?.find(
+      (candidate) => candidate.runtimeError === true,
+    );
+    const failure = part
+      ? {
+          code: part.runtimeErrorCode,
+          message: projectedRuntimeErrorRaw(part.content ?? ''),
+        }
+      : undefined;
     const turn = turns.get(message.turnId);
     if (!turn) {
       turns.set(message.turnId, {
+        turnId: message.turnId,
         startedAt: message.timestamp,
-        showsFailure,
+        failure,
       });
       continue;
     }
     turn.startedAt = Math.min(turn.startedAt, message.timestamp);
-    turn.showsFailure ||= showsFailure;
+    turn.failure ??= failure;
   }
   return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
 }
 
 /**
- * A marker with no turn identity falls in the newest turn that had started
- * when it was written. Outside the projected window (an older page not read
- * yet) there is no such turn, and the marker stays the failure's only copy.
+ * #2985: a cold open reads a failed turn twice — its `runtime.error` event,
+ * and the `[SYSTEM_EVENT] [CHAT_ERROR] …` message the agent's conversation
+ * store kept. The stored copy has no turn identity, and its words need not be
+ * the event's (a failure with no status persists the transport sentence while
+ * the event carries the engine's), so no comparison of text pairs them and
+ * both rendered.
+ *
+ * A stored marker belongs to the newest turn that had started when it was
+ * written. When that turn's projection shows a failure, the marker is given
+ * the turn's identity and the event's code and message — the marker the live
+ * path appends — so the turn-identified arbitration below keeps it as the one
+ * card, with its Send again. A turn that already has an identified marker
+ * needs no second one. Outside the projected window (an older page not read
+ * yet) there is no such turn, and the marker stays as it is.
  */
-function markerTurnAlreadyShowsFailure(
-  marker: ChatMessage,
-  turns: ReadonlyArray<{ startedAt: number; showsFailure: boolean }>,
-): boolean {
-  if (typeof marker.timestamp !== 'number') return false;
-  let owner: { showsFailure: boolean } | undefined;
-  for (const turn of turns) {
-    if (turn.startedAt > marker.timestamp) break;
-    owner = turn;
-  }
-  return owner?.showsFailure === true;
+function adoptStoredFailureMarkers(
+  messages: readonly ChatMessage[],
+  turns: readonly ProjectedTurnFailure[],
+): ChatMessage[] {
+  const markedTurnIds = new Set(
+    messages
+      .filter((message) => isLiveFailureMarker(message))
+      .map((message) => message.turnId)
+      .filter((turnId): turnId is string => typeof turnId === 'string'),
+  );
+  return messages.flatMap((message) => {
+    if (
+      !isLiveFailureMarker(message) ||
+      message.turnId !== undefined ||
+      typeof message.timestamp !== 'number'
+    ) {
+      return [message];
+    }
+    let owner: ProjectedTurnFailure | undefined;
+    for (const turn of turns) {
+      if (turn.startedAt > message.timestamp) break;
+      owner = turn;
+    }
+    if (!owner?.failure) return [message];
+    if (markedTurnIds.has(owner.turnId)) return [];
+    markedTurnIds.add(owner.turnId);
+    const { code, message: reason } = owner.failure;
+    return [
+      {
+        ...message,
+        turnId: owner.turnId,
+        content: `${CHAT_ERROR_MARKER_PREFIX}${code ? `:${code}` : ''}] ${reason}`,
+        contentParts: undefined,
+      },
+    ];
+  });
 }
 
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
@@ -709,8 +761,12 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // Matched on turn identity, not on text: two turns can fail the same
     // way, and a global text match would collapse them. A marker with no
     // turn identity keeps the text-comparison fallback it had before.
+    const markerMessages = adoptStoredFailureMarkers(
+      session.messages,
+      projectedTurnFailures(visibleProjected),
+    );
     const markerFailureTurnIds = new Set(
-      session.messages
+      markerMessages
         .filter((message) => isLiveFailureMarker(message))
         .map((message) => message.turnId)
         .filter((turnId): turnId is string => typeof turnId === 'string'),
@@ -743,19 +799,12 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const projectedFailureText = visibleProjected
       .map(transcriptMessageText)
       .join('\n');
-    const projectedTurns = projectedTurnFailures(visibleProjected);
-    const supplementalMessages = session.messages.filter((message) => {
+    const supplementalMessages = markerMessages.filter((message) => {
       if (!isLiveSupplementalMessage(message)) return false;
       if (!isLiveFailureMarker(message)) return true;
       // A turn-identified marker owns its failure's one visible element —
       // the projected copy for that turn was stripped above.
       if (message.turnId !== undefined) return true;
-      // #2985: a marker read back from the conversation store has no turn
-      // identity, and its words need not be the event's (a failure with no
-      // status persists the transport sentence while `runtime.error` carries
-      // the engine's). It belongs to the turn it falls in; when that turn's
-      // projection already shows the failure, the marker is its second copy.
-      if (markerTurnAlreadyShowsFailure(message, projectedTurns)) return false;
       const reasons = failureMarkerReasons(message);
       return (
         reasons.length === 0 ||

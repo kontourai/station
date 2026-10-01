@@ -2767,6 +2767,20 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
         (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR') ||
         (message.contentParts ?? []).some((part) => part.runtimeError === true),
     );
+  const failedTurnWindow = (message: string) => ({
+    protocolVersion: 1,
+    watermark: 9,
+    hasMore: false,
+    events: [
+      event('e1', 'turn.started', { turnId: 'failed', prompt: 'FAIL please' }),
+      event('e2', 'runtime.error', {
+        turnId: 'failed',
+        severity: 'error',
+        code: 'station_agent_turn_failed',
+        message,
+      }),
+    ],
+  });
 
   test.each([
     [
@@ -2782,23 +2796,7 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
   ])(
     'a cold open shows one failure for %s',
     async (_label, stored, emitted) => {
-      fetchWindow.mockResolvedValue({
-        protocolVersion: 1,
-        watermark: 9,
-        hasMore: false,
-        events: [
-          event('e1', 'turn.started', {
-            turnId: 'failed',
-            prompt: 'FAIL please',
-          }),
-          event('e2', 'runtime.error', {
-            turnId: 'failed',
-            severity: 'error',
-            code: 'station_agent_turn_failed',
-            message: emitted,
-          }),
-        ],
-      });
+      fetchWindow.mockResolvedValue(failedTurnWindow(emitted));
       const session: ChatSession = {
         ...baseSession,
         messages: [
@@ -2808,22 +2806,63 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
       const { result } = renderHook(() =>
         useActiveChatTranscript('http://station.test', session),
       );
+      // The window has arrived once the prompt it projects is on screen.
       await waitFor(() =>
-        expect(failureCarriers(result.current.messages).length).toBeGreaterThan(
-          0,
-        ),
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'FAIL please',
+          ),
+        ).toBe(true),
       );
+      // The one card is the marker — the element `ChatDockBody` renders with
+      // Send again — now reading exactly as the live path wrote it: the turn's
+      // identity, the event's code and the event's sentence.
       const carriers = failureCarriers(result.current.messages);
       expect(carriers).toHaveLength(1);
-      expect(carriers[0]?.role).toBe('assistant');
+      expect(carriers[0]).toMatchObject({
+        role: 'user',
+        turnId: 'failed',
+        content: `[SYSTEM_EVENT] [CHAT_ERROR:station_agent_turn_failed] ${emitted}`,
+      });
+      expect(carriers[0]?.contentParts).toBeUndefined();
     },
   );
 
-  test('a stored marker stays when its own turn shows no failure', async () => {
-    // Two turns: the first failed and only its stored marker says so (its
-    // `runtime.error` is not in this window); the second completed. The
-    // marker falls in the first turn, so the second turn's projection — or a
-    // failure anywhere else — must not take it away.
+  test('a stored marker does not double a turn the live marker already owns', async () => {
+    const emitted = 'The Station agent could not finish this turn.';
+    fetchWindow.mockResolvedValue(failedTurnWindow(emitted));
+    const live = {
+      role: 'user' as const,
+      content: `[SYSTEM_EVENT] [CHAT_ERROR:station_agent_turn_failed] ${emitted}`,
+      timestamp: Date.parse('2026-08-09T00:00:02.100Z'),
+      turnId: 'failed',
+    };
+    const session: ChatSession = {
+      ...baseSession,
+      messages: [
+        live,
+        storedMarker('The response stream failed.', '2026-08-09T00:00:02.400Z'),
+      ] as ChatSession['messages'],
+    };
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', session),
+    );
+    await waitFor(() =>
+      expect(
+        result.current.messages.some(
+          (message) => message.content === 'FAIL please',
+        ),
+      ).toBe(true),
+    );
+    const carriers = failureCarriers(result.current.messages);
+    expect(carriers).toHaveLength(1);
+    expect(carriers[0]?.timestamp).toBe(live.timestamp);
+  });
+
+  test('a stored marker is adopted only by the turn it falls in', async () => {
+    // Two turns. The first failed and only its stored marker says so (its
+    // `runtime.error` is not in this window); the second failed in the
+    // window. A failure elsewhere must not claim the first turn's marker.
     fetchWindow.mockResolvedValue({
       protocolVersion: 1,
       watermark: 9,
@@ -2850,19 +2889,25 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
       useActiveChatTranscript('http://station.test', session),
     );
     await waitFor(() =>
-      expect(failureCarriers(result.current.messages).length).toBeGreaterThan(
-        1,
-      ),
+      expect(
+        result.current.messages.some((message) => message.content === 'two'),
+      ).toBe(true),
     );
+    // One card per failed turn, each the marker. The first keeps its stored
+    // words and no turn identity; only the second was adopted.
     const carriers = failureCarriers(result.current.messages);
-    // First turn: its marker. Second turn: its projected failure, once.
-    expect(carriers).toHaveLength(2);
-    expect(carriers.map((message) => message.role).sort()).toEqual([
-      'assistant',
-      'user',
+    expect(
+      carriers.map((message) => [
+        message.role,
+        message.timestamp,
+        message.turnId,
+      ]),
+    ).toEqual([
+      ['user', Date.parse('2026-08-09T00:00:02.000Z'), undefined],
+      ['user', Date.parse('2026-08-09T00:00:05.500Z'), 'second'],
     ]);
-    expect(carriers.find((message) => message.role === 'user')?.timestamp).toBe(
-      Date.parse('2026-08-09T00:00:02.000Z'),
+    expect(carriers[0]?.content).toBe(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
     );
   });
 });
