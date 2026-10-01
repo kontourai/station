@@ -14,7 +14,7 @@
   "sources": [
     {"path":"src-server/domain/shared-working-state-editing.ts","digest":"6aa91555717974ec7fa40fadbe781eb0f0ec2be8739b212065a2182f9da01e18","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"19d16440f2e8c69b7f26394a9f6d4c7033fb8ae6c86ad1e02102e007cad98f2d","revision":"11ead89b2b34cd6c303e268f5fdf462a233e9d5d"},
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 

@@ -9,7 +9,7 @@
 
   "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
 
-  "document": {"digest":"437577a5ae2ffa347222e3c616efc62da1f8bde320a29e5c16cba6b517bf32c9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+  "document": {"digest":"64c48b56e05b11bc29bae5facba9007dce7d9825bebea4e48c8c5903e29b12b8","revision":"4775195c62ee67b1c20882a1561a4578b8db017f"},
 
   "sources": [
     {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
@@ -44,7 +44,7 @@
 
     {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-server/services/approvals/approval-inbox.ts","digest":"86f6654861290a3c6a7cd303bfe9a339e2ee1275f1dc9fd67c23c0cab275bbba","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
@@ -58,7 +58,9 @@
 
     {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"03c9f0371490796b697bc774bb1b5c36de11f2d27874d27d215d652c2aa73154","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"b2ad336b2a519684fb2c2e4759207610b250779c971ab2fc7330f7b03c11a611","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
+    {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"b2ad336b2a519684fb2c2e4759207610b250779c971ab2fc7330f7b03c11a611","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"b7561d3b1d39b4cd9ae541ef6048f7e9648a86ad"}
   ],
 
   "checks": [

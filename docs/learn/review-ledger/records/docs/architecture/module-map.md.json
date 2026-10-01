@@ -328,7 +328,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-server/runtime/conversation/native-execution-workspace.ts","digest":"96f7a7abce65f311682b087af1904e9b9ce8fffe960fb93f3d60c1ecd6aaad19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -356,7 +356,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"2297cd46b92f37a6cabcdfdfa1c619d2448693e355d0b6a5c34ef1825c7649d2","revision":"3411e53b043de4cbf57cf8b4571991ba9ee6674a"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -590,7 +590,7 @@
 
     {"path":"src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts","digest":"b15475ea8e06e179b98493884ce70f4eca5bc98ce1911aa9bb8537be0265217e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"19d16440f2e8c69b7f26394a9f6d4c7033fb8ae6c86ad1e02102e007cad98f2d","revision":"11ead89b2b34cd6c303e268f5fdf462a233e9d5d"},
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-server/services/orchestration/project-task-room-working-state-worker.ts","digest":"2890fb96b42c0c1d94a00fb2fee1702706f98d69ff08445ce1734110beadb244","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -696,7 +696,7 @@
 
     {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"bbbe8cafdbfa7f5b53d9b1fecd34d0dea6953a39bfdc48f7670d74ec0c040e39","revision":"4f47664e668c1f24b247e87c0d755ecbf61cba25"},
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"e6ba059f3718c70376beeaf3167dcfe481327192131875c2049338039cad5a42","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","digest":"ae5ef724741ab5d319f3a2c0065060294f16da12a4cf1da0228c0f9a95a97c3e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -898,7 +898,9 @@
 
     {"path":"tests/helpers/fixture-audit.ts","digest":"ef308de2593937ae6aadbb3aecd875fb5d9313c3b691cc6e61646eb9fe6ed98d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"db188f8f473b5b5b112b3dcce279e70136e2d1261b4ef823aac1f846daa2f32d","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"}
   ],
 
   "checks": [

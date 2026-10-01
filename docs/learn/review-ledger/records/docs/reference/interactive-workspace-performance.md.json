@@ -24,7 +24,7 @@
 
     {"path":"scripts/lib/interactive-workspace-production-bridge.mjs","digest":"76f71c48957ec045802d8fdd419b3d124fbd69916428ea6ff317c43410dc5562","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"19d16440f2e8c69b7f26394a9f6d4c7033fb8ae6c86ad1e02102e007cad98f2d","revision":"11ead89b2b34cd6c303e268f5fdf462a233e9d5d"},
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-ui/src/performance/interactive-workspace-performance-bridge.ts","digest":"4bd78d38eda3c83b97f83c43aa781df4da008b4efd5b3e9e6b5169275005f921","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

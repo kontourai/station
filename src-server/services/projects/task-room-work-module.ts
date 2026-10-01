@@ -111,6 +111,45 @@ function requesterDisplayId(taskId: string, ownerId: string): string {
 export class TaskRoomWorkModule {
   constructor(private readonly file: string) {}
 
+  /** Private publication lookup; callers must verify the durable session/room binding. */
+  async readPublicationRequests(input: {
+    taskId: string;
+    projectId: string;
+    taskCreatedAt: string;
+    roomProjectId: string;
+    readBinding: (
+      sessionId: string,
+    ) => { projectId: string; taskId: string } | undefined;
+  }): Promise<readonly StoredRecord[]> {
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(this.file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    if (bytes.length > MAX_BYTES)
+      throw new TaskRoomWorkUnavailableError(
+        'Agent request history exceeds its limit.',
+      );
+    return checkedStore(JSON.parse(bytes.toString('utf8'))).records.filter(
+      (record) => {
+        if (
+          record.taskId !== input.taskId ||
+          record.projectId !== input.projectId ||
+          record.taskCreatedAt !== input.taskCreatedAt ||
+          record.state === 'refused'
+        )
+          return false;
+        const binding = input.readBinding(record.sessionId);
+        return (
+          binding?.projectId === input.roomProjectId &&
+          binding.taskId === input.taskId
+        );
+      },
+    );
+  }
+
   async list(
     taskId: string,
     authorize: () => Promise<Scope | undefined>,
