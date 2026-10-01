@@ -1,15 +1,14 @@
 import {
   chmodSync,
-  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   type BrokerIceAuthority,
   BrokerIceService,
@@ -40,8 +39,9 @@ const authority = (subject = 'owner-1'): BrokerIceAuthority => ({
 });
 
 describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
+  const makeTempDir = trackTempDirs();
   test('failed issuer attempts survive restart and enforce global and per-owner budgets', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-budget-'));
+    const root = makeTempDir('station-ice-budget-');
     const path = join(root, 'budget.sqlite');
     const provider: BrokerTurnProvider = {
       issue: vi.fn(async () => {
@@ -81,7 +81,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     }
   });
   test('seven configuration requests reuse one credential, but restart retains the issuance limit', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-reuse-'));
+    const root = makeTempDir('station-ice-reuse-');
     const path = join(root, 'budget.sqlite');
     const provider: BrokerTurnProvider = { issue: vi.fn(async () => servers) };
     let current = true;
@@ -123,7 +123,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     }
   });
   test('credentials below the minimum peer lifetime are refreshed rather than reused', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-refresh-'));
+    const root = makeTempDir('station-ice-refresh-');
     let now = 1000;
     const provider: BrokerTurnProvider = { issue: vi.fn(async () => servers) };
     const service = new BrokerIceService(
@@ -143,7 +143,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     }
   });
   test('cancelled provider work retains its concurrency slot and cannot publish a late result', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-cancel-'));
+    const root = makeTempDir('station-ice-cancel-');
     let complete!: (value: typeof servers) => void;
     const provider: BrokerTurnProvider = {
       issue: vi.fn(
@@ -177,7 +177,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     }
   });
   test('bounds provider TTL by the native grant and checks retirement after issuance', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-current-'));
+    const root = makeTempDir('station-ice-current-');
     let current = true;
     const provider: BrokerTurnProvider = {
       issue: vi.fn(async () => {
@@ -217,7 +217,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     }
   });
   test('ledger replacement fences cached credentials and symlinks cannot select another database', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-ledger-pin-'));
+    const root = makeTempDir('station-ice-ledger-pin-');
     const path = join(root, 'budget.sqlite');
     const provider: BrokerTurnProvider = { issue: vi.fn(async () => servers) };
     const service = new BrokerIceService(path, provider, {}, () => 1000);
@@ -242,7 +242,7 @@ describe.runIf(process.platform !== 'win32')('bounded TURN issuer', () => {
     }
   });
   test('private operator configuration cannot weaken hard issuer limits', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ice-config-'));
+    const root = makeTempDir('station-ice-config-');
     const file = join(root, 'private.json');
     writeFileSync(
       file,
