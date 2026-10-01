@@ -107,6 +107,7 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -157,6 +158,7 @@ import {
   requestedApprovalMode,
 } from './approval-authority.js';
 import {
+  dispatchCwdRefusalFor,
   foregroundDispatchTarget,
   namesAnotherStation,
   newSessionFacts,
@@ -809,6 +811,8 @@ interface DelegateTaskRequest {
   ownerAttribution: StartOwnerAttribution | undefined;
   /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
   fullAccessGrant: FullAccessGrant | null;
+  /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -879,6 +883,8 @@ interface ForegroundMessageRequest {
   ownerAttribution: StartOwnerAttribution | undefined;
   /** #2493: `resolveDispatchActor`'s grant; REQUIRED like `ownerAttribution`. */
   fullAccessGrant: FullAccessGrant | null;
+  /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   clientOrigin?: ClientOrigin;
 }
 
@@ -1864,6 +1870,8 @@ export function createOrchestrationRoutes(
         principal,
         ownerAttribution,
         fullAccessGrant,
+        // #2873: the scope decision above, run again where the engine spawns.
+        ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
       const data = await deps.executeForegroundMessage(foregroundRequest);
@@ -1909,7 +1917,9 @@ export function createOrchestrationRoutes(
       return c.json({ success: true, data });
     } catch (error) {
       const refused =
-        delegationRefusal(c, error) ?? fullAccessRefusalFor(c, error);
+        delegationRefusal(c, error) ??
+        fullAccessRefusalFor(c, error) ??
+        dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
@@ -2399,6 +2409,9 @@ export function createOrchestrationRoutes(
           principal,
           ownerAttribution,
           fullAccessGrant,
+          // #2873: the scope decision above, run again where the engine
+          // spawns.
+          ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
           clientOrigin,
           ...(sessionId
             ? { sessionId, parentTaskId: roomRequest?.taskId }
@@ -2511,7 +2524,8 @@ export function createOrchestrationRoutes(
       const data = await dispatch();
       return c.json({ success: true, data });
     } catch (error) {
-      const refused = delegationRefusal(c, error);
+      const refused =
+        delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
       // #485: the receiver's typed duplicate outcomes — an explicit
       // pending/unknown or exists reference with the attempt id, NEVER a

@@ -22,7 +22,10 @@ import { DEFAULT_SYSTEM_PROMPT } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
-import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
+import {
+  AcpAdapter,
+  acpConnectionDefaultCwd,
+} from '../../providers/adapters/acp-adapter.js';
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -598,6 +601,16 @@ export async function initializeRuntime(
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
+    // #2873: where an ACP connection would start a session that has no
+    // directory of its own, read from the same config the adapter reads, so
+    // a scoped dispatch is decided on the directory it will run in.
+    resolveConnectionDefaultCwd: async (provider, connectionId) => {
+      if (provider !== 'acp') return undefined;
+      const connection = (
+        (await configLoader.loadACPConfig()) as ACPConfig
+      ).connections.find((candidate) => candidate.id === connectionId);
+      return connection ? acpConnectionDefaultCwd(connection) : undefined;
+    },
     resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
       configLoader.getProjectHomeDir(),
       storageAdapter,

@@ -269,6 +269,16 @@ import {
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
+import {
+  assertDispatchCwdUnmoved,
+  DISPATCH_CANONICAL_CWD_METADATA_KEY,
+  type DispatchCwdAdmission,
+  type DispatchCwdOrigin,
+  DispatchCwdRefusedError,
+  dispatchCwdMovedError,
+  recordedDispatchCanonicalCwd,
+  withoutDispatchCanonicalCwd,
+} from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
 import type {
   CommandRefusalPhase,
@@ -776,6 +786,17 @@ interface OrchestrationServiceOptions {
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
+  ) => Promise<string | undefined>;
+  /**
+   * #2873: the directory an engine connection starts a session in when the
+   * session has none of its own (an ACP connection's `config.cwd`), which
+   * only the adapter otherwise sees. `undefined` when the connection sets
+   * none. Read only for a start a dispatch route admitted by scope; such a
+   * start refuses when this is not wired.
+   */
+  resolveConnectionDefaultCwd?: (
+    provider: string,
+    connectionId: string | undefined,
   ) => Promise<string | undefined>;
   /**
    * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2).
@@ -3009,6 +3030,8 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        // #2873: a respawn re-resolves the recorded folder like any start.
+        assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
           this.runEngineSessionStart(startInput.threadId, () =>
             adapter.startSession(startInput),
@@ -5359,7 +5382,9 @@ export class OrchestrationService {
           } = input as ProviderSessionStartInput;
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
-              stripReservedCapabilityMetadata(publicStartInput),
+              withoutDispatchCanonicalCwd(
+                stripReservedCapabilityMetadata(publicStartInput),
+              ),
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
@@ -5384,6 +5409,25 @@ export class OrchestrationService {
               readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
               internal?.receiverExecutionAdmission?.admitted,
           );
+          // #2873: record the canonical folder a scoped dispatch was
+          // admitted into (decided again here, for the directory this start
+          // is bound to), or carry forward the one the conversation's
+          // previous session recorded for this same folder. Written after
+          // the strip above removed any caller-supplied value.
+          const dispatchCanonicalCwd = context.dispatchCwdAdmission
+            ? context.dispatchCwdAdmission.recheck(
+                ...(await this.dispatchCwdBinding(startInput, internal)),
+              )
+            : this.inheritedDispatchCanonicalCwd(startInput);
+          if (dispatchCanonicalCwd !== undefined) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DISPATCH_CANONICAL_CWD_METADATA_KEY]: dispatchCanonicalCwd,
+              },
+            };
+          }
           // Station #90 lane D (R1): the one start choke point. A start an
           // unverified agent caused (derived at the HTTP seam, carried in the
           // dispatch context) is marked so it acts for no one.
@@ -5521,14 +5565,30 @@ export class OrchestrationService {
           );
           let session: ProviderSession;
           try {
-            const invoke = () =>
-              withTenantExecutionContext(context.tenantExecutionContext, () =>
-                this.runEngineSessionStart(
-                  input.threadId,
-                  () => adapter.startSession(input),
-                  internal?.sessionStartAdmission,
-                ),
+            const invoke = async () => {
+              // #2873: the folder is decided again here, after every
+              // preceding await. From the check to the adapter call nothing
+              // yields: the start boundary below claims synchronously. It
+              // runs outside that boundary, which would record a throw as
+              // an uncertain start.
+              const binding = context.dispatchCwdAdmission
+                ? await this.dispatchCwdBinding(input, internal)
+                : undefined;
+              this.assertDispatchCwdAtSpawn(
+                input,
+                context.dispatchCwdAdmission,
+                binding,
               );
+              return withTenantExecutionContext(
+                context.tenantExecutionContext,
+                () =>
+                  this.runEngineSessionStart(
+                    input.threadId,
+                    () => adapter.startSession(input),
+                    internal?.sessionStartAdmission,
+                  ),
+              );
+            };
             // #484 phase A: the receiver-owned offer/binding recheck runs
             // INSIDE the provider-effect path — after every preceding await
             // and adjacent to the adapter invocation — so a withdrawn offer
@@ -5679,7 +5739,9 @@ export class OrchestrationService {
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
-        error instanceof ConcurrentEngineStartCapacityError,
+        error instanceof ConcurrentEngineStartCapacityError ||
+        // #2873: a refusal to start, with nothing run.
+        error instanceof DispatchCwdRefusedError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -7832,6 +7894,99 @@ export class OrchestrationService {
     );
     this.discardedEngineExitWaiters.set(threadId, cancelAndSettle);
     return { settled, cancel };
+  }
+
+  /**
+   * #2873: the directory a start is bound to, for the dispatch route's scope
+   * decision. `undefined` where Station chose the directory itself: a
+   * workspace it provisioned for this thread (a worktree), or the home
+   * default. A start with no directory at all is left to its engine
+   * connection, so that connection's default is read instead.
+   */
+  private async dispatchCwdBinding(
+    input: ProviderSessionStartInput,
+    internal: OrchestrationDispatchInternalOptions | undefined,
+  ): Promise<[string | undefined, DispatchCwdOrigin]> {
+    if (
+      internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+      readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+      internal?.receiverExecutionAdmission?.admitted
+    )
+      return [undefined, 'session'];
+    if (input.cwd !== undefined)
+      return [input.cwdDefaulted ? undefined : input.cwd, 'session'];
+    if (!this.options.resolveConnectionDefaultCwd)
+      throw new DispatchCwdRefusedError(
+        'Station cannot tell where this engine connection would start the session, so it will not start it for an agent.',
+        'station_control_role_required',
+      );
+    const connectionId =
+      typeof input.metadata?.connectionId === 'string'
+        ? input.metadata.connectionId
+        : undefined;
+    return [
+      await this.options.resolveConnectionDefaultCwd(
+        input.provider,
+        connectionId,
+      ),
+      'connection',
+    ];
+  }
+
+  /**
+   * #2873: the last check before an engine is spawned for a new session.
+   * With the route's admission, its decision is run again and must still
+   * name the canonical folder `prepareStart` recorded; without one, a
+   * recorded folder (carried from the conversation's previous session) must
+   * still resolve to itself.
+   */
+  private assertDispatchCwdAtSpawn(
+    input: ProviderSessionStartInput,
+    admission: DispatchCwdAdmission | undefined,
+    binding: [string | undefined, DispatchCwdOrigin] | undefined,
+  ): void {
+    if (!admission || !binding) {
+      assertDispatchCwdUnmoved(input, input.cwd);
+      return;
+    }
+    const recorded = recordedDispatchCanonicalCwd(input.metadata);
+    const current = admission.recheck(...binding);
+    if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
+  }
+
+  /**
+   * #2873: the canonical folder the conversation's previous session
+   * recorded, for a session that starts in that same folder (a continuation
+   * child, or the same thread started again). The newest session with a
+   * start record decides; a different folder carries nothing forward.
+   */
+  private inheritedDispatchCanonicalCwd(
+    input: ProviderSessionStartInput,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    if (!store || input.cwd === undefined) return undefined;
+    const conversationId = store.conversationForSession(
+      input.threadId,
+    )?.conversationId;
+    const threads = conversationId
+      ? store
+          .conversationSessions(conversationId)
+          .map((session) => session.sessionId)
+          .reverse()
+      : [input.threadId];
+    for (const threadId of threads) {
+      const started = store.latestEventByMethod(threadId, 'session.started')
+        ?.payload as { metadata?: Record<string, unknown> } | undefined;
+      if (!started) continue;
+      const recorded = recordedDispatchCanonicalCwd(started.metadata);
+      const cwd = store.readSessionByThread(threadId)?.cwd;
+      return recorded !== undefined &&
+        cwd !== undefined &&
+        resolve(expandTilde(cwd)) === input.cwd
+        ? recorded
+        : undefined;
+    }
+    return undefined;
   }
 
   /**
