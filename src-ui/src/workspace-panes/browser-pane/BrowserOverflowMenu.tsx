@@ -23,7 +23,7 @@ import { useMenuFocus } from '../../hooks/useMenuFocus';
  * `.menu-surface` / `.menu-row` look every Station menu shares. Portalled
  * and fixed to the trigger's rect so a toolbar that clips cannot clip the
  * menu; it opens below the trigger, or above it when there is no room, and
- * is bounded to the viewport with its own scroll.
+ * is bounded to the viewport above the chat dock, with its own scroll.
  */
 
 export interface BrowserMenuRadio {
@@ -155,7 +155,16 @@ export function BrowserOverflowMenu({
     const trigger = triggerRef.current?.getBoundingClientRect();
     const menu = menuRef.current?.getBoundingClientRect();
     if (!trigger || !menu) return;
-    const viewportHeight = window.innerHeight;
+    // The chat dock overlays the bottom of the viewport above every popover
+    // (`--layer-dock`), so the menu's floor is the dock's top edge, not the
+    // window's: on a landscape phone the last rows otherwise sit under it.
+    const rootStyle = getComputedStyle(document.documentElement);
+    const inset = (name: string) =>
+      Number.parseFloat(rootStyle.getPropertyValue(name)) || 0;
+    const viewportHeight =
+      window.innerHeight -
+      inset('--dock-slot-size') -
+      inset('--visual-viewport-bottom-inset');
     const below = viewportHeight - trigger.bottom - GAP_PX - EDGE_PX;
     const above = trigger.top - GAP_PX - EDGE_PX;
     const openUp = menu.height > below && above > below;
@@ -163,7 +172,7 @@ export function BrowserOverflowMenu({
       position: 'fixed',
       right: Math.max(EDGE_PX, window.innerWidth - trigger.right),
       ...(openUp
-        ? { bottom: viewportHeight - trigger.top + GAP_PX }
+        ? { bottom: window.innerHeight - trigger.top + GAP_PX }
         : { top: trigger.bottom + GAP_PX }),
       maxHeight: Math.max(120, openUp ? above : below),
       maxWidth: `calc(100vw - ${EDGE_PX * 2}px)`,

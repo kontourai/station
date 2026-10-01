@@ -557,6 +557,60 @@ describe('the toolbar', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  test('the ⋯ menu ends above the chat dock, so its last row is never under it', async () => {
+    // A landscape phone: 420px tall, the dock's bar over the bottom 53px.
+    const DOCK = 53;
+    const VIEWPORT = 420;
+    const TRIGGER_BOTTOM = 125;
+    const rect = (top: number, height: number) =>
+      ({
+        top,
+        bottom: top + height,
+        left: 816,
+        right: 860,
+        width: 44,
+        height,
+        x: 816,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const innerHeight = vi
+      .spyOn(window, 'innerHeight', 'get')
+      .mockReturnValue(VIEWPORT);
+    const rects = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        // Six 44px rows and a separator: taller than the room below.
+        if (this.getAttribute('role') === 'menu') return rect(0, 309);
+        return rect(TRIGGER_BOTTOM - 44, 44);
+      });
+    document.documentElement.style.setProperty('--dock-slot-size', `${DOCK}px`);
+    try {
+      controlHolder.state = control();
+      renderPane({
+        [SUMMARY]: () => ({ body: { success: true, data: sessionView() } }),
+      });
+      await screen.findByTestId('live-canvas');
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More browser actions' }),
+      );
+      const menu = await screen.findByRole('menu', {
+        name: 'More browser actions',
+      });
+      await waitFor(() => expect(menu.style.top).not.toBe(''));
+      const top = Number.parseFloat(menu.style.top);
+      const maxHeight = Number.parseFloat(menu.style.maxHeight);
+      expect(top).toBeGreaterThanOrEqual(TRIGGER_BOTTOM);
+      expect(top + maxHeight).toBeLessThanOrEqual(VIEWPORT - DOCK);
+      // 420 - 53 (dock) - 125 (trigger) - 4 (gap) - 8 (edge).
+      expect(maxHeight).toBe(230);
+    } finally {
+      document.documentElement.style.removeProperty('--dock-slot-size');
+      rects.mockRestore();
+      innerHeight.mockRestore();
+    }
+  });
+
   test('the Console button counts errors logged since it was last opened, and opening it clears the count', async () => {
     controlHolder.state = control();
     let reads = 0;
