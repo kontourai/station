@@ -144,7 +144,8 @@ every other route. These rules make it a region rather than a special case
     `main` showed on it, and a swap made at `/` pushes a same-URL entry for
     the new page. A traversal that lands on a stamped entry puts that page
     back, so Back from Activity returns to Home, Forward re-opens Activity,
-    and a reload on either entry keeps the stamp. From another route the
+    and the stamp is still there after a reload (where the stored
+    arrangement is what is shown, and the live entry is stamped to match). From another route the
     navigation to `/` is still one entry and Back returns to that route. On a
     phone with Chat full screen, the entry being left keeps `maximize` in its
     URL, so Back returns to the full-screen Chat the page was opened over
@@ -164,10 +165,18 @@ every other route. These rules make it a region rather than a special case
     answered (`navigationStore.traversalAwaitsGuard`); and a traversal
     within one navigation entry — a dialog layer copies the state it was
     pushed on, stamp included, so closing it lands on the entry beneath,
-    whose stamp is then brought up to date instead of applied. Limits: a
+    whose stamp is then brought up to date instead of applied (the two are
+    told apart by navigation index: the store reports the index of the
+    entry a traversal left, `traversalDepartedIndex`). A page change caused
+    by adopting a surface deep link (`/?surface=…`) adds no entry of its
+    own: the link's entry is the entry, and the adoption clears the command
+    from it. Limits: a
     page chosen from a dialog (the command palette) closes that dialog, as
     any navigation does, and leaves its entry orphaned beneath, which costs
-    one extra Forward press on the way back; and the page a traversal
+    one extra Forward press on the way back; a swap also closes any other
+    open dialog, and abandons a navigation still waiting on its precommit,
+    as a navigation does; a swap asked for from inside another navigation's
+    notification gets no entry of its own; and the page a traversal
     removes is unplaced, as when Home's row takes the page, without asking
     that surface's own unsaved-changes guards (no surface that declares
     `main` registers one today).

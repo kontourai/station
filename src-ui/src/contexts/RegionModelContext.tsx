@@ -2,6 +2,7 @@ import type {
   DeviceSettings,
   RegionArrangementRecord,
 } from '@kontourai/station-contracts/device-settings';
+import { SURFACE_DEEP_LINK_QUERY_KEYS } from '@kontourai/station-contracts/surface-deep-link';
 import {
   createContext,
   type ReactNode,
@@ -366,7 +367,14 @@ function mainPage(arrangement: RegionArrangement): string {
  * restores to the right place — which is then stamped with the new page.
  */
 function enterMainOutlet(previous: string, next: string) {
-  if (window.location.pathname === '/' && previous !== next) {
+  // A surface deep link being adopted (`/?surface=…`) is its own entry: the
+  // adoption clears the command from the LIVE entry afterwards, so a pushed
+  // entry would leave the command on the one beneath, and Back onto that
+  // would run it again.
+  const adoptingLink = new URLSearchParams(window.location.search).has(
+    SURFACE_DEEP_LINK_QUERY_KEYS.surface,
+  );
+  if (window.location.pathname === '/' && previous !== next && !adoptingLink) {
     stampMainPage(previous);
     navigationStore.navigate('/');
     stampMainPage(next);
@@ -712,18 +720,18 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // copies the state it was pushed on, stamp included, so closing it lands on
   // the entry beneath: the same navigation entry, whose stamp may be older
   // than a change made while the layer was open. That one is brought up to
-  // date instead of obeyed.
-  const liveEntryIndexRef = useRef(navigationEntryIndex(window.history.state));
+  // date instead of obeyed. (The store's listener is registered at module
+  // load, so it has run by the time this one reads from it.)
   useEffect(() => {
     const restoreMainPage = (event: PopStateEvent) => {
-      const departed = liveEntryIndexRef.current;
-      const landed = navigationEntryIndex(window.history.state);
-      liveEntryIndexRef.current = landed;
       if (event.state === null || navigationStore.traversalAwaitsGuard) return;
       const page = mainPageOf(event.state);
       if (!page || window.location.pathname !== '/') return;
       const current = regionsRef.current;
-      if (landed !== undefined && landed === departed) {
+      if (
+        navigationEntryIndex(event.state) ===
+        navigationStore.traversalDepartedIndex
+      ) {
         stampMainPage(mainPage(current));
         return;
       }

@@ -219,6 +219,19 @@ class NavigationStore {
   get traversalAwaitsGuard(): boolean {
     return this.restoringPop;
   }
+  private departedHistoryIndex = 0;
+  /**
+   * The navigation index of the entry the traversal being handled LEFT. The
+   * store's index is the live entry's at every moment — `navigate`, a
+   * collapsed dialog layer's adoption and each traversal all move it — so
+   * this is read at the top of the handler, before the landing moves it. A
+   * listener registered after the store's compares it with the landed
+   * entry's index to tell a move between entries from a move within one (a
+   * dialog layer shares the index of the entry beneath it).
+   */
+  get traversalDepartedIndex(): number {
+    return this.departedHistoryIndex;
+  }
   private readonly navigationGuardOwners = new Map<symbol, string>();
   /** Whether any registered guard protects `owner`'s content (it is dirty). */
   hasNavigationGuard(owner: string): boolean {
@@ -349,6 +362,7 @@ class NavigationStore {
   };
 
   private handlePopState = (event: PopStateEvent) => {
+    this.departedHistoryIndex = this.historyIndex;
     const targetIndex = historyIndex(event.state);
     if (targetIndex !== undefined && targetIndex !== this.historyIndex)
       this.navigationGeneration = {};

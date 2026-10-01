@@ -396,6 +396,33 @@ describe('entries the traversal must not obey', () => {
     release();
   });
 
+  test('a dialog that collapsed onto a new URL is its own entry: Back from it restores the page beneath', async () => {
+    await mount();
+    await openActivityPage();
+    // A dialog over the Activity page. While it is open the page goes back
+    // to its dock and the URL gains a param, so an ordinary close collapses
+    // the layer where it stands (dialog-history) under a NEW navigation index.
+    let release: () => void = () => {};
+    act(() => {
+      release = registerDialogHistory('test-collapsing-dialog', () => {});
+    });
+    act(() => current().toggleSurface('activity'));
+    await waitFor(() => expect(page()).toBe('home'));
+    act(() => navigationStore.updateParams({ fontSize: '15' }));
+    act(() => release());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(window.location.search).toContain('fontSize=15');
+    expect(page()).toBe('home');
+
+    // The entry beneath is a different navigation entry, and it showed
+    // Activity as the page.
+    await travel(-1);
+    expect(window.location.search).not.toContain('fontSize');
+    expect(page()).toBe('activity');
+  });
+
   test('closing a dialog does not undo a change made while it was open', async () => {
     await mount();
     act(() => current().showSurface('activity'));
@@ -445,6 +472,34 @@ describe('entries the traversal must not obey', () => {
     await travel(-2);
     expect(window.location.pathname).toBe('/');
     expect(page()).toBe('activity');
+  });
+});
+
+describe('a deep link that changes the page', () => {
+  test('is its own entry: Back leaves it, and coming back does not run it again', async () => {
+    await mount();
+    await openActivityPage();
+    const length = window.history.length;
+
+    // `/?surface=home` while Activity is the page: the adoption reveals Home
+    // in `main`, then clears the command from the live entry.
+    act(() => navigationStore.navigate('/', { surface: 'home' }));
+    await waitFor(() => expect(page()).toBe('home'));
+    await waitFor(() =>
+      expect(window.location.search).not.toContain('surface'),
+    );
+    // One entry — the link's — and no second one for the swap it caused.
+    expect(window.history.length).toBe(length + 1);
+
+    await travel(-1);
+    expect(page()).toBe('activity');
+    expect(window.location.search).not.toContain('surface');
+    await travel(1);
+    expect(page()).toBe('home');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(window.history.length).toBe(length + 1);
   });
 });
 
