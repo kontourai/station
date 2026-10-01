@@ -9,14 +9,14 @@
 
   "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.",
 
-  "document": {"digest":"9963d8554140748d885ad8b8a46c3937271c95f2730b5ca961f2d2c76dba504b","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+  "document": {"digest":"ac95d4d74b5fba9e6939c3f3fb6e893235701017b7f3e06ce2b2eceede44b1e9","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
   "sources": [
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
@@ -32,7 +32,7 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"packages/sdk/src/index.ts","digest":"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625","revision":"7576509655a6bbef0ef61d5f4645722922b8ec43"},
 
     {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

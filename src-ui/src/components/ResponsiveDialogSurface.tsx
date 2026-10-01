@@ -8,9 +8,11 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -19,6 +21,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
+import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
@@ -233,6 +236,14 @@ export function ResponsiveDialogSurface({
   anchorRef,
 }: ResponsiveDialogSurfaceProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // What this surface is to anything floating inside it — see overlay-layer.
+  // Linked to the overlay this one was opened from, which a body portal hides
+  // from the DOM but not from React.
+  const parentOverlay = useContext(OverlayLayerContext);
+  const overlayLayer = useMemo<OverlayLayer>(
+    () => ({ element: () => panelRef.current, parent: parentOverlay }),
+    [parentOverlay],
+  );
   const returnFocusRef = useRef<HTMLElement[]>([]);
   const capturedReturnFocus = useRef(false);
   const restoreFrame = useRef<number | null>(null);
@@ -454,15 +465,17 @@ export function ResponsiveDialogSurface({
         if (dismissible && event.target === event.currentTarget) onClose();
       }}
     >
-      {role === 'alertdialog' ? (
-        <div {...panelProps} role="alertdialog">
-          {children}
-        </div>
-      ) : (
-        <div {...panelProps} role="dialog">
-          {children}
-        </div>
-      )}
+      <OverlayLayerContext.Provider value={overlayLayer}>
+        {role === 'alertdialog' ? (
+          <div {...panelProps} role="alertdialog">
+            {children}
+          </div>
+        ) : (
+          <div {...panelProps} role="dialog">
+            {children}
+          </div>
+        )}
+      </OverlayLayerContext.Provider>
     </div>,
     document.body,
   );

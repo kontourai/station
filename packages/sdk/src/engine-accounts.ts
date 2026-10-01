@@ -1,0 +1,272 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
+
+const authState = z.enum(['authenticated', 'unauthenticated', 'unknown']);
+const engineAccountsSchema = z
+  .object({
+    engine: z.enum(['claude', 'codex']),
+    activeProfileRef: z.string().nullable(),
+    accounts: z.array(
+      z
+        .object({
+          ref: z.string().nullable(),
+          label: z.string(),
+          authState,
+          login: z.enum(['device-code', 'browser-code', 'unavailable']),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+const engineAccountUsageSchema = z.union([
+  z
+    .object({
+      status: z.literal('ok'),
+      fetchedAt: z.string(),
+      planLabel: z.string().optional(),
+      windows: z.array(
+        z
+          .object({
+            id: z.string(),
+            label: z.string(),
+            usedPercent: z.number().min(0).max(100),
+            resetsAt: z.string().optional(),
+          })
+          .strict(),
+      ),
+      exhausted: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('unknown'),
+      fetchedAt: z.string(),
+      reason: z.string(),
+    })
+    .strict(),
+]);
+const engineAccountLoginSchema = z
+  .object({
+    engine: z.enum(['claude', 'codex']),
+    mechanism: z.enum(['browser-code', 'device-code']),
+    phase: z.enum([
+      'starting',
+      'awaiting-approval',
+      'awaiting-code',
+      'verifying',
+      'completed',
+      'failed',
+      'cancelled',
+    ]),
+    startedAt: z.string(),
+    expiresAt: z.string(),
+    verificationUri: z.string().optional(),
+    userCode: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .strict();
+
+import { fetchUsageRollup } from './client/analytics';
+import { type ApiRequestScope, getJson, mutateJson } from './client/http';
+
+export type {
+  EngineAccount,
+  EngineAccountLogin,
+  EngineAccounts,
+  EngineAccountUsage,
+} from '@kontourai/station-contracts/engine-accounts';
+
+function path(id: string, leaf: string, ref: string | null) {
+  return `/api/connections/agent/${encodeURIComponent(id)}/${leaf}${ref === null ? '' : `?profileRef=${encodeURIComponent(ref)}`}`;
+}
+async function readData(
+  scope: ApiRequestScope,
+  route: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const response = await getJson(`${scope.apiBase}${route}`, {
+    requestScope: scope,
+    signal,
+  });
+  const body: unknown = await response.json();
+  if (
+    !response.ok ||
+    !body ||
+    typeof body !== 'object' ||
+    !('success' in body) ||
+    body.success !== true ||
+    !('data' in body)
+  )
+    throw new Error('This Station could not complete the account request.');
+  return body.data;
+}
+function key(
+  scope: ApiRequestScope,
+  id: string,
+  kind: string,
+  ref: string | null,
+) {
+  return ['engine-accounts', scope.apiBase, scope.authorityKey, id, kind, ref];
+}
+const queryPolicy = {
+  staleTime: 30000,
+  gcTime: 0,
+  retry: false,
+  refetchOnWindowFocus: false,
+} as const;
+export function useEngineAccountsQuery(
+  id: string,
+  scope: ApiRequestScope,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: key(scope, id, 'accounts', null),
+    queryFn: async ({ signal }) =>
+      engineAccountsSchema.parse(
+        await readData(scope, path(id, 'accounts', null), signal),
+      ),
+    enabled,
+    ...queryPolicy,
+  });
+}
+export function useEngineAccountUsageQuery(
+  id: string,
+  ref: string | null,
+  scope: ApiRequestScope,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: key(scope, id, 'limits', ref),
+    queryFn: async ({ signal }) =>
+      engineAccountUsageSchema.parse(
+        await readData(scope, path(id, 'account-usage', ref), signal),
+      ),
+    enabled,
+    ...queryPolicy,
+  });
+}
+export function useEngineAccountLoginQuery(
+  id: string,
+  ref: string | null,
+  scope: ApiRequestScope,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: key(scope, id, 'login', ref),
+    queryFn: async ({ signal }) => {
+      const data = await readData(
+        scope,
+        path(id, 'account-login', ref),
+        signal,
+      );
+      if (!data || typeof data !== 'object' || !('login' in data))
+        throw new Error('Sign-in status is unavailable.');
+      return data.login === null
+        ? null
+        : engineAccountLoginSchema.parse(data.login);
+    },
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data &&
+      ['starting', 'awaiting-code', 'awaiting-approval', 'verifying'].includes(
+        query.state.data.phase,
+      )
+        ? 2000
+        : false,
+  });
+}
+export function useEngineAccountLoginMutation(
+  id: string,
+  ref: string | null,
+  scope: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: async (
+      action:
+        | { kind: 'start' }
+        | { kind: 'code'; code: string }
+        | { kind: 'cancel' },
+    ) => {
+      const response = await mutateJson(
+        `${scope.apiBase}${path(id, 'account-login', ref)}`,
+        action.kind === 'cancel' ? 'DELETE' : 'POST',
+        { requestScope: scope },
+        action.kind === 'code' ? { code: action.code } : {},
+      );
+      const body: unknown = await response.json();
+      if (
+        !response.ok ||
+        !body ||
+        typeof body !== 'object' ||
+        !('success' in body) ||
+        body.success !== true
+      )
+        throw new Error(
+          body &&
+            typeof body === 'object' &&
+            'error' in body &&
+            typeof body.error === 'string'
+            ? body.error
+            : 'Sign-in could not complete. Check its status before trying again.',
+        );
+      return response;
+    },
+    retry: false,
+    gcTime: 0,
+  });
+}
+export function useCreateEngineAccountMutation(
+  id: string,
+  scope: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: async (profile: { ref: string; label: string }) => {
+      const result = await mutateJson(
+        `${scope.apiBase}/api/connections/agent/${encodeURIComponent(id)}/credential-recovery/profiles`,
+        'POST',
+        { requestScope: scope },
+        profile,
+      );
+      if (!result.ok) throw new Error('The account could not be added.');
+      return profile;
+    },
+    retry: false,
+  });
+}
+export function useEngineActivityQuery(
+  engine: 'claude' | 'codex',
+  days: 7 | 30,
+  scope: ApiRequestScope,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [
+      'engine-activity',
+      scope.apiBase,
+      scope.authorityKey,
+      engine,
+      days,
+    ],
+    queryFn: async ({ signal }) => {
+      const response = await fetchUsageRollup(
+        scope.apiBase,
+        {
+          days,
+          provider: engine,
+          localOnly: true,
+          groupBy: 'day',
+          pageSize: 100,
+        },
+        { requestScope: scope, signal },
+      );
+      if (!response.success || !response.data)
+        throw new Error('Engine activity could not be loaded.');
+      return response.data;
+    },
+    enabled,
+    ...queryPolicy,
+  });
+}

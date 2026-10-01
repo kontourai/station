@@ -1,0 +1,7 @@
+{
+  "revision": "dfca937c8b8d96fdb86e0667a4d8afff72dc3480",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Merge carry-forward: main's changes to this record's sources were re-read (glossary Draft/Live lanes edits; build.ts adds the sdk/agent shared external, not the require shim); this branch's prose is unchanged."}
+  ]
+}

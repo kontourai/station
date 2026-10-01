@@ -1511,9 +1511,15 @@ export class StationRuntime {
           .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
           .then(async (detail) => {
             if (!detail) return;
-            const task = this.taskGraphService
-              .listTasks()
-              .find((candidate) => candidate.sessionId === sessionId);
+            const binding =
+              this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+                sessionId,
+              );
+            const task = binding
+              ? this.taskGraphService.readTaskView(binding.taskId)
+              : this.taskGraphService
+                  .listTasks()
+                  .find((candidate) => candidate.sessionId === sessionId);
             if (task && event.provider) {
               // Fold the persisted canonical stream through the one lifecycle
               // classifier used by every other Station projection. Exit
@@ -1531,6 +1537,7 @@ export class StationRuntime {
                 sessionId,
                 provider: event.provider,
                 outcome,
+                occurredAt: detail.session.updatedAt,
               });
             }
             const metadata = worktreeMetadataFromEvents(

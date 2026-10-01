@@ -58,6 +58,7 @@ import {
 import {
   useFlowDefinitionsQuery,
   useProjectLayoutQuery,
+  useTaskGraphQuery,
 } from '@kontourai/station-sdk';
 import {
   lazy,
@@ -151,6 +152,23 @@ type BuiltinWorkspacePaneComponent = (
   props: BuiltinWorkspacePaneProps,
 ) => ReactNode;
 
+function BoundTaskRoomConversation({
+  taskId,
+  projectSlug,
+}: {
+  taskId: string;
+  projectSlug: string;
+}) {
+  const graph = useTaskGraphQuery(taskId);
+  return (
+    <ProjectTaskRoomConversation
+      taskId={taskId}
+      projectSlug={projectSlug}
+      taskCreatedAt={graph.data?.task.createdAt}
+    />
+  );
+}
+
 function useResolvedPaneIdentity(
   instance: WorkspacePaneInstance,
   needsLayout: boolean,
@@ -188,7 +206,12 @@ function ChatPane({ instance }: BuiltinWorkspacePaneProps) {
           identity={{ state: 'pane-instance-invalid' }}
         />
       );
-    return <ProjectTaskRoomConversation taskId={taskId} />;
+    return (
+      <BoundTaskRoomConversation
+        taskId={taskId}
+        projectSlug={identity.project.slug}
+      />
+    );
   }
   if (!isCanonicalWorkspaceChatPaneInstance(instance))
     return (

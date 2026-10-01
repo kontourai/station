@@ -5,6 +5,10 @@ import {
   parseProjectTaskRoomBrowserHistory,
   parseProjectTaskRoomBrowserLiveSnapshot,
 } from '@kontourai/station-contracts/project-task-room-browser';
+import {
+  TASK_ROOM_WORK_VERSION,
+  type TaskRoomWorkList,
+} from '@kontourai/station-contracts/task-room-work';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import {
@@ -174,6 +178,7 @@ const messageSchema = z
       .min(1)
       .max(16 * 1024),
     occurredAt: z.string().datetime().optional(),
+    expectedTaskCreatedAt: z.string().min(1).max(40).optional(),
   })
   .strict();
 const liveSchema = z.discriminatedUnion('command', [
@@ -259,8 +264,31 @@ const batchSchema = z
  * In particular this schema deliberately has no principal, Project, device,
  * channel, policy, or grant field.
  */
-export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
+export function createProjectTaskRoomRoutes(
+  runtime: ProjectTaskRoomRuntime,
+  work?: {
+    listAgentRequests(
+      taskId: string,
+      request: Request,
+    ): Promise<TaskRoomWorkList>;
+  },
+) {
   const app = new Hono();
+  app.get('/:taskId/room/agent-requests', async (c) => {
+    if (!work)
+      return c.json(
+        { success: false, error: 'Task room agent requests are unavailable.' },
+        404,
+      );
+    const outcome = await work.listAgentRequests(param(c, 'taskId'), c.req.raw);
+    return c.json(
+      {
+        success: outcome.kind === 'available',
+        data: { version: TASK_ROOM_WORK_VERSION, ...outcome },
+      },
+      outcome.kind === 'available' ? 200 : 403,
+    );
+  });
   app.get('/:taskId/room', async (c) => {
     const result = await runtime.discover({
       taskId: param(c, 'taskId'),
@@ -446,6 +474,9 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
         proposalId: body.proposalId,
         text: body.text,
         ...(body.occurredAt ? { occurredAt: body.occurredAt } : {}),
+        ...(body.expectedTaskCreatedAt
+          ? { expectedTaskCreatedAt: body.expectedTaskCreatedAt }
+          : {}),
       }),
     );
   });

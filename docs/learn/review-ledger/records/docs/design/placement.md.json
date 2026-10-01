@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"packages/contracts/src/workspace-composition.ts","digest":"3a63323df9da3e2d7e4f6a4c304f05c08bc81b85083f7466c6d59af904e81082","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"2d63e7beb88ffd715811a385ce541ca9f9613c22ccb0797afffcee57625e8a4c","revision":"b4bc680b3c35d1559da59ffe73aa3808d8b82427"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"d10c1d92de506834e5d9279830dbeb242390d37ef5cd95d1281a218b6c85753c","revision":"b21b81a4caef3a1563f591714b029ab79c7cc839"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"14b4baff35cb6c07405e97469216982662618507a013f536aa0d34dbe31dd967","revision":"0368881dcab562767c4127b5bee0ebb6356449f3"},
 
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"},
+    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

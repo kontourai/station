@@ -575,7 +575,8 @@ function delegateTerminalStatus(
  *
  * `controls.stop` is offered only for work running on this Station: a peer
  * record describes a task elsewhere, which a local interrupt cannot reach
- * (the same rule `DelegatedTaskCoordinator` applies to its controls).
+ * (the same rule the Activity row menu applies to its Stop… and Delegate
+ * subtask… actions).
  */
 export function projectDelegateChildWork(
   summary: DelegateChildWorkSource,
