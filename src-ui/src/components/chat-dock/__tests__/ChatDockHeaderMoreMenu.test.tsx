@@ -396,6 +396,23 @@ describe('ChatDockHeaderMoreMenu', () => {
     );
   });
 
+  // #3045: rows outside the dock fold their secondary actions into this menu,
+  // and each names its own so two on one page are told apart.
+  test('a caller-supplied label names the trigger, the menu and the backdrop', () => {
+    render(<ChatDockHeaderMoreMenu label="More skill actions" actions={TWO} />);
+
+    expect(
+      screen.queryByRole('button', { name: 'More dock actions' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More skill actions' }));
+    expect(
+      screen.getByRole('menu', { name: 'More skill actions' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Close more skill actions' }),
+    ).toBeTruthy();
+  });
+
   test('a pointerdown on the backdrop does not dismiss before the click lands', () => {
     render(<ChatDockHeaderMoreMenu actions={TWO} />);
     fireEvent.click(screen.getByLabelText('More dock actions'));

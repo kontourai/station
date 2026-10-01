@@ -427,8 +427,14 @@ describe('SkillsView', () => {
 
       render(<SkillsView />);
 
-      expect(screen.getByRole('button', { name: 'Export .md' })).toBeTruthy();
+      // #3045: the header shows two labelled actions; Export folds into the
+      // menu and is not a button on the row.
       expect(screen.getByRole('button', { name: '▶ Test' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Export .md' })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More skill actions' }),
+      );
+      expect(screen.getByRole('menuitem', { name: 'Export .md' })).toBeTruthy();
     });
 
     test('turns a skill into a command and writes both switches', async () => {
@@ -743,15 +749,18 @@ describe('SkillsView', () => {
         (screen.getByRole('button', { name: '▶ Test' }) as HTMLButtonElement)
           .disabled,
       ).toBe(true);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More skill actions' }),
+      );
       expect(
         (
-          screen.getByRole('button', {
+          screen.getByRole('menuitem', {
             name: 'Export .md',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
       expect(
-        (screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement)
+        (screen.getByRole('menuitem', { name: 'Remove' }) as HTMLButtonElement)
           .disabled,
       ).toBe(true);
       expect(

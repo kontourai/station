@@ -211,7 +211,13 @@ describe('Settings › Device hosts (#1973)', () => {
       });
     });
     mount();
-    await click(await screen.findByRole('button', { name: 'Share devices…' }));
+    // #3045: the row shows two labelled actions; sharing is a menu row.
+    await click(
+      await screen.findByRole('button', {
+        name: 'More actions for Studio Mac',
+      }),
+    );
+    await click(screen.getByRole('menuitem', { name: 'Share devices…' }));
     await screen.findByText('Studio iPhone');
     expect(screen.getByText('Not shared with any Project.')).toBeTruthy();
     await click(screen.getByRole('button', { name: 'Share with Project…' }));

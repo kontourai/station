@@ -18,6 +18,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/Button';
+import { ChatDockHeaderMoreMenu } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import { DetailHeader } from '../components/DetailHeader';
 import { EngineGlyph } from '../components/icons/Glyph';
 import { ImportSkillsModal } from '../components/modals/ImportSkillsModal';
@@ -547,24 +548,6 @@ export function SkillsView({
                   : undefined
               }
             >
-              {!isCreating && selected && editableLocal && (
-                <Button
-                  size="sm"
-                  onClick={() => void handleDuplicate()}
-                  disabled={savePending || detailBusy}
-                >
-                  Duplicate
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  onClick={handleExport}
-                  disabled={detailBusy || !form.body.trim()}
-                >
-                  Export .md
-                </Button>
-              )}
               {!isCreating && selected && (
                 <Button
                   size="sm"
@@ -574,23 +557,43 @@ export function SkillsView({
                   ▶ Test
                 </Button>
               )}
+              {/* #3045: a header shows two labelled actions. Test and Save
+                  are the two this view is for; the rest fold into the menu. */}
               {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={detailBusy}
-                  onClick={() =>
-                    uninstallMutation.mutate(selected.name, {
-                      onSuccess: () => {
-                        showToast('Skill removed');
-                        deselect();
-                      },
-                      onError: () => showToast('Failed to remove skill'),
-                    })
-                  }
-                >
-                  Remove
-                </Button>
+                <ChatDockHeaderMoreMenu
+                  label="More skill actions"
+                  actions={[
+                    ...(editableLocal
+                      ? [
+                          {
+                            key: 'duplicate',
+                            label: 'Duplicate',
+                            disabled: savePending || detailBusy,
+                            onSelect: () => void handleDuplicate(),
+                          },
+                        ]
+                      : []),
+                    {
+                      key: 'export',
+                      label: 'Export .md',
+                      disabled: detailBusy || !form.body.trim(),
+                      onSelect: handleExport,
+                    },
+                    {
+                      key: 'remove',
+                      label: 'Remove',
+                      disabled: detailBusy,
+                      onSelect: () =>
+                        uninstallMutation.mutate(selected.name, {
+                          onSuccess: () => {
+                            showToast('Skill removed');
+                            deselect();
+                          },
+                          onError: () => showToast('Failed to remove skill'),
+                        }),
+                    },
+                  ]}
+                />
               )}
               {editableLocal && (
                 <Button

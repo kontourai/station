@@ -9,6 +9,7 @@ import { useMutationState } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { log } from '../../utils/logger';
+import { ChatDockHeaderMoreMenu } from '../chat-dock/ChatDockHeaderMoreMenu';
 
 interface GenerateRunState {
   status: 'pending' | 'error' | 'success' | 'idle';
@@ -275,20 +276,25 @@ export function SessionSummaryCard({
             >
               Regenerate
             </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => dismiss.mutate({ agentSlug, conversationId })}
-            >
-              Dismiss summary
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => setDeleteConfirmation(true)}
-            >
-              Delete
-            </button>
+            {/* #3045: one labelled action on the row; the two ways of
+                putting the summary away fold into the menu. */}
+            <ChatDockHeaderMoreMenu
+              label="More summary actions"
+              actions={[
+                {
+                  key: 'dismiss',
+                  label: 'Dismiss summary',
+                  disabled: pending,
+                  onSelect: () => dismiss.mutate({ agentSlug, conversationId }),
+                },
+                {
+                  key: 'delete',
+                  label: 'Delete',
+                  disabled: pending,
+                  onSelect: () => setDeleteConfirmation(true),
+                },
+              ]}
+            />
           </div>
           {deleteConfirmation ? (
             <div role="alertdialog" aria-label="Delete derived summary">

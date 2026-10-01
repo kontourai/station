@@ -17,6 +17,7 @@ import {
 } from '@kontourai/station-sdk/mobile-devices-query';
 import { type FormEvent, useState } from 'react';
 import { Button } from '../../components/Button';
+import { ChatDockHeaderMoreMenu } from '../../components/chat-dock/ChatDockHeaderMoreMenu';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { DeviceShares } from '../../workspace-panes/device/DeviceShares';
@@ -373,59 +374,66 @@ function DeviceHostRow({
             Test connection
           </Button>
           {host.hubEnabled ? (
-            <>
-              {host.hub.state === 'failed' || host.hub.state === 'stopped' ? (
-                <Button
-                  disabled={busy}
-                  onClick={() => startHub.mutate(host.hostId)}
-                  pending={startHub.isPending}
-                  pendingLabel={
-                    host.hub.state === 'failed' &&
-                    host.hub.failure === 'hub-not-installed'
-                      ? 'Reinstalling…'
-                      : 'Starting…'
-                  }
-                >
-                  {host.hub.state === 'failed' &&
-                  host.hub.failure === 'hub-not-installed'
-                    ? 'Reinstall hub'
-                    : host.hub.state === 'failed'
-                      ? 'Retry hub'
-                      : 'Start hub'}
-                </Button>
-              ) : null}
+            host.hub.state === 'failed' || host.hub.state === 'stopped' ? (
               <Button
                 disabled={busy}
-                onClick={() =>
-                  setHub.mutate({ hostId: host.hostId, enabled: false })
+                onClick={() => startHub.mutate(host.hostId)}
+                pending={startHub.isPending}
+                pendingLabel={
+                  host.hub.state === 'failed' &&
+                  host.hub.failure === 'hub-not-installed'
+                    ? 'Reinstalling…'
+                    : 'Starting…'
                 }
               >
-                Disable hub
+                {host.hub.state === 'failed' &&
+                host.hub.failure === 'hub-not-installed'
+                  ? 'Reinstall hub'
+                  : host.hub.state === 'failed'
+                    ? 'Retry hub'
+                    : 'Start hub'}
               </Button>
-            </>
+            ) : null
           ) : (
             <Button disabled={busy} onClick={() => setMode('consent')}>
               Enable device hub
             </Button>
           )}
-          {host.hubEnabled ? (
-            <Button
-              aria-expanded={sharing}
-              onClick={() => setSharing((open) => !open)}
-            >
-              {sharing ? 'Hide sharing' : 'Share devices…'}
-            </Button>
-          ) : null}
-          <Button disabled={busy} onClick={() => setMode('edit')}>
-            Edit
-          </Button>
-          <Button
-            disabled={busy}
-            onClick={() => setMode('remove')}
-            variant="danger-outline"
-          >
-            Remove
-          </Button>
+          {/* #3045: a row shows two labelled actions — the connection test
+              and whatever the hub needs next. The rest fold into the menu. */}
+          <ChatDockHeaderMoreMenu
+            label={`More actions for ${host.label}`}
+            actions={[
+              ...(host.hubEnabled
+                ? [
+                    {
+                      key: 'share',
+                      label: sharing ? 'Hide sharing' : 'Share devices…',
+                      onSelect: () => setSharing((open) => !open),
+                    },
+                    {
+                      key: 'disable-hub',
+                      label: 'Disable hub',
+                      disabled: busy,
+                      onSelect: () =>
+                        setHub.mutate({ hostId: host.hostId, enabled: false }),
+                    },
+                  ]
+                : []),
+              {
+                key: 'edit',
+                label: 'Edit',
+                disabled: busy,
+                onSelect: () => setMode('edit'),
+              },
+              {
+                key: 'remove',
+                label: 'Remove',
+                disabled: busy,
+                onSelect: () => setMode('remove'),
+              },
+            ]}
+          />
         </div>
       )}
       {check.isError || setHub.isError || startHub.isError || remove.isError ? (

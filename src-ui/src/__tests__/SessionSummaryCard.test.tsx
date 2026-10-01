@@ -103,7 +103,15 @@ describe('SessionSummaryCard', () => {
     expect(summary.textContent).toContain('final message partially included');
     expect(summary.closest('[role="log"]')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss summary' }));
+    // #3045: one labelled action on the row; Dismiss and Delete are menu
+    // rows, not buttons beside Regenerate.
+    expect(
+      screen.queryByRole('button', { name: 'Dismiss summary' }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More summary actions' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Dismiss summary' }));
     expect(generateMutate).toHaveBeenCalledWith({
       agentSlug: 'station',
       conversationId: 'c1',

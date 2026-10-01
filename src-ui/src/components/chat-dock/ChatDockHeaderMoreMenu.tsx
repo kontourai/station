@@ -69,6 +69,7 @@ export function ChatDockHeaderMoreMenu({
   triggerRef,
   badgeCount = 0,
   badgeLabel,
+  label = 'More dock actions',
 }: {
   actions: readonly DockMoreAction[];
   /**
@@ -87,6 +88,12 @@ export function ChatDockHeaderMoreMenu({
   badgeCount?: number;
   /** What the count means, for the trigger's accessible name. */
   badgeLabel?: string;
+  /**
+   * The trigger's and the menu's accessible name. The dock's is the default;
+   * a row elsewhere that folds its secondary actions here (#3045) names its
+   * own ("More skill actions"), so two of these on one page are told apart.
+   */
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<React.CSSProperties>({});
@@ -199,14 +206,10 @@ export function ChatDockHeaderMoreMenu({
         // screen reader would hear no difference between an idle dock and one
         // with three background tasks running.
         aria-label={
-          badgeCount > 0 && badgeLabel
-            ? `More dock actions — ${badgeLabel}`
-            : 'More dock actions'
+          badgeCount > 0 && badgeLabel ? `${label} — ${badgeLabel}` : label
         }
         title={
-          badgeCount > 0 && badgeLabel
-            ? `More dock actions — ${badgeLabel}`
-            : 'More dock actions'
+          badgeCount > 0 && badgeLabel ? `${label} — ${badgeLabel}` : label
         }
         aria-haspopup="menu"
         aria-expanded={open}
@@ -248,14 +251,14 @@ export function ChatDockHeaderMoreMenu({
                 type="button"
                 tabIndex={-1}
                 className="header-menu__dismiss-backdrop chat-dock__more-backdrop"
-                aria-label="Close more dock actions"
+                aria-label={`Close ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
                 onClick={() => setOpen(false)}
               />
               <div
                 ref={menuRef}
                 className="menu-surface dock-placement-menu chat-dock__more-menu"
                 role="menu"
-                aria-label="More dock actions"
+                aria-label={label}
                 tabIndex={-1}
                 style={{ position: 'fixed', ...position }}
               >
