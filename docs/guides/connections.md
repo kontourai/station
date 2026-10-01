@@ -216,8 +216,8 @@ for a Station-signed, short-lived candidate bound to the selected broker and
 one client challenge. The signature proves possession of the included key;
 it does not approve the Station. The native verifier checks the signature,
 challenge, route, client key, key ID, and confirmation code; the explicit
-Desktop approval ceremony stores public trust in the OS keyring but does not
-yet select or connect a native relay route. The recipient must compare the code and full key ID through a
+native approval ceremony stores public trust in the OS keyring but does not
+itself select or connect a native relay route. The recipient must compare the code and full key ID through a
 separate channel and explicitly record trust in its own trust owner. Courier
 delivery does not consume the invitation, enroll a Device, or grant account,
 Project, or compute permissions.
