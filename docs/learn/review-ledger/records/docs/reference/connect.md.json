@@ -88,7 +88,7 @@
 
     {"path":"src-server/services/ssh/__tests__/device-pairing-service.test.ts","digest":"d9417fd3a48a060c1e476524cbeb821761835ad5ff0fd05f6613ba865c615208","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
 
-    {"path":"src-server/services/ssh/__tests__/environment-security-service.test.ts","digest":"3acd02c84c52ece61e2c16a3c4564e0c7bd72b0aeedec1abca8b9ce582e9c8a2","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-server/services/ssh/__tests__/environment-security-service.test.ts","digest":"fac616e7b7c0228bc37c47fa060a82d9b34a732dc33fbd8564329b6716119c3f","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
     {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

@@ -7,7 +7,7 @@
 
   "summary": "Reviewed request identity, schema and semantic pass conditions, source drift, terminal reporting, artifact protection, handoff/orphan retention and CLI composition. Qualified inventory read errors and preview path disclosure.",
 
-  "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
+  "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
   "document": {"digest":"ff74bf1de7043ac6706c6e252e7e5cac78469dfecd92a760e2f44826212d62bd","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 

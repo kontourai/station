@@ -7,7 +7,7 @@
 
   "summary": "A top banner surfaces the existing 2026-08-26 supersession. Current FlowRunService.evaluate delegates to Flow evaluateRun; the retired Station probe, veto and switch remain historical rationale, while producerPin is a deprecated historical wire field.",
 
-  "limits": "No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance.",
+  "limits": "No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
   "document": {"digest":"31dcc16a60ac8b64122625111ae8c14f82d31dbbe3c9733b2a87f913cd9d1525","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
