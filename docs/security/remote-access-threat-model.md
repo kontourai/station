@@ -434,18 +434,59 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The repository that contains the Project from above is used only when the
   folder above reports the same pair itself. A refused folder answers `409
   git-dir-outside-project` with a reason that names no host path; the
-  repository listing still lists it, without a branch.
+  repository listing still lists it, without a branch. Worktree
+  provisioning, its preflight, the independent-review workspace, the review
+  lens policy read, and checkpoint capture and restore require the same of
+  the folder they are given. STILL OPEN: the pull-request repository
+  context, the workspace identity key, the Task workspace binding, the
+  checkpoint diff read and the Project identity and resource reads of a
+  checkout's remotes still let git discover the repository from the folder.
+  They read (a branch name, a remote address, a repository root) and write
+  nothing; through a planted `.git` they report another repository's.
 - **A read is checked again after it ran.** git opens the named path when it
-  runs, so a `.git` swapped after the check would still be followed. After a
-  read the routes compare the identity and change times of the `.git` entry,
-  every directory the check listed and the `commondir` pointer with what they
-  were before, discard the output on any difference and read again; a
-  repository that keeps changing is refused. This is a detection, not an
-  atomic open: it relies on the file system recording change times, and it
-  does not cover a hard link to another repository's object, which takes an
-  account that can already read it. Checkout, Commit and Push are checked
-  before they run and not after: a write cannot be discarded, so a `.git`
-  swapped between the check and the write is not noticed.
+  runs, so a `.git` swapped after the check, or a folder above the
+  repository renamed away and another put in its place, would still be
+  followed. After a read the routes compare the identity and change times
+  of every folder from the member-writable root down to the repository, the
+  `.git` entry, every directory the check listed, and the files that steer
+  git (`commondir`, `config`, `config.worktree`, `info/attributes`) with
+  what they were before, discard the output on any difference and read
+  again; a repository that keeps changing is refused. This is a detection,
+  not an atomic open. It relies on the file system recording change times;
+  a folder directly inside the member-writable root is watched by its own
+  change time, which a rename updates on APFS, ext4, XFS and Btrfs. It does
+  not cover a hard link to another repository's object, which takes an
+  account that can already read it.
+- **A write is checked immediately before it starts, not made atomic.**
+  Checkout, Commit and Push repeat the check right before git starts and
+  compare identities afterwards (a change is reported, as
+  `repository-changed-during-write` for checkout). A `.git` swapped in the
+  moment between that check and git opening the path is still followed, and
+  a write cannot be discarded. Measured with a process flipping `.git`
+  between the member's repository and a link to another: the previous code
+  acted on the other repository in 16 and 12 of 150 checkouts, this code in
+  0 of 600. That is a narrowed window, not a closed one; closing it needs
+  git to accept an already-opened directory.
+- **A read runs no program the repository names.** A repository's config
+  can name programs (a clean filter, a diff driver, an external diff), and
+  it can be rewritten in place between Station judging it and git reading
+  it. A read therefore does not read the repository's config at all: it is
+  copied once into a directory Station owns, which git uses as the
+  repository's common directory for that read, and the same copy is what
+  Station judges. `info/attributes` is not carried over, per-worktree config
+  is folded into the copy, and in-tree `.gitattributes` can only select a
+  filter or driver the copy does not define. Every command that prints a
+  diff also runs with `--no-ext-diff` and `--no-textconv`. Measured with a
+  process rewriting `.git/config` in place: the previous code ran the
+  planted program on 139 of 300 reads, this code on 0 of 600. Checkout is
+  not covered: it reads the repository's own config, so a smudge filter
+  written into it between the check and the checkout runs.
+- **A nested repository is never entered or reported.** A submodule's git
+  directory and config are the member's own, and with `diff.submodule` set
+  git runs another git inside it. Every command runs with
+  `--ignore-submodules=all`, `diff.submodule=short` and
+  `status.submoduleSummary=false`, so a changed submodule does not appear in
+  status or diff at all, and Commit does not add a nested repository.
 - **A Project has worktrees only when its repository is its own.** The
   registered-worktree reach above is git's worktree list as seen from the
   Project's folder. A `.git` planted at the Project's root naming another
@@ -455,7 +496,11 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   answers only when the Project's own repository passes the verdict above;
   otherwise the Project has none, and every route (file reads and edits,
   `/exec`, checkout, git reads, a session's workspace directory) answers
-  `403 outside-project` for them.
+  `403 outside-project` for them. STILL OPEN, by choice: a linked worktree
+  is vouched for by its registration in the repository it belongs to, and a
+  registration left behind by a worktree that was removed without `git
+  worktree prune` vouches for whoever recreates that folder's `.git` file.
+  Station cannot tell that file from the one git wrote.
 - **No git read fetches, and none runs a repository's credential helper.**
   A repository can declare itself a partial clone with an object missing;
   any command that touches the object would then fetch it from the
@@ -468,13 +513,15 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   it has not fetched answers `409 object-not-available` instead of fetching.
   The coding reads, checkout, checkpoints and worktree provisioning also
   refuse a repository whose own configuration sets an unrecognised
-  `extensions.*` or a key naming a program or a network target
+  `extensions.*`, includes another config file, or sets a key naming a
+  program, a network target or a file git reads by name
   ([the list and its basis](../../src-server/services/projects/git-repository-config.ts));
-  Commit and Push, which are network commands, refuse a partial clone as
-  well. Measured on git 2.50.1, 2.54.0 and 2.55.0. NOT_VERIFIED on older
-  git: `GIT_NO_LAZY_FETCH` is ignored before git 2.45, where the refused
-  transport and the cleared helper are what is relied on, and no older git
-  was available to run the tests against.
+  Commit and Push, which are network commands, refuse a partial clone and
+  every `http.*` key as well. Measured on git 2.50.1, 2.54.0 and 2.55.0.
+  NOT_VERIFIED on older git: `GIT_NO_LAZY_FETCH` is ignored before git 2.45,
+  where the refused transport and the cleared helper are what is relied on;
+  the config copy relies on `GIT_COMMON_DIR` (git 2.5 and later); no older
+  git was available to run the tests against.
 - **Choosing a Project's folder takes the same authority as running
   commands.** The folder is what every route above is confined to, so setting
   `workingDirectory` on `POST /api/projects` or changing it on `PUT
