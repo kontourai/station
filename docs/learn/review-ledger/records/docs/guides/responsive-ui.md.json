@@ -78,7 +78,7 @@
 
     {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/button-cap-ratchet.mjs","digest":"72a392f3dda0ebb645106ca00141552ead4f0a3387b8a6c7a01cd1f520340974","revision":"551c41cbc90e4752027245084f62c3486751ba9a"},
+    {"path":"scripts/button-cap-ratchet.mjs","digest":"2b1ce9cf929888da56a5b160b76788ec9aed7812e6fe0d83183d08f5008a75e7","revision":"e003e7b2db099d88ff7c9eb068ec8ec8bcca0b27"},
 
     {"path":"src-ui/src/components/ActionRow.tsx","digest":"a124ab2b394d8cf584539b2533a85f6b7268c03e85a414825da67937a0501aa0","revision":"1143a9a17ba13841b8f9ec0c68d44c55952a05af"},
 
