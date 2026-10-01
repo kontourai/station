@@ -15,6 +15,7 @@
 
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import {
@@ -36,6 +37,7 @@ import { writeSnooze } from '../../../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import type { WorkFactsById } from '../../../views/home/work-facts';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
+import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { MobileTaskSwitcher } from '../../chat-dock/MobileTaskSwitcher';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
@@ -43,11 +45,21 @@ const css = [
   '../../../index.css',
   '../../chat/chat.css',
   '../../chat-dock/ChatDockInboxPanel.css',
+  '../../chat-dock/ChatInboxHoverCard.css',
   '../InboxRow.css',
 ]
   .map((path) => resolveCssImports(resolve(import.meta.dirname, path)))
   .join('\n');
 assertNoImportsSurvive(css);
+
+// The Details sheet's on-demand reads need a connection scope; with none
+// they stay disabled, which is all the sheet's geometry needs of them.
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../contexts/ApiBaseContext')
+  >()),
+  useHostRequestAuthorityScope: () => null,
+}));
 
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 
@@ -481,6 +493,54 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       }
     },
   );
+
+  test('the actions a touch row keeps in its Details sheet are 44px targets on a phone', async () => {
+    seed();
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxRow
+          item={ITEMS[1]}
+          isCurrent={false}
+          isSnoozed={false}
+          isOpenChat
+          now={NOW}
+          chrome="touch"
+          snoozeMenuOnly
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+          onCloseChat={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+    const markup = document.body.innerHTML;
+    view.unmount();
+    const pg = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      await pg.setContent(page(markup));
+      await settle(pg);
+      const buttons = pg.locator('.chat-dock-inbox-details__actions button');
+      const labels: string[] = [];
+      for (let index = 0; index < (await buttons.count()); index += 1) {
+        const box = await buttons.nth(index).boundingBox();
+        const label = (await buttons.nth(index).textContent()) ?? '';
+        labels.push(label);
+        expect(box, `${label} is visible`).not.toBeNull();
+        expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(
+          MIN_TOUCH_TARGET_PX,
+        );
+      }
+      // Snooze stays beside the row, so the sheet holds only the rest.
+      expect(labels).toEqual(['Close chat']);
+    } finally {
+      await pg.close();
+    }
+  });
 
   test('a coarse pointer gets the touch chrome in the dock panel, slim rows included', async () => {
     const original = window.matchMedia;
