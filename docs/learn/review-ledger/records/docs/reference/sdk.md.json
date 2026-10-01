@@ -304,7 +304,7 @@
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/projects/coding.ts","digest":"1903715b411a816ade40b4a5b8caaacd3405309a281ac32658063bf5ae237f05","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/projects/coding.ts","digest":"4360b6eceddadfbec486bc83a4d0f6d2cb2d8abf4b0d530b22bea65e96e97e32","revision":"2c5b089d9b6afeeaf43d9f9145be15571310e78b"},
 
     {"path":"src-server/routes/projects/project-identity-routes.ts","digest":"6abd1b5f996e52b18192683a5450eca3ecf287b3716ac16a73d8c3613103dcb5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -350,7 +350,7 @@
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"252a314587f773a6215329b59c6044a9d34c3bd49cbbae33cef1ed02d5655d88","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
 
     {"path":"src-server/services/evidence/answer-assessment-module.ts","digest":"95d113224b308b1ce152239d30a8cf87b0727a4f211c80d2cdc6ead6b916d133","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -372,9 +372,9 @@
 
     {"path":"src-server/services/orchestration/isolated-session-transcript-search.ts","digest":"b4583c148fa3069baeb59b4cc80f91e3e2a3dcb5cbfacf0a745757a0abf6de09","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/services/orchestration/request-inspection.ts","digest":"1adaf32f260c35b8f4e599a01e5db9a9c4f8526ff20a4228db55022df3e9445c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
@@ -398,7 +398,7 @@
 
     {"path":"src-server/services/projects/project-membership-service.ts","digest":"1d35bde19ff70f213d3b0db162489980c2f7fd957481156c3ac1b2907dc58af5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/project-service.ts","digest":"7c2686a08d3d5b56be67eba734533db22717079638dbef7a42c724988b780d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/projects/project-service.ts","digest":"3006dd5084e859e0b2d921ae9124893cdfd4afa69bb29e087a5099c242b3ffb4","revision":"13f10612b09f7a79e6f2c6a568ce108bc661972d"},
 
     {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"7c655627f32e3048e82228592a1b81542e86acd44167e8d4b625cd64ebc10af2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -424,7 +424,7 @@
 
     {"path":"src-ui/src/components/attention/NeedsInputReply.tsx","digest":"ab0b8da0cf2a028f663b3ec521d1e5888636123168b3c3b9cba5aad5c9a122cc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"52b8e4687983de722ce934df28b5d300d7312aa43ceaa8023fbb524d5c558e4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"b9d8d43057e6a311366de908504c8d9f806cc78828c72be2b3ac7805a2e5a157","revision":"74141966c510f72845b72b7b4c8d2a2128079034"},
 
     {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -460,7 +460,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"14089e12abd8361ec48f5afdee827d5d5daba2a9116bc4c410fef8c8b3a90c29","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"ba834cfbb80f42b1742554455e2159f790f0149dba41039d68c6c91a1b5ff478","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
