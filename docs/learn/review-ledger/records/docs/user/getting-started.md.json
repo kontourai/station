@@ -9,7 +9,7 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"6aa84f43b9e93763098381337b876df414203bd6899ea39118cf5a6bfc9f9849","revision":"2463f47c8492c6d5cefdf362cadba7600982a615"},
+  "document": {"digest":"53a097e483b1f02b6541a49f02a08bf09432d1f84e5533507e011b02b8a1d974","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -108,13 +108,15 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockModalStack.tsx","digest":"30292eee3830872a07acd638a3c65ffea109690df23d03dff7b95b7f8e1da243","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","digest":"72127f777e93b2ea8df1ad08e7ac6f55aaad5f5be8fecdabf3a9dfed2d9af5d5","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    {"path":"src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","digest":"6a6d78f2870f21429d85591b121b19884e0d17d401b202973d800da125b63732","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"},
 
     {"path":"src-ui/src/contexts/scheduler-job-dialog-store.ts","digest":"5c3d2e50f1eac439eb4b5264550c6d37fbab65344ec37350ad36dd4a9e2b63fa","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
-    {"path":"src-ui/src/components/scheduler/JobFormModal.tsx","digest":"7e970394e14224b917dac0cadd9409c4482790366c89a7699fa78220bd0d37ce","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    {"path":"src-ui/src/components/scheduler/JobFormModal.tsx","digest":"fd3912a2646fbd766176132028890bfd7af77acbd92474010818130e625bea55","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"},
 
-    {"path":"src-ui/src/contexts/NavigationContext.tsx","digest":"12da3afc57bd495b688753dd723b0cd9c8ac160364d1a5c558562dc3941ed9ad","revision":"2463f47c8492c6d5cefdf362cadba7600982a615"}
+    {"path":"src-ui/src/contexts/NavigationContext.tsx","digest":"f90ed428c8bb37d073472434d51f63dbdaaad162bbf9a4d79ff045de68f7ddab","revision":"312fbe2956ee34b535485d4556146503e65cb168"},
+
+    {"path":"src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","digest":"0391d1c6158fc16ed650c4baa0f276834d0fc62b446521e5fe61ac4817ccacce","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"}
   ],
 
   "checks": [
