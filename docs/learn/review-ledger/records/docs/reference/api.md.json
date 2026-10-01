@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"ca1c7d05235f9f6ddee7491b09bf8e17b0b5e04a9701ab981c94e55f354a9e16","revision":"573c6d80e334e59e0d4170ad867c37f41f743842"},
+  "document": {"digest":"4c2c93ddaf70e201ce8cc8a37cd26e984a2681f67a1853683c007823bd98cd95","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},

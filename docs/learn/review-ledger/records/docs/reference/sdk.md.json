@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"24c9c77ff86ef0cad77d19c6c86b94effa222cb75785df6745f0e21f7ffc5b10","revision":"573c6d80e334e59e0d4170ad867c37f41f743842"},
+  "document": {"digest":"c9ac4a9051fa42cdb417e426b93fbd78c1df975773dc6edab5917f34c9371254","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -504,9 +504,9 @@
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/engine-accounts.ts","digest":"195bf9231879f9baf7f3c03d8d4bdb0d4cb69d646a94ee8734c6467064e499af","revision":"5cacbc666fbe1da2d8e144f3a4e76894a2360179"},
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"754a60b8601a8f1042a280aed3ff7be1e9d747e21d72ff88c5c7711abc628270","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 
-    {"path":"packages/contracts/src/engine-accounts.ts","digest":"b7e27d654188dfc73587b44863eba088195b5100c64408c67b2a56711620867a","revision":"5cacbc666fbe1da2d8e144f3a4e76894a2360179"}
+    {"path":"packages/contracts/src/engine-accounts.ts","digest":"bb0399ddd177443ecf4e72a5057ac2f7ab77cc4bde91e360a0a08d6443614519","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"}
   ],
 
   "checks": [
