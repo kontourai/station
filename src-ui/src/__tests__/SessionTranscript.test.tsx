@@ -80,7 +80,7 @@ function live(events: CanonicalRuntimeEvent[]) {
   });
 }
 
-function renderTranscript(isStreaming = true) {
+function renderTranscript(isStreaming = true, failureShownAbove = false) {
   const session = { threadId: THREAD, conversationId: THREAD };
   // The app mounts PreviewProvider above every surface (main.tsx); a file
   // part's chip opens through it.
@@ -93,6 +93,7 @@ function renderTranscript(isStreaming = true) {
           session={session}
           agentLabel="Code Reviewer"
           isStreaming={streaming}
+          failureShownAbove={failureShownAbove}
         />
       </PreviewProvider>
     </QueryClientProvider>
@@ -301,6 +302,54 @@ describe('SessionTranscript source', () => {
     expect(transcript.textContent).toMatch(
       /could not reopen|session was lost/i,
     );
+  });
+
+  test('leaves the last turn’s failure to the card above it, and keeps earlier failures in the record', async () => {
+    const failedTurn = (turnId: string, prompt: string, message: string) => [
+      ev({ method: 'turn.started', turnId, prompt } as never),
+      ev({
+        method: 'runtime.error',
+        turnId,
+        severity: 'error',
+        code: 'station_agent_turn_failed',
+        message,
+      } as never),
+      // The shape a Station-agent failure records: the error, then the
+      // session's state change. No `turn.aborted` follows.
+      ev({
+        method: 'session.state-changed',
+        sessionId: THREAD,
+        from: 'running',
+        to: 'errored',
+        sessionState: 'failed',
+      } as never),
+    ];
+    const first = 'The model provider rate-limited the request (HTTP 429).';
+    const last = 'The model provider returned an error (HTTP 500).';
+    const messages = () =>
+      screen
+        .getAllByTestId('session-transcript-message')
+        .map((node) => node.getAttribute('data-role'));
+
+    const transcript = () => screen.getByTestId('session-transcript');
+    const shownHere = renderTranscript(false);
+    live([
+      ...failedTurn('f1', 'First try', first),
+      ...failedTurn('f2', 'Second try', last),
+    ]);
+    await waitFor(() =>
+      expect(messages()).toEqual(['user', 'assistant', 'user', 'assistant']),
+    );
+    shownHere.unmount();
+
+    renderTranscript(false, true);
+    // Both prompts and the earlier turn's failure row stay; only the
+    // terminal failure, which the detail's card states, is not repeated.
+    await waitFor(() =>
+      expect(messages()).toEqual(['user', 'assistant', 'user']),
+    );
+    expect(transcript().textContent).toContain('First try');
+    expect(transcript().textContent).toContain('Second try');
   });
 
   test('pages older turns from the durable window', () => {

@@ -27,6 +27,7 @@ export const SessionTranscript = memo(function SessionTranscript({
   session,
   agentLabel,
   isStreaming,
+  failureShownAbove = false,
   notices,
   onSettledChange,
 }: {
@@ -36,6 +37,13 @@ export const SessionTranscript = memo(function SessionTranscript({
   agentLabel: string;
   /** A turn is in flight: the last assistant row is still being written. */
   isStreaming: boolean;
+  /**
+   * The detail shows this session's terminal failure in its own card just
+   * above. The last message's runtime-error part is that same failure, so it
+   * is left out rather than said twice; failures of earlier turns stay in
+   * the record.
+   */
+  failureShownAbove?: boolean;
   /** History notices owned by the caller (upgrade, retry, elision). */
   notices?: ReactNode;
   /** Whether the first window read has landed; content above may grow then. */
@@ -49,17 +57,23 @@ export const SessionTranscript = memo(function SessionTranscript({
   useEffect(() => {
     onSettledChange?.(settled);
   }, [onSettledChange, settled]);
-  const rows = useMemo(
-    () =>
-      projectRuntimeEventsToMessages(events, { stableIds: true }).map(
-        (message) => ({
-          id: message.id,
-          role: message.role,
-          contentParts: message.parts.flatMap(conversationPartToContentParts),
-        }),
-      ),
-    [events],
-  );
+  const rows = useMemo(() => {
+    const projected = projectRuntimeEventsToMessages(events, {
+      stableIds: true,
+    }).map((message) => ({
+      id: message.id,
+      role: message.role,
+      contentParts: message.parts.flatMap(conversationPartToContentParts),
+    }));
+    if (!failureShownAbove) return projected;
+    const last = projected.at(-1);
+    if (!last || last.role !== 'assistant') return projected;
+    const kept = last.contentParts.filter((part) => !part.runtimeError);
+    if (kept.length === last.contentParts.length) return projected;
+    return kept.length === 0
+      ? projected.slice(0, -1)
+      : [...projected.slice(0, -1), { ...last, contentParts: kept }];
+  }, [events, failureShownAbove]);
   const lastIndex = rows.length - 1;
   const lastIsAssistant = rows[lastIndex]?.role === 'assistant';
 

@@ -384,6 +384,7 @@ export function MutableSessionDetail({
             session={session}
             agentLabel={agentLabel}
             isStreaming={isStreaming}
+            failureShownAbove={Boolean(failureText)}
             notices={historyNotices}
             onSettledChange={onTranscriptSettledChange}
           />

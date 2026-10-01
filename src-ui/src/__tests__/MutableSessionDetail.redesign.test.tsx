@@ -124,6 +124,10 @@ vi.mock('../components/chat-dock/DelegationLauncher', () => ({
 
 import { MutableSessionDetail } from '../components/session-detail/MutableSessionDetail';
 import { openChatsStore } from '../contexts/open-chats-store';
+import {
+  recordSequencedLiveEvent,
+  resetSequencedLiveEventsForTests,
+} from '../hooks/orchestration/sequencedLiveEvents';
 
 const THREAD = 'station:thread-redesign';
 
@@ -186,6 +190,7 @@ function renderDetail(session: any, events: CanonicalRuntimeEvent[] = []) {
 }
 
 beforeEach(() => {
+  resetSequencedLiveEventsForTests();
   attention.items = [];
   receipts.data = [];
   interruptOrchestrationTurn.mockClear();
@@ -395,6 +400,47 @@ describe('needs you: one failure card', () => {
     );
     expect(screen.queryByTestId('session-attention')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
+  });
+
+  test('the transcript does not repeat the failure the card already states', async () => {
+    // The events a Station-agent failure records, as the live store holds
+    // them: the prompt, the error, then the session's state change.
+    const failure = 'The model provider returned an error (HTTP 500).';
+    [
+      ev({ method: 'turn.started', turnId: 't1', prompt: 'FAIL please' }),
+      ev({
+        method: 'runtime.error',
+        turnId: 't1',
+        severity: 'error',
+        code: 'station_agent_turn_failed',
+        message: failure,
+      } as never),
+      ev({
+        method: 'session.state-changed',
+        sessionId: THREAD,
+        from: 'running',
+        to: 'errored',
+        sessionState: 'failed',
+      } as never),
+    ].forEach((event, index) =>
+      recordSequencedLiveEvent('http://station.test', event, index + 1),
+    );
+    renderDetail(
+      baseSession({
+        lifecycleState: 'failed',
+        hasActiveTurn: false,
+        blockedReason: failure,
+      }),
+    );
+    expect(screen.getAllByTestId('session-failure')).toHaveLength(1);
+    const roles = () =>
+      screen
+        .getAllByTestId('session-transcript-message')
+        .map((node) => node.getAttribute('data-role'));
+    await waitFor(() => expect(roles()).toEqual(['user']));
+    expect(screen.getByTestId('session-transcript').textContent).toContain(
+      'FAIL please',
+    );
   });
 
   test("the failure card's Dismiss acknowledges that exact attention item", () => {
