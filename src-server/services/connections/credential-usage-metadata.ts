@@ -37,7 +37,7 @@ function date(value: unknown): string | undefined {
 
 // These paths describe fields consumed by the projection, not arbitrary values.
 const codexPaths =
-  /^(user_id|account_id|email|plan_type|rate_limit\.(allowed|limit_reached|(?:primary_window|secondary_window)\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at))|additional_rate_limits\[\]\.(limit_name|metered_feature|normal_model_slug|rate_limit\.(allowed|limit_reached|(?:primary_window|secondary_window)\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at)))|code_review_rate_limit\.(allowed|limit_reached|(?:primary_window|secondary_window)\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at))|chatpass\.windows\[\]\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at)|model_usage\..+\.(available|available_at|credits_would_enable)|credits\.(has_credits|unlimited|overage_limit_reached|balance|approx_local_messages\[\]|approx_cloud_messages\[\])|spend_control\.reached|rate_limit_reset_credits\.(available_count|applicable_available_count))$/;
+  /^(user_id|account_id|email|plan_type|rate_limit\.(allowed|limit_reached|(?:primary_window|secondary_window)\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at))|additional_rate_limits\[\]\.(limit_name|metered_feature|normal_model_slug|rate_limit\.(allowed|limit_reached|(?:primary_window|secondary_window)\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at)))|code_review_rate_limit\.(allowed|limit_reached|(?:primary_window|secondary_window)\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at))|chatpass\.windows\[\]\.(used_percent|limit_window_seconds|reset_after_seconds|reset_at)|model_usage\[\]\.(available|available_at|credits_would_enable)|credits\.(has_credits|unlimited|overage_limit_reached|balance|approx_local_messages\[\]|approx_cloud_messages\[\])|spend_control\.reached|rate_limit_reset_credits\.(available_count|applicable_available_count))$/;
 const claudePaths =
   /^(plan|(?:five_hour|seven_day|seven_day_sonnet|seven_day_opus|seven_day_oauth_apps|seven_day_cowork)\.(utilization|resets_at)|limits\[\]\.(kind|percent|severity|resets_at|scope\.model\.display_name)|extra_usage\.(is_enabled|used_credits|monthly_limit|utilization|spend_limit_reached))$/;
 const excluded =
@@ -62,15 +62,26 @@ function audit(
       for (const item of value.slice(0, 32)) walk(item, `${path}[]`, depth + 1);
       if (value.length > 32) truncated = true;
     } else if (typeof value === 'object') {
-      const entries = Object.entries(value).slice(0, 64);
+      const keyLimit = path === 'model_usage' ? 32 : 64;
+      const entries = Object.entries(value).slice(0, keyLimit);
       for (const [key, item] of entries) {
-        if (!/^[a-zA-Z0-9_.-]{1,128}$/.test(key)) {
+        if (
+          !(
+            path === 'model_usage'
+              ? /^[a-zA-Z0-9_.-]{1,128}$/
+              : /^[a-zA-Z0-9_-]{1,128}$/
+          ).test(key)
+        ) {
           truncated = true;
           continue;
         }
-        walk(item, path ? `${path}.${key}` : key, depth + 1);
+        walk(
+          item,
+          path === 'model_usage' ? `${path}[]` : path ? `${path}.${key}` : key,
+          depth + 1,
+        );
       }
-      if (Object.keys(value).length > 64) truncated = true;
+      if (Object.keys(value).length > keyLimit) truncated = true;
     } else {
       leaves++;
       if (excluded.test(path)) exclusions.add(path);

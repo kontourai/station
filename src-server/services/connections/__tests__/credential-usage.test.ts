@@ -584,6 +584,7 @@ test('preserves Codex credits and shape gaps when quota windows are unavailable'
     deps({
       readTextFile: vi.fn(async () => CODEX_CREDS),
       fetch: jsonFetch({
+        plan_type: 'pro',
         rate_limit: {
           allowed: true,
           primary_window: null,
@@ -595,11 +596,36 @@ test('preserves Codex credits and shape gaps when quota windows are unavailable'
     }),
   );
   expect(usage.status).toBe('unknown');
+  expect(usage.planLabel).toBe('Pro');
   expect(usage.metadata?.credits).toMatchObject({
     unlimited: true,
     balance: 12.5,
   });
   expect(usage.metadata?.capture.unhandledFields).toEqual([
     'future_limit.used',
+  ]);
+});
+
+test('reports omitted models and unhandled nested availability as incomplete capture', async () => {
+  const models = Object.fromEntries(
+    Array.from({ length: 33 }, (_, index) => [
+      `model-${index}`,
+      {
+        available: true,
+        ...(index === 0 ? { future: { available: false } } : {}),
+      },
+    ]),
+  );
+  const usage = await readCodexUsage(
+    '/profile',
+    deps({
+      readTextFile: vi.fn(async () => CODEX_CREDS),
+      fetch: jsonFetch({ model_usage: models }),
+    }),
+  );
+  expect(usage.metadata?.models).toHaveLength(32);
+  expect(usage.metadata?.capture.truncated).toBe(true);
+  expect(usage.metadata?.capture.unhandledFields).toEqual([
+    'model_usage[].future.available',
   ]);
 });

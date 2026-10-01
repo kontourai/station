@@ -188,3 +188,10 @@
   overflow-wrap: anywhere;
   max-width: 100%;
 }
+
+.engine-account-overview__limit strong {
+  font-size: var(--k-text-xl);
+}
+.engine-account-overview__limit > div {
+  align-items: baseline;
+}

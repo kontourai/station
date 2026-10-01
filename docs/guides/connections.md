@@ -72,8 +72,8 @@ exists. Tokens remain on the server.
 
 Codex window labels use the provider's reported duration. A primary window is
 not necessarily five hours; absent durations are labeled primary or secondary.
-Reset countdowns describe the last reading, with the absolute reset time beside
-them. Individual reserve/model windows retain their own availability verdict.
+Reset countdowns tick locally, with the absolute reset time beside them.
+Passing a reset time does not clear the captured quota; refresh for a new reading. Individual reserve/model windows retain their own availability verdict.
 
 **Account & credits** expands account identity, credit balances, approximate
 local/cloud message ranges, reset credits and model availability when Codex

@@ -39,6 +39,7 @@ test.each([
       },
     });
     const calls: Array<{ path: string; method: string; body?: string }> = [];
+    let manageAccess = management;
     let started = false,
       done = false,
       refused = true,
@@ -63,7 +64,7 @@ test.each([
             schemaVersion: 'station.authority-observation/v1',
             environmentId: 'test',
             principal: { kind: 'human', id: 'human:local:operator' },
-            grant: management
+            grant: manageAccess
               ? { kind: 'operator' }
               : {
                   kind: 'device',
@@ -294,6 +295,16 @@ test.each([
       workExists = false;
       fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
       await screen.findByText('80% left');
+      manageAccess = false;
+      await client.invalidateQueries({
+        queryKey: ['engine-account-authority'],
+      });
+      await screen.findByText(
+        'Limit access requires credential-management permission.',
+      );
+      expect(screen.queryByText('viewer@example.test')).toBeNull();
+      expect(screen.queryByText('Account & credits')).toBeNull();
+      expect(screen.queryByText('Team')).toBeNull();
     }
     mounted.unmount();
     client.clear();

@@ -380,16 +380,17 @@ function normalizeClaude(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
   // percentages, and the first version of this guard threw that away and hid
   // "Limit reached" behind `unknown`. A recognized verdict is information, so
   // it survives; only a payload that yielded neither is unknown.
+  const planKey = typeof body.plan === 'string' ? body.plan : undefined;
   if (windows.length === 0 && !exhausted) {
     return {
       ...unknown(
         deps,
         'The provider reported no limits this version recognizes.',
       ),
+      ...(planKey ? { planLabel: CLAUDE_PLAN_LABELS[planKey] ?? planKey } : {}),
       metadata: projectUsageMetadata('claude', raw),
     };
   }
-  const planKey = typeof body.plan === 'string' ? body.plan : undefined;
   return {
     status: 'ok',
     fetchedAt: deps.now().toISOString(),
@@ -573,17 +574,18 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
 
   // See the Claude normalizer: an explicit exhaustion verdict survives even
   // with no usable percentage windows.
+  const planKey =
+    typeof body.plan_type === 'string' ? body.plan_type : undefined;
   if (windows.length === 0 && !exhausted) {
     return {
       ...unknown(
         deps,
         'The provider reported no limits this version recognizes.',
       ),
+      ...(planKey ? { planLabel: CODEX_PLAN_LABELS[planKey] ?? planKey } : {}),
       metadata: projectUsageMetadata('codex', raw),
     };
   }
-  const planKey =
-    typeof body.plan_type === 'string' ? body.plan_type : undefined;
   return {
     status: 'ok',
     fetchedAt: deps.now().toISOString(),

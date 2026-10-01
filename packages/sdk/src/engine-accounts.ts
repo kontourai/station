@@ -114,6 +114,7 @@ const engineAccountUsageSchema = z.union([
     .object({
       status: z.literal('unknown'),
       fetchedAt: z.string(),
+      planLabel: z.string().optional(),
       reason: z.string(),
       metadata: usageMetadataSchema.optional(),
     })

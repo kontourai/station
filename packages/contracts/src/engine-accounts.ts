@@ -70,6 +70,7 @@ export type EngineAccountUsage =
   | {
       status: 'unknown';
       fetchedAt: string;
+      planLabel?: string;
       reason: string;
       metadata?: EngineAccountUsageMetadata;
     };

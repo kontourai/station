@@ -91,6 +91,13 @@ function AccountPage({
   const [name, setName] = useState('');
   const [notice, setNotice] = useState('');
   const [days, setDays] = useState<7 | 30>(7);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!canManage) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, [canManage]);
   const accounts = useEngineAccountsQuery(
     connectionId,
     scope,
@@ -215,7 +222,7 @@ function AccountPage({
                   ? 'Signed out'
                   : 'Status unavailable'}
             </strong>
-            {usage.data?.status === 'ok' && usage.data.planLabel && (
+            {canManage && usage.data?.planLabel && (
               <span className="engine-account-overview__plan">
                 {usage.data.planLabel}
               </span>
@@ -268,8 +275,7 @@ function AccountPage({
                 />
                 {window.resetsAt && (
                   <small>
-                    {resetCountdown(window.resetsAt, usage.data?.fetchedAt)} ·
-                    Resets{' '}
+                    {resetCountdown(window.resetsAt, now)} · Resets{' '}
                     {new Date(window.resetsAt).toLocaleString(undefined, {
                       weekday: 'short',
                       hour: 'numeric',
@@ -317,9 +323,12 @@ function AccountPage({
             {usage.data?.status === 'unknown' ? `. ${usage.data.reason}` : '.'}
           </p>
         )}
-        {!usage.isError && !usage.isLoading && usage.data?.metadata && (
-          <AccountMetadata metadata={usage.data.metadata} />
-        )}
+        {canManage &&
+          !usage.isError &&
+          !usage.isLoading &&
+          usage.data?.metadata && (
+            <AccountMetadata metadata={usage.data.metadata} />
+          )}
       </section>
       <div className="engine-account-overview__activity">
         <div className="engine-account-overview__activity-heading">
@@ -551,17 +560,13 @@ function AccountLogin({
     </div>
   );
 }
-function resetCountdown(at: string, checkedAt: string | undefined): string {
-  if (!checkedAt) return 'Reset time unavailable';
-  const minutes = Math.max(
-    0,
-    Math.ceil((Date.parse(at) - Date.parse(checkedAt)) / 60000),
-  );
+function resetCountdown(at: string, now: number): string {
+  const minutes = Math.max(0, Math.ceil((Date.parse(at) - now) / 60000));
   if (!Number.isFinite(minutes)) return 'Reset time unavailable';
-  if (!minutes) return 'Reset due at last check';
+  if (!minutes) return 'Reset time passed; refresh allowance';
   const days = Math.floor(minutes / 1440),
     hours = Math.floor((minutes % 1440) / 60);
-  return `Reset in ${days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`} at last check`;
+  return `Reset in ${days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`}`;
 }
 
 type FactRow = [string, string | number | undefined];
