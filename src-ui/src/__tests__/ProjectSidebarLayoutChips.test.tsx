@@ -150,6 +150,7 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useProjectLayoutsQuery: () => layouts,
+  usePersonalLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   useFeaturePreviewsQuery: () => ({ data: [] }),
   useBoardAvailabilityQuery: () => boardAvailability,
