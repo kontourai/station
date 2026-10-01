@@ -9228,7 +9228,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   clip: rect(0 0 0 0);
 }
 
-/* The state chip. Pill geometry, tone from the
+/* The state chip. Pill geometry from `.lifecycle-chip`, tone from the
    `--warning-text` family the reason text already used, so an unfinished row
    reads as a state at a glance rather than as a paragraph of prose. The 14%
    self-tint is inside the band --warning-text's own definition measured and
