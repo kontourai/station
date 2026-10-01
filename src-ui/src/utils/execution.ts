@@ -1,6 +1,7 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
   ENGINE_CAPABILITY_MATRICES,
+  type ModelImageSupport,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
@@ -381,6 +382,25 @@ export function runtimeCatalogVisibleModels(
     return runtimeCatalog.builtInModels;
   }
   return asModelOptions(runtimeConnection?.config.modelOptions);
+}
+
+/**
+ * What the connection's own runtime catalog says about `modelId`'s image
+ * input. `imageInput: true` is `'yes'`, `false` is `'no'`, and an absent
+ * answer (no row, no capability, or a non-boolean) stays `'unknown'`: the
+ * runtime not reporting a modality is not a statement that it is missing.
+ */
+export function catalogModelImageSupport(
+  runtimeConnection: AgentConnectionView | ConnectionConfig | null | undefined,
+  modelId: string | undefined,
+): ModelImageSupport {
+  if (!modelId) return 'unknown';
+  const imageInput = runtimeCatalogVisibleModels(runtimeConnection).find(
+    (model) => model.id === modelId,
+  )?.capabilities?.imageInput;
+  if (imageInput === true) return 'yes';
+  if (imageInput === false) return 'no';
+  return 'unknown';
 }
 
 /**

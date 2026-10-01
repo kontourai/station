@@ -35,7 +35,6 @@ import type {
   ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
 import { getProviderAdapterRegistrationProvenance } from '../../providers/adapter-shape.js';
-
 import {
   normalizeCredentialProfileRegistry,
   projectCredentialProfileRegistry,
@@ -46,6 +45,7 @@ import {
   providerCatalogModelCount,
   providerCatalogOps,
 } from '../../telemetry/metrics.js';
+import { openCodeModelImageInput } from '../acp/opencode-model-capabilities.js';
 import {
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
@@ -783,6 +783,12 @@ export function projectControlPlaneObservation(
   };
 }
 
+function imageInputCapability(
+  imageInput: boolean | undefined,
+): { capabilities: { imageInput: boolean } } | Record<string, never> {
+  return imageInput === undefined ? {} : { capabilities: { imageInput } };
+}
+
 /**
  * archive#3054: project an ACP connection's live model catalog into the
  * RuntimeCatalogStatus every other engine connection already carries. The
@@ -809,6 +815,11 @@ export function acpRuntimeCatalogStatus(
               id: entry.value,
               name: entry.name ?? entry.value,
               originalId: entry.value,
+              // OpenCode's per-model image input, read from the cache the
+              // post-handshake listing fills. Memory only; never spawns here.
+              ...imageInputCapability(
+                openCodeModelImageInput(liveStatus?.id, entry.value),
+              ),
             },
           ]
         : [],
