@@ -192,7 +192,7 @@ describe('routeIdentity', () => {
 });
 
 describe('routeSurfaceIdentity', () => {
-  test('keeps exact route identities distinct while coalescing only Connections split-pane families', () => {
+  test('keeps exact route identities distinct while coalescing Connections split-pane families', () => {
     const models = { type: 'connections-models' } as const;
     const modelEdit = { type: 'connections-model-edit', id: 'p1' } as const;
     const engines = { type: 'connections-engines' } as const;
@@ -214,16 +214,27 @@ describe('routeSurfaceIdentity', () => {
     expect(routeSurfaceIdentity(engines)).not.toBe(routeSurfaceIdentity(tools));
   });
 
-  test('does not broaden surface identity to ACP or new agents', () => {
+  test('Agents keeps one surface across its list, new and edit routes', () => {
+    // #2992: the list stays on screen for all three, so a remount between
+    // them took keyboard focus out of the list on every selection.
+    const list = { type: 'agents' } as const;
+    const agentNew = { type: 'agent-new' } as const;
+    const editA = { type: 'agent-edit', slug: 'a' } as const;
+    const editB = { type: 'agent-edit', slug: 'b' } as const;
+
+    expect(routeIdentity(editA)).not.toBe(routeIdentity(editB));
+    expect(routeIdentity(list)).not.toBe(routeIdentity(editA));
+    for (const view of [list, agentNew, editA, editB]) {
+      expect(routeSurfaceIdentity(view)).toBe('agents');
+    }
+  });
+
+  test('does not broaden surface identity to a new ACP engine', () => {
     const acpNew = {
       type: 'connections-engine-new',
       providerId: 'p1',
     } as const;
-    const agentNew = { type: 'agent-new' } as const;
-    const agentEdit = { type: 'agent-edit', slug: 'a' } as const;
 
     expect(routeSurfaceIdentity(acpNew)).toBe(routeIdentity(acpNew));
-    expect(routeSurfaceIdentity(agentNew)).toBe(routeIdentity(agentNew));
-    expect(routeSurfaceIdentity(agentEdit)).toBe(routeIdentity(agentEdit));
   });
 });
