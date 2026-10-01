@@ -206,6 +206,54 @@ describe('button-cap scan', () => {
     ).toBe(0);
   });
 
+  // Delta review M1: choosing a ternary's "longer" arm before weighing it
+  // against its siblings reported 2 here. With `c` false and `m === 'x'` the
+  // screen shows A, B and R.
+  test('a ternary is counted once per arm, each with its siblings', () => {
+    expect(
+      count(`
+        {m === 'x' && <Button>Alpha</Button>}
+        {m === 'x' && <Button>Beta</Button>}
+        {c ? (m !== 'x' && <><Button>Pi</Button><Button>Rho</Button></>) : <Button>Sigma</Button>}`),
+    ).toBe(3);
+    // The other arm alone would not be over the cap: Pi and Rho exclude
+    // Alpha and Beta.
+    expect(
+      count(`
+        {m === 'x' && <Button>Alpha</Button>}
+        {m === 'x' && <Button>Beta</Button>}
+        {m !== 'x' && <><Button>Pi</Button><Button>Rho</Button></>}`),
+    ).toBe(0);
+  });
+
+  test('nested ternaries are alternatives all the way down', () => {
+    // a ? (b ? [P, Q] excluded by m : R) : null — the R arm shows A, B, R.
+    expect(
+      count(`
+        {m === 'x' && <Button>Alpha</Button>}
+        {m === 'x' && <Button>Beta</Button>}
+        {a ? (b ? (m !== 'x' && <><Button>Pi</Button><Button>Rho</Button></>) : <Button>Sigma</Button>) : null}`),
+    ).toBe(3);
+    // Two independent ternaries: the worst combination is one from each.
+    expect(
+      count(`
+        <Button>Alpha</Button>
+        {a ? <Button>Beta</Button> : null}
+        {b ? null : <Button>Gamma</Button>}`),
+    ).toBe(3);
+    // Arms of ONE ternary never add up.
+    expect(
+      count(
+        `<Button>Alpha</Button>{a ? <Button>Beta</Button> : <Button>Gamma</Button>}`,
+      ),
+    ).toBe(0);
+    expect(
+      count(
+        `${TWO}{label ?? <Button>Fallback</Button>}{a || <Button>Other</Button>}`,
+      ),
+    ).toBe(4);
+  });
+
   test('a conditional action still counts', () => {
     expect(count(`${TWO}{canExport && <Button>Export</Button>}`)).toBe(3);
   });
@@ -369,11 +417,64 @@ describe('button-cap scan', () => {
       '<ActionRow overflowLabel="More" secondary={<Button>Test</Button>} primary={<Button>Save</Button>} />';
     expect(count(`${actionRow}<Button>Export</Button>`)).toBe(3);
     expect(count(actionRow)).toBe(0);
+    // With neither slot filled the overflow trigger carries a word, so the
+    // row still shows one labelled action.
+    expect(
+      count(`${TWO}<ActionRow overflowLabel="Manage" overflow={items} />`),
+    ).toBe(3);
+    expect(
+      count(
+        `${TWO}<ActionOverflowMenu label="Manage" triggerText="Manage" actions={a} />`,
+      ),
+    ).toBe(3);
     expect(
       count(
         '<ActionRow overflowLabel="More" primary={<Button>Save</Button>} /><Button>Export</Button>',
       ),
     ).toBe(0);
+  });
+
+  // Delta review M2: an exemption read from the first string ANYWHERE in an
+  // attribute let a conditional value hide a row. Only a static string exempts.
+  test('a conditional role or class exempts nothing', () => {
+    const container = (attributes: string) =>
+      scanSource(
+        'Bar.tsx',
+        `export function Bar() {
+          return <div ${attributes}>${THREE}</div>;
+        }`,
+      ).length;
+    expect(container(`className={open ? 'menu-surface' : 'toolbar'}`)).toBe(1);
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: JSX source under test, not a template of this file.
+    expect(container('className={`menu-surface ${extra}`}')).toBe(1);
+    expect(container(`role={open ? 'menu' : undefined}`)).toBe(1);
+    expect(container('role={role}')).toBe(1);
+    // Static, in any of its spellings.
+    expect(container('role="menu"')).toBe(0);
+    expect(container(`role={'menu'}`)).toBe(0);
+    expect(container('className={`menu-surface`}')).toBe(0);
+
+    const withButton = (attributes: string) =>
+      count(`${TWO}<Button ${attributes}>Third</Button>`);
+    expect(withButton(`role={selected ? 'tab' : undefined}`)).toBe(3);
+    expect(withButton('role="tab"')).toBe(0);
+    expect(withButton(`aria-haspopup={open ? 'menu' : undefined}`)).toBe(3);
+    // A visually-hidden class has to be static to hide a label.
+    expect(
+      count(
+        `${TWO}<Button><span className={hide ? 'sr-only' : ''}>Third</span></Button>`,
+      ),
+    ).toBe(3);
+  });
+
+  test('a row is still NAMED by a computed class', () => {
+    const [found] = scanSource(
+      'Bar.tsx',
+      `export function Bar() {
+        return <div className={\`toolbar \${dense}\`}>${THREE}</div>;
+      }`,
+    );
+    expect(found?.key).toBe('Bar.tsx :: Bar :: div.toolbar');
   });
 
   test('only a readable menu-opening aria-haspopup exempts a button', () => {

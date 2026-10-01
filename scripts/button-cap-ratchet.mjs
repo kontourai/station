@@ -23,8 +23,10 @@
 //   - It cannot see responsive collapse. "Headers collapse their controls
 //     into the overflow as width shrinks" is a runtime claim; this gate says
 //     nothing about it.
-//   - Mutually exclusive branches count as the larger arm, not the sum:
-//     `{editing ? <Save/> : <Edit/>}` is one action. `cond && <X/>` counts X,
+//   - A ternary's arms (and the sides of `||`/`??`) are alternatives: the row
+//     is counted once per arm, each with its siblings, and the largest count
+//     stands. `{editing ? <Save/> : <Edit/>}` is one action. Past 256
+//     combinations it stops enumerating and sums. `cond && <X/>` counts X,
 //     except where the AST proves two `&&` guards exclusive (provableGuard):
 //     a name or dotted chain against its own `!`, or one chain compared with
 //     two different literals, or `===` and `!==` against the same literal.
@@ -53,6 +55,11 @@
 //     `aria-haspopup` when it is bare, `true`, `"menu"` or `"listbox"`.
 //   - What exempts a container: a menu-like `role`, or the shared menu
 //     primitive's exact classes. A class that merely contains "menu" does not.
+//   - Every exemption that reads `role` or `className` needs a STATIC string.
+//     `role={open ? 'menu' : undefined}` or a class built from a template or
+//     a ternary exempts nothing, so such a menu or tab is counted.
+//   - An `ActionRow` with neither slot filled counts as one: its overflow
+//     trigger then carries a word.
 //
 // So a green result means "no NEW statically visible row of three labelled
 // buttons", not "every row on screen shows at most two". The rendered image
@@ -174,12 +181,27 @@ function hasSpread(node) {
 }
 
 /** First string literal reachable in an attribute's value, or undefined. */
+/**
+ * An attribute's value when it is a STATIC string — `role="menu"`,
+ * `role={'menu'}` or a template with no substitutions — and undefined for
+ * anything conditional or computed. Every EXEMPTION reads its attribute
+ * through this: `role={open ? 'menu' : undefined}` proves nothing about what
+ * the element is on screen, and an exemption granted on a guess hides a row.
+ */
 function staticAttributeText(node, name) {
-  const attribute = findAttribute(node, name);
-  if (!attribute?.initializer) return undefined;
-  if (ts.isStringLiteral(attribute.initializer)) {
-    return attribute.initializer.text;
-  }
+  const value = findAttribute(node, name)?.initializer;
+  if (!value) return undefined;
+  const literal = ts.isJsxExpression(value) ? unwrap(value.expression) : value;
+  return literal && ts.isStringLiteralLike(literal) ? literal.text : undefined;
+}
+
+/**
+ * The first string anywhere in an attribute, for NAMING a row only
+ * (`className={`toolbar ${dense}`}` is still "toolbar"). Never used to exempt.
+ */
+function firstAttributeText(node, name) {
+  const value = findAttribute(node, name)?.initializer;
+  if (!value) return undefined;
   let found;
   const visit = (child) => {
     if (found !== undefined) return;
@@ -187,7 +209,7 @@ function staticAttributeText(node, name) {
     else if (ts.isTemplateExpression(child)) found = child.head.text;
     else ts.forEachChild(child, visit);
   };
-  visit(attribute.initializer);
+  visit(value);
   return found;
 }
 
@@ -299,7 +321,7 @@ function opensMenu(node) {
   if (!attribute) return false;
   const value = attribute.initializer;
   if (!value) return true;
-  const literal = ts.isJsxExpression(value) ? value.expression : value;
+  const literal = ts.isJsxExpression(value) ? unwrap(value.expression) : value;
   if (!literal) return false;
   if (literal.kind === ts.SyntaxKind.TrueKeyword) return true;
   return (
@@ -517,22 +539,61 @@ function labelOf(node) {
   return text.replaceAll(/\s+/g, ' ').trim().slice(0, 40);
 }
 
-function tokensInExpression(expression, guards) {
+// ALTERNATIVES. A ternary's arms (and the two sides of `||`/`??`) never
+// render together, so a child does not yield one token sequence but a list of
+// VARIANTS — one per way it can render. A container's variants are every
+// combination of its children's, and the row's count is the largest run in
+// any of them.
+//
+// An earlier version picked each ternary's "longer" arm on its own, before
+// its siblings and the exclusivity proof were considered. That undercounts:
+// in `{m === 'x' && <A/>}{m === 'x' && <B/>}{c ? (m !== 'x' && <><P/><Q/></>)
+// : <R/>}` the two-button arm was chosen and then proved exclusive with A and
+// B, reporting 2, while the other arm puts A, B and R on screen together.
+const ONE_EMPTY_VARIANT = [[]];
+/** Beyond this many combinations, stop enumerating and OVERCOUNT instead. */
+const MAX_VARIANTS = 256;
+
+/** Every way a sequence of children can render: the product of their variants. */
+function combineVariants(parts) {
+  let combined = ONE_EMPTY_VARIANT;
+  for (const variants of parts) {
+    combined =
+      combined.length * variants.length > MAX_VARIANTS
+        ? // Too many to enumerate: treat this child's alternatives as all
+          // present at once. Wrong in the safe direction.
+          combined.map((prefix) => [...prefix, ...variants.flat()])
+        : combined.flatMap((prefix) =>
+            variants.map((variant) => [...prefix, ...variant]),
+          );
+  }
+  return combined;
+}
+
+/** The largest run of labelled actions any variant puts on screen. */
+function largestRunAcross(variants) {
+  let best = [];
+  for (const variant of variants) {
+    const run = longestRun(variant);
+    if (run.length > best.length) best = run;
+  }
+  return best;
+}
+
+function variantsInExpression(expression, guards) {
   const node = unwrap(expression);
-  if (!node) return [];
-  if (isJsxNode(node)) return tokensInChild(node, guards);
+  if (!node) return ONE_EMPTY_VARIANT;
+  if (isJsxNode(node)) return variantsInChild(node, guards);
   if (ts.isConditionalExpression(node)) {
-    // Mutually exclusive arms: the arm with the longer run stands for both.
-    const whenTrue = tokensInExpression(node.whenTrue, guards);
-    const whenFalse = tokensInExpression(node.whenFalse, guards);
-    return longestRun(whenFalse).length > longestRun(whenTrue).length
-      ? whenFalse
-      : whenTrue;
+    return [
+      ...variantsInExpression(node.whenTrue, guards),
+      ...variantsInExpression(node.whenFalse, guards),
+    ];
   }
   if (ts.isBinaryExpression(node)) {
     const operator = node.operatorToken.kind;
     if (operator === ts.SyntaxKind.AmpersandAmpersandToken) {
-      return tokensInExpression(node.right, [
+      return variantsInExpression(node.right, [
         ...guards,
         ...conjunctsOf(node.left).map(provableGuard),
       ]);
@@ -541,47 +602,61 @@ function tokensInExpression(expression, guards) {
       operator === ts.SyntaxKind.BarBarToken ||
       operator === ts.SyntaxKind.QuestionQuestionToken
     ) {
-      const left = tokensInExpression(node.left, guards);
-      const right = tokensInExpression(node.right, guards);
-      return longestRun(right).length > longestRun(left).length ? right : left;
+      return [
+        ...variantsInExpression(node.left, guards),
+        ...variantsInExpression(node.right, guards),
+      ];
     }
   }
   // `.map(...)`, identifiers, calls: no static cardinality.
-  return [];
+  return ONE_EMPTY_VARIANT;
 }
 
-function tokensInChild(child, guards = []) {
-  if (ts.isJsxText(child)) return [];
+function variantsInChild(child, guards = []) {
+  if (ts.isJsxText(child)) return ONE_EMPTY_VARIANT;
   if (ts.isJsxExpression(child)) {
-    return child.expression ? tokensInExpression(child.expression, guards) : [];
+    return child.expression
+      ? variantsInExpression(child.expression, guards)
+      : ONE_EMPTY_VARIANT;
   }
   if (ts.isJsxFragment(child)) {
-    return child.children.flatMap((inner) => tokensInChild(inner, guards));
+    return combineVariants(
+      child.children.map((inner) => variantsInChild(inner, guards)),
+    );
   }
   // `ActionRow` renders its `primary` and `secondary` props as labelled
   // buttons, so it stands in this run as that many — otherwise a button added
   // BESIDE an ActionRow would be the third label on screen and the first one
-  // the scan saw.
-  if (!ts.isJsxFragment(child) && tagNameOf(child) === 'ActionRow') {
-    return ['primary', 'secondary']
-      .filter((slot) => findAttribute(child, slot))
-      .map((slot) => ({ guards, label: `ActionRow ${slot}` }));
+  // the scan saw. With NEITHER slot it still shows one word: its overflow
+  // trigger is then labelled ("Manage ⋯").
+  if (tagNameOf(child) === 'ActionRow') {
+    const slots = ['primary', 'secondary'].filter((slot) =>
+      findAttribute(child, slot),
+    );
+    return [
+      (slots.length > 0 ? slots : ['labelled overflow trigger']).map(
+        (slot) => ({ guards, label: `ActionRow ${slot}` }),
+      ),
+    ];
   }
   // An overflow menu that renders a single folded command INLINE shows that
-  // command's label: one more labelled action whenever it has one row.
-  if (!ts.isJsxFragment(child) && rendersInlineOverflow(child)) {
-    return [{ guards, label: `${tagNameOf(child)} (inline when single)` }];
+  // command's label: one more labelled action whenever it has one row. So
+  // does one given a visible `triggerText`.
+  if (rendersInlineOverflow(child)) {
+    return [[{ guards, label: `${tagNameOf(child)} (labelled)` }]];
   }
   const kind = classifyAction(child);
   if (kind !== undefined) {
-    if (kind !== 'labelled') return [];
+    if (kind !== 'labelled') return ONE_EMPTY_VARIANT;
     return [
-      {
-        guards,
-        label: ts.isJsxElement(child)
-          ? child.children.map(labelOf).join(' ').trim() || '(unnamed icon)'
-          : '(unnamed icon)',
-      },
+      [
+        {
+          guards,
+          label: ts.isJsxElement(child)
+            ? child.children.map(labelOf).join(' ').trim() || '(unnamed icon)'
+            : '(unnamed icon)',
+        },
+      ],
     ];
   }
   // A wrapper around exactly one button (`<Tooltip><Button/></Tooltip>`) is
@@ -596,7 +671,7 @@ function tokensInChild(child, guards = []) {
       const innerIsWrapper =
         ts.isJsxElement(inner[0]) && meaningfulChildren(inner[0]).length === 1;
       if (ACTION_TAGS.has(tagNameOf(inner[0])) || innerIsWrapper) {
-        return tokensInChild(inner[0], guards);
+        return variantsInChild(inner[0], guards);
       }
     }
   }
@@ -604,14 +679,15 @@ function tokensInChild(child, guards = []) {
   // (`<div className="spacer" />`), a field or badge that sits IN the row, a
   // modal that renders elsewhere — or the row's own overflow menu component,
   // which must never be what hides a third labelled button beside it.
-  if (ts.isJsxSelfClosingElement(child)) return [];
-  return [BREAK];
+  if (ts.isJsxSelfClosingElement(child)) return ONE_EMPTY_VARIANT;
+  return [[BREAK]];
 }
 
 function rendersInlineOverflow(node) {
   const tag = tagNameOf(node);
   if (tag === 'ChatDockHeaderMoreMenu') return true;
   if (tag !== 'ActionOverflowMenu') return false;
+  if (findAttribute(node, 'triggerText')) return true;
   const inline = findAttribute(node, 'inlineSingle');
   if (!inline) return false;
   const value = inline.initializer;
@@ -687,11 +763,11 @@ function enclosingComponentName(node) {
 function elementLabel(node) {
   if (ts.isJsxFragment(node)) return '<>';
   const tag = tagNameOf(node);
-  const className = staticAttributeText(node, 'className')
+  const className = firstAttributeText(node, 'className')
     ?.trim()
     .split(/\s+/)[0];
   if (className) return `${tag}.${className}`;
-  const testId = staticAttributeText(node, 'data-testid');
+  const testId = firstAttributeText(node, 'data-testid');
   return testId ? `${tag}[${testId}]` : tag;
 }
 
@@ -729,8 +805,8 @@ export function scanSource(file, content) {
       !isCountedByParent(node) &&
       classifyAction(node) === undefined
     ) {
-      const labels = longestRun(
-        node.children.flatMap((child) => tokensInChild(child)),
+      const labels = largestRunAcross(
+        combineVariants(node.children.map((child) => variantsInChild(child))),
       ).map((token) => token.label);
       const count = labels.length;
       if (count > LABELLED_ACTION_CAP) {
