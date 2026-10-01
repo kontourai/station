@@ -273,6 +273,8 @@ export function projectRuntimeEventsToMessages(
   // currently active Session for historical turn identity.
   let turnSessionId: string | undefined;
   let turnAnswerEligible = false;
+  /** The open turn's last pre-steer row, owner of last resort. */
+  let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
   // station#1182: `turnReportedModel` is per-turn (set from turn.started/
   // turn.completed metadata); `sessionReportedModel` is the last value seen
@@ -310,13 +312,18 @@ export function projectRuntimeEventsToMessages(
     role: ConversationMessage['role'],
     p: MessagePart[],
     inputKind?: 'steer',
+    /**
+     * The part of a turn produced before a steer. The turn's provenance and
+     * answer eligibility describe the whole turn and stay on its final row.
+     */
+    beforeSteer = false,
   ) => {
     const reportedModel = turnReportedModel ?? sessionReportedModel;
     // station#1410: only an assistant turn that both has an observed turn
     // identity AND reached a terminal event has an envelope. An open or
     // untagged turn carries none rather than a partially-folded one.
     const provenance =
-      role === 'assistant' && turnIdentity
+      role === 'assistant' && !beforeSteer && turnIdentity
         ? envelopesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
         : undefined;
     const metadata = {
@@ -336,7 +343,7 @@ export function projectRuntimeEventsToMessages(
       ...(role === 'assistant' && turnSessionId
         ? { sessionId: turnSessionId }
         : {}),
-      ...(role === 'assistant' && turnAnswerEligible
+      ...(role === 'assistant' && turnAnswerEligible && !beforeSteer
         ? { answerEligible: true }
         : {}),
       ...(provenance ? { provenance } : {}),
@@ -358,7 +365,15 @@ export function projectRuntimeEventsToMessages(
     // otherwise redirect a late result away from the row that shows the call.
     const emittedKey =
       role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
-    if (emittedKey && !assistantMessageIndexByTurn.has(emittedKey)) {
+    // A pre-steer segment never owns the turn: the turn is still open, so
+    // its later start-less completions belong to the live buffer, and after
+    // the terminal the row that owns the turn is the one emitted last.
+    if (emittedKey && beforeSteer) preSteerRowIndex = messages.length - 1;
+    if (
+      emittedKey &&
+      !beforeSteer &&
+      !assistantMessageIndexByTurn.has(emittedKey)
+    ) {
       assistantMessageIndexByTurn.set(emittedKey, messages.length - 1);
     }
   };
@@ -380,6 +395,17 @@ export function projectRuntimeEventsToMessages(
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    // A turn that produced nothing after its steer still needs an owner row,
+    // or a late event for it would land on whatever turn is open next.
+    const endedKey = turnKey(turnSessionId, turnIdentity);
+    if (
+      endedKey &&
+      preSteerRowIndex !== undefined &&
+      !assistantMessageIndexByTurn.has(endedKey)
+    ) {
+      assistantMessageIndexByTurn.set(endedKey, preSteerRowIndex);
+    }
+    preSteerRowIndex = undefined;
     // station#1558: an unsettled call outlives its turn (a stopped turn's
     // in-flight tool, a backgrounded Task). `toolsByCallId` only ever holds
     // calls with no terminal yet — the terminal branch deletes the slot — so
@@ -461,9 +487,19 @@ export function projectRuntimeEventsToMessages(
     switch (ev.method) {
       case 'turn.started': {
         if (ev.inputKind === 'steer') {
-          // Same open turn: append the user row and keep buffering the
-          // in-flight assistant. Emitting here would split the answer
-          // around the steer and leave a turn.started with no terminal.
+          // Same open turn, so the turn stays open (no terminal is implied).
+          // What the engine produced BEFORE the steer is emitted as its own
+          // row first: buffering the whole turn put the steer above every
+          // part of it — above the very command it interrupted — so on a long
+          // turn the steer looked like it had never been sent. Tool parts
+          // are shared by reference, so a call settled after the steer still
+          // updates its row here.
+          flushReasoning();
+          flushText();
+          if (parts.length > 0) {
+            pushMessage('assistant', parts, undefined, true);
+            parts = [];
+          }
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
           const steerParts: MessagePart[] = [];
@@ -483,6 +519,13 @@ export function projectRuntimeEventsToMessages(
           }
           if (steerParts.length > 0) {
             pushMessage('user', steerParts, 'steer');
+            if (ev.steerInterruptedRun) {
+              const steerRow = messages[messages.length - 1]!;
+              steerRow.metadata = {
+                ...steerRow.metadata,
+                steerInterruptedRun: true,
+              };
+            }
           }
           break;
         }

@@ -151,7 +151,13 @@ matrix; the dock always sees one of these:
 
 Send-while-busy uses that matrix cell (`sessionAdapterSupportsSteering`), not
 a connection `capabilities` string. A steer fold appends a user row and
-**does not** reset `streamingMessage`. Attachments have no steer channel, so
+**does not** reset `streamingMessage`. The event-log projection
+(`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
+what the engine produced before it as its own assistant row, so the steer
+renders where it happened rather than above the whole turn. The turn's
+provenance and answer eligibility stay on its final row, and so does the
+turn's ownership: a start-less or late event for the turn lands on the row
+after the steer, never on the one before it. Attachments have no steer channel, so
 they still queue. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
 and is never collapsed into either path.
 
@@ -163,7 +169,7 @@ Adapter mappings, same Station event:
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
 | Kiro | ACP extension **method** `_session/steer` when the command, arguments or reported agent name match Kiro (additive; not a notification) |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
-| Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
+| Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
 
 Muse still binds one prompt to one process — no live input channel. That is a separate backlog item, not invented here.
 

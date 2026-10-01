@@ -836,6 +836,18 @@
   color: var(--text-muted);
 }
 
+/* A steer that stopped the running step says so inside its own bubble, on
+   the bubble's accent background. */
+.message__steer-note {
+  margin-top: var(--space-1);
+  /* On a fine pointer the bubble's actions button sits inside its
+     bottom-right corner (`.message__copy-btn`), which is where this last line
+     ends; the same clearance is harmless where the button sits outside. */
+  padding-inline-end: 32px;
+  font-size: var(--text-xs);
+  opacity: 0.85;
+}
+
 .message__thinking {
   display: flex;
   align-items: center;
@@ -863,26 +875,44 @@
    Send off a phone screen. */
 .composer-attachments {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0 0 var(--space-2);
   padding: 0;
-  overflow-x: auto;
   list-style: none;
-  scrollbar-width: thin;
+  /* Chips wrap rather than scroll: a sideways scroller hid the second chip's
+     × off a phone's right edge with no cue that more was there. Two rows
+     show; a longer list scrolls vertically inside them. */
+  max-height: calc(2 * 50px + var(--space-2));
+  overflow-y: auto;
 }
 
 .composer-attachments__chip {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   gap: var(--space-1);
   align-items: center;
-  max-width: 220px;
+  max-width: min(260px, 80vw);
   padding: 2px 2px 2px var(--space-1);
   color: var(--text-secondary);
   font-size: var(--text-xs);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 6px;
+}
+
+.composer-attachments__chip--blocked {
+  border-color: var(--error-text);
+}
+
+/* Name over status, so a long status line never wraps the chip into a
+   four-line column around the thumbnail. */
+.composer-attachments__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .composer-mentions {
@@ -984,8 +1014,9 @@
 }
 
 .composer-attachments__thumb {
-  flex: 0 0 auto;
+  flex: 0 0 28px;
   width: 28px;
+  min-width: 28px;
   height: 28px;
   object-fit: cover;
   border-radius: 4px;
@@ -1042,8 +1073,15 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.75rem;
+  overflow: hidden;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-attachments__chip--blocked .composer-attachments__stage {
+  color: var(--error-text);
 }
 
 .composer-attachments__stage progress {
@@ -1051,7 +1089,8 @@
   block-size: 0.4rem;
 }
 
-.composer-attachments__stage button {
+.composer-attachments__action {
+  flex: 0 0 auto;
   border: 0;
   border-radius: 0.25rem;
   background: transparent;
@@ -1061,6 +1100,7 @@
   color: var(--accent-primary);
   cursor: pointer;
   font: inherit;
+  white-space: nowrap;
   padding: 0.1rem 0.2rem;
 }
 
@@ -1090,6 +1130,14 @@
   .composer-attachments__remove {
     width: 44px;
     height: 44px;
+  }
+  .composer-attachments__action {
+    min-height: 44px;
+    padding-inline: var(--space-2);
+  }
+  /* Two chips per row on a phone, so two screenshots take one row. */
+  .composer-attachments__chip {
+    max-width: calc(50% - var(--space-1));
   }
 }
 
@@ -1130,18 +1178,132 @@
   }
 }
 
-.chat-input__attachment-error {
-  position: absolute;
-  right: var(--space-2);
-  bottom: var(--space-1);
-  left: var(--space-2);
-  overflow: hidden;
-  color: var(--error-text);
+/* The draft keeps the height `ChatInputArea`'s resize effect gives it (capped
+   there at 30% of the visual viewport). `.chat-input textarea { flex: 1 }`
+   made its flex basis 0, so it contributed nothing to the composer's natural
+   height and received only leftover space: a three-line draft rendered in
+   ~66px with its third line clipped, while the transcript above kept its
+   room. With a real basis the transcript yields first.
+
+   When the dock is too short for the whole composer (an iPhone SE's half
+   dock, or a failure banner taking room), the DRAFT is the only thing that
+   gives way: every container between it and `.chat-input` may shrink (zero
+   minimums), the draft scrolls inside its own box, and the chips, validation
+   line and controls row do not shrink. The fieldset is not clipped — the
+   mention and command pickers open above it from inside — so the controls
+   row paints its own background over anything that still overflows. */
+.chat-input .chat-input__textarea-wrapper > textarea {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.chat-input .chat-input__capsule,
+.chat-input .chat-input__textarea-wrapper {
+  min-height: 0;
+}
+
+.chat-input .chat-input__textarea-wrapper > :not(textarea),
+.chat-input .chat-controls-row {
+  flex-shrink: 0;
+}
+
+/* A dock too short for the whole composer (see data-composer-priority):
+   the chip strip shows one row and scrolls, so the draft keeps its room. */
+.chat-dock__body[data-composer-priority] .composer-attachments {
+  max-height: 50px;
+}
+
+.chat-input .chat-controls-row {
+  position: relative;
+  background: var(--bg-primary);
+}
+
+/* In a short dock everything above the composer yields before its draft:
+   the failed-session banner (it scrolls; the send notice carries the same
+   failure in full) and the transcript, down to zero. (The stream status line
+   keeps its size: it can hold Stop.)
+   The composer keeps the room `ChatInputArea` reserves for a two-line draft. */
+.chat-dock__body > .chat-dock__session-failure,
+.chat-dock__body > .chat-messages {
+  flex-shrink: 1000;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* No room above the composer (data-composer-priority): the transcript has
+   shrunk to nothing, so the send-failure notice inside it cannot be read; the
+   composer repeats the latest one as a single line. */
+.chat-input__send-failure {
+  display: none;
+  padding: 0 var(--space-2);
   font-size: var(--text-xs);
   line-height: 1.25;
-  text-overflow: ellipsis;
+  color: var(--error-text);
   white-space: nowrap;
-  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__send-failure {
+  display: block;
+}
+
+/* The banner steps aside (the composer's own line repeats what failed). The
+   transcript only gives up its padding and shrinks to nothing: it is never
+   taken out of the layout, so a stale reading cannot remove the conversation. */
+.chat-dock__body[data-composer-priority] > .chat-dock__session-failure {
+  display: none;
+}
+
+.chat-dock__body[data-composer-priority] > .chat-messages {
+  padding-block: 0;
+}
+
+/* Composer validation and attach-time notes sit in the fieldset's normal
+   flow, BELOW the draft. They were absolutely positioned against the
+   wrapper's bottom edge, which is where the textarea's last line is, so the
+   message printed on top of the user's own text. */
+.chat-input__attachment-error,
+.chat-input__attachment-notice {
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.chat-input__attachment-error {
+  color: var(--error-text);
+}
+
+/* The fix sits at the end of its reason, wrapping as one unit, without its
+   touch target inflating the text's line height. */
+.chat-input__attachment-error:has(.chat-input__blocked-action) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+
+.chat-input__attachment-error .chat-input__blocked-action {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The action's 44px touch floor comes from the shared mobile rule for
+   `__actions` rows (index.css); this only keeps the wrapper inline. */
+.chat-input__blocked-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-input__attachment-notice {
+  color: var(--text-secondary);
 }
 
 /* The composer's primary action: one circular, accent-filled target pinned to

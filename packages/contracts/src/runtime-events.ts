@@ -368,6 +368,13 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
+   * A steer the engine had no additive channel for: Station delivered it by
+   * cancelling the in-flight prompt — and any tool that prompt was running —
+   * then re-prompting on the same turn (`acp-steer.ts` cancel + re-prompt).
+   * Stated so a client can say why a running step shows as cancelled.
+   */
+  steerInterruptedRun?: true;
+  /**
    * Durable, session-scoped user inputs used to reconstruct transcript media.
    * Persisted without their bytes (station#3374) — see
    * {@link PersistedChatAttachment} for which of `dataUrl`/`blobRef` a given

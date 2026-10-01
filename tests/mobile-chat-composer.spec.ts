@@ -1125,7 +1125,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
   });
 
   const strip = page.getByRole('list', { name: 'Attached files' });
-  await expect(strip.getByText('Ready to send')).toBeVisible();
+  await expect(strip.getByText('Ready', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(() => expect(dispatched).toHaveLength(1)).toPass({
     timeout: 10_000,
@@ -2459,12 +2459,17 @@ for (const viewport of [
       );
       await expect(switcher).toContainText('New chat');
       await expect(selectedModel).toHaveText(selectedModelLabel ?? '');
-      await expect(scroller).toBeVisible();
+      // With the keyboard still up the dock can be exactly as tall as the
+      // status line plus the composer (149px at 320x568): the transcript has
+      // no room and steps aside, so only its presence is asserted here. Its
+      // visibility is asserted once the keyboard is gone.
+      await expect(scroller).toBeAttached();
       await page.evaluate(
         (height) => (window as any).__setChatViewport(height, 0),
         viewport.height,
       );
       await expandMobileDock(page);
+      await expect(scroller).toBeVisible();
     }
 
     for (const button of await page
@@ -3719,3 +3724,303 @@ for (const width of [320, 431]) {
     );
   });
 }
+
+// After a refused send the half dock holds the attachment chips, the block
+// line and the draft. The controls row used to paint over the draft (0px
+// visible at 375x667). The draft keeps a two-line floor and nothing overlaps
+// it; the banner and the transcript give way instead.
+test('a refused send keeps a two-line draft clear of every row in a 375x667 half dock', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  await page.route('**/api/orchestration/chat', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'This engine did not advertise image attachment support.',
+        code: 'attachment_input_unsupported',
+        retryable: false,
+      }),
+    }),
+  );
+
+  const textarea = await openComposer(page, false, 'station');
+  await textarea.fill(
+    'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
+  );
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+Q5q9WQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.locator('.attachment-input').setInputFiles([
+    { name: 'shot-one.png', mimeType: 'image/png', buffer: png },
+    { name: 'shot-two.png', mimeType: 'image/png', buffer: png },
+  ]);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // The refusal is recorded (the send notice). In a half dock too short for
+  // transcript + composer, the transcript steps aside instead of the draft
+  // being squeezed under the controls.
+  // The transcript is stepped aside here, so the reason must be on screen in
+  // the composer itself: restored chips, a restored draft and an enabled Send
+  // with no visible reason would read as a dead button. (`getByText` also
+  // matches the hidden transcript copy, hence the visibility assertion.)
+  const failureLine = page.locator('.chat-input__send-failure');
+  await expect(failureLine).toBeVisible();
+  await expect(failureLine).toHaveText(
+    "This engine can't take these attachments",
+  );
+  await expect(page.locator('.chat-messages')).toBeHidden();
+  await expect(page.locator('.chat-input__attachment-error')).toHaveCount(0);
+  await expect(page.locator('.chat-input__attachment-notice')).toHaveCount(0);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await expect(
+    page.locator('.composer-attachments__chip').first(),
+  ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('refused-half-dock.png') });
+
+  const geometry = await textarea.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const line =
+      Number.parseFloat(style.lineHeight) ||
+      Number.parseFloat(style.fontSize) * 1.2;
+    const chrome =
+      Number.parseFloat(style.paddingTop) +
+      Number.parseFloat(style.paddingBottom);
+    const others = [
+      ...document.querySelectorAll(
+        '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+      ),
+    ].map((other) => {
+      const rect = other.getBoundingClientRect();
+      return {
+        name: other.className || other.getAttribute('data-testid'),
+        overlaps:
+          rect.height > 0 &&
+          rect.top < box.bottom - 0.5 &&
+          rect.bottom > box.top + 0.5 &&
+          rect.left < box.right &&
+          rect.right > box.left,
+      };
+    });
+    const root = element.closest('.chat-input') as HTMLElement;
+    const body = root?.parentElement as HTMLElement;
+    const debug = {
+      ta: [box.top, box.bottom, element.style.height, element.style.minHeight],
+      root: [
+        root.getBoundingClientRect().top,
+        root.getBoundingClientRect().bottom,
+        root.style.minHeight,
+        root.scrollHeight,
+        getComputedStyle(root).maxHeight,
+      ],
+      body: [
+        body.className,
+        body.getBoundingClientRect().top,
+        body.getBoundingClientRect().bottom,
+      ],
+      kids: [...body.children].map(
+        (k) => `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
+      ),
+    };
+    return {
+      debug,
+      visibleContent: box.height - chrome,
+      twoLines: 2 * line,
+      inViewport: box.top >= 0 && box.bottom <= innerHeight,
+      overlapping: others.filter((other) => other.overlaps).map((o) => o.name),
+    };
+  });
+  expect(geometry.overlapping, JSON.stringify(geometry.debug)).toEqual([]);
+  expect(geometry.inViewport, JSON.stringify(geometry.debug)).toBe(true);
+  expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});
+
+// The state the reviewer measured: a reload after a refused first send. The
+// failure banner, the restored attachment chips (they lost their bytes, so
+// they ask for the file again), their block line and a three-line draft all
+// compete for a 375x667 half dock. The controls row used to paint over the
+// draft (0px visible).
+test('after a reload with the failure banner, a 375x667 half dock keeps a two-line draft clear', async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const id = 'refused-first-send';
+  await mockRuntimeConversation(page, {
+    id,
+    agentSlug: 'station',
+    title: 'Refused send',
+    provider: 'station-agent',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => [],
+  });
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: id,
+            provider: 'station-agent',
+            model: 'model-selected',
+            projectSlug: 'default',
+            assignedAgentSlug: 'station',
+            status: 'ready',
+            lifecycleState: 'idle',
+            blockedReason: 'Station refused the send before it started.',
+            terminalAttribution: {
+              kind: 'send_refused',
+              detail: 'Station refused the send before it started.',
+            },
+            createdAt: '2026-08-25T12:00:00.000Z',
+            updatedAt: '2026-08-25T12:00:01.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+          },
+        ],
+      }),
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${id}/event-window**`,
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            protocolVersion: 1,
+            conversationId: id,
+            currentSessionId: id,
+            sessionLineage: [
+              {
+                sessionId: id,
+                agentSlug: 'station',
+                agentDisplayName: 'Station',
+              },
+            ],
+            handoffs: [],
+            contextBoundaries: [],
+            events: [],
+            hasMore: false,
+            watermark: 0,
+          },
+        }),
+      ),
+  );
+  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            id,
+            title: 'Refused send',
+            agentSlug: 'station',
+            updatedAt: '2026-08-25T12:00:01.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  const stage = (name: string) => ({
+    clientAttachmentId: name,
+    name,
+    mimeType: 'image/png',
+    size: 3,
+    state: 'complete',
+    progress: 1,
+    delivery: 'staged',
+  });
+  await seedActiveChats(page, [
+    {
+      sessionId: id,
+      conversationId: id,
+      agentSlug: 'station',
+      projectSlug: 'default',
+      projectName: 'Default',
+      model: 'model-selected',
+      title: 'Refused send',
+      provider: 'bedrock',
+      orchestrationSessionStarted: true,
+      ephemeralMessages: [],
+      attachmentStages: [stage('shot-one.png'), stage('shot-two.png')],
+    },
+  ]);
+  await page.addInitScript((sessionId) => {
+    localStorage.setItem(
+      'station:chat-drafts:v1',
+      JSON.stringify({
+        sessions: {
+          [sessionId]: {
+            text: 'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
+            updatedAt: Date.now(),
+          },
+        },
+        portable: [],
+      }),
+    );
+  }, id);
+
+  await page.goto(`/?dock=open&chat=${id}`);
+  await dismissSetupLauncher(page);
+  const textarea = page.locator('.chat-input textarea').last();
+  await expect(textarea).toHaveValue(/Third line should stay visible/);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  // In a dock this short the failed-session banner steps aside for the
+  // composer (it is still mounted); the composer's own block line is what
+  // keeps the reason on screen.
+  await expect(page.getByTestId('chat-dock-session-failure')).toHaveCount(1);
+  await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+
+  const geometry = await textarea.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const line =
+      Number.parseFloat(style.lineHeight) ||
+      Number.parseFloat(style.fontSize) * 1.2;
+    const chrome =
+      Number.parseFloat(style.paddingTop) +
+      Number.parseFloat(style.paddingBottom);
+    const overlapping = [
+      ...document.querySelectorAll(
+        '.composer-attachments__chip, .chat-input__attachment-error, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+      ),
+    ]
+      .filter((other) => {
+        const rect = other.getBoundingClientRect();
+        return (
+          rect.height > 0 &&
+          rect.top < box.bottom - 0.5 &&
+          rect.bottom > box.top + 0.5 &&
+          rect.left < box.right &&
+          rect.right > box.left
+        );
+      })
+      .map((other) => other.className);
+    return {
+      overlapping,
+      box: [box.top, box.bottom],
+      visibleContent: box.height - chrome,
+      twoLines: 2 * line,
+      inViewport: box.top >= 0 && box.bottom <= innerHeight,
+    };
+  });
+  expect(geometry.overlapping, JSON.stringify(geometry)).toEqual([]);
+  expect(geometry.inViewport, JSON.stringify(geometry)).toBe(true);
+  expect(
+    geometry.visibleContent,
+    JSON.stringify(geometry),
+  ).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});

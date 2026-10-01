@@ -40,7 +40,7 @@
 
     {"path":"packages/contracts/src/project.ts","digest":"81c1da22c4d64208ecd8d5dad2259958b296272dfb2537ec6b514c271a55fb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"4385997b5f108761575c33e0aa5d53cfadab0b279221ef2405a982d6701a5e3d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/provider.ts","digest":"15cc2d577b450aa5714b4df77539638755c29e77a2eff35009dbae2f80607be6","revision":"6964a8906bd79e5808591742a8f952776b0f3101"},
 
     {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

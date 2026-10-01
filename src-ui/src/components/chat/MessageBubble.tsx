@@ -739,6 +739,11 @@ function MessageBubbleComponent({
             }
           />
         </div>
+        {msg.role === 'user' && msg.steerInterruptedRun && (
+          <div className="message__steer-note">
+            Sent by stopping the step that was running
+          </div>
+        )}
 
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (

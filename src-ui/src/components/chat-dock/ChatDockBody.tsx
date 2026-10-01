@@ -1,6 +1,7 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
@@ -65,8 +66,10 @@ import {
   ownerAttributionFromStation,
 } from '../../utils/ownerAttribution';
 import {
+  sessionFailureNote,
   sessionFailureText,
   transcriptCarriesFailureText,
+  transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
@@ -242,6 +245,21 @@ export function findPrecedingUserTurn(
     return { text, attachments };
   }
   return null;
+}
+
+/**
+ * The newest transcript notice as one plain line (its bold title row), for the
+ * composer to repeat while a short dock hides the transcript.
+ */
+function latestNoticeLine(notices: readonly { content: string }[]) {
+  const content = notices[notices.length - 1]?.content;
+  if (!content) return undefined;
+  const line = content
+    .replace(/^\[SYSTEM_EVENT\]\s*/, '')
+    .split('\n', 1)[0]
+    ?.replace(/\*\*/g, '')
+    .trim();
+  return line || undefined;
 }
 
 export function ChatDockBody({
@@ -506,10 +524,16 @@ export function ChatDockBody({
    */
   const bannerFailureText =
     failureText !== null &&
-    transcriptCarriesFailureText(renderedSession.messages, [
+    (transcriptCarriesFailureText(renderedSession.messages, [
       failureText,
       translateChatError({ message: failureText }).body,
-    ])
+    ]) ||
+      // A session whose sends never took has no turns; any visible failure
+      // card in its transcript is that refusal, in its own words.
+      (activeOrchestrationSession !== null &&
+        activeOrchestrationSession !== undefined &&
+        isFirstSendFailure(activeOrchestrationSession) &&
+        transcriptShowsFailureSurface(renderedSession.messages)))
       ? null
       : failureText;
   const historyFailure =
@@ -661,6 +685,7 @@ export function ChatDockBody({
     new Set(),
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
+  const sendFailureNotice = latestNoticeLine(ephemeralMessages);
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -1245,7 +1270,7 @@ export function ChatDockBody({
         failureText={bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
-        note="You can send a message to try to continue this session."
+        note={sessionFailureNote(activeOrchestrationSession)}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
@@ -1516,6 +1541,7 @@ export function ChatDockBody({
             draftText={chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
+            sendFailureNotice={sendFailureNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
@@ -1591,6 +1617,10 @@ export function ChatDockBody({
             selectAttachmentFiles={chatInput.selectAttachmentFiles}
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
+            attachmentNotice={chatInput.attachmentNotice}
+            attachUnavailableReason={chatInput.attachUnavailableReason}
+            onAttachUnavailable={chatInput.setAttachmentError}
+            removalUnblocksSend={chatInput.removalUnblocksSend}
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'

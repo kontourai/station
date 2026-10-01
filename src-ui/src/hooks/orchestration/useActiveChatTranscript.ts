@@ -499,6 +499,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
               ?.agentIcon
           : undefined,
         sourceEventId: message.metadata?.sourceEventId,
+        ...(message.metadata?.steerInterruptedRun
+          ? { steerInterruptedRun: true }
+          : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
       }));
