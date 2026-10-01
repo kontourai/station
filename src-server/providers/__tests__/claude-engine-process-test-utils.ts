@@ -259,10 +259,13 @@ export function startFakeClaudeEngine(
  * For tests written before #2932 that call `canUseTool` with no frame. Wraps
  * the callback on a `query()` argument so each call without a `requestId`
  * first puts a frame on the fake engine's stdout, built from the call's own
- * options and carrying NO structured reason (`decision_reason_type` absent).
- * The adapter then reads "recorded, no reason type", which leaves the
- * decision to the signals those tests exercise. Tests of the structured
- * reason write their own frames and pass their own `requestId`.
+ * options. The frame carries no structured reason (`decision_reason_type`
+ * absent), which the adapter reads as "recorded, no reason type" and leaves
+ * the decision to the signals those tests exercise. A shell tool is the
+ * exception, because a shell ask with no reason type escalates: it gets
+ * type `other`, with the ordinary reason text when the test gave none, as
+ * the engine sends an ordinary shell ask. Tests of the structured reason
+ * write their own frames and pass their own `requestId`.
  */
 export function withRecordedClaudeAsks<T extends { options?: unknown }>(
   queryArgs: T,
@@ -280,6 +283,10 @@ export function withRecordedClaudeAsks<T extends { options?: unknown }>(
       return canUseTool(toolName, input, callOptions);
     const requestId = `legacy-ask-${++sequence}`;
     const engine = startFakeClaudeEngine(options);
+    const shell = toolName === 'Bash' || toolName === 'PowerShell';
+    const decisionReason =
+      callOptions.decisionReason ??
+      (shell ? 'This command requires approval' : undefined);
     // Written straight to the tap: a Transform runs its transform
     // synchronously on write, so the record exists before the callback runs
     // and these tests keep their synchronous shape.
@@ -289,14 +296,19 @@ export function withRecordedClaudeAsks<T extends { options?: unknown }>(
         input,
         permission_suggestions: callOptions.suggestions,
         blocked_path: callOptions.blockedPath,
-        decision_reason: callOptions.decisionReason,
+        decision_reason: decisionReason,
+        ...(shell ? { decision_reason_type: 'other' } : {}),
         tool_use_id: callOptions.toolUseID as string | undefined,
         agent_id: callOptions.agentID,
         suppress_always_allow_rule: callOptions.suppressAlwaysAllowRule,
         default_to_no: callOptions.defaultToNo,
       }),
     );
-    return canUseTool(toolName, input, { ...callOptions, requestId });
+    return canUseTool(toolName, input, {
+      ...callOptions,
+      ...(decisionReason !== undefined ? { decisionReason } : {}),
+      requestId,
+    });
   };
   return queryArgs;
 }

@@ -3640,6 +3640,29 @@ describe('ClaudeAdapter', () => {
         await adapter.stopSession('thread-frame-missing');
       });
 
+      test('a Bash ask whose frame carries no reason type prompts under a Bash grant: the engine always sends one', async () => {
+        const { adapter, askFrame } = await grantHarness(
+          'thread-frame-untyped',
+        );
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+        await expect(askFrame(bashOrdinary('git log'))).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+
+        // The ordinary frame as an engine that no longer sent the field
+        // would write it.
+        const { decision_reason_type: _dropped, ...untyped } =
+          bashOrdinary('git log');
+        const event = await expectPrompt(
+          await askFrame(untyped as ClaudeCanUseToolRequest),
+          'no reason type',
+        );
+        expect(event.payload.claudeAsk).toEqual({});
+        await adapter.stopSession('thread-frame-untyped');
+      });
+
       test("autoApprove '*' answers the ordinary asks and none of the escalations, a missing record included", async () => {
         const { adapter, ask, askFrame } = await grantHarness(
           'thread-frame-auto',

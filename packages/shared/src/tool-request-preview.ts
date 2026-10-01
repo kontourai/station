@@ -365,6 +365,12 @@ const ORDINARY_OTHER_DECISION_REASONS: ReadonlySet<string> = new Set([
   'This command requires approval',
 ]);
 /**
+ * #2932: Claude Code's shell tools. Every ask they raise carries a reason
+ * type in 2.1.278 (the ordinary one included), unlike an MCP tool, WebFetch
+ * or a file edit, whose ordinary ask carries none.
+ */
+const CLAUDE_SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
+/**
  * Claude Code's read-only tools. The engine allows reads inside the session's
  * working directories itself, so a prompt for one is always an escalation,
  * even when it carries no signal (an ask rule or a safety check, whose reason
@@ -495,7 +501,7 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
     request.suppressAlwaysAllowRule === true ||
     request.defaultToNo === true ||
     request.requiresUserInteraction === true ||
-    claudeAskEscalates(request.claudeAsk, request.decisionReason) ||
+    claudeAskEscalates(request) ||
     suggestionList(request.suggestions).some(
       (update) => directoryPermissionUpdateKind(update) !== undefined,
     )
@@ -516,21 +522,29 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  *   override, a path outside the working directories, a mode, hook,
  *   classifier or headless-agent ask, and any type added later.
  * - type `other` with any reason text but the ordinary one.
+ * - no reason type on a shell tool (Bash, PowerShell). The engine attaches
+ *   a reason to every shell ask, so its absence means the field is no
+ *   longer sent as this reader knows it: prompt, rather than treat every
+ *   shell ask as plain.
  *
- * A plain call is therefore an ask with no reason type (an MCP tool,
- * WebFetch, a file edit inside the working directories) or `other` with
- * the ordinary Bash text. PowerShell wraps even its ordinary ask in
- * `subcommandResults`, so every PowerShell ask escalates.
+ * A plain call is therefore an ask with no reason type on any other tool
+ * (an MCP tool, WebFetch, a file edit inside the working directories), or
+ * `other` with the ordinary Bash text. PowerShell wraps even its ordinary
+ * ask in `subcommandResults`, so every PowerShell ask escalates.
  */
 export function claudeAskEscalates(
-  claudeAsk: unknown,
-  decisionReason: unknown,
+  request: Pick<
+    ToolRequestGrantInput,
+    'toolName' | 'claudeAsk' | 'decisionReason'
+  >,
 ): boolean {
+  const { claudeAsk, decisionReason } = request;
   if (claudeAsk === undefined) return false;
   if (!isRecord(claudeAsk) || Array.isArray(claudeAsk)) return true;
   if (claudeAsk.classifierApprovable !== undefined) return true;
   const type = claudeAsk.decisionReasonType;
-  if (type === undefined) return false;
+  if (type === undefined)
+    return CLAUDE_SHELL_TOOLS.has(request.toolName?.trim() ?? '');
   if (type !== 'other') return true;
   return !(
     typeof decisionReason === 'string' &&

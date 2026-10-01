@@ -414,6 +414,12 @@ describe('#2932: escalation signals the engine forwards', () => {
 
 describe("#2932 part 2: the engine's structured ask reason", () => {
   const ORDINARY = 'This command requires approval';
+  /** `claudeAskEscalates` for a Bash ask unless another tool is named. */
+  const escalates = (
+    claudeAsk: unknown,
+    decisionReason: unknown,
+    toolName = 'Bash',
+  ) => claudeAskEscalates({ toolName, claudeAsk, decisionReason });
   const acceptEdits = {
     type: 'setMode',
     mode: 'acceptEdits',
@@ -433,12 +439,8 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     'classifier',
     'a-type-added-later',
   ])('reason type %s escalates, whatever the reason text', (type) => {
-    expect(claudeAskEscalates({ decisionReasonType: type }, undefined)).toBe(
-      true,
-    );
-    expect(claudeAskEscalates({ decisionReasonType: type }, ORDINARY)).toBe(
-      true,
-    );
+    expect(escalates({ decisionReasonType: type }, undefined)).toBe(true);
+    expect(escalates({ decisionReasonType: type }, ORDINARY)).toBe(true);
     const request = {
       toolName: 'Bash',
       toolInput: { command: 'git push' },
@@ -451,9 +453,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
   });
 
   test('type other is a plain call only with the ordinary reason text', () => {
-    expect(claudeAskEscalates({ decisionReasonType: 'other' }, ORDINARY)).toBe(
-      false,
-    );
+    expect(escalates({ decisionReasonType: 'other' }, ORDINARY)).toBe(false);
     for (const reason of [
       'This command uses shell operators that require approval for safety',
       'Process substitution requires manual approval',
@@ -465,7 +465,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       42,
     ])
       expect(
-        claudeAskEscalates({ decisionReasonType: 'other' }, reason),
+        escalates({ decisionReasonType: 'other' }, reason),
         String(reason),
       ).toBe(true);
     expect(
@@ -478,7 +478,8 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
   });
 
   test('an ask with no reason type is a plain call: MCP, WebFetch, an edit inside the working directories', () => {
-    expect(claudeAskEscalates({}, undefined)).toBe(false);
+    for (const toolName of ['mcp__github__create_issue', 'WebFetch', 'Edit'])
+      expect(escalates({}, undefined, toolName), toolName).toBe(false);
     expect(
       toolRequestSessionGrant({
         toolName: 'mcp__github__create_issue',
@@ -501,10 +502,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     for (const classifierApprovable of [true, false, null])
       for (const decisionReasonType of [undefined, 'other', 'safetyCheck'])
         expect(
-          claudeAskEscalates(
-            { decisionReasonType, classifierApprovable },
-            ORDINARY,
-          ),
+          escalates({ decisionReasonType, classifierApprovable }, ORDINARY),
           `${String(classifierApprovable)} ${String(decisionReasonType)}`,
         ).toBe(true);
     // A sensitive-file edit in default mode suggests acceptEdits like a
@@ -523,7 +521,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
 
   test('a Claude ask whose frame was not read escalates; an engine that reports none is left alone', () => {
     for (const missing of [null, 'other', 0, false, [], [{}]])
-      expect(claudeAskEscalates(missing, ORDINARY), String(missing)).toBe(true);
+      expect(escalates(missing, ORDINARY), String(missing)).toBe(true);
     expect(toolRequestSessionGrant({ toolName: 'Bash', claudeAsk: null })).toBe(
       'none',
     );
@@ -531,14 +529,34 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       false,
     );
     // Other engines (ACP, Codex, Station's own) set no `claudeAsk`.
-    expect(claudeAskEscalates(undefined, undefined)).toBe(false);
+    expect(escalates(undefined, undefined)).toBe(false);
+    expect(escalates(undefined, undefined, 'WebFetch')).toBe(false);
+    expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+  });
+
+  test('a shell ask with no reason type escalates: the engine always sends one', () => {
+    for (const toolName of ['Bash', 'PowerShell']) {
+      expect(escalates({}, undefined, toolName), toolName).toBe(true);
+      expect(escalates({}, ORDINARY, toolName), toolName).toBe(true);
+      expect(toolRequestSessionGrant({ toolName, claudeAsk: {} })).toBe('none');
+      expect(toolRequestIsPlainCall({ toolName, claudeAsk: {} })).toBe(false);
+    }
+    // Positive control: the same ask with the ordinary reason type.
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: ORDINARY,
+        claudeAsk: { decisionReasonType: 'other' },
+      }),
+    ).toBe('tool');
+    // Another engine's Bash carries no `claudeAsk` and is left alone.
     expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
   });
 
   test('a reason type that is not a string escalates', () => {
     for (const type of [null, 1, {}, ['other']])
       expect(
-        claudeAskEscalates({ decisionReasonType: type }, ORDINARY),
+        escalates({ decisionReasonType: type }, ORDINARY),
         String(type),
       ).toBe(true);
   });

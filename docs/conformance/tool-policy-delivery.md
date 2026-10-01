@@ -256,8 +256,11 @@ session grant and `toolRequestIsPlainCall`:
   Its other `other` reasons are checks: shell operators, an
   unparseable command, a `cd` before a write, a sed write, process
   substitution.
-- No reason type is a plain call. That is the ordinary ask of an MCP tool,
-  WebFetch, and a file edit inside the working directories.
+- No reason type is a plain call, except on a shell tool. It is the ordinary
+  ask of an MCP tool, WebFetch, and a file edit inside the working
+  directories. Bash and PowerShell asks always carry a reason type in
+  2.1.278, so a shell ask without one escalates: an engine that stopped
+  sending the field must not turn every shell ask into a plain call.
 - A Claude ask with no record escalates. This is the fail-closed rule: an
   unread, oversize, reshaped or evicted request costs a prompt, never a
   grant.
@@ -281,8 +284,14 @@ What this costs, and what it still does not cover:
   the ordinary ask and safety prose, and only the text tells them apart. The
   text was read in 2.1.278. If a later engine rewords it, ordinary Bash calls
   prompt until the literal is updated; a rewording never widens a grant.
-- **A different frame shape costs prompts.** A request Station cannot parse
-  is not recorded, so all Claude asks would prompt and offer no tool grant.
+- **A different frame shape costs prompts, with one exception.** A request
+  Station cannot parse is not recorded, so all Claude asks would prompt and
+  offer no tool grant. A session can run an installed `claude` newer than
+  the bundled one, so this can happen without a Station change. The
+  exception: if an engine sent readable requests without the reason type,
+  shell asks would still prompt, but an ask rule or safety check on any
+  other tool (WebFetch, a file edit, an MCP tool) would read as a plain
+  call. Those would be covered only by the part 1 signals, as before.
 - **Exit errors.** The SDK appends the engine's stderr to an exit error only
   for its own spawn. Station keeps the last 2048 characters itself, redacted,
   and appends them to the `runtime.error` it publishes when the message

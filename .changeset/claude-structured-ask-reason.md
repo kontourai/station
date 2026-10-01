@@ -9,10 +9,11 @@ and the `ClaudeAskReason` type, `ToolRequestGrantInput` gains an optional
 `request.opened` payload. A Claude ask escalates, so neither a tool grant nor
 `toolRequestIsPlainCall` covers it, when its reason type is anything but
 `other`, when `classifierApprovable` is set, when type `other` carries any
-reason but `This command requires approval`, or when `claudeAsk` is present
-but is not an object (`null`: the engine's request was not read). An ask with
-no reason type, and a request with no `claudeAsk` at all (another engine), is
-judged as before. Station's Claude sessions therefore prompt for Bash safety
+reason but `This command requires approval`, when a Bash or PowerShell ask
+carries no reason type, or when `claudeAsk` is present but is not an object
+(`null`: the engine's request was not read). Any other ask with no reason
+type, and a request with no `claudeAsk` at all (another engine), is judged
+as before. Station's Claude sessions therefore prompt for Bash safety
 checks, plain `permissions.ask` rules, sensitive-file edits and every
 compound shell command, under a session grant and under an agent's
 `tools.autoApprove`.

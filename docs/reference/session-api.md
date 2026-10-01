@@ -220,7 +220,8 @@ to forward.
 
 An ask with no reason type is a plain call: that is what the engine sends for
 an ordinary MCP tool call, WebFetch, and a file edit inside the working
-directories. `request.opened` carries the result as `claudeAsk`: an object
+directories. A Bash or PowerShell ask with no reason type prompts, because
+the engine sends one with every shell ask. `request.opened` carries the result as `claudeAsk`: an object
 with `decisionReasonType`, `classifierApprovable` and `decisionReasonCode`
 where the engine set them, or `null` when the request could not be read.
 Other engines send no `claudeAsk`.
