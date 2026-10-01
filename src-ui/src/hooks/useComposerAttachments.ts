@@ -240,18 +240,10 @@ export function useComposerAttachments(options: {
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );
             // The queue throws an AggregateError with no code of its own; the
-            // capacity refusal is on the stage it already reported (or inside
-            // the aggregate), and that explanation must win over the generic
-            // "did not complete" sentence.
-            const causes =
-              failure instanceof AggregateError ? failure.errors : [failure];
-            const capacityFull =
-              current?.capacityFull === true ||
-              causes.some(
-                (cause) =>
-                  (cause as { code?: unknown } | null)?.code ===
-                  'stage_capacity',
-              );
+            // capacity refusal is on the stage it already reported before
+            // throwing, and that explanation must win over the generic "did
+            // not complete" sentence.
+            const capacityFull = current?.capacityFull === true;
             if (current?.state !== 'complete' && !current?.capacityFull) {
               update({
                 clientAttachmentId,

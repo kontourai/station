@@ -241,6 +241,11 @@ interface ChatInputAreaProps {
   onAttachUnavailable?: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
+  /**
+   * The latest send-failure notice, one line. Shown in the composer only when
+   * a dock too short for the transcript steps it aside (the notice lives there).
+   */
+  sendFailureNotice?: string;
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -292,6 +297,31 @@ interface ChatInputAreaProps {
     initialMessage?: string,
     attachments?: FileAttachment[],
   ) => void | Promise<void>;
+}
+
+/**
+ * The textarea's auto-height, clamped to the viewport, and the draft's floor:
+ * two lines (or its whole content, when shorter). In a short dock the draft
+ * may shrink to the floor and scroll, never below it.
+ */
+function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
+  textarea.style.height = 'auto';
+  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
+  const height = Math.min(textarea.scrollHeight, maxHeight);
+  textarea.style.height = `${height}px`;
+  textarea.style.overflowY =
+    textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  const style = getComputedStyle(textarea);
+  const fontSize = Number.parseFloat(style.fontSize) || 16;
+  const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
+  const chrome =
+    (Number.parseFloat(style.paddingTop) || 0) +
+    (Number.parseFloat(style.paddingBottom) || 0) +
+    (Number.parseFloat(style.borderTopWidth) || 0) +
+    (Number.parseFloat(style.borderBottomWidth) || 0);
+  const floor = Math.min(height, Math.ceil(2 * line + chrome));
+  textarea.style.minHeight = `${floor}px`;
+  return floor;
 }
 
 export function ChatInputArea({
@@ -350,6 +380,7 @@ export function ChatInputArea({
   selectAttachmentFiles = async () => {},
   attachmentError = null,
   attachmentNotice,
+  sendFailureNotice,
   attachUnavailableReason,
   onAttachUnavailable,
   removalUnblocksSend = false,
@@ -530,43 +561,29 @@ export function ChatInputArea({
   );
 
   const composerRootRef = useRef<HTMLDivElement | null>(null);
+  // The draft's two-line floor, written by the per-keystroke sizing below and
+  // read by the reservation.
+  const draftFloorRef = useRef(0);
+  const scheduleReserveRef = useRef<(() => void) | null>(null);
+
+  // Owns the observers and the dock-level reservation. It must not depend on
+  // `input`: a keystroke would otherwise rebuild both observers and re-run
+  // the forced-reflow measurement for every character.
   useLayoutEffect(() => {
-    // Value changes are a resize trigger even though the measurement reads DOM.
-    void input;
-    // So are the rows around the draft: they change what the composer needs.
-    void attachments.length;
-    void attachmentStages.length;
-    void sendBlockedReason;
-    void attachmentError;
-    void attachmentNotice;
     const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    const availableHeight = visualViewport.height || dockHeight;
-    const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
-    const height = Math.min(textarea.scrollHeight, maxHeight);
-    textarea.style.height = `${height}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
-    // The draft's floor: two lines (or its whole content, when shorter). In
-    // a short dock the draft may shrink to this and scroll, never below it.
-    const style = getComputedStyle(textarea);
-    const fontSize = Number.parseFloat(style.fontSize) || 16;
-    const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
-    const chrome =
-      (Number.parseFloat(style.paddingTop) || 0) +
-      (Number.parseFloat(style.paddingBottom) || 0) +
-      (Number.parseFloat(style.borderTopWidth) || 0) +
-      (Number.parseFloat(style.borderBottomWidth) || 0);
-    const floor = Math.min(height, Math.ceil(2 * line + chrome));
-    textarea.style.minHeight = `${floor}px`;
-    // …and the composer as a whole reserves room for that floor plus every
-    // row that does not shrink (chips, messages, controls). Without this the
-    // dock squeezed the composer itself and the controls row painted over
-    // the draft; with it, the banner and the transcript give way instead.
     const root = composerRootRef.current;
-    if (!root) return;
+    if (!textarea || !root) return;
+    draftFloorRef.current = sizeDraft(
+      textarea,
+      visualViewport.height || dockHeight,
+    );
+    const body = root.parentElement;
+    // The composer reserves room for that floor plus every row that does not
+    // shrink (chips, messages, controls). Without this the dock squeezed the
+    // composer itself and the controls row painted over the draft; with it,
+    // the banner and the transcript give way instead.
     const reserve = () => {
+      const floor = draftFloorRef.current;
       // Measure the composer's natural height with the draft at its floor:
       // unsqueezed (no shrink, no cap) so overlapping rows cannot hide
       // height, then restore and reserve exactly that.
@@ -589,7 +606,6 @@ export function ChatInputArea({
       // than the composer overflowing its dock. And the reservation never
       // exceeds what the dock can give: past that point Send staying on screen
       // outranks the draft's two-line floor.
-      const body = root.parentElement;
       if (!body?.classList.contains('chat-dock__body')) {
         const next = `${needed}px`;
         root.style.minHeight = saved[0] === next ? saved[0] : next;
@@ -619,6 +635,8 @@ export function ChatInputArea({
           others += size;
         }
       }
+      // The send-failure line is shown only while this is set, which makes the
+      // composer taller and the dock tighter: setting it can only keep it set.
       body.toggleAttribute(
         'data-composer-priority',
         fixed > body.clientHeight + 0.5,
@@ -631,29 +649,72 @@ export function ChatInputArea({
       root.style.minHeight = saved[0] === next ? saved[0] : next;
     };
     reserve();
+
+    // A burst of observer callbacks (and the keystroke) measures once a frame.
+    let frame = 0;
+    let disposed = false;
+    const scheduleReserve = () => {
+      if (frame || disposed) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (!disposed) reserve();
+      });
+    };
+    scheduleReserveRef.current = scheduleReserve;
+    const cleanup = () => {
+      disposed = true;
+      if (frame) cancelAnimationFrame(frame);
+      if (scheduleReserveRef.current === scheduleReserve)
+        scheduleReserveRef.current = null;
+      // The attribute hides the transcript through `.chat-dock__body`, which
+      // outlives this composer (replay mounts none): do not leave it behind.
+      body?.removeAttribute('data-composer-priority');
+      root.style.minHeight = '';
+      textarea.style.minHeight = '';
+    };
     // Rows around the draft mount late (the lazy chip strip) or change size
     // on their own (wrapping chips); re-reserve whenever any of them does.
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => reserve());
-    if (root.parentElement) observer.observe(root.parentElement);
-    for (const row of root.querySelectorAll(
-      '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)',
-    ))
-      observer.observe(row);
-    const mutations = new MutationObserver(() => {
+    if (typeof ResizeObserver === 'undefined') return cleanup;
+    const observed =
+      '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)';
+    const observer = new ResizeObserver(scheduleReserve);
+    const observeRows = () => {
       observer.disconnect();
-      if (root.parentElement) observer.observe(root.parentElement);
-      for (const row of root.querySelectorAll(
-        '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)',
-      ))
-        observer.observe(row);
-      reserve();
+      if (body) observer.observe(body);
+      for (const row of root.querySelectorAll(observed)) observer.observe(row);
+    };
+    observeRows();
+    const mutations = new MutationObserver(() => {
+      observeRows();
+      scheduleReserve();
     });
     mutations.observe(root, { childList: true, subtree: true });
     return () => {
       observer.disconnect();
       mutations.disconnect();
+      cleanup();
     };
+  }, [dockHeight, textareaRef, visualViewport.height]);
+
+  // Per keystroke (and per row that changes what the composer needs): the
+  // textarea's own auto-height, then one coalesced reservation.
+  useLayoutEffect(() => {
+    // Value changes are a resize trigger even though the measurement reads DOM.
+    void input;
+    // So are the rows around the draft: they change what the composer needs.
+    void attachments.length;
+    void attachmentStages.length;
+    void sendBlockedReason;
+    void attachmentError;
+    void attachmentNotice;
+    void sendFailureNotice;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    draftFloorRef.current = sizeDraft(
+      textarea,
+      visualViewport.height || dockHeight,
+    );
+    scheduleReserveRef.current?.();
   }, [
     attachmentError,
     attachmentNotice,
@@ -662,6 +723,7 @@ export function ChatInputArea({
     dockHeight,
     input,
     sendBlockedReason,
+    sendFailureNotice,
     textareaRef,
     visualViewport.height,
   ]);
@@ -881,6 +943,11 @@ export function ChatInputArea({
           {attachmentNotice && !sendBlockedReason && !attachmentError && (
             <div className="chat-input__attachment-notice" role="status">
               {attachmentNotice}
+            </div>
+          )}
+          {sendFailureNotice && (
+            <div className="chat-input__send-failure" role="status">
+              {sendFailureNotice}
             </div>
           )}
           {composerTokens.length > 0 && (

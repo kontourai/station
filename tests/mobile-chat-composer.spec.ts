@@ -3468,7 +3468,7 @@ for (const width of [320, 431]) {
 // it; the banner and the transcript give way instead.
 test('a refused send keeps a two-line draft clear of every row in a 375x667 half dock', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 375, height: 667 });
   await installMockOrchestrationSse(page);
@@ -3503,10 +3503,23 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   // The refusal is recorded (the send notice). In a half dock too short for
   // transcript + composer, the transcript steps aside instead of the draft
   // being squeezed under the controls.
-  await expect(
-    page.getByText("This engine can't take these attachments"),
-  ).toHaveCount(1);
+  // The transcript is stepped aside here, so the reason must be on screen in
+  // the composer itself: restored chips, a restored draft and an enabled Send
+  // with no visible reason would read as a dead button. (`getByText` also
+  // matches the hidden transcript copy, hence the visibility assertion.)
+  const failureLine = page.locator('.chat-input__send-failure');
+  await expect(failureLine).toBeVisible();
+  await expect(failureLine).toHaveText(
+    "This engine can't take these attachments",
+  );
+  await expect(page.locator('.chat-messages')).toBeHidden();
+  await expect(page.locator('.chat-input__attachment-error')).toHaveCount(0);
+  await expect(page.locator('.chat-input__attachment-notice')).toHaveCount(0);
   await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await expect(
+    page.locator('.composer-attachments__chip').first(),
+  ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('refused-half-dock.png') });
 
   const geometry = await textarea.evaluate((element) => {
     const box = element.getBoundingClientRect();
@@ -3702,7 +3715,7 @@ test('after a reload with the failure banner, a 375x667 half dock keeps a two-li
   const textarea = page.locator('.chat-input textarea').last();
   await expect(textarea).toHaveValue(/Third line should stay visible/);
   await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
-  await expect(page.getByTestId('chat-dock-session-failure')).toHaveCount(1);
+  await expect(page.getByTestId('chat-dock-session-failure')).toBeVisible();
   await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
 
   const geometry = await textarea.evaluate((element) => {

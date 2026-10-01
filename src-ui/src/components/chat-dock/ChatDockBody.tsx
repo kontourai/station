@@ -245,6 +245,21 @@ export function findPrecedingUserTurn(
   return null;
 }
 
+/**
+ * The newest transcript notice as one plain line (its bold title row), for the
+ * composer to repeat while a short dock hides the transcript.
+ */
+function latestNoticeLine(notices: readonly { content: string }[]) {
+  const content = notices[notices.length - 1]?.content;
+  if (!content) return undefined;
+  const line = content
+    .replace(/^\[SYSTEM_EVENT\]\s*/, '')
+    .split('\n', 1)[0]
+    ?.replace(/\*\*/g, '')
+    .trim();
+  return line || undefined;
+}
+
 export function ChatDockBody({
   activeSession,
   workingDirectory,
@@ -650,6 +665,7 @@ export function ChatDockBody({
     new Set(),
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
+  const sendFailureNotice = latestNoticeLine(ephemeralMessages);
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -1502,6 +1518,7 @@ export function ChatDockBody({
             draftText={chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
+            sendFailureNotice={sendFailureNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}

@@ -1540,3 +1540,106 @@ function renderProps(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as React.ComponentProps<typeof ChatInputArea>;
 }
+
+describe('ChatInputArea dock reservation', () => {
+  // jsdom has no layout: give the dock body and the composer root the sizes a
+  // 375x667 half dock would, so the reservation sees a dock too short for it.
+  function stubShortDock() {
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 50 : 0;
+      });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input') ? 200 : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    return () => {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+    };
+  }
+
+  test('unmounting the composer returns the transcript the attribute hid', () => {
+    const restore = stubShortDock();
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <ChatInputArea {...renderProps({ dockHeight: 120 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(true);
+      view.rerender(<div className="chat-dock__body" />);
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  test('typing does not rebuild the observers', () => {
+    const constructed = vi.fn();
+    class CountingObserver {
+      constructor() {
+        constructed();
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', CountingObserver);
+    try {
+      const textareaRef = createRef<HTMLTextAreaElement>();
+      const view = render(
+        <ChatInputArea {...renderProps({ input: '', textareaRef })} />,
+      );
+      const afterMount = constructed.mock.calls.length;
+      expect(afterMount).toBe(1);
+      let typed = '';
+      for (const character of 'a longer draft typed key by key') {
+        typed += character;
+        view.rerender(
+          <ChatInputArea {...renderProps({ input: typed, textareaRef })} />,
+        );
+      }
+      expect(constructed.mock.calls.length).toBe(afterMount);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('a burst of observer callbacks measures the composer once per frame', async () => {
+    const callbacks: Array<() => void> = [];
+    class CapturingObserver {
+      constructor(callback: () => void) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', CapturingObserver);
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    try {
+      render(<ChatInputArea {...renderProps()} />);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      rect.mockClear();
+      for (let i = 0; i < 10; i += 1) for (const run of callbacks) run();
+      expect(rect).not.toHaveBeenCalled();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(rect.mock.calls.length).toBeGreaterThan(0);
+      const once = rect.mock.calls.length;
+      rect.mockClear();
+      for (let i = 0; i < 10; i += 1) for (const run of callbacks) run();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(rect.mock.calls.length).toBe(once);
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});

@@ -1231,8 +1231,24 @@
   overflow-y: auto;
 }
 
-/* Too short even for their padding: they step aside until the dock grows
-   (the composer's block line and the chat title still say what failed). */
+/* Too short even for their padding: they step aside until the dock grows.
+   The send-failure notice lives in the transcript, so the composer repeats
+   the latest one as a single line while the transcript is hidden. */
+.chat-input__send-failure {
+  display: none;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  color: var(--error-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__send-failure {
+  display: block;
+}
+
 .chat-dock__body[data-composer-priority] > .chat-dock__session-failure,
 .chat-dock__body[data-composer-priority] > .chat-messages {
   display: none;
