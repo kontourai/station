@@ -154,6 +154,10 @@ vi.mock('../../../hooks/useKeyboardShortcut', () => ({
   },
 }));
 
+import {
+  LayoutChatPlacementContext,
+  subscribeCenterChatPageRequests,
+} from '../../../app-shell/chat-placement';
 import { REGION_SURFACE_REGISTRY } from '../../../regions/region-model';
 import { RegionToolbarControls } from '../RegionToolbarControls';
 
@@ -352,6 +356,48 @@ describe('RegionToolbarControls', () => {
     // And it is not ALSO issuing the toggle: the chords above are the only
     // callers that did, so the count is still theirs.
     expect(harness.toggleSurface).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * #928 coding stack: while the Coding layout's centre owns Chat, the dock
+   * does not hold Chat on that route, so Chat's chord is not a dock toggle.
+   * It asks the centre for its Chat page (which focuses the composer) and
+   * leaves every region as it was. Activity's chord is unaffected.
+   */
+  test('while the Coding centre owns Chat, ⌘D goes to its Chat page and toggles nothing', () => {
+    const requests = vi.fn();
+    const unsubscribe = subscribeCenterChatPageRequests(requests);
+    try {
+      render(
+        <LayoutChatPlacementContext.Provider value="center">
+          <RegionToolbarControls />
+        </LayoutChatPlacementContext.Provider>,
+      );
+      harness.shortcuts.get('dock.toggle')?.handler();
+      expect(requests).toHaveBeenCalledOnce();
+      expect(harness.toggleSurface).not.toHaveBeenCalled();
+      expect(harness.setRegion).not.toHaveBeenCalled();
+      expect(harness.placeSurface).not.toHaveBeenCalled();
+      expect(harness.showSurface).not.toHaveBeenCalled();
+
+      harness.shortcuts.get('activity.toggle')?.handler();
+      expectOnlyToggle('activity');
+      expect(requests).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test('before the Coding centre mounts to answer, ⌘D still leaves the dock alone', () => {
+    render(
+      <LayoutChatPlacementContext.Provider value="center">
+        <RegionToolbarControls />
+      </LayoutChatPlacementContext.Provider>,
+    );
+    harness.shortcuts.get('dock.toggle')?.handler();
+    expect(harness.toggleSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    expect(harness.showSurface).not.toHaveBeenCalled();
   });
 
   /**

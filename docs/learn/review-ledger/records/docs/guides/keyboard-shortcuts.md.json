@@ -9,14 +9,14 @@
 
   "limits": "DOM/storage/caller evidence only; no physical keyboard, browser-reserved-key or native-shell qualification. The documented product defects remain unfixed.",
 
-  "document": {"digest":"ea0091f679507ccc61de0724d1fa57af4ca2eea954ee7502d5f1033b64d3f131","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+  "document": {"digest":"f04dd32ce4cbd4ced6d725ffdf30c47d8895739c4c61b1ee7bfe34dc36a5aba4","revision":"86261a64cb5fc5bddc8a5decf17cbe977d4bd32e"},
 
   "sources": [
     {"path":"src-ui/src/__tests__/KeyboardShortcutsContext.test.ts","digest":"ac6e867bac63c0c5728df322b86cdc0ecd6f4d4b5db3d1969c85b218e4c03887","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
 
     {"path":"src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx","digest":"7fd216eee45a67de0d2d6532dc8a7c7059e258c2e27ade2c87ec4ee51b120933","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
 
-    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7","revision":"86261a64cb5fc5bddc8a5decf17cbe977d4bd32e"},
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
 
