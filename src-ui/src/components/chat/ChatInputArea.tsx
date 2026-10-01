@@ -930,13 +930,15 @@ export function ChatInputArea({
             >
               {sendBlockedReason}
               {removalUnblocksSend && (
-                <button
-                  type="button"
-                  className="chat-input__blocked-action"
-                  onClick={onClearAttachments}
-                >
-                  Remove attachments
-                </button>
+                <span className="chat-input__blocked-actions">
+                  <button
+                    type="button"
+                    className="chat-input__blocked-action"
+                    onClick={onClearAttachments}
+                  >
+                    Remove attachments
+                  </button>
+                </span>
               )}
             </div>
           )}

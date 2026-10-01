@@ -840,16 +840,12 @@
    the bubble's accent background. */
 .message__steer-note {
   margin-top: var(--space-1);
+  /* On a fine pointer the bubble's actions button sits inside its
+     bottom-right corner (`.message__copy-btn`), which is where this last line
+     ends; the same clearance is harmless where the button sits outside. */
+  padding-inline-end: 32px;
   font-size: var(--text-xs);
   opacity: 0.85;
-}
-
-/* On a fine pointer the bubble's actions button sits inside its bottom-right
-   corner (`.message__copy-btn`), which is where this last line ends. */
-@media (min-width: 769px) and (pointer: fine) {
-  .message__steer-note {
-    padding-inline-end: 32px;
-  }
 }
 
 .message__thinking {
@@ -1290,10 +1286,11 @@
   cursor: pointer;
 }
 
-@media (max-width: 768px), (pointer: coarse) {
-  .chat-input__attachment-error .chat-input__blocked-action {
-    min-height: 44px;
-  }
+/* The action's 44px touch floor comes from the shared mobile rule for
+   `__actions` rows (index.css); this only keeps the wrapper inline. */
+.chat-input__blocked-actions {
+  display: inline-flex;
+  align-items: center;
 }
 
 .chat-input__attachment-notice {
