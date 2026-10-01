@@ -11,6 +11,17 @@ import type { LiveSurfaceControllerTone } from '../live-surface/LiveSurfaceCanva
 export const RECENT_AGENT_DRIVE_MS = 10_000;
 
 /**
+ * Who is driving, in words: one wording wherever a Browser session's driver
+ * is shown (the float-over-chat pill and the Browser pane's control line).
+ */
+export const DRIVER_TEXT: Record<LiveSurfaceControllerTone, string> = {
+  agent: 'An agent is driving',
+  you: 'You are in control',
+  other: 'Someone else is in control',
+  none: 'No one is in control',
+};
+
+/**
  * Who a viewer should be told is driving (owner decision, #90 D9 follow-up).
  * Derived, never asserted:
  * - a held lease names its holder;

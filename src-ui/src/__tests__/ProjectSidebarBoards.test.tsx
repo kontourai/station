@@ -26,6 +26,7 @@ import { requestNewBoard } from '../components/project-sidebar/new-board-events'
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 /**
  * The region model, as a SPY rather than the `null` this used to return

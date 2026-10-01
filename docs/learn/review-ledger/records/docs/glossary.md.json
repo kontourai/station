@@ -9,10 +9,10 @@
 
   "limits": "No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope.",
 
-  "document": {"digest":"c7d1e5949adcce8b8fd0605b9280cc5f869c72ec9cc4b7b2767db1617b2a4c6a","revision":"335893e0b2f5e87d0ccd02115fd0cfa760b215c1"},
+  "document": {"digest":"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"a84436030c272a4578b7a6593497b78b10587c6b969f715bad413a5d884815f8","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
     {"path":"docs/reference/connect.md","digest":"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
 
@@ -24,13 +24,13 @@
 
     {"path":"packages/contracts/src/engine-display.ts","digest":"89e4bd95f0504ebaea436c1fd9d269c67357940db877a7f285f6c33e942f9846","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/live-surface.ts","digest":"9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
     {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/workspace-browser-pane.ts","digest":"34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/workspace-browser-pane.ts","digest":"52936346651c4d32d96efdc3f38ec9ce39bbfac3d66b72d0556a0649a3040721","revision":"930a4b5e4b5325ecd0941e7f85742c610544581d"},
 
-    {"path":"packages/contracts/src/workspace-browser-preview.ts","digest":"5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/workspace-browser-preview.ts","digest":"ce91e2d481029501f2234191c0b954b05cdb10861295d5c8616318bc2acec29a","revision":"5e79846e0abd2cbfa471dcde99ae95735b0b526e"},
 
     {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-server/routes/browser-agent.ts","digest":"eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/browser.ts","digest":"41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/browser.ts","digest":"e12b8389875a1696d0f23891aac7213753c9f9c74833e24ebd31829ffe2b2f12","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
     {"path":"src-server/routes/device-hosts.ts","digest":"d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -48,35 +48,35 @@
 
     {"path":"src-server/routes/device-tools.ts","digest":"551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/live-surface.ts","digest":"d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/live-surface.ts","digest":"f8f3b37a1f955bd3e099478e20035bb14c9f1056e5e25f85360892458e69b462","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-automation.ts","digest":"d24c0f5ae869c2f83866647af0c38066bac77184dc6a2724fdf4bded4d7fecd4","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637","revision":"930a4b5e4b5325ecd0941e7f85742c610544581d"},
 
     {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/browser/browser-host.ts","digest":"1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-live-surfaces.ts","digest":"e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/browser-live-surfaces.ts","digest":"6f5d3a656c962821abf30a10cdf27f0551bfac8f0d145d44d76213bb51985569","revision":"930a4b5e4b5325ecd0941e7f85742c610544581d"},
 
     {"path":"src-server/services/browser/browser-local-targets.ts","digest":"daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/browser/browser-project-settings.ts","digest":"6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-service.ts","digest":"1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/browser/browser-service.ts","digest":"537c2e2d47f2733fbdccc03d9a7d9841f47bd02fcd680f25661dc87f9a0ad0d3","revision":"930a4b5e4b5325ecd0941e7f85742c610544581d"},
 
-    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"2021e106a5e8148732ecebf92f8872632f27fd318b36aaa48e9f6b403ef29be5","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"da238014e467ecbccac2cb3f3fd44800182e83e6f425ab6814fac3fb7aa5a09e","revision":"98db501812082da5558fc63a96993e23cd4a6a9c"},
 
     {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"6b6f45100304b04049f432aff93a46a71d457398db5aacebdf554c8d33fce0b4","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"61340e4d4b704e7384c236a2c938deed198fa0d73222476360b5c9995da23740","revision":"98db501812082da5558fc63a96993e23cd4a6a9c"},
 
     {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -100,11 +100,11 @@
 
     {"path":"src-server/services/devices/toolchain/device-toolchain-service.ts","digest":"af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/live-surface/control-lease.ts","digest":"8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/live-surface/control-lease.ts","digest":"df337ad357260e1797a26fa32c4f903cca260e973edbb1a47b5b831b5c6d6482","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-server/services/live-surface/producer.ts","digest":"9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/live-surface/producer.ts","digest":"e915608e07c39a700464f1e525603709dc8a0e9f7c8d5a7816fe5d766f25bf04","revision":"930a4b5e4b5325ecd0941e7f85742c610544581d"},
 
-    {"path":"src-server/services/live-surface/registry.ts","digest":"7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/live-surface/registry.ts","digest":"903df00489a63767e82604246f8ac9eedd3eb54cc947d08dba33ba459732f341","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
     {"path":"src-server/services/live-surface/surface-hub.ts","digest":"ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -114,13 +114,13 @@
 
     {"path":"src-server/tools/station-control-browser-tools.ts","digest":"c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
 
-    {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"81c979aa34b061b5c9ca39dea2fe8327e387f97ceb079918039dd5311275ae3e","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/live-surface/LiveSurfaceCanvas.tsx","digest":"c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/live-surface/LiveSurfaceCanvas.tsx","digest":"790ccd19b16fa5b4d3911b9b817ecfb3b64c1505bb63dda41776a02762fb85c2","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
     {"path":"src-ui/src/views/task-experiences.ts","digest":"cdc6a0d8558b9167702d8b1f38b4be903e0035e1b41858329347e437c80195a3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -130,9 +130,9 @@
 
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"a48c98f49fefb566c7cd8618e3798ed3697645a3fecd662897ec2340f9a9e8ae","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
 
-    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38","revision":"c82192d89121275a4b40400a4c110927beff4344"},
 
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

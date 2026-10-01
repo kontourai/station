@@ -102,9 +102,59 @@ every other route. These rules make it a region rather than a special case
   view renders and the occupant is kept, not cleared. The Home destination
   (`regionSurface: 'home'`) therefore reveals Home by placing it, rather than
   navigating to `/` and showing whatever occupies `main`.
+- **A place row opens its surface as the page.** The sidebar's Activity
+  row, the palette's Activity entry, Home's "View Activity" and a Project
+  page's "All activity" open Activity in `main` (`useShowSurfacePage`: the
+  model's `showSurface` with `region: 'main'`), on every device, and the
+  model navigates to `/`. The row is then the current page
+  (`aria-current="page"`, derived like Home's row from `main`'s occupant at
+  `/`, so exactly one of the two is current) and pressing it again keeps the
+  page. Every contextual producer — the `?surface=activity` link that
+  notifications and evidence mint, a session intent, the chord — keeps
+  `showSurface`'s reveal, which is why Activity's `defaultRegion` is still
+  `right`.
+  - **The page is seen, not covered.** A page open — a landing in `main`
+    through `showSurface` or the model's open, which both go through `commit`
+    in `RegionModelContext` — restores any maximized dock region on every
+    device: a maximized dock owns the whole phone viewport,
+    and on a desktop a maximized side region hides `.main-content` while a
+    maximized bottom region takes its row. The dock stays open beside or
+    below the page, and the reader's maximize memory (`lastDockMaximized`,
+    what `focusSession` reopens Chat with) is kept. This holds for Home's row
+    as well, which shares the path. `placeSurface` (a tab's Move to Main, the
+    Layout picker) does not go through `commit` and does not restore a
+    maximized region yet. On a phone the page is not a layer over
+    Chat; when the layer is showing the very pane being opened as the page,
+    the layer is ended through its own restore first (without asking its
+    guards — only a guard-free surface can be both), and its history entry
+    goes with it.
+  - **A docked Activity moves to `main`** (a surface is in at most one
+    region), and the provider remembers the dock region it came from: the
+    chord (`toggleSurface`'s `main` case) returns it there rather than to
+    `defaultRegion`, when the device still offers that region — and so does
+    the first reveal of it after Home has taken the page back (the chord's
+    show, or a link). The memory is
+    transient, like the phone layer's origin — it is not in the persisted
+    arrangement record, so after a reload the chord returns to
+    `defaultRegion`. An explicit placement clears it.
+  - **Accepted gap: swapping `main` at `/` adds no history entry.** The page
+    is placement, not a URL, as Home's row always was. From another route
+    the navigation to `/` is one entry, and Back returns to that route. At
+    `/`, Back after the swap leaves `/` for the previous entry rather than
+    returning to Home — and on a phone, where Back used to close Activity's
+    layer back to Chat, Back from the Activity page now leaves the page
+    (in the Android app, from the first entry, that can close the app).
+    When the page was opened from Activity's phone layer, the layer's
+    history entry is consumed by that open, so Back lands on the entry
+    before the layer, whose URL carries Chat's maximize: Chat comes back
+    full screen over the Activity page, which is still `main`'s occupant.
+    A history entry per swap would need a restore-on-popstate rule for
+    `main` that survives reload, forward and interleaved route navigation;
+    that is a design decision for `main`'s URL identity, not part of this
+    rule.
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
-  (Activity) reaches it through **Move to Main**,
+  (Activity) also reaches it through its place row (above) and **Move to Main**,
   available from a tab or the bar's separate **Move Activity** control
   (#2160). The tab route needs two or more panes while the strip renders
   (`RegionChromeBar`'s `showStrip`, gated on `isMobile` — the 768px layout,
@@ -1087,8 +1137,8 @@ one arrangement, and no control at all that said whether a region was open
   (#2154; #2143's "Show Activity here" offer row); its chord
   (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
   or the sidebar's Home row (`showSurface('home')` places Home, and the
-  displaced surface is unplaced — its chord or sidebar row places it
-  afresh). With every dock region occupied there is no pointer route in the
+  displaced surface is unplaced — its chord places it afresh in its dock,
+  and its sidebar row makes it the page again). With every dock region occupied there is no pointer route in the
   toolbar itself; the picker's `Hidden` segment for a `main` occupant was
   unconditional, and this is the one capability the toggles narrow.
 - **Folded devices are unchanged.** A bottom-only device has one dock, so its

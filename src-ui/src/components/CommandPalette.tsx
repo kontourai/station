@@ -27,7 +27,7 @@ import {
   openChatsStore,
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
-import { useShowSurface } from '../contexts/useShowSurface';
+import { useShowSurfacePage } from '../contexts/useShowSurface';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -174,7 +174,7 @@ const SearchIcon = (
 );
 
 export function CommandPalette() {
-  const showSurface = useShowSurface();
+  const showSurfacePage = useShowSurfacePage();
   const [open, setOpen] = useState(false);
   const [workspaceSearch, setWorkspaceSearch] = useState(false);
   const [messageSearch, setMessageSearch] = useState<LegacySearchData>();
@@ -474,8 +474,11 @@ export function CommandPalette() {
         group: 'Navigation',
         keywords: destination.keywords ? [...destination.keywords] : undefined,
         run: () => {
+          // A `regionSurface` destination is a place (Activity; Home, when a
+          // palette entry is registered for it): go to its page, the same
+          // verb as its sidebar row.
           if (destination.regionSurface) {
-            showSurface(destination.regionSurface);
+            showSurfacePage(destination.regionSurface);
             return;
           }
           if (params) navigate(destination.route, { ...params });
@@ -719,7 +722,7 @@ export function CommandPalette() {
     settingsCommands,
     settingsLocaleFormatter,
     locale,
-    showSurface,
+    showSurfacePage,
   ]);
 
   const ranked = useMemo(
