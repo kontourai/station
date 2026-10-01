@@ -648,7 +648,7 @@ function AccountMetadata({
           ]}
         />
         {!identity && !credits && !extraUsage && !resetCredits && (
-          <small>No account or credit details were returned.</small>
+          <Empty variant="compact" label="Account details unavailable" />
         )}
         {!!models?.length && (
           <Facts

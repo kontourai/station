@@ -1,20 +1,25 @@
 .engine-account-overview {
   display: grid;
-  gap: 1rem;
+  gap: var(--k-space-4);
   border: 1px solid var(--k-line);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--k-radius-md);
   padding: clamp(0.75rem, 2vw, 1rem);
   margin: 1rem 0;
   color: var(--k-text);
   background: var(--k-panel);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-md);
+  line-height: 1.5;
 }
 .engine-account-overview h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--k-text-md);
+  font-weight: 600;
 }
 .engine-account-overview small {
   display: block;
   color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
   line-height: 1.5;
 }
 .engine-account-overview__toolbar,
@@ -29,7 +34,7 @@
 .engine-account-overview label {
   display: grid;
   gap: 0.3rem;
-  font-size: 0.875rem;
+  font-size: var(--k-text-sm);
 }
 .engine-account-overview input,
 .engine-account-overview select {
@@ -61,9 +66,9 @@
   flex-wrap: wrap;
 }
 .engine-account-overview__plan {
-  margin-left: 0.65rem;
+  margin-left: var(--k-space-2);
   color: var(--k-text-muted);
-  font-size: 0.875rem;
+  font-size: var(--k-text-sm);
 }
 .engine-account-overview__limits,
 .engine-account-overview__activity {
@@ -80,7 +85,7 @@
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.875rem;
+  font-size: var(--k-text-md);
 }
 .engine-account-overview meter {
   width: 100%;
@@ -98,18 +103,18 @@
   min-width: 0;
 }
 .engine-account-overview__metrics span {
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 .engine-account-overview__metrics strong {
-  font-size: 1.2rem;
+  font-size: var(--k-text-xl);
   overflow-wrap: anywhere;
 }
 .engine-account-overview figure {
   margin: 0;
 }
 .engine-account-overview figcaption {
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   margin-bottom: 0.5rem;
 }
@@ -133,7 +138,7 @@
 .engine-account-overview__axis {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   margin-top: 0.35rem;
 }
@@ -164,6 +169,8 @@
   min-height: 44px;
   align-content: center;
   color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
 }
 .engine-account-overview summary:focus-visible {
   outline: 2px solid var(--k-focus);
@@ -194,4 +201,15 @@
 }
 .engine-account-overview__limit > div {
   align-items: baseline;
+}
+
+.engine-account-overview meter::-webkit-meter-bar {
+  background: var(--k-line-strong);
+  border: 0;
+}
+.engine-account-overview meter::-webkit-meter-optimum-value {
+  background: var(--k-action);
+}
+.engine-account-overview meter::-moz-meter-bar {
+  background: var(--k-action);
 }
