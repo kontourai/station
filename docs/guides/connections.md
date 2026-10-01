@@ -58,8 +58,11 @@ cannot be checked, the action remains unavailable with a retry control.
 A refused start reports its reason, including an unsupported mechanism, a busy
 engine, an already signed-in profile or an unknown sign-in state. If a request
 or status check fails, check the login status before starting another attempt:
-the server may still be running it. The command/manual re-check remains
-available for engines without device-code support.
+the server may still be running it. A device with sign-in access alone sees existing profiles and their sign-in
+status. Add profiles, change recovery policy, or obtain manual login commands
+on the Station or through a device with credential-management access. The
+command/manual re-check remains available there for engines without device-code
+support.
 
 ## Saved Station addresses
 

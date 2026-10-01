@@ -42,7 +42,7 @@
 
     {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"6a830fccf26dcd6512403346a89e568fd8bfed9b77921e40410cf1411f5bd612","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"f79a810c3e7b70428d68b26557d3eb3cc7f6d60d8c58773350ed967965390068","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-record-observation.ts","digest":"2f31998cc94993c1e8502f1407f167c2d56b8380c50045b8d78948391915d7a0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce","revision":"84b98846bc1582f438d70871d4479283b5db1e67"},
 
     {"path":"src-server/providers/adapters/claude-sdk-turns.ts","digest":"3a6e6078a3d208e96742fa1b29877697c6586ca5da312854c9b42adb56760f19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

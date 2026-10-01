@@ -65,6 +65,7 @@ import {
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
+import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
 import {
   blockingPrerequisite,
   resolveProviderPresentation,
@@ -696,16 +697,18 @@ export function AgentConnectionView({
                 )}
 
                 {(form.type === 'claude' || form.type === 'codex') && (
-                  <AppHomeProfileField
-                    connectionId={form.id}
-                    engineLabel={
-                      engineDisplayLabel(
-                        connectionEngineId(form) ?? form.type,
-                      ) ?? form.name
-                    }
-                    useAppHome={form.config.useAppHome === true}
-                    onToggle={(value) => setConfigField('useAppHome', value)}
-                  />
+                  <CredentialProfileAccess connectionId={form.id}>
+                    <AppHomeProfileField
+                      connectionId={form.id}
+                      engineLabel={
+                        engineDisplayLabel(
+                          connectionEngineId(form) ?? form.type,
+                        ) ?? form.name
+                      }
+                      useAppHome={form.config.useAppHome === true}
+                      onToggle={(value) => setConfigField('useAppHome', value)}
+                    />
+                  </CredentialProfileAccess>
                 )}
 
                 {runtimeCatalog && (
