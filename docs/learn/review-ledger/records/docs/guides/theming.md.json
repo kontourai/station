@@ -12,9 +12,9 @@
   "document": {"digest":"50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"6d03366389fac284ff94b9d2d108dbd6836ee84aa117b06e90a7fad0be5ab66d","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"3156ba2a3b912161b7cef7d4a0618195f8c684709e7a5ac0a23857f5bc41c824","revision":"786b3c14d37405f233bac1da7f068df3d336cd10"},
 
-    {"path":"docs/ui/responsive-surfaces.json","digest":"7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/index.css","digest":"3516071aa3393c90a4f451f89257742c701cf5f7054502d4107ee4dda9ef6bae","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
