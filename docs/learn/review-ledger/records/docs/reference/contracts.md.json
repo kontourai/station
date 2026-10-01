@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"02c541bee46622d0a91c8c34003a6dae93863bd9dfa556d2b9c635e66408b64c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+  "document": {"digest":"164bf82aecbeff9fe134157d47a0676ee6fb8ecbdc6ee9f4b82b619c30d383f6","revision":"5fe409ae3a57e640ad6e9e9271eeaa7a5d58c717"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -50,7 +50,7 @@
 
     {"path":"packages/contracts/src/relay-enrollment.ts","digest":"622325708688314a4f708985de77a330c30cfe2615559fc32837f780b7932f22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/runtime-events.ts","digest":"d1fbeb20a129b2fb75e7b08ccd792e228f7b47f52eee85327d0b00ab44b09a0c","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"packages/contracts/src/runtime-events.ts","digest":"f58bc6f78acd49d8857178c91306d6ea19ff790cd453b8dd8ea0d8495ee78114","revision":"94e8da3b253080c2450e333ebbe98acfaf35b7b8"},
 
     {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -72,7 +72,7 @@
 
     {"path":"src-server/providers/adapters/muse-adapter.ts","digest":"058dfcbcbae355d132dfbb617f4c95e0238f23226ac29b14df16240f2217a316","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/muse-serve-session.ts","digest":"fc26c0fe95cf84da1c1f602a5b55f93f79edeeacc8be42d07bf035cca0908c41","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/muse-serve-session.ts","digest":"d6d4fb0a88ed0a02851c8a60aa28bbbddb9c079ee834f12ebc7c16fc3b78c84f","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/providers/provider-plan-quota.ts","digest":"e13def1c39521df16081d918baa08f96e8e48702e8c89f7e2850eeb46f0592f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,11 +102,11 @@
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
-    {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"136074378e76fe6e9fe6a000d29eeb0bd436625f3f7213dddf7ca1a480d21e1a","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"bbfb45fc9d241f43c63c30fdf9a6b6696390b7ab44cbfc6c3b24966e7895b179","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"d13289b347f86e451233a3ce22ee1a68b76c243f887fc2a689be650d423ed78b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
