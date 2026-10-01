@@ -13,11 +13,13 @@ export function AutomaticEnginePreparation({
   agents,
   refresh,
   onComplete,
+  onStart,
   isCurrent,
 }: {
   agents: AgentData[];
   refresh: () => Promise<void>;
   onComplete: (engineId?: string, failure?: string) => void;
+  onStart: () => void;
   isCurrent: () => boolean;
 }) {
   const status = useSystemStatus();
@@ -52,9 +54,13 @@ export function AutomaticEnginePreparation({
             ? await materialize.mutateAsync(candidate.engineConnectionId)
             : undefined;
         if (!active.current || !isCurrent()) return;
-        if (result && !result.warnings?.length) {
+        if (result) {
           await refresh();
-          if (active.current && isCurrent()) onComplete(lastEngine);
+          if (active.current && isCurrent()) {
+            if (result.warnings?.length)
+              onComplete(lastEngine, result.warnings.join('\n'));
+            else onComplete(lastEngine);
+          }
           return;
         }
       } catch (failure) {
@@ -75,11 +81,12 @@ export function AutomaticEnginePreparation({
     )
       return;
     attempted.current = true;
+    onStart();
     void prepare().catch((failure) => {
       if (active.current && isCurrent())
         setError(userFacingErrorMessage(failure));
     });
-  }, [status.data, status.isLoading, status.isFetching, isCurrent]);
+  }, [status.data, status.isLoading, status.isFetching, isCurrent, onStart]);
   if (status.error || error)
     return (
       <ErrorState

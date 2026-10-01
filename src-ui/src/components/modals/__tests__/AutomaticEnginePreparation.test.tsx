@@ -51,6 +51,7 @@ test('connects an installed app using the owning API and refreshes before comple
       agents={[]}
       refresh={refresh}
       onComplete={done}
+      onStart={vi.fn()}
       isCurrent={() => true}
     />,
   );
@@ -78,6 +79,7 @@ test('never enables an explicitly disabled app', async () => {
       agents={[]}
       refresh={vi.fn().mockResolvedValue(undefined)}
       onComplete={done}
+      onStart={vi.fn()}
       isCurrent={() => true}
     />,
   );

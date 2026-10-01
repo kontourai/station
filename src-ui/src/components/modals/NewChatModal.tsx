@@ -132,6 +132,7 @@ export function NewChatModal({
   }, []);
   const automaticStartAttempted = useRef(false);
   const [discoveryCompleted, setDiscoveryCompleted] = useState(false);
+  const [discoveryInProgress, setDiscoveryInProgress] = useState(false);
   const [preparedEngineId, setPreparedEngineId] = useState<
     string | undefined
   >();
@@ -765,6 +766,8 @@ export function NewChatModal({
   useEffect(() => {
     if (
       !automaticMode ||
+      discoveryInProgress ||
+      selectFeedback ||
       automaticStartAttempted.current ||
       setupReturn.suspended ||
       runtimeLoading ||
@@ -793,6 +796,8 @@ export function NewChatModal({
     startWorkingDefaults(ready, prepare);
   }, [
     automaticMode,
+    discoveryInProgress,
+    selectFeedback,
     setupReturn.suspended,
     runtimeLoading,
     modelsLoading,
@@ -833,6 +838,10 @@ export function NewChatModal({
         : undefined) ??
       flatList.find((agent) => agentFixRoute(agent)) ??
       flatList[0];
+    const canEnableAgent = flatList.some(
+      (agent) =>
+        resolveNewChatAgentEnable(agent) && agentFixRoute(agent) === 'enable',
+    );
     return (
       <ResponsiveDialogSurface
         layer="dialog"
@@ -876,12 +885,33 @@ export function NewChatModal({
                 </Button>
               }
             />
+          ) : discoveryInProgress ||
+            (!discoveryCompleted &&
+              isGlobal &&
+              !preparing &&
+              !canEnableAgent &&
+              !defaultSelection?.agent &&
+              !automaticStartAttempted.current) ? (
+            <AutomaticEnginePreparation
+              agents={scopedAgents}
+              refresh={async () => {
+                if (refreshSetup) await refreshSetup();
+              }}
+              onStart={() => setDiscoveryInProgress(true)}
+              isCurrent={() =>
+                requestActive.current &&
+                (!initialAuthority.current ||
+                  initialAuthority.current.isCurrent())
+              }
+              onComplete={(engineId, failure) => {
+                setDiscoveryInProgress(false);
+                setPreparedEngineId(engineId);
+                setDiscoveryCompleted(true);
+                if (failure) setSelectFeedback(failure);
+              }}
+            />
           ) : preparing ||
-            flatList.some(
-              (agent) =>
-                resolveNewChatAgentEnable(agent) &&
-                agentFixRoute(agent) === 'enable',
-            ) ||
+            canEnableAgent ||
             defaultSelection?.agent ||
             automaticStartAttempted.current ? (
             <SkeletonList
@@ -889,23 +919,6 @@ export function NewChatModal({
               label={
                 enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
               }
-            />
-          ) : !discoveryCompleted && isGlobal ? (
-            <AutomaticEnginePreparation
-              agents={scopedAgents}
-              refresh={async () => {
-                if (refreshSetup) await refreshSetup();
-              }}
-              isCurrent={() =>
-                requestActive.current &&
-                (!initialAuthority.current ||
-                  initialAuthority.current.isCurrent())
-              }
-              onComplete={(engineId, failure) => {
-                setPreparedEngineId(engineId);
-                setDiscoveryCompleted(true);
-                if (failure) setSelectFeedback(failure);
-              }}
             />
           ) : needsAttention ? (
             <>
