@@ -35,6 +35,31 @@ Serving points at the same database and provisions nothing:
 
 `init` publishes the private credential bundle before committing its hashes to SQLite. A retry reuses only an exact existing bundle for the same scope and routing generation. A conflicting or older routing generation refuses. `serve` never provisions or rotates credentials.
 
+The initial lease lasts **60 seconds from provisioning**. Stage and validate the
+connector executable, certificate/key, private connector configuration, and
+service launch prerequisites before running `init`; then initialize the exact
+scope immediately before starting its connector. Confirm actual authenticated
+registration and observe a subsequent lease renewal. A reachable broker or
+Station HTTP health response does not establish either: Station's normal broker
+connector is optional and can fail while its ordinary listener remains healthy.
+
+An exact same-generation `init` retry is idempotent and **does not refresh the
+lease expiry**. Registration and renewal require an already-current lease, so
+repeating `init` cannot recover a generation whose initial lease expired before
+registration. Do not raise its TTL, edit SQLite, rotate endpoint trust, or
+silently resurrect an expired scope to make startup pass. Preserve the failed
+scope and its diagnostic evidence.
+
+The operator recovery gap is tracked as a relay operational risk under [#1963](https://github.com/kontourai/station/issues/1963):
+build/startup work exceeding the initial window can strand an otherwise exact
+credential bundle. A future explicit operator recovery flow should show the
+expired scope/current generation, require a deliberate newer routing generation
+and separately staged private bundle, invalidate old routing authority, and
+require new targeted invitations and exact surface approvals. Station signing
+trust, account identity, Device grants, and Project membership remain independent.
+This is a proposal; no automatic recovery or new recovery command is implemented.
+
+
 One broker database can hold multiple independently scoped Stations. Run `init`
 once for each Station, using a separate owner-only init file and a separate
 owner-only credentials file for each one; keep the `databasePath` identical
