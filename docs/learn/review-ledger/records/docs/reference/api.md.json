@@ -366,7 +366,11 @@
 
     {"path":"src-server/services/projects/task-output-module.ts","digest":"50b30b30f262ed179d4b20b4d0514c8f113241f6acf1a39094cf86a6de602182","revision":"a1ff1d33dd8ecfb36db563da4fe31199ec75f90c"},
 
-    {"path":"src-server/routes/orchestration/__tests__/task-outputs.routes.test.ts","digest":"181a063e322e25ad7177ad5170d56ca8024e3dc2b271edd6cf417e761c6d296d","revision":"b1f15f99080d9ca14621de8357fa60ae8799fd65"}
+    {"path":"src-server/routes/orchestration/__tests__/task-outputs.routes.test.ts","digest":"181a063e322e25ad7177ad5170d56ca8024e3dc2b271edd6cf417e761c6d296d","revision":"b1f15f99080d9ca14621de8357fa60ae8799fd65"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"5072b15e4267884e8b401ba6ae9975c89ec07346257baa3b362a31e5e23e10ff","revision":"34517cc6e82daed0c6fe7b105ad15f40f8a06807"},
+
+    {"path":"src-server/services/orchestration/__tests__/session-outputs-module.test.ts","digest":"0a0080548bff57df0fa516da235871b8c05d7e7d6a0d85654f1d4c17cc3a476a","revision":"34517cc6e82daed0c6fe7b105ad15f40f8a06807"}
   ],
 
   "checks": [
