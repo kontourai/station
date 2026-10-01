@@ -1,4 +1,8 @@
 import type { RelayIceConfigurationV1 } from '@kontourai/station-contracts/relay-ice';
+import type {
+  SelfHostedBrokerNativeClientSurfaceV2,
+  SelfHostedBrokerNativeScopeV2,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import { describe, expect, test, vi } from 'vitest';
 import { createNativeRelayIceConfigurationBridge } from '../nativeRelayIceConfigurationBridge';
 
@@ -15,12 +19,17 @@ const surface = {
   clientInstanceId: '33333333-3333-4333-8333-333333333333',
   keyThumbprint: 'A'.repeat(43),
 } as const;
+type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
 
-function response(expiresAt = now + 40_000): RelayIceConfigurationV1 {
+function response(
+  expiresAt = now + 40_000,
+  responseScope: SelfHostedBrokerNativeScopeV2 = scope,
+  responseSurface: SelfHostedBrokerNativeClientSurfaceV2 = surface,
+): RelayIceConfigurationV1 {
   return {
     version: 'station-relay-ice-configuration/v1',
-    scope,
-    surface,
+    scope: responseScope,
+    surface: responseSurface,
     iceTransportPolicy: 'relay',
     issuedAt: now,
     expiresAt,
@@ -104,5 +113,80 @@ describe('native relay ICE configuration bridge', () => {
     await expect(
       bridge.get(input(new AbortController().signal, now + 50_000)),
     ).rejects.toThrow('native_relay_ice_peer_deadline_uncovered');
+  });
+
+  test('binds the awaited receipt to copied caller context rather than mutable input', async () => {
+    const controller = new AbortController();
+    const mutableScope: Mutable<SelfHostedBrokerNativeScopeV2> = { ...scope };
+    const mutableSurface: Mutable<SelfHostedBrokerNativeClientSurfaceV2> = {
+      ...surface,
+    };
+    const request = {
+      ...input(controller.signal, now + 50_000),
+      scope: mutableScope,
+      surface: mutableSurface,
+    };
+    let resolveResponse!: (value: unknown) => void;
+    const invoke = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+    const bridge = createNativeRelayIceConfigurationBridge(invoke, () => now);
+    const pending = bridge.get(request);
+
+    request.profileName = 'Replacement Station';
+    request.expectedProfileRevision = 99;
+    request.peerDeadline = now + 30_000;
+    request.signal = new AbortController().signal;
+    mutableScope.stationId = '44444444-4444-4444-8444-444444444444';
+    mutableScope.routingGeneration = 5;
+    mutableSurface.keyThumbprint = 'B'.repeat(43);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      'station_native_relay_ice_configuration',
+      { profileName: 'Home Station', expectedProfileRevision: 12 },
+    );
+    resolveResponse(response(now + 40_000, mutableScope, mutableSurface));
+
+    await expect(pending).rejects.toThrow('relay_ice_configuration_invalid');
+
+    const expiryRequest = input(new AbortController().signal, now + 50_000);
+    let resolveExpiryResponse!: (value: unknown) => void;
+    const expiryInvoke = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveExpiryResponse = resolve;
+        }),
+    );
+    const expiryBridge = createNativeRelayIceConfigurationBridge(
+      expiryInvoke,
+      () => now,
+    );
+    const expiryPending = expiryBridge.get(expiryRequest);
+    expiryRequest.peerDeadline = now + 30_000;
+    resolveExpiryResponse(response(now + 40_000));
+    await expect(expiryPending).rejects.toThrow(
+      'native_relay_ice_peer_deadline_uncovered',
+    );
+
+    const abortController = new AbortController();
+    const abortRequest = input(abortController.signal);
+    let resolveAbortResponse!: (value: unknown) => void;
+    const abortInvoke = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveAbortResponse = resolve;
+        }),
+    );
+    const abortBridge = createNativeRelayIceConfigurationBridge(
+      abortInvoke,
+      () => now,
+    );
+    const abortPending = abortBridge.get(abortRequest);
+    abortController.abort();
+    abortRequest.signal = new AbortController().signal;
+    resolveAbortResponse(response());
+    await expect(abortPending).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

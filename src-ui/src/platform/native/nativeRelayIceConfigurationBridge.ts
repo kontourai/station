@@ -54,31 +54,48 @@ export function createNativeRelayIceConfigurationBridge(
 ): NativeRelayIceConfigurationBridge {
   return {
     async get(input) {
-      input.signal.throwIfAborted();
+      const profileName = input.profileName;
+      const expectedProfileRevision = input.expectedProfileRevision;
+      const peerDeadline = input.peerDeadline;
+      const signal = input.signal;
+      const scope = Object.freeze({
+        stationId: input.scope.stationId,
+        enrollmentId: input.scope.enrollmentId,
+        routingGeneration: input.scope.routingGeneration,
+      });
+      const surface = Object.freeze({
+        kind: input.surface.kind,
+        appIdentifier: input.surface.appIdentifier,
+        channel: input.surface.channel,
+        clientInstanceId: input.surface.clientInstanceId,
+        keyThumbprint: input.surface.keyThumbprint,
+      });
+
+      signal.throwIfAborted();
       const currentTime = now();
       if (
-        !input.profileName.trim() ||
-        input.profileName.length > 256 ||
-        !Number.isSafeInteger(input.expectedProfileRevision) ||
-        input.expectedProfileRevision < 1 ||
-        !Number.isSafeInteger(input.peerDeadline) ||
-        input.peerDeadline <= currentTime
+        !profileName.trim() ||
+        profileName.length > 256 ||
+        !Number.isSafeInteger(expectedProfileRevision) ||
+        expectedProfileRevision < 1 ||
+        !Number.isSafeInteger(peerDeadline) ||
+        peerDeadline <= currentTime
       ) {
         throw new Error('native_relay_ice_request_invalid');
       }
 
       const response = await invoke(ICE_CONFIGURATION_COMMAND, {
-        profileName: input.profileName,
-        expectedProfileRevision: input.expectedProfileRevision,
+        profileName,
+        expectedProfileRevision,
       });
-      input.signal.throwIfAborted();
+      signal.throwIfAborted();
 
       const configuration = parseRelayIceConfiguration(
         response,
-        { scope: input.scope, surface: input.surface },
+        { scope, surface },
         now(),
       );
-      if (configuration.expiresAt <= input.peerDeadline)
+      if (configuration.expiresAt <= peerDeadline)
         throw new Error('native_relay_ice_peer_deadline_uncovered');
 
       return {
