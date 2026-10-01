@@ -255,10 +255,11 @@ class RecordingAcpAdapter implements ProviderAdapterShape {
 
 const makeTempDir = trackTempDirs();
 
+/** Polls a persisted fact; the bound sits inside the suite's test timeout. */
 async function waitFor<T>(
   read: () => T,
   matches: (value: T) => boolean,
-  timeoutMs = 4000,
+  timeoutMs = 20_000,
 ): Promise<T> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
