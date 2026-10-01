@@ -1,0 +1,25 @@
+/*
+ * The pane's icon-only control (#90): the shared ghost Button as a round
+ * icon with an accent wash on hover. 30px unless the surface around it asks
+ * for a touch target through `--browser-pane-control` (the pane under
+ * `data-coarse` / `data-narrow`, the page-dialog card on a coarse pointer).
+ * Its own sheet, imported by the component: the pane and the float's dialog
+ * card both lazy-load it, and `index.css` is paid on every first paint.
+ */
+.button.browser-pane__icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--browser-pane-control, 30px);
+  height: var(--browser-pane-control, 30px);
+  padding: 0;
+  border-radius: 999px;
+  font-size: var(--text-md);
+  position: relative;
+}
+
+.button.browser-pane__icon:hover:not(:disabled),
+.button.browser-pane__icon.is-active {
+  background: color-mix(in oklab, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}

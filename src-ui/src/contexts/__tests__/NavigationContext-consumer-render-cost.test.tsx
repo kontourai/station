@@ -110,7 +110,10 @@ vi.mock('../open-chats-store', () => ({
     registerNavigation: () => vi.fn(),
   },
 }));
-vi.mock('../useShowSurface', () => ({ useShowSurface: () => vi.fn() }));
+vi.mock('../useShowSurface', () => ({
+  useShowSurface: () => vi.fn(),
+  useShowSurfacePage: () => vi.fn(),
+}));
 vi.mock('../RegionModelContext', () => ({
   useRegionModelOptional: () => null,
 }));

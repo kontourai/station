@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/index.css","digest":"c35ffac51f2f6977e3c9cf49e0dfb5446c4e7d562a90e49156fe08dea39a9806","revision":"8427f3fd9868b0f9943f0b85389d18f2cc63240e"},
+    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
 
     {"path":"src-ui/src/views/TaskWorkspaceView.css","digest":"9a74da9763fba9b8b9ff8cab14a8192141e5a2c1aafe699cd8ac22b566e56e25","revision":"fbb464a6f50ad701f4c11b95cd8badaf73d3b391"},
 

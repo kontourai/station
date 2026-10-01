@@ -7,8 +7,10 @@ import type { HomeWorkItem } from '../home-view-model';
 // route, and `useShowSurface` reads the region model through a provider this
 // file does not mount. The double is what the assertions below read.
 const showSurface = vi.hoisted(() => vi.fn());
+const showSurfacePage = vi.hoisted(() => vi.fn());
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
+  useShowSurfacePage: () => showSurfacePage,
 }));
 
 import { HomeSurface } from '../HomeSurface';
@@ -128,6 +130,7 @@ describe('HomeSurface composition', () => {
   beforeEach(() => {
     localStorage.clear();
     showSurface.mockClear();
+    showSurfacePage.mockClear();
   });
 
   test('keeps the page heading and the guided actions', () => {
@@ -336,7 +339,7 @@ describe('HomeSurface composition', () => {
     // print four zeroes over an error.
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(m.retryWork).not.toHaveBeenCalled();
     expect(
       screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
@@ -356,9 +359,10 @@ describe('HomeSurface: what is clickable', () => {
   beforeEach(() => {
     localStorage.clear();
     showSurface.mockClear();
+    showSurfacePage.mockClear();
   });
 
-  test('View Activity reveals the Activity surface, and promises nothing more', () => {
+  test('View Activity opens the Activity page, and promises nothing more', () => {
     const { onNavigate } = renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
@@ -366,7 +370,9 @@ describe('HomeSurface: what is clickable', () => {
     within(recent).getByRole('button', { name: 'View Activity' }).click();
     // No session: a generic "show me Activity", so no intent is minted and
     // nothing routes (#928 — there is no Activity route left to route to).
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    // It is the page verb (Activity takes `main`), not the dock reveal.
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(showSurface).not.toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
     // Activity is the surface's only name here: no retired "Sessions"
     // affordance renders beside the right one.

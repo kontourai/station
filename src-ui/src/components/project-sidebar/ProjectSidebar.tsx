@@ -377,7 +377,9 @@ function ProjectSidebarImpl() {
             // #1582 D4: exactly one sidebar row may claim to be the current
             // location. `isHomeActive` already derives that from `main`'s
             // occupant rather than the route alone, so it is the honest place
-            // to say it; the region-surface rows say `aria-pressed` instead.
+            // to say it. The Activity row reads the same fact for its own
+            // surface (`ProjectSidebarNav`), and `main` holds one surface, so
+            // at most one of the two is ever current.
             aria-current={isHomeActive ? 'page' : undefined}
             onClick={goHome}
           >
