@@ -9,7 +9,7 @@
 
   "limits": "Browser-matrix descriptions name source coverage, not a newly executed full Playwright matrix. No live engine steering or physical native-device result; redaction preserves protocol fields and is not arbitrary sensitive-text detection.",
 
-  "document": {"digest":"9fe0f90423e27d68971515879a0f4c6cacea68ed9c79285873c841a8f9c0d55f","revision":"de4d8ae141f5831213eacd90dee84bcdc45d87ba"},
+  "document": {"digest":"4ef14b733b1b3f0d12dbb0d477ad453a241c9eb55058254f9f369ef9fa99d1d0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -18,11 +18,11 @@
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"b3e72cbd7dfc41d54569b368f80db1ea6294dc2d70f99572194abb93b605f040","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"15b1e2490e7c8a652bffaf3a16a297d9df3de75f6d8c61c00fc8f8a993f68c6a","revision":"e7bb11891396b509d47e7c0ba3ba9066a74a03db"},
 
-    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"b8585f9127c231bf50926a2cc57e1ce67222e94f1fff5fd78f59716dff0f184b","revision":"b48a658e11513c3a589d6baec960a1a37ec531de"},
+    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"c516313992221258d93e42c79e982dae296afe29658b4d387b17d4c486ec284e","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"eca9a7366659e1c3d1ef6322bd63ea602a1508cfa01cfa896cde33cc45422d03","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"},
+    {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"62b998f27a529bd30545b11de5b1cc0448a2b9f041070aeaba59bf25e61cb6bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/scroll-observation.ts","digest":"547bef3e5c4b1bff5b27d472cec12b3b60f5dab04c778550418d45f67d9376b8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/hooks/orchestration/replay/tape-file.ts","digest":"4d194fb74aea404db9f8b4e10b1e35252d6f60e6d4e15ad4053e328fb07eb931","revision":"3776fa57d13e3e8510939221d17e2745ad5dfa49"},
+    {"path":"src-ui/src/hooks/orchestration/replay/tape-file.ts","digest":"813742674399abb340430b6b387be487e5371fef7f86d91eeb74e9f9f3cbc136","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/hooks/orchestration/replay/tape-validation.ts","digest":"9ebdba0019e4643b14ef3bd496c878297eec075251beb9a806c5ba7aa6c787d7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"45c69c808b57d3a085f3122ec363c6f63e276a84cc16b988f574a2e6ab733afb","revision":"221320bceb1299b6f951afdfd77730df09332301"},
+    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

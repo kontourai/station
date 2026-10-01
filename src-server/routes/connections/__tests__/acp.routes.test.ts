@@ -966,7 +966,7 @@ describe('ACP Routes', () => {
           status: 'unavailable',
           lastError: {
             message:
-              'spawn kiro-cli ENOENT: handshake failed for --api-key=abc123 from /Users/brian/private/project',
+              'spawn kiro-cli ENOENT: handshake failed for --api-key=abc123 from /Users/me/private/project',
             phase: 'spawn',
           },
         },
@@ -988,7 +988,7 @@ describe('ACP Routes', () => {
     // absolute path from the probe failure never reach the client.
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('abc123');
-    expect(body.detail).not.toContain('/Users/brian');
+    expect(body.detail).not.toContain('/Users/me');
   });
 
   test('reconnect reports the new attempt error instead of the prior failure', async () => {

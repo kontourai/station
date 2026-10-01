@@ -1,3 +1,4 @@
+import { isPendingAttentionItem } from '@kontourai/station-contracts/attention';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -11,6 +12,7 @@ import {
   interruptOrchestrationTurn,
   resolveOrchestrationRequest,
   sendOrchestrationTurn,
+  useAcknowledgeAttentionItemMutation,
   useAttentionQuery,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
@@ -21,7 +23,10 @@ import { useMemo, useState } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { copyToClipboard } from '../lib/clipboard';
 import { sessionAnswerabilityView } from '../utils/answerability';
-import { isApprovalLivePending } from '../utils/attention';
+import {
+  isAcknowledgeableAttentionItem,
+  isApprovalLivePending,
+} from '../utils/attention';
 import {
   buildDiagnosticsLog,
   type DiagnosticsEntry,
@@ -346,10 +351,42 @@ export function useMutableSessionDetailState({
   // `isDuplicateOfPendingRequest`) is suppressed to avoid rendering its
   // action twice. Approval, `review_pending`, and gate-* items have no
   // equivalent affordance elsewhere on this page, so they always render.
-  const visibleAttentionItems = matchingAttentionItems(
+  const sessionAttentionItems = matchingAttentionItems(
     attentionQuery.data?.items,
     threadId,
-  ).filter((item) => !isDuplicateOfPendingRequest(item, pendingRequest));
+  );
+  // archive#3203's failure text, computed here (not further down) because the
+  // attention list is deduplicated against it.
+  const failureText = sessionFailureText(session, events);
+  // One failure card, not two: the failure banner already names this
+  // session's failure, so its `session-failed` attention item is not rendered
+  // a second time (its "Open session" link also pointed at this very page).
+  // What that card offered beyond a link — acknowledging the failure — moves
+  // onto the banner as its Dismiss (`acknowledgeFailure`).
+  const failedAttentionItem = failureText
+    ? sessionAttentionItems.find(
+        (item) =>
+          item.kind === 'session-failed' &&
+          isAcknowledgeableAttentionItem(item) &&
+          // Already acknowledged: history, nothing left to dismiss.
+          isPendingAttentionItem(item),
+      )
+    : undefined;
+  const visibleAttentionItems = sessionAttentionItems.filter(
+    (item) =>
+      !isDuplicateOfPendingRequest(item, pendingRequest) &&
+      !(failureText && item.kind === 'session-failed'),
+  );
+  const acknowledgeMutation = useAcknowledgeAttentionItemMutation(apiBase);
+  const acknowledgeFailure = failedAttentionItem
+    ? () => acknowledgeMutation.mutate(failedAttentionItem.id)
+    : undefined;
+  // The attribution's own sentence, only when it adds to the quoted cause.
+  const attributionDetail = session.terminalAttribution?.detail?.trim();
+  const failureNote =
+    failureText && attributionDetail && attributionDetail !== failureText
+      ? attributionDetail
+      : null;
   // needs_input's own action is `sendOrchestrationTurn` with free text —
   // identical to the compose box below. Showing both is exactly the
   // "generic free-text box whose relevance depends on state" archive#1170 asks to
@@ -413,12 +450,12 @@ export function useMutableSessionDetailState({
       ) ||
         (attentionQuery.isLoading &&
           session.lifecycleState === 'needs_input')));
-  // archive#3203: the same sentence the `session-failed` notification uses for
-  // an unrecorded cause, imported rather than respelled — the notification and
-  // the session it opens must describe one absence one way. archive#3213
-  // extracted the whole fold to `utils/sessionFailure` so the chat dock reads
-  // this session's failure from the same derivation rather than a second one.
-  const failureText = sessionFailureText(session, events);
+  // archive#3203: `failureText` (above) is the same sentence the
+  // `session-failed` notification uses for an unrecorded cause, imported
+  // rather than respelled — the notification and the session it opens must
+  // describe one absence one way. archive#3213 extracted the whole fold to
+  // `utils/sessionFailure` so the chat dock reads this session's failure from
+  // the same derivation rather than a second one.
 
   const copySessionId = () => {
     // A rejection handler cannot see the insecure-origin case: with no
@@ -452,19 +489,34 @@ export function useMutableSessionDetailState({
   // station-delivery Flow run nor a Builder sidecar can be attached to them.
   // Avoid two expected 404 probes every time a normal resumed conversation
   // opens; a task-bound session still performs both provenance lookups.
-  const hasTaskBinding = Boolean(session.delegation?.taskId);
+  // A paired-Station (peer) record has no local run: its task, and any Flow
+  // or Builder run bound to it, live on the peer.
+  const hasTaskBinding =
+    Boolean(session.delegation?.taskId) &&
+    session.delegation?.environmentKind !== 'peer';
   const { data: workflowTasks = [] } =
     useWorkflowTasksQuery(workflowProjectSlug);
-  const { data: linkedFlowRun } = useSessionFlowRunQuery(threadId, apiBase, {
+  // A finished (`completed`) session's run bindings no longer move under it:
+  // read once, do not poll. A live one keeps the SDK's cadence, including its
+  // slow re-probe of a "no run yet" answer, so a late bind still appears.
+  const runProbeConfig = {
     enabled: hasTaskBinding,
-  });
+    ...(isTerminal ? { refetchInterval: 0 } : {}),
+  };
+  const { data: linkedFlowRun } = useSessionFlowRunQuery(
+    threadId,
+    apiBase,
+    runProbeConfig,
+  );
   // Its own query, rendered as its own row. The auto-attached
   // `station-delivery` run above and this Builder run are different runs with
   // different lifecycles; merging them into one progress figure is the exact
   // misreading archive#189 exists to remove.
-  const { data: builderRun } = useSessionBuilderRunQuery(threadId, apiBase, {
-    enabled: hasTaskBinding,
-  });
+  const { data: builderRun } = useSessionBuilderRunQuery(
+    threadId,
+    apiBase,
+    runProbeConfig,
+  );
   const activeWorkflowTasks = workflowTasks.filter(
     (task) => !TERMINAL_WORKFLOW_STATUSES.has(task.status),
   );
@@ -507,6 +559,10 @@ export function useMutableSessionDetailState({
     visibleAttentionItems,
     hideGenericCompose,
     failureText,
+    failureNote,
+    acknowledgeFailure,
+    acknowledgeFailurePending: acknowledgeMutation.isPending,
+    acknowledgeFailureError: acknowledgeMutation.error,
     copySessionId,
     canSend,
     linkedFlowRun,

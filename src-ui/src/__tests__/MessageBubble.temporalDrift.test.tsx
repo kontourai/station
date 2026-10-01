@@ -137,14 +137,14 @@ describe('MessageBubble temporal-drift regression (station#1424 M1)', () => {
         fontSize={14}
         showReasoning
         showToolDetails
-        owner={{ id: 'brian', label: 'Brian Anderson' }}
+        owner={{ id: 'casey', label: 'Casey Example' }}
       />,
     );
 
     // The row still names an agent — the session's threaded agentName, not
     // a blank identity next to a now-orphaned owner chip.
     expect(screen.getByText('Formerly Known Agent')).toBeTruthy();
-    expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
+    expect(screen.getByText(/via Casey Example/)).toBeTruthy();
   });
 
   test('a turn paused on a tool approval shows the pause, not the typing dots', () => {
