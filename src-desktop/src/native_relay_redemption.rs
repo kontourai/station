@@ -46,6 +46,7 @@ const OPEN_PATH: &str = "/broker/v1/native/connections/open";
 const READ_PATH: &str = "/broker/v1/native/connections/read";
 const RETIRE_PATH: &str = "/broker/v1/native/grants/retire";
 const RENEW_PATH: &str = "/broker/v1/native/grants/renew";
+const ICE_CONFIGURATION_PATH: &str = "/broker/v1/native/ice/configuration";
 const NATIVE_INVITATION_VERSION: &str = "station-broker-native-route-invitation/v2";
 const NATIVE_GRANT_VERSION: &str = "station-broker-native-client-grant/v2";
 const NATIVE_RETIRE_VERSION: &str = "station-broker-native-grant-retire/v2";
@@ -2538,7 +2539,15 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let path = challenge.path();
-        if !matches!(path, OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH) {
+        let response_limit = if path == ICE_CONFIGURATION_PATH {
+            16 * 1024
+        } else {
+            MAX_RESPONSE_BYTES
+        };
+        if !matches!(
+            path,
+            OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH | ICE_CONFIGURATION_PATH
+        ) {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let base = url::Url::parse(&grant.broker_origin)
@@ -2575,7 +2584,7 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             if read == 0 {
                 break;
             }
-            if body.len().saturating_add(read) > MAX_RESPONSE_BYTES {
+            if body.len().saturating_add(read) > response_limit {
                 return Err(NativeRedemptionError::BrokerTransport);
             }
             body.extend_from_slice(&chunk[..read]);
@@ -7970,6 +7979,73 @@ pub(crate) fn with_current_native_enrollment_route<T>(
             Ok(operation(capture))
         })
         .map_err(|_| "native_enrollment_route_refused".to_owned())?
+}
+
+pub(crate) fn read_native_relay_ice_configuration(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+) -> RedemptionResult<crate::native_relay_ice::NativeRelayIceConfiguration> {
+    let captured = with_current_native_enrollment_route(
+        app,
+        profile_name,
+        expected_profile_revision,
+        |capture| Ok(capture),
+    )
+    .map_err(|_| NativeRedemptionError::StaleProfile)?;
+    let contexts = AppNativeRedemptionContextProvider::new(app.clone());
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport {
+        timeout: Duration::from_secs(10),
+    };
+    let grants = native_relay_grant_vault();
+    let service = NativeRelaySignalService::new(
+        &contexts,
+        &proof_keys,
+        &http,
+        &grants,
+        native_now_ms_or_zero,
+    );
+    let (context, owner, grant) =
+        service.load_current_grant(profile_name, expected_profile_revision)?;
+    let exact_grant = Zeroizing::new(
+        serde_json::to_vec(&grant).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+    );
+    let digest = URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &exact_grant));
+    if context != captured.context
+        || grant.credential.id != captured.grant_id
+        || grant.expires_at != captured.grant_expires_at
+        || digest != captured.grant_digest
+    {
+        return Err(NativeRedemptionError::StaleProfile);
+    }
+    let challenge = NativeBrokerRequestProofChallenge::from_request(
+        native_request_identity(&grant),
+        NativeBrokerRequestBody::IceConfiguration,
+        native_now_ms_or_zero() / 1000,
+    )
+    .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+    let signature = proof_keys
+        .sign_native_request(&owner, &challenge)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    let compact = challenge
+        .compact_jws(&signature)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    service.recheck_current_grant(profile_name, &context, &owner, &grant)?;
+    let response = http.send_fixed_request(&grant, &challenge, &compact);
+    service.recheck_current_grant(profile_name, &context, &owner, &grant)?;
+    let response = response?;
+    if response.status != 200 || response.body.len() > 16 * 1024 {
+        return Err(NativeRedemptionError::BrokerRejected);
+    }
+    crate::native_relay_ice::parse_native_relay_ice_configuration(
+        &response.body,
+        &serde_json::to_value(&grant.scope).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+        &serde_json::to_value(&grant.surface).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+        native_now_ms_or_zero(),
+        grant.expires_at,
+    )
+    .map_err(|_| NativeRedemptionError::BrokerRejected)
 }
 
 fn run_native_relay_binding_request(
