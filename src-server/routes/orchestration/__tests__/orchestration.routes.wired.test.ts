@@ -33,7 +33,7 @@ function buildApp() {
   return createOrchestrationRoutes({} as any, {
     eventBus: new EventBus(),
     logger: { debug: vi.fn() },
-    getUserId: () => 'brian',
+    getUserId: () => 'casey',
     // Production wires the post-resolution sender-authority probe
     // (runtime-routes.ts); without it the #2285 stale-sender guard refuses
     // every follow-up forward with 403 before any outbound fetch.

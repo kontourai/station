@@ -403,7 +403,7 @@ async function seedDefaultAgentRoutes(
         {
           id: conversationId,
           resourceId: 'default',
-          userId: 'brian',
+          userId: 'casey',
           title: 'Station Chat',
           createdAt: '2026-04-12T00:00:00Z',
           updatedAt: '2026-04-12T00:00:10Z',
@@ -593,7 +593,7 @@ test.describe('Default agent workflow', () => {
         {
           id: conversationId,
           resourceId: 'station',
-          userId: 'brian',
+          userId: 'casey',
           title: 'Authoritative conversation',
           createdAt: '2026-04-12T00:00:00Z',
           updatedAt: '2026-04-12T00:00:10Z',
@@ -785,7 +785,7 @@ test.describe('Default agent workflow', () => {
         {
           id: 'conv-failed',
           resourceId: 'default',
-          userId: 'brian',
+          userId: 'casey',
           title: 'Failed Chat',
           createdAt: '2026-04-12T00:00:00Z',
           updatedAt: '2026-04-12T00:00:10Z',
@@ -864,7 +864,7 @@ test.describe('Default agent workflow', () => {
         {
           id: 'conv-a',
           resourceId: 'default',
-          userId: 'brian',
+          userId: 'casey',
           title: 'Alpha Chat',
           createdAt: '2026-04-12T00:00:00Z',
           updatedAt: '2026-04-12T00:00:10Z',
@@ -872,7 +872,7 @@ test.describe('Default agent workflow', () => {
         {
           id: 'conv-b',
           resourceId: 'default',
-          userId: 'brian',
+          userId: 'casey',
           title: 'Beta Chat',
           createdAt: '2026-04-12T00:00:00Z',
           updatedAt: '2026-04-12T00:00:05Z',

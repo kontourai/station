@@ -24,7 +24,7 @@
 
     {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 
-    {"path":"docs/guides/keyboard-shortcuts.md","digest":"ea0091f679507ccc61de0724d1fa57af4ca2eea954ee7502d5f1033b64d3f131","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f04dd32ce4cbd4ced6d725ffdf30c47d8895739c4c61b1ee7bfe34dc36a5aba4","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"},
 
     {"path":"docs/guides/monitoring.md","digest":"5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -34,7 +34,7 @@
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"docs/reference/cli.md","digest":"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee","revision":"4a1fc2197028ded07d0e389e98a30042ab7cadb5"},
 
     {"path":"docs/reference/config.md","digest":"f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts","digest":"48925af379888c49356fd0902d0b42f0f23ccf785355ca45557feddbbe3f8f90","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"8384fdd2685097c42593beb42a035c1292e3d882"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

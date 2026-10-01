@@ -22,13 +22,13 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-ref-store.ts","digest":"dd2caed0e2e6a42bb46d9fbbb17bc8277a9e3b0fadb54a7caa54d37eb7f114f7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/checkpoints/checkpoint-ref-store.ts","digest":"2dd77204df9cdd6be779b3f27c1f2b7289b4a3f0643898c1fcba512bb4ba1bdb","revision":"2c5b089d9b6afeeaf43d9f9145be15571310e78b"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"252a314587f773a6215329b59c6044a9d34c3bd49cbbae33cef1ed02d5655d88","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
 
     {"path":"src-server/services/checkpoints/turn-checkpoint-capture.ts","digest":"160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/workspace-identity.ts","digest":"45229bf7dcb41fc8d92d45f2d023eee55a9a93a5be2b6407b79af7c564dcd632","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

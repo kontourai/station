@@ -16,7 +16,7 @@
 
     {"path":"src-server/providers/adapters/acp-mcp-passthrough.ts","digest":"bae3c16d36044bd319ec404432f98469e5140297f7875f2e139b95ea1b5e16b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"7f03adbf1b54dcd4a7fa983c1580d64f1ba9c284af54cb9fc9e29d8b4b1ef64a","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"d41be01dbad45c51d1acee14c2120e55ea7ef0a7101a9824590ff45a9bd76fc0","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
 
     {"path":"src-server/providers/adapters/claude-skills-materialization.ts","digest":"221b6098abf237f280d14480d9afc6913973b9a94b47593999ba70ff731f0280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -26,7 +26,7 @@ const openPullRequest = {
   title: 'Seven',
   body: null,
   state: 'OPEN',
-  author: { login: 'brian' },
+  author: { login: 'casey' },
   headRefName: 'feature',
   baseRefName: 'main',
   commits: [],
