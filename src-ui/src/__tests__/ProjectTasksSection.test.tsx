@@ -228,6 +228,18 @@ describe('ProjectTasksSection', () => {
     });
   });
 
+  test('opens the selected board task and refreshes its canonical records without dispatching', () => {
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Existing task, todo' }),
+    );
+    expect(dispatchTask).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
+    expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh tasks' }));
+    expect(refetchTasks).toHaveBeenCalledOnce();
+  });
+
   test('separates an indeterminate starter dispatch from correlation repair', async () => {
     window.history.pushState(
       {},

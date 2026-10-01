@@ -122,7 +122,7 @@
 
     {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/views/task-experiences.ts","digest":"cdc6a0d8558b9167702d8b1f38b4be903e0035e1b41858329347e437c80195a3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

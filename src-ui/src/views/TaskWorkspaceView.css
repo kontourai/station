@@ -2,6 +2,60 @@
   min-width: 0;
 }
 
+.task-workspace__record-details {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-3);
+}
+
+.task-workspace__record-details summary {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  align-content: center;
+  cursor: pointer;
+  color: var(--k-text-muted);
+}
+
+.task-workspace__record-details summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-workspace__room .task-room-editor,
+.task-workspace__room .project-task-room-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  min-width: 0;
+  padding: var(--k-space-3);
+}
+
+.task-workspace__room textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(var(--k-space-6) * 3);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.task-workspace__room .task-room-editor textarea {
+  min-height: calc(var(--k-space-6) * 8);
+}
+
+.task-workspace__room textarea:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-workspace__room h2,
+.task-workspace__room p {
+  margin: 0;
+}
+
 .task-workspace__body {
   flex: 1;
   min-height: 0;
