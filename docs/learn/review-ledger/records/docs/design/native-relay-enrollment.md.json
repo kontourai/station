@@ -22,7 +22,7 @@
 
     {"path":"src-ui/src/platform/native/nativeEnrollmentSignalingBridge.ts","digest":"004ac97ee6bbcf8e00a6e827391d91d4da7a844b2dcb84d1f3391d452048546c","revision":"18b0eac38c920d228ac7a58a2735ccb24906cc61"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"30fc7cf489c1c95bca502e5788652c5587ef0a5a41574c8d6c2801161a44fca1","revision":"0bb218725cf9a3ad377f81c566d45a7359ca9cf6"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"aec0d797b0ddfc69baba2cfc23c311effef071bf58899a0416f1b35a4e99e4b4","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
 
     {"path":"src-ui/src/platform/native/NativeRelayEntryBoundary.tsx","digest":"881077a6e1702484e1dc19315757d53146c77447f280f7eac2dd913045ed3014","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
 
