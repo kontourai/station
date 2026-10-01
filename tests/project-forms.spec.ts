@@ -367,6 +367,8 @@ test.describe('Project forms', () => {
           `${context}: preview path is one line`,
         ).toBeLessThan(30);
         await expect(previewPath).toHaveAttribute('title', value);
+        // The text is the path exactly once, parent then leaf.
+        await expect(previewPath).toHaveText(value, { useInnerText: false });
         const leaf = await inside('.project-settings__identity-path-leaf');
         expect(leaf.width, `${context}: leaf width`).toBeGreaterThan(40);
         if (label !== 'one unbroken segment') {
@@ -376,6 +378,21 @@ test.describe('Project forms', () => {
               .evaluate((node) => node.scrollWidth <= node.clientWidth),
             `${context}: leaf folder shown whole`,
           ).toBe(true);
+          // The parent's last separator is drawn against the leaf. Without
+          // the ltr isolate the rtl parent moves it to the far (cut) end.
+          const separator = await section
+            .locator('.project-settings__identity-path-parent > span')
+            .evaluate((node) => {
+              const text = node.firstChild!;
+              const range = document.createRange();
+              range.setStart(text, text.textContent!.length - 1);
+              range.setEnd(text, text.textContent!.length);
+              return range.getBoundingClientRect().right;
+            });
+          expect(
+            Math.abs(separator - leaf.x),
+            `${context}: separator adjoins the leaf`,
+          ).toBeLessThanOrEqual(1);
         }
         const savedAs = section
           .locator('.project-settings__path-pill')
@@ -389,6 +406,21 @@ test.describe('Project forms', () => {
             rect.x + rect.width,
             `${context}: path pill right edge`,
           ).toBeLessThanOrEqual(card.x + card.width + 0.5);
+          // The value stays inside its pill, and the pill's label ("leaf",
+          // "saved as") stays on one line however far the value wraps.
+          const code = (await pill.locator('code').boundingBox())!;
+          expect(
+            code.x + code.width,
+            `${context}: path pill value right edge`,
+          ).toBeLessThanOrEqual(rect.x + rect.width + 0.5);
+          expect(
+            await pill.evaluate((node) => {
+              const range = document.createRange();
+              range.selectNodeContents(node.firstChild!);
+              return range.getClientRects().length;
+            }),
+            `${context}: path pill label lines`,
+          ).toBe(1);
         }
 
         const field = await inside('#project-working-directory');

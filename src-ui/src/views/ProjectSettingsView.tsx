@@ -386,12 +386,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                         isolate restores character order (the Project page
                         header's treatment, #304). */}
                     <span className="project-settings__identity-path-parent">
-                      <span
-                        dir="ltr"
-                        className="project-settings__identity-path-parent-text"
-                      >
-                        {workingDirectoryParent}
-                      </span>
+                      <span dir="ltr">{workingDirectoryParent}</span>
                     </span>
                     {workingDirectoryLeaf && (
                       <span className="project-settings__identity-path-leaf">

@@ -187,9 +187,6 @@
   display: inline-flex;
   align-items: baseline;
   gap: 0.35rem;
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
   padding: 0.35rem 0.65rem;
   border-radius: var(--k-radius-md);
   white-space: nowrap;
@@ -261,18 +258,15 @@
   display: block;
   white-space: normal;
 }
-/* rtl puts the ellipsis at the START of the parent; the inner ltr isolate
-   keeps character order (same treatment as `.project-page__dir-parent`). */
+/* rtl puts the ellipsis at the START of the parent; the inner `dir="ltr"`
+   span isolates the text so its character order survives (same treatment as
+   `.project-page__dir-parent`). */
 .project-settings__identity-path-parent {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   direction: rtl;
-}
-.project-settings__identity-path-parent-text {
-  direction: ltr;
-  unicode-bidi: isolate;
 }
 /* The leaf never yields to the parent; only a leaf wider than the whole line
    is itself cut. */
