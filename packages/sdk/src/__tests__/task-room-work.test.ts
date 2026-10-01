@@ -138,15 +138,13 @@ test('context support is negotiated, the selected reference survives newer brief
     ...input,
     context: { version: snapshot.version, digest: snapshot.digest },
   };
-  const fetcher = vi
-    .fn<typeof fetch>()
-    .mockResolvedValue(
-      response({
-        version: TASK_ROOM_WORK_VERSION,
-        kind: 'available',
-        records: [],
-      }),
-    );
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    response({
+      version: TASK_ROOM_WORK_VERSION,
+      kind: 'available',
+      records: [],
+    }),
+  );
   vi.stubGlobal('fetch', fetcher);
   await expect(
     submitTaskRoomAgentRequest(
@@ -158,27 +156,25 @@ test('context support is negotiated, the selected reference survives newer brief
     ),
   ).rejects.toBeInstanceOf(TaskRoomWorkNotSentError);
   expect(fetcher).toHaveBeenCalledOnce();
-  fetcher
-    .mockReset()
-    .mockImplementation(async (url) =>
-      String(url).endsWith('/agent-requests')
-        ? response({
-            version: TASK_ROOM_WORK_VERSION,
-            kind: 'available',
-            records: [],
-            contextVersion: TASK_ROOM_CONTEXT_VERSION,
-            context: {
-              ...snapshot,
-              digest: 'b'.repeat(64),
-              text: 'Newer brief.',
-            },
-          })
-        : response({
-            kind: 'recorded',
-            replayed: true,
-            record: { ...record, context: snapshot },
-          }),
-    );
+  fetcher.mockReset().mockImplementation(async (url) =>
+    String(url).endsWith('/agent-requests')
+      ? response({
+          version: TASK_ROOM_WORK_VERSION,
+          kind: 'available',
+          records: [],
+          contextVersion: TASK_ROOM_CONTEXT_VERSION,
+          context: {
+            ...snapshot,
+            digest: 'b'.repeat(64),
+            text: 'Newer brief.',
+          },
+        })
+      : response({
+          kind: 'recorded',
+          replayed: true,
+          record: { ...record, context: snapshot },
+        }),
+  );
   await expect(
     submitTaskRoomAgentRequest(
       'http://station.test',
@@ -225,25 +221,23 @@ test('an explicit context refusal is not sent while a lost acknowledgement stays
     version: TASK_ROOM_CONTEXT_VERSION,
     digest: 'a'.repeat(64),
   };
-  const fetcher = vi
-    .fn<typeof fetch>()
-    .mockImplementation(async (url) =>
-      String(url).endsWith('/agent-requests')
-        ? response({
-            version: TASK_ROOM_WORK_VERSION,
-            kind: 'available',
-            records: [],
-            contextVersion: TASK_ROOM_CONTEXT_VERSION,
-            context: null,
-          })
-        : new Response(
-            JSON.stringify({
-              success: false,
-              data: { kind: 'refused', reason: 'context' },
-            }),
-            { status: 409 },
-          ),
-    );
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+    String(url).endsWith('/agent-requests')
+      ? response({
+          version: TASK_ROOM_WORK_VERSION,
+          kind: 'available',
+          records: [],
+          contextVersion: TASK_ROOM_CONTEXT_VERSION,
+          context: null,
+        })
+      : new Response(
+          JSON.stringify({
+            success: false,
+            data: { kind: 'refused', reason: 'context' },
+          }),
+          { status: 409 },
+        ),
+  );
   vi.stubGlobal('fetch', fetcher);
   await expect(
     submitTaskRoomAgentRequest(
