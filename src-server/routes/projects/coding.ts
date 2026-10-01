@@ -25,6 +25,10 @@ import {
   pushRepository,
 } from '../../services/projects/coding-git-actions.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
+import {
+  type ProjectRepositoryReadOptions,
+  readProjectRepository,
+} from '../../services/projects/git-read-repository.js';
 import { checkRepositoryConfig } from '../../services/projects/git-repository-config.js';
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
 import { codingOps } from '../../telemetry/metrics.js';
@@ -84,13 +88,6 @@ const GIT_CHECKOUT_TIMEOUT_MS = 60_000;
 const GIT_TIMEOUT_MESSAGE =
   'git did not answer in time and was stopped. The repository may be very large, or its configuration names something that never answers (such as an include of a pipe)';
 
-class GitTimeoutError extends Error {
-  constructor() {
-    super(GIT_TIMEOUT_MESSAGE);
-    this.name = 'GitTimeoutError';
-  }
-}
-
 /** `execFile` marks a child it killed on its deadline. */
 function timedOut(error: unknown): boolean {
   const failure = error as { killed?: unknown; signal?: unknown };
@@ -99,7 +96,7 @@ function timedOut(error: unknown): boolean {
 
 /** The route answer for a git call that failed: 504 on a deadline. */
 function gitFailure(c: Context, error: unknown): Response {
-  if (error instanceof GitTimeoutError || timedOut(error)) {
+  if (timedOut(error)) {
     return c.json(
       {
         success: false,
@@ -110,26 +107,6 @@ function gitFailure(c: Context, error: unknown): Response {
     );
   }
   return c.json({ success: false, error: errorMessage(error) }, 400);
-}
-
-/**
- * Fast-path detect whether `dir` is inside a git work tree. Returns false for
- * non-repos instead of letting `git` reject with "fatal: not a git repository"
- * (which the UI would surface as a 400 error). `git rev-parse` is cheap and
- * never mutates. A deadline is NOT "not a repository": it throws.
- */
-async function isInsideWorkTree(dir: string): Promise<boolean> {
-  try {
-    const { stdout } = await execGit(['rev-parse', '--is-inside-work-tree'], {
-      cwd: dir,
-      encoding: 'utf-8',
-      timeout: GIT_QUICK_TIMEOUT_MS,
-    });
-    return stdout.trim() === 'true';
-  } catch (error) {
-    if (timedOut(error)) throw new GitTimeoutError();
-    return false;
-  }
 }
 
 // Directories that never contain a user's repos but are expensive to walk.
@@ -200,11 +177,15 @@ const CONFIG_REFUSED_MESSAGE =
 
 /**
  * The read-side refusal (#2363): a repository whose own config defines a
- * filter or diff driver is not run `status`, `diff` or `checkout` against,
- * because those commands run the driver. `null` means go ahead.
+ * filter or diff driver, declares itself a partial clone, or names a
+ * program or a network target (`git-repository-config.ts`) is not read or
+ * checked out, because those commands would run or reach it. `null` means
+ * go ahead. `gitArgs`
+ * names the repository a read route resolved; without it git discovers the
+ * repository from `dir`.
  */
-async function readRefusal(dir: string) {
-  const verdict = await checkRepositoryConfig(dir, 'read');
+async function readRefusal(dir: string, gitArgs: readonly string[] = []) {
+  const verdict = await checkRepositoryConfig(dir, 'read', gitArgs);
   if (verdict.ok) return null;
   return verdict.code === 'repository-config-refused'
     ? {
@@ -218,6 +199,22 @@ async function readRefusal(dir: string) {
         error: "git could not read this repository's configuration",
         code: verdict.code,
       };
+}
+
+/**
+ * The answer for a folder whose repository is not the Project's own (see
+ * `git-read-repository.ts`): the read refusal's shape and status. `reason`
+ * names entries relative to `.git`, never a host path.
+ */
+function repositoryRefused(c: Context, reason: string): Response {
+  return c.json(
+    {
+      success: false,
+      error: `That folder's .git leads outside this Project (${reason}), so Station does not read it`,
+      code: 'git-dir-outside-project',
+    },
+    409,
+  );
 }
 
 /** One sentence per refusal; the route never words git's own output. */
@@ -323,7 +320,7 @@ export function createCodingRoutes(
      * takes it: the reader's REFUSAL path decides whether Push is disabled on
      * evidence or on a guess, and no filesystem state reaches it through this
      * route — every way of breaking `.git/config` also fails the
-     * `isInsideWorkTree` gate above it, so the branch is only executable with
+     * repository resolution above it, so the branch is only executable with
      * the reader supplied.
      */
     readRemotes?: CheckoutRemoteReader;
@@ -466,6 +463,43 @@ export function createCodingRoutes(
     slug: string | undefined,
     requested: string | undefined,
   ) => projectLocation(c, slug, requested, 'read');
+
+  /**
+   * One git read of a folder `readLocation` admitted. That folder is
+   * member-writable, so the repository git would discover from it is not
+   * trusted: `read` gets the repository that was resolved and checked, and
+   * every git call it makes names it (`repoArgs`). The repository's own
+   * config is judged first (#2363), on every read: a filter or diff driver
+   * runs on status and diff, and a partial clone makes ANY read fetch.
+   * `notRepository` is the route's answer for a folder with no repository.
+   */
+  const gitRead = async <T>(
+    c: Context,
+    location: { target: string; projectRoot: string },
+    notRepository: unknown,
+    read: (repository: { top: string; repoArgs: string[] }) => Promise<T>,
+  ): Promise<Response> => {
+    const outcome = await readProjectRepository(
+      location.projectRoot,
+      location.target,
+      {
+        registeredWorktrees: () => registeredWorktrees(c, location.projectRoot),
+        timeoutMs: GIT_QUICK_TIMEOUT_MS,
+      },
+      async (repository) => {
+        const refusal = await readRefusal(repository.top, repository.repoArgs);
+        return refusal ? { refusal } : { data: await read(repository) };
+      },
+    );
+    if (!outcome.ok) {
+      return outcome.state === 'not-a-repository'
+        ? c.json({ success: true, data: notRepository })
+        : repositoryRefused(c, outcome.reason);
+    }
+    return 'refusal' in outcome.value
+      ? c.json(outcome.value.refusal, 409)
+      : c.json({ success: true, data: outcome.value.data });
+  };
 
   /** A coding edit, checkout or command: the Project or its worktrees. */
   const writeLocation = (
@@ -627,109 +661,109 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const dir = location.target;
 
-      if (!(await isInsideWorkTree(dir))) {
-        return c.json({ success: true, data: { isRepo: false } });
-      }
-      // #2363: `status` runs a repository-defined clean filter.
-      const refusal = await readRefusal(dir);
-      if (refusal) return c.json(refusal, 409);
+      return await gitRead(
+        c,
+        location,
+        { isRepo: false },
+        // #2363: `status` runs a repository-defined clean filter.
+        async (repository) => {
+          const opts = {
+            cwd: repository.top,
+            encoding: 'utf-8' as const,
+            windowsHide: true,
+            timeout: GIT_READ_TIMEOUT_MS,
+          };
+          const git = (args: string[]) =>
+            execGit([...repository.repoArgs, ...args], opts);
 
-      const opts = {
-        cwd: dir,
-        encoding: 'utf-8' as const,
-        windowsHide: true,
-        timeout: GIT_READ_TIMEOUT_MS,
-      };
+          const [branchOut, statusOut, logOut, trackingOut, remotes] =
+            await Promise.all([
+              git(['rev-parse', '--abbrev-ref', 'HEAD']),
+              git(['status', '--porcelain']),
+              git(['log', '-1', '--format=%H|%an|%ar|%s']).catch(() => ({
+                stdout: '',
+              })),
+              git([
+                'rev-list',
+                '--left-right',
+                '--count',
+                'HEAD...@{upstream}',
+              ]).catch(() => ({ stdout: '' })),
+              // #1536 G5: whether Push has anywhere to go. Through the shared
+              // reader, which is the one place that keeps "this checkout has
+              // no remotes" and "git could not be run" apart — collapsing
+              // them would disable Push over an unreadable config, which is
+              // a different fact.
+              readRemotes(repository.top, { gitArgs: repository.repoArgs }),
+            ]);
 
-      const [branchOut, statusOut, logOut, trackingOut, topLevelOut, remotes] =
-        await Promise.all([
-          execGit(['rev-parse', '--abbrev-ref', 'HEAD'], opts),
-          execGit(['status', '--porcelain'], opts),
-          execGit(['log', '-1', '--format=%H|%an|%ar|%s'], opts).catch(() => ({
-            stdout: '',
-          })),
-          execGit(
-            ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'],
-            opts,
-          ).catch(() => ({ stdout: '' })),
-          // The repo that actually contains `dir` — for a path inside a nested
-          // repo this is that nested repo's root, not the workspace. Lets the
-          // UI know which repo the active path belongs to.
-          execGit(['rev-parse', '--show-toplevel'], opts).catch(() => ({
-            stdout: '',
-          })),
-          // #1536 G5: whether Push has anywhere to go. Through the shared
-          // reader, which is the one place that keeps "this checkout has no
-          // remotes" and "git could not be run" apart — collapsing them would
-          // disable Push over an unreadable config, which is a different fact.
-          readRemotes(dir),
-        ]);
+          const changes = statusOut.stdout
+            .split('\n')
+            .filter((l) => l.trim().length > 0);
 
-      const changes = statusOut.stdout
-        .split('\n')
-        .filter((l) => l.trim().length > 0);
+          // Change breakdown
+          let staged = 0,
+            unstaged = 0,
+            untracked = 0;
+          for (const line of changes) {
+            const x = line[0],
+              y = line[1];
+            if (x === '?') {
+              untracked++;
+            } else {
+              if (x !== ' ' && x !== '?') staged++;
+              if (y !== ' ' && y !== '?') unstaged++;
+            }
+          }
 
-      // Change breakdown
-      let staged = 0,
-        unstaged = 0,
-        untracked = 0;
-      for (const line of changes) {
-        const x = line[0],
-          y = line[1];
-        if (x === '?') {
-          untracked++;
-        } else {
-          if (x !== ' ' && x !== '?') staged++;
-          if (y !== ' ' && y !== '?') unstaged++;
-        }
-      }
+          // Last commit
+          let lastCommit = null;
+          const logParts = logOut.stdout.trim().split('|');
+          if (logParts.length >= 4) {
+            lastCommit = {
+              sha: logParts[0].slice(0, 8),
+              author: logParts[1],
+              relativeTime: logParts[2],
+              message: logParts.slice(3).join('|'),
+            };
+          }
 
-      // Last commit
-      let lastCommit = null;
-      const logParts = logOut.stdout.trim().split('|');
-      if (logParts.length >= 4) {
-        lastCommit = {
-          sha: logParts[0].slice(0, 8),
-          author: logParts[1],
-          relativeTime: logParts[2],
-          message: logParts.slice(3).join('|'),
-        };
-      }
+          // Ahead/behind
+          let ahead = 0,
+            behind = 0;
+          const trackParts = trackingOut.stdout.trim().split(/\s+/);
+          if (trackParts.length === 2) {
+            ahead = parseInt(trackParts[0], 10) || 0;
+            behind = parseInt(trackParts[1], 10) || 0;
+          }
 
-      // Ahead/behind
-      let ahead = 0,
-        behind = 0;
-      const trackParts = trackingOut.stdout.trim().split(/\s+/);
-      if (trackParts.length === 2) {
-        ahead = parseInt(trackParts[0], 10) || 0;
-        behind = parseInt(trackParts[1], 10) || 0;
-      }
-
-      return c.json({
-        success: true,
-        data: {
-          isRepo: true,
-          repoRoot: topLevelOut.stdout.trim() || dir,
-          branch: branchOut.stdout.trim(),
-          changes,
-          staged,
-          unstaged,
-          untracked,
-          lastCommit,
-          ahead,
-          behind,
-          // Three states, never two: `unknown` is a read that could not answer,
-          // and a surface that treated it as `absent` would take Push away on
-          // no evidence (#1536 G5).
-          remote: remotes.ok
-            ? remotes.remotes.length > 0
-              ? ('present' as const)
-              : ('absent' as const)
-            : ('unknown' as const),
+          return {
+            isRepo: true,
+            // The repo that actually contains the folder: for a path inside
+            // a nested repo this is that nested repo's root, not the
+            // workspace. Lets the UI know which repo the active path
+            // belongs to.
+            repoRoot: repository.top,
+            branch: branchOut.stdout.trim(),
+            changes,
+            staged,
+            unstaged,
+            untracked,
+            lastCommit,
+            ahead,
+            behind,
+            // Three states, never two: `unknown` is a read that could not
+            // answer, and a surface that treated it as `absent` would take
+            // Push away on no evidence (#1536 G5).
+            remote: remotes.ok
+              ? remotes.remotes.length > 0
+                ? ('present' as const)
+                : ('absent' as const)
+              : ('unknown' as const),
+          };
         },
-      });
+      );
     } catch (e: unknown) {
       return gitFailure(c, e);
     }
@@ -743,35 +777,39 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const dir = location.target;
-
-      if (!(await isInsideWorkTree(dir))) {
-        // Non-repo: no commits. git/status drives the "not a git repository"
-        // empty state; keep this shape an array for a stable contract.
-        return c.json({ success: true, data: [] });
-      }
 
       const count = Math.min(parseInt(c.req.query('count') || '5', 10), 20);
-      const raw = (
-        await execGit(['log', `-${count}`, '--format=%H|%an|%ar|%s'], {
-          cwd: dir,
-          encoding: 'utf-8',
-          timeout: GIT_READ_TIMEOUT_MS,
-        })
-      ).stdout;
-      const commits = raw
-        .split('\n')
-        .filter((l) => l.trim())
-        .map((line) => {
-          const parts = line.split('|');
-          return {
-            sha: parts[0].slice(0, 8),
-            author: parts[1],
-            relativeTime: parts[2],
-            message: parts.slice(3).join('|'),
-          };
-        });
-      return c.json({ success: true, data: commits });
+      // Non-repo: no commits. git/status drives the "not a git repository"
+      // empty state; keep this shape an array for a stable contract.
+      return await gitRead(c, location, [], async (repository) => {
+        const raw = (
+          await execGit(
+            [
+              ...repository.repoArgs,
+              'log',
+              `-${count}`,
+              '--format=%H|%an|%ar|%s',
+            ],
+            {
+              cwd: repository.top,
+              encoding: 'utf-8',
+              timeout: GIT_READ_TIMEOUT_MS,
+            },
+          )
+        ).stdout;
+        return raw
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((line) => {
+            const parts = line.split('|');
+            return {
+              sha: parts[0].slice(0, 8),
+              author: parts[1],
+              relativeTime: parts[2],
+              message: parts.slice(3).join('|'),
+            };
+          });
+      });
     } catch (e: unknown) {
       return gitFailure(c, e);
     }
@@ -785,23 +823,18 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const dir = location.target;
       // A multi-repo workspace root isn't itself a repo; return an empty diff
       // instead of letting `git diff` fail with "not a git repository".
-      if (!(await isInsideWorkTree(dir))) {
-        return c.json({ success: true, data: { diff: '' } });
-      }
       // #2363: `diff` runs repository-defined filters and diff drivers.
-      const refusal = await readRefusal(dir);
-      if (refusal) return c.json(refusal, 409);
-      const diff = (
-        await execGit(['diff'], {
-          cwd: dir,
-          encoding: 'utf-8',
-          timeout: GIT_DIFF_TIMEOUT_MS,
-        })
-      ).stdout;
-      return c.json({ success: true, data: { diff } });
+      return await gitRead(c, location, { diff: '' }, async (repository) => ({
+        diff: (
+          await execGit([...repository.repoArgs, 'diff'], {
+            cwd: repository.top,
+            encoding: 'utf-8',
+            timeout: GIT_DIFF_TIMEOUT_MS,
+          })
+        ).stdout,
+      }));
     } catch (e: unknown) {
       return gitFailure(c, e);
     }
@@ -815,33 +848,35 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const dir = location.target;
-      if (!(await isInsideWorkTree(dir))) {
-        return c.json({ success: true, data: [] });
-      }
-      const raw = (
-        await execGit(
-          [
-            'branch',
-            '-a',
-            '--format=%(refname:short)|%(objectname:short)|%(committerdate:relative)|%(HEAD)',
-          ],
-          { cwd: dir, encoding: 'utf-8', timeout: GIT_READ_TIMEOUT_MS },
-        )
-      ).stdout;
-      const branches = raw
-        .split('\n')
-        .filter((l) => l.trim())
-        .map((line) => {
-          const [name, sha, date, head] = line.split('|');
-          return {
-            name: name.trim(),
-            sha,
-            date,
-            current: head?.trim() === '*',
-          };
-        });
-      return c.json({ success: true, data: branches });
+      return await gitRead(c, location, [], async (repository) => {
+        const raw = (
+          await execGit(
+            [
+              ...repository.repoArgs,
+              'branch',
+              '-a',
+              '--format=%(refname:short)|%(objectname:short)|%(committerdate:relative)|%(HEAD)',
+            ],
+            {
+              cwd: repository.top,
+              encoding: 'utf-8',
+              timeout: GIT_READ_TIMEOUT_MS,
+            },
+          )
+        ).stdout;
+        return raw
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((line) => {
+            const [name, sha, date, head] = line.split('|');
+            return {
+              name: name.trim(),
+              sha,
+              date,
+              current: head?.trim() === '*',
+            };
+          });
+      });
     } catch (e: unknown) {
       return gitFailure(c, e);
     }
@@ -860,6 +895,11 @@ export function createCodingRoutes(
       // as the operator to `isOperatorInPerson` alone).
       const slug = c.req.query('projectSlug');
       let workspace: string;
+      // The Project a found root must belong to for its branch to be read.
+      // Without one (the New Project form) the folder being asked about
+      // stands in for it: a repository found there must be that folder's own.
+      let projectRoot: string;
+      let worktrees: ProjectRepositoryReadOptions['registeredWorktrees'];
       if (!slug && isOperatorInPersonNotAgent(c.req.raw)) {
         const raw = c.req.query('path');
         if (!raw)
@@ -876,29 +916,43 @@ export function createCodingRoutes(
             409,
           );
         }
+        projectRoot = workspace;
       } else {
         const location = await readLocation(c, slug, c.req.query('path'));
         if (location instanceof Response) return location;
         workspace = location.target;
+        projectRoot = location.projectRoot;
+        worktrees = () => registeredWorktrees(c, location.projectRoot);
       }
       const roots = await discoverRepos(workspace);
       const repos = await Promise.all(
         roots.map(async (root) => {
-          let branch = '';
-          try {
-            const { stdout } = await execGit(
-              ['rev-parse', '--abbrev-ref', 'HEAD'],
-              { cwd: root, encoding: 'utf-8', timeout: GIT_QUICK_TIMEOUT_MS },
-            );
-            branch = stdout.trim();
-          } catch {
-            // Detached HEAD / mid-rebase repos still list; branch stays ''.
-          }
+          // A root whose `.git` is not the Project's own still lists (its
+          // status then says why it is not read), but its branch is another
+          // repository's, so it stays ''.
+          const read = await readProjectRepository(
+            projectRoot,
+            root,
+            { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
+            (repository) =>
+              execGit(
+                [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
+                {
+                  cwd: repository.top,
+                  encoding: 'utf-8',
+                  timeout: GIT_QUICK_TIMEOUT_MS,
+                },
+              ).then(
+                ({ stdout }) => stdout.trim(),
+                // Detached HEAD / mid-rebase repos still list; branch stays ''.
+                () => '',
+              ),
+          );
           return {
             root,
             name: basename(root),
             relativePath: relative(workspace, root) || '.',
-            branch,
+            branch: read.ok ? read.value : '',
           };
         }),
       );

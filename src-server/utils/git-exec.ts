@@ -72,6 +72,30 @@
  *      (`diff` still refreshed it); the hooks setting above is what keeps
  *      a write from running anything.
  *
+ *    - NO NETWORK AND NO CREDENTIAL HELPER, for every command that is not
+ *      itself a network command (`NETWORK_SUBCOMMANDS`). A repository can
+ *      declare itself a partial clone (`extensions.partialClone`, a promisor
+ *      remote) with an object missing; ANY command that then touches that
+ *      object (`diff`, `log`, `status`, `show`, `checkout`) "lazily" fetches
+ *      it from the repository's own remote, and that fetch runs the
+ *      repository's own `credential.helper`: a program, as the operator.
+ *      Measured on git 2.50: `git diff` in such a repository ran the planted
+ *      helper and connected to the planted address. Three settings, each of
+ *      which stops it alone (measured the same way), all on the environment
+ *      so the `git fetch` child git starts inherits them:
+ *      - `GIT_ALLOW_PROTOCOL` naming no transport: the fetch is refused
+ *        before any helper or connection ("transport 'https' not allowed").
+ *        This one works on every git version, which is why there is no
+ *        version check: the next two are not what holds the line on an old
+ *        git.
+ *      - `GIT_NO_LAZY_FETCH=1` (git 2.45 and later; older gits ignore it):
+ *        the fetch is not attempted at all.
+ *      - a command-scope `credential.helper=`: every helper collected from
+ *        config files is dropped, the repository's included.
+ *      The cost: in a GENUINE partial clone (`--filter=blob:none`), a
+ *      command that needs an object git has not fetched yet fails instead of
+ *      fetching it. Fetch it with a network command, or from a terminal.
+ *
  *    `GIT_CONFIG_NOSYSTEM` is deliberately NOT set. The system file is not
  *    writable by anyone this defends against (writing it takes the
  *    operator's own account or an administrator's), and it carries settings
@@ -466,8 +490,27 @@ export function hardenedGitEnv(
   };
 }
 
-/** The `-c key=value` settings every git call carries. See the header. */
-function hardeningSettings(options: GitHardeningOptions): string[] {
+/** A `GIT_ALLOW_PROTOCOL` value that names no transport git has. */
+const NO_TRANSPORT = 'none';
+
+/**
+ * The environment for a command that is not a network command: no transport,
+ * no lazy fetch. See "NO NETWORK AND NO CREDENTIAL HELPER" in the header.
+ */
+const LOCAL_ONLY_ENV: NodeJS.ProcessEnv = {
+  GIT_ALLOW_PROTOCOL: NO_TRANSPORT,
+  GIT_NO_LAZY_FETCH: '1',
+};
+
+/**
+ * The `-c key=value` settings every git call carries. See the header.
+ * `network` is whether the command may talk to a remote; without it no
+ * transport is allowed at all.
+ */
+function hardeningSettings(
+  options: GitHardeningOptions,
+  network: boolean,
+): string[] {
   return [
     ...(options.operatorHooks ? [] : [`core.hooksPath=${HOOKS_DISABLED}`]),
     'diff.ignoreSubmodules=dirty',
@@ -484,9 +527,13 @@ function hardeningSettings(options: GitHardeningOptions): string[] {
     'push.recurseSubmodules=no',
     'fetch.recurseSubmodules=false',
     'protocol.allow=never',
-    'protocol.https.allow=always',
-    'protocol.ssh.allow=always',
-    ...(options.allowFileProtocol ? ['protocol.file.allow=always'] : []),
+    ...(network
+      ? [
+          'protocol.https.allow=always',
+          'protocol.ssh.allow=always',
+          ...(options.allowFileProtocol ? ['protocol.file.allow=always'] : []),
+        ]
+      : []),
   ];
 }
 
@@ -637,7 +684,15 @@ function hardenedArgs(
   ) {
     command.splice(command.indexOf(verb) + 1, 0, '--ignore-submodules=dirty');
   }
-  return [...toConfigArgs(hardeningSettings(options)), ...command];
+  return [
+    ...toConfigArgs(
+      hardeningSettings(
+        options,
+        verb !== undefined && NETWORK_SUBCOMMANDS.has(verb),
+      ),
+    ),
+    ...command,
+  ];
 }
 
 /**
@@ -667,11 +722,14 @@ function operatorSshEnv(settings: OperatorNetworkSettings): NodeJS.ProcessEnv {
   return { GIT_SSH_COMMAND: settings.sshCommand ?? SSH_BATCH_COMMAND };
 }
 
-/** The ssh choice for a network command (`operatorSshEnv`). */
+/**
+ * The ssh choice for a network command (`operatorSshEnv`); for any other
+ * command (`settings` is null), no transport and no lazy fetch.
+ */
 function networkEnv(
   settings: OperatorNetworkSettings | null,
 ): NodeJS.ProcessEnv {
-  if (settings === null) return {};
+  if (settings === null) return LOCAL_ONLY_ENV;
   return operatorSshEnv(settings);
 }
 
@@ -701,18 +759,17 @@ function appendConfigPairs(
 }
 
 /**
- * The credential settings for a network command: a `credential.helper=`
- * that clears every helper collected from config files (including the
- * repository's), then the operator's own. Passed as environment pairs
- * rather than argv because a failed command's error message quotes its
- * argv, and a helper setting can carry a token.
+ * The credential settings for a command: a `credential.helper=` that clears
+ * every helper collected from config files (including the repository's),
+ * then, for a network command only, the operator's own. Passed as
+ * environment pairs rather than argv because a failed command's error
+ * message quotes its argv, and a helper setting can carry a token; and so
+ * that a git this git starts (a lazy fetch) reads them too.
  */
 function credentialSettings(
   settings: OperatorNetworkSettings | null,
 ): string[] {
-  return settings === null
-    ? []
-    : ['credential.helper=', ...settings.credentials];
+  return ['credential.helper=', ...(settings?.credentials ?? [])];
 }
 
 function needsOperatorSettings(args: readonly string[]): boolean {
@@ -807,7 +864,10 @@ export async function execGitContextCommand(
       cwd: neutral,
       timeout: opts.timeout,
       maxBuffer: opts.maxBuffer,
-      env: appendConfigPairs(hardenedGitEnv(opts.env), hardeningSettings({})),
+      env: appendConfigPairs(
+        hardenedGitEnv(opts.env),
+        hardeningSettings({}, true),
+      ),
     });
   } finally {
     await rm(neutral, { recursive: true, force: true });

@@ -886,6 +886,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2363: the coding git routes over real repositories, a real bare remote
   // and plain git as the control for every planted config.
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
+  // The coding git read routes over real repositories, with plain git as the
+  // control for every planted `.git`.
+  'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.

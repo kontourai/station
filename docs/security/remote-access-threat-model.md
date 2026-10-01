@@ -408,6 +408,45 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The one exception is `GET /api/coding/repos` without a Project, which the
   New Project form uses to ask about a folder that is not a Project yet: it
   answers the operator in person only.
+- **A git read acts on the Project's own repository, never one a folder
+  points at.** A Project's folders are member-writable, and git picks its
+  repository from the folder it runs in. A `.git` file naming another
+  repository, a symlinked `.git`, a git directory whose entries are links
+  into another repository (down to a single linked loose object) or that
+  borrows its objects (`objects/info/alternates`), and a git directory whose
+  `core.worktree` names a folder above the Project would each make
+  status, log, diff, branches or the repository listing report another
+  repository on the host. So those routes run one discovery, check the pair
+  it reports with
+  [the same verdict Commit and Push require](../../src-server/services/projects/git-directory-confinement.ts),
+  and name that pair (`--git-dir`/`--work-tree`) on every later call
+  ([`git-read-repository.ts`](../../src-server/services/projects/git-read-repository.ts)).
+  The repository that contains the Project from above is read only when the
+  folder above reports the same pair itself. A refused folder answers `409
+  git-dir-outside-project` with a reason that names no host path; the
+  repository listing still lists it, without a branch. Because git opens the
+  named path when it runs, the check is repeated after the read and the
+  output is discarded if the `.git` entry, any directory the check listed,
+  or the `commondir` pointer changed identity or change time; a repository
+  that keeps changing is refused. That is a detection, not an atomic open:
+  it relies on the file system recording change times, and it does not cover
+  a hard link to another repository's object, which takes an account that
+  can already read it. `POST /api/coding/git/checkout` still lets git
+  discover its repository from the folder; it is a write route and takes the
+  `write` reach above.
+- **No git read fetches, and none runs a repository's credential helper.**
+  A repository can declare itself a partial clone with an object missing;
+  any read that touches the object would then fetch it from the repository's
+  own remote and run its own `credential.helper` as the operator.
+  [The git runner](../../src-server/utils/git-exec.ts) gives every command
+  that is not itself a network command no transport
+  (`GIT_ALLOW_PROTOCOL`), no lazy fetch (`GIT_NO_LAZY_FETCH`) and no
+  credential helper, and the coding reads, Commit, Push, checkpoints and
+  worktree provisioning refuse a repository whose own configuration declares
+  a partial clone, an unrecognised `extensions.*`, or a key naming a program
+  or a network target
+  ([the list and its basis](../../src-server/services/projects/git-repository-config.ts)).
+  A genuine partial clone (`--filter=blob:none`) is refused the same way.
 - **Choosing a Project's folder takes the same authority as running
   commands.** The folder is what every route above is confined to, so setting
   `workingDirectory` on `POST /api/projects` or changing it on `PUT
