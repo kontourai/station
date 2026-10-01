@@ -1,8 +1,11 @@
 /** @vitest-environment jsdom */
+
 import type { SavedConnection } from '@kontourai/station-connect';
+import type { StationProfile } from '@kontourai/station-contracts';
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
+import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import {
   PROJECT_SHARED_TASK_VERSION,
   type ProjectSharedTaskSummary,
@@ -23,9 +26,13 @@ const state = vi.hoisted(() => ({
     apiBase: string;
     authorityKey: string;
     isCurrent(): boolean;
+    requiresEnrolledCredential: true;
   } | null,
   connection: null as SavedConnection | null,
   transport: vi.fn<typeof fetch>(),
+  profile: null as StationProfile | null,
+  panel: false,
+  invitation: vi.fn<(token: string) => Promise<ProjectInvitationAcceptance>>(),
 }));
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
@@ -33,14 +40,52 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     activeConnection: state.connection,
     connections: state.connection ? [state.connection] : [],
     setActiveConnection: async () => {},
+    captureCredentialEvidence: () =>
+      state.connection
+        ? {
+            connectionId: state.connection.id,
+            origin: state.connection.url,
+            nativeBrokerRoute: state.connection.nativeBrokerRoute,
+            activationEpoch: 'selected-a',
+            generation: 0,
+            authorityGeneration: 0,
+            credentialState: 'saved',
+          }
+        : null,
+    isCredentialEvidenceCurrent: () => current,
   }),
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => state.scope,
+  useNativeRelayAccountSession: () => ({
+    acceptInvitation: state.invitation,
+    login: async () => {},
+    logout: async () => ({ revoked: true }),
+    retireAccount: async () => {},
+  }),
 }));
-vi.mock('../../connections-hub/RelayRouteProfiles', () => ({
-  RelayRouteProfiles: () => <div>Native account recovery</div>,
-}));
+vi.mock('../../connections-hub/RelayRouteProfiles', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../connections-hub/RelayRouteProfiles')
+    >();
+  return {
+    ...actual,
+    RelayRouteProfiles: (props: {
+      onInvitationAccepted?: Parameters<
+        typeof actual.NativeRelayAccountSessionPanel
+      >[0]['onInvitationAccepted'];
+    }) =>
+      state.panel && state.profile ? (
+        <actual.NativeRelayAccountSessionPanel
+          profile={state.profile}
+          onInvitationAccepted={props.onInvitationAccepted}
+        />
+      ) : (
+        <div>Native account recovery</div>
+      ),
+  };
+});
 
 import { navigationStore } from '../../../contexts/NavigationContext';
 import { savedConnectionFromStationProfile } from '../../../platform/native/stationProfileStorage';
@@ -93,33 +138,34 @@ function paths() {
 }
 beforeEach(() => {
   current = true;
+  state.panel = false;
+  state.invitation.mockReset();
   accountNumber++;
   const capturedAccount = accountNumber;
   state.scope = {
     apiBase: origin,
+    requiresEnrolledCredential: true,
     authorityKey: `account-${accountNumber}`,
     isCurrent: () => current && accountNumber === capturedAccount,
   };
-  state.connection = savedConnectionFromStationProfile(
-    {
-      schemaVersion: 1,
-      name: 'Home Station',
-      endpoint: origin,
-      relayRoute: {
-        brokerOrigin: 'https://broker.example.test',
-        stationId,
-        enrollmentId: '22222222-2222-4222-8222-222222222222',
-      },
-      setupSource: 'manual',
-      configurationState: 'configured',
-      credentialRef: { kind: 'station-bearer', id: 'opaque-host-ref' },
-      environmentId: stationId,
-      clientInstanceId: '33333333-3333-4333-8333-333333333333',
-      createdAt: 1,
-      updatedAt: 1,
+  state.profile = {
+    schemaVersion: 1,
+    name: 'Home Station',
+    endpoint: origin,
+    relayRoute: {
+      brokerOrigin: 'https://broker.example.test',
+      stationId,
+      enrollmentId: '22222222-2222-4222-8222-222222222222',
     },
-    7,
-  );
+    setupSource: 'manual',
+    configurationState: 'configured',
+    credentialRef: { kind: 'station-bearer', id: 'opaque-host-ref' },
+    environmentId: stationId,
+    clientInstanceId: '33333333-3333-4333-8333-333333333333',
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  state.connection = savedConnectionFromStationProfile(state.profile, 7);
   state.transport.mockReset().mockImplementation(async (input) => {
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
@@ -293,6 +339,7 @@ it('drops a late Project body after account loss and performs a fresh read for t
   const nextAccount = ++accountNumber;
   state.scope = {
     apiBase: origin,
+    requiresEnrolledCredential: true,
     authorityKey: `account-${nextAccount}`,
     isCurrent: () => current && accountNumber === nextAccount,
   };
@@ -312,5 +359,48 @@ it('drops a late Project body after account loss and performs a fresh read for t
   mounted.rerender(<NativeRelayMemberShell />);
   await screen.findByRole('heading', { name: member.name });
   expect(paths().filter((path) => path === '/api/projects')).toHaveLength(2);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('the real invitation panel refreshes an already-empty member catalog in its separate scoped client', async () => {
+  state.panel = true;
+  let accepted = false;
+  state.invitation.mockImplementation(async () => {
+    accepted = true;
+    return {
+      scope: {
+        stationId,
+        localProjectId: member.id,
+        localProjectSlug: member.slug,
+        portableProjectId: 'portable-project',
+      },
+      grantsDeviceAccess: false,
+    };
+  });
+  state.transport.mockImplementation(async (input) => {
+    const path = new URL(
+      input instanceof Request ? input.url : input.toString(),
+    ).pathname;
+    if (path === '/api/auth/authority') return Response.json(observation);
+    if (path === '/api/projects')
+      return Response.json({ success: true, data: accepted ? [member] : [] });
+    if (path === '/api/projects/shared')
+      return Response.json({ success: true, data: member });
+    if (path === '/api/projects/shared/shared-work')
+      return Response.json({ success: true, data: [] });
+    throw new Error(path);
+  });
+  render(<NativeRelayMemberShell />);
+  await screen.findByText('No Projects are shared with this account yet.');
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Account invitation token' }),
+    { target: { value: 'i'.repeat(43) } },
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Accept account invitation' }),
+  );
+  await screen.findByRole('heading', { name: member.name });
+  expect(paths().filter((path) => path === '/api/projects')).toHaveLength(2);
+  expect(state.invitation).toHaveBeenCalledWith('i'.repeat(43));
   expect(fetch).not.toHaveBeenCalled();
 });
