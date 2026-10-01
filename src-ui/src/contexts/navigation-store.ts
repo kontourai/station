@@ -15,6 +15,7 @@ import {
   parseOpenFilePreviewIntent,
   serializeOpenFilePreviewIntent,
 } from '../workspace-panes/openFilePreviewIntent';
+import { MAIN_PAGE_HISTORY_KEY } from './main-page-history';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
 /** An exact temporary return location, owned and restored by this navigator. */
@@ -802,6 +803,9 @@ class NavigationStore {
     // cleanup treat the destination as its own marker and immediately Back
     // out of the navigation (observed from New Chat's Connect repair).
     delete nextHistoryState[DIALOG_HISTORY_KEY];
+    // Likewise `main`'s page stamp: it says what the entry being LEFT showed.
+    // The provider stamps the destination itself when it is `/`.
+    delete nextHistoryState[MAIN_PAGE_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
     this.commitState(this.parseUrl(), true);
