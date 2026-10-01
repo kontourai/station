@@ -402,7 +402,7 @@ export function withWorkerErrorFallback(
  * worker (and its warm Shiki) instead of building a second highlighter, and
  * one worker failure degrades both to the main thread together.
  */
-export function workerClientWithFallback(
+function workerClientWithFallback(
   makeWorker: () => HighlightWorkerLike,
   fallback: HighlightClient,
   timeoutMs = WEDGE_TIMEOUT_MS,

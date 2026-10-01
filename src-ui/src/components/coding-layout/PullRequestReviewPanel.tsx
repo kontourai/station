@@ -146,7 +146,7 @@ function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
  * itself, and each state is written in words, not colour alone. Absent
  * means this server did not observe checks, which is said as such.
  */
-export function PullRequestChecks({
+function PullRequestChecks({
   checks,
 }: {
   checks: PullRequestChecksObservation | undefined;

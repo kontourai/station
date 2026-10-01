@@ -27,9 +27,9 @@ export type PreviewTokenLine = PreviewToken[];
  * Lines longer than this are left untokenized by Shiki (they come back as one
  * plain token). Minified bundles otherwise cost the grammar seconds per line.
  */
-export const PREVIEW_TOKENIZE_MAX_LINE_LENGTH = 2_000;
+const PREVIEW_TOKENIZE_MAX_LINE_LENGTH = 2_000;
 /** Per-line grammar time limit; a line that exceeds it stays plain. */
-export const PREVIEW_TOKENIZE_TIME_LIMIT_MS = 200;
+const PREVIEW_TOKENIZE_TIME_LIMIT_MS = 200;
 
 /**
  * Tokenize `code` for the preview. Adjacent runs of the same colour are

@@ -90,8 +90,8 @@ async function detail(
   );
 }
 /** More than this many checks or inline comments is reported as partial. */
-export const PULL_REQUEST_REVIEW_MAX_CHECKS = 200;
-export const PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS = 100;
+const PULL_REQUEST_REVIEW_MAX_CHECKS = 200;
+const PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS = 100;
 const INLINE_COMMENT_BODY_MAX = 8192;
 const INLINE_COMMENT_TOTAL_MAX = 65_536;
 

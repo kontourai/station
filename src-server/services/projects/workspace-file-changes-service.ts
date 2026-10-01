@@ -41,7 +41,7 @@ function exceededBuffer(error: unknown): boolean {
 }
 
 /** `execFile`-style deadline kill, as the coding routes classify it. */
-export function gitTimedOut(error: unknown): boolean {
+function gitTimedOut(error: unknown): boolean {
   const failure = error as { killed?: unknown; signal?: unknown };
   return failure?.killed === true || failure?.signal === 'SIGTERM';
 }

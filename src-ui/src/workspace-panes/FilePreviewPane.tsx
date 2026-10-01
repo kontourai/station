@@ -1122,7 +1122,7 @@ function FilePreviewChanges({
 type FilePreviewView = 'file' | 'changes';
 
 /** Lines a patch adds or removes, excluding its file headers. */
-export function changedLineCount(patch: string): number {
+function changedLineCount(patch: string): number {
   let count = 0;
   for (const line of patch.split('\n'))
     if (
