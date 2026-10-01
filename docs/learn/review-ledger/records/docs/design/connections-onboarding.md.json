@@ -64,7 +64,7 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5549722cc113e026ff1bd7aebe7ef9f0926b1d7fbede4c283018b96be27ff848","revision":"d93991f52363d8d7d2a1fa12938ba5783158b27c"},
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
     {"path":"src-ui/src/components/modals/AutomaticEnginePreparation.tsx","digest":"05dad7302ef1ac516f913814eb4e3bc16f1f694ab65d2d6ad232dd1533fd4fa9","revision":"d93991f52363d8d7d2a1fa12938ba5783158b27c"}
   ],
