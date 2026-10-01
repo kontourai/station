@@ -72,7 +72,9 @@ exists. Tokens remain on the server.
 
 **Activity** shows 7 or 30 days of this engine's runs on this Station, across all
 accounts. Receipts do not identify the credential profile, so this is not
-per-account history. Reported cost and estimates remain separate; missing costs
+per-account history. Reported cost and estimates remain separate. The daily chart uses reported cost
+when available, estimates when only estimates are available, and otherwise
+tokens. Missing days keep their place and are marked unreported. Missing costs
 are shown as unavailable, and partial coverage is disclosed. Subscription
 allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
 even when the page requests only this Station.

@@ -173,7 +173,9 @@ test.each([
                   day: '2026-09-30',
                   inputTokens: 100,
                   outputTokens: 20,
-                  reportedCost: { amount: 2, currency: 'USD' },
+                  ...(engine === 'claude'
+                    ? { reportedCost: { amount: 2, currency: 'USD' } }
+                    : { estimatedCost: { amount: 2, currency: 'USD' } }),
                   pricingStatus: 'unpriced',
                   receiptCount: 1,
                 },
@@ -226,8 +228,15 @@ test.each([
       expect(window.localStorage.length).toBe(0);
     } else expect(await screen.findByText('ABCD-1234')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    if (management) expect(await screen.findByText('$2.00')).toBeTruthy();
-    else {
+    if (management) {
+      expect(await screen.findByText('$2.00')).toBeTruthy();
+      expect(screen.getByTitle('2026-09-25: Not reported')).toBeTruthy();
+      expect(
+        screen.getByText(
+          engine === 'claude' ? 'Daily reported cost' : 'Daily estimated cost',
+        ),
+      ).toBeTruthy();
+    } else {
       expect(
         calls.filter((c) => c.path.includes('account-usage')),
       ).toHaveLength(0);

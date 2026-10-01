@@ -554,19 +554,39 @@ function Activity({ data, engine }: { data: UsageRollup; engine: string }) {
       : items.every((item) => item.currency === 'USD')
         ? `$${items.reduce((sum, item) => sum + item.amount, 0).toFixed(2)}`
         : 'Mixed currencies';
+  const costSource = reported.length ? 'reported' : 'estimated';
+  const chartCosts = costSource === 'reported' ? reported : estimates;
   const costAvailable =
-    reported.length > 0 && reported.every((item) => item.currency === 'USD');
-  const values = rows.map((row) =>
-    costAvailable
-      ? (row.reportedCost?.amount ??
-        row.reportedCostBuckets
-          ?.filter((b) => b.currency === 'USD')
-          .reduce((sum, b) => sum + b.amount, 0) ??
-        undefined)
+    chartCosts.length > 0 &&
+    chartCosts.every((item) => item.currency === 'USD');
+  const firstDay = Date.parse(data.window.from);
+  const dayCount = Math.min(
+    30,
+    Math.round((Date.parse(data.window.to) - firstDay) / 86400000) + 1,
+  );
+  const chartRows = Array.from({ length: dayCount }, (_, index) => {
+    const day = new Date(firstDay + index * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    return { day, row: rows.find((row) => row.day === day) };
+  });
+  const values = chartRows.map(({ row }) => {
+    if (!row) return undefined;
+    const cost =
+      costSource === 'reported' ? row.reportedCost : row.estimatedCost;
+    const buckets =
+      costSource === 'reported'
+        ? row.reportedCostBuckets
+        : row.estimatedCostBuckets;
+    return costAvailable
+      ? (cost?.amount ??
+          buckets
+            ?.filter((b) => b.currency === 'USD')
+            .reduce((sum, b) => sum + b.amount, 0))
       : row.inputTokens === undefined && row.outputTokens === undefined
         ? undefined
-        : (row.inputTokens ?? 0) + (row.outputTokens ?? 0),
-  );
+        : (row.inputTokens ?? 0) + (row.outputTokens ?? 0);
+  });
   const peak = Math.max(...values.map((value) => value ?? 0), 1);
   const partial = data.coverage.some(
     (c) =>
@@ -602,17 +622,17 @@ function Activity({ data, engine }: { data: UsageRollup; engine: string }) {
       </div>
       <figure>
         <figcaption>
-          Daily {costAvailable ? 'reported cost' : 'tokens'}
+          Daily {costAvailable ? `${costSource} cost` : 'tokens'}
         </figcaption>
         <div
           className="engine-account-overview__chart"
           role="img"
-          aria-label={`${engine} daily ${costAvailable ? 'reported cost' : 'tokens'} from ${data.window.from} to ${data.window.to}`}
+          aria-label={`${engine} daily ${costAvailable ? `${costSource} cost` : 'tokens'} from ${data.window.from} to ${data.window.to}`}
         >
-          {rows.map((row, index) => (
+          {chartRows.map(({ day }, index) => (
             <span
-              key={row.key}
-              title={`${row.day ?? 'Undated'}: ${values[index] === undefined ? 'Not reported' : costAvailable ? `$${values[index]?.toFixed(4)}` : values[index]?.toLocaleString()}`}
+              key={day}
+              title={`${day}: ${values[index] === undefined ? 'Not reported' : costAvailable ? `$${values[index]?.toFixed(4)}` : values[index]?.toLocaleString()}`}
               data-unreported={values[index] === undefined || undefined}
               style={{
                 height: `${Math.max(2, ((values[index] ?? 0) / peak) * 100)}%`,
