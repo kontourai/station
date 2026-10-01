@@ -1,4 +1,7 @@
-import { useConnections } from '@kontourai/station-connect';
+import {
+  type RequestCredentialEvidence,
+  useConnections,
+} from '@kontourai/station-connect';
 import type { StationProfile } from '@kontourai/station-contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageRow } from '../../components/PageRow';
@@ -66,6 +70,17 @@ const grantFailureCopy: Record<NativeRelayGrantRedemptionFailureCode, string> =
     grantRenewalNotDue: 'The routing grant is not ready for renewal.',
   };
 
+interface NativeAccountOperation {
+  readonly kind: 'login' | 'invitation' | 'logout' | 'retire';
+  readonly selectionIdentity: string;
+  readonly activationEpoch: string;
+  readonly credentials?: {
+    readonly username: string;
+    readonly password: string;
+  };
+  readonly invitation?: string;
+}
+
 function grantQueryKey(profile: StationProfile) {
   const route = profile.relayRoute!;
   return [
@@ -88,6 +103,34 @@ function grantSelection(profile: StationProfile) {
       enrollmentId: route.enrollmentId,
     },
   };
+}
+
+function relayProfileMatchesEvidence(
+  profile: StationProfile,
+  evidence: RequestCredentialEvidence,
+): boolean {
+  const selected = evidence.nativeBrokerRoute;
+  const route = profile.relayRoute;
+  return Boolean(
+    selected &&
+      route &&
+      evidence.origin === profile.endpoint &&
+      selected.profileName.toLowerCase() === profile.name.toLowerCase() &&
+      selected.brokerOrigin === route.brokerOrigin &&
+      selected.stationId === route.stationId &&
+      selected.enrollmentId === route.enrollmentId,
+  );
+}
+
+interface NativeAccountOperation {
+  readonly kind: 'login' | 'invitation' | 'logout' | 'retire';
+  readonly selectionIdentity: string;
+  readonly activationEpoch: string;
+  readonly credentials?: {
+    readonly username: string;
+    readonly password: string;
+  };
+  readonly invitation?: string;
 }
 
 function NativeRelayGrantControls({ profile }: { profile: StationProfile }) {
@@ -296,26 +339,20 @@ export function NativeRelayAccountSessionPanel({
   const { captureCredentialEvidence, isCredentialEvidenceCurrent } =
     useConnections();
   const evidence = captureCredentialEvidence();
-  const selected = evidence?.nativeBrokerRoute;
-  const route = profile.relayRoute!;
   const isSelected = Boolean(
-    selected &&
-      evidence &&
-      evidence.origin === profile.endpoint &&
-      selected.profileName.toLowerCase() === profile.name.toLowerCase() &&
-      selected.brokerOrigin === route.brokerOrigin &&
-      selected.stationId === route.stationId &&
-      selected.enrollmentId === route.enrollmentId &&
+    evidence &&
+      relayProfileMatchesEvidence(profile, evidence) &&
       isCredentialEvidenceCurrent(evidence),
   );
   const selectedIdentity = isSelected
     ? JSON.stringify([
         evidence?.connectionId,
-        selected?.profileName,
-        selected?.profileRevision,
-        selected?.brokerOrigin,
-        selected?.stationId,
-        selected?.enrollmentId,
+        evidence?.nativeBrokerRoute?.profileName,
+        evidence?.nativeBrokerRoute?.profileRevision,
+        evidence?.activationEpoch,
+        evidence?.nativeBrokerRoute?.brokerOrigin,
+        evidence?.nativeBrokerRoute?.stationId,
+        evidence?.nativeBrokerRoute?.enrollmentId,
       ])
     : 'not-selected';
   const requestScope = useHostRequestAuthorityScope();
@@ -325,16 +362,23 @@ export function NativeRelayAccountSessionPanel({
       requestScope.isCurrent(),
   );
   const account = useNativeRelayAccountSession();
+  const queryClient = useQueryClient();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [invitation, setInvitation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const credentialsRef = useRef<{ username: string; password: string } | null>(
-    null,
-  );
-  const invitationRef = useRef<string | null>(null);
+  const operationsRef = useRef(new Map<number, NativeAccountOperation>());
+  const operationSequenceRef = useRef(0);
   const selectedIdentityRef = useRef(selectedIdentity);
+  const currentOperationContextRef = useRef({
+    selectionIdentity: selectedIdentity,
+    activationEpoch: evidence?.activationEpoch ?? '',
+  });
+  currentOperationContextRef.current = {
+    selectionIdentity: selectedIdentity,
+    activationEpoch: evidence?.activationEpoch ?? '',
+  };
   const accountScopeIdentity = hasAccountSession
     ? requestScope?.authorityKey
     : 'no-account-session';
@@ -343,8 +387,7 @@ export function NativeRelayAccountSessionPanel({
   useEffect(() => {
     if (selectedIdentityRef.current === selectedIdentity) return;
     selectedIdentityRef.current = selectedIdentity;
-    credentialsRef.current = null;
-    invitationRef.current = null;
+    operationsRef.current.clear();
     setUsername('');
     setPassword('');
     setInvitation('');
@@ -355,8 +398,6 @@ export function NativeRelayAccountSessionPanel({
   useEffect(() => {
     if (accountScopeIdentityRef.current === accountScopeIdentity) return;
     accountScopeIdentityRef.current = accountScopeIdentity;
-    credentialsRef.current = null;
-    invitationRef.current = null;
     setUsername('');
     setPassword('');
     setInvitation('');
@@ -364,87 +405,155 @@ export function NativeRelayAccountSessionPanel({
 
   useEffect(
     () => () => {
-      credentialsRef.current = null;
-      invitationRef.current = null;
+      operationsRef.current.clear();
     },
     [],
   );
 
+  function registerAccountOperation(
+    operation: Omit<
+      NativeAccountOperation,
+      'selectionIdentity' | 'activationEpoch'
+    >,
+  ): number {
+    const id = ++operationSequenceRef.current;
+    operationsRef.current.set(id, {
+      ...operation,
+      ...currentOperationContextRef.current,
+    });
+    return id;
+  }
+
+  function isCurrentAccountOperation(id: number): boolean {
+    const operation = operationsRef.current.get(id);
+    const current = currentOperationContextRef.current;
+    return Boolean(
+      operation &&
+        current.selectionIdentity !== 'not-selected' &&
+        operation.selectionIdentity === current.selectionIdentity &&
+        operation.activationEpoch === current.activationEpoch &&
+        evidence &&
+        isCredentialEvidenceCurrent(evidence),
+    );
+  }
+
+  function settleAccountOperation(id: number): void {
+    const operation = operationsRef.current.get(id);
+    if (operation && isCurrentAccountOperation(id)) {
+      if (operation.kind === 'login') {
+        setUsername('');
+        setPassword('');
+      }
+      if (operation.kind === 'invitation') setInvitation('');
+    }
+    operationsRef.current.delete(id);
+  }
+
   const login = useMutation({
-    mutationFn: async () => {
-      if (!isCredentialEvidenceCurrent(evidence!))
+    mutationFn: async (id: number) => {
+      const operation = operationsRef.current.get(id);
+      if (!operation || !isCurrentAccountOperation(id))
         throw new Error('native_relay_selection_changed');
-      const credentials = credentialsRef.current;
-      if (!credentials) throw new Error('native_account_credentials_missing');
-      return account.login(credentials);
+      if (operation.kind !== 'login' || !operation.credentials)
+        throw new Error('native_account_credentials_missing');
+      return account.login(operation.credentials);
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      if (!isCurrentAccountOperation(id)) return;
       setError(null);
       setNotice(
         'Station account session is active for this selected route. Device approval and Project access remain separate.',
       );
     },
-    onError: () => {
+    onError: (_, id) => {
+      if (!isCurrentAccountOperation(id)) return;
       setError(
         'Station could not sign in this account for the selected route.',
       );
     },
-    onSettled: () => {
-      credentialsRef.current = null;
-      setUsername('');
-      setPassword('');
-    },
+    onSettled: (_, __, id) => settleAccountOperation(id),
   });
 
   const acceptInvitation = useMutation({
-    mutationFn: async () => {
-      if (!isCredentialEvidenceCurrent(evidence!))
+    mutationFn: async (id: number) => {
+      const operation = operationsRef.current.get(id);
+      if (!operation || !isCurrentAccountOperation(id))
         throw new Error('native_relay_selection_changed');
-      const token = invitationRef.current;
-      if (!token) throw new Error('native_account_invitation_missing');
-      return account.acceptInvitation(token);
+      if (operation.kind !== 'invitation' || !operation.invitation)
+        throw new Error('native_account_invitation_missing');
+      return account.acceptInvitation(operation.invitation);
     },
-    onSuccess: () => {
+    onSuccess: (accepted, id) => {
+      if (!isCurrentAccountOperation(id)) return;
       setError(null);
       setNotice(
-        'Station returned an invitation response. Check shared Projects for any new access; this response alone does not confirm Project membership or Device approval.',
+        `Access was added for Project ${accepted.scope.localProjectSlug}. Device approval remains separate.`,
       );
+      if (requestScope?.isCurrent())
+        void queryClient.invalidateQueries({
+          queryKey: ['projects', 'list', requestScope.apiBase],
+        });
     },
-    onError: () => {
+    onError: (_, id) => {
+      if (!isCurrentAccountOperation(id)) return;
       setError('Station could not accept this account invitation.');
     },
-    onSettled: () => {
-      invitationRef.current = null;
-      setInvitation('');
+    onSettled: (_, __, id) => settleAccountOperation(id),
+  });
+
+  const logout = useMutation({
+    mutationFn: async (id: number) => {
+      if (!isCurrentAccountOperation(id))
+        throw new Error('native_relay_selection_changed');
+      return account.logout();
     },
+    onSuccess: (result, id) => {
+      if (!isCurrentAccountOperation(id)) return;
+      if (result.revoked !== true) {
+        setError('Station did not confirm remote account sign-out.');
+        return;
+      }
+      setError(null);
+      setNotice(
+        'Station confirmed this account session was revoked. Device access remains separate.',
+      );
+    },
+    onError: (_, id) => {
+      if (!isCurrentAccountOperation(id)) return;
+      setError(
+        'Station could not confirm whether the remote account session was revoked.',
+      );
+    },
+    onSettled: (_, __, id) => settleAccountOperation(id),
   });
 
   const retire = useMutation({
-    mutationFn: async () => {
-      if (!isCredentialEvidenceCurrent(evidence!))
+    mutationFn: async (id: number) => {
+      if (!isCurrentAccountOperation(id))
         throw new Error('native_relay_selection_changed');
-      account.retireAccount();
+      await account.retireAccount();
     },
-    onSuccess: () => {
-      credentialsRef.current = null;
-      invitationRef.current = null;
-      setUsername('');
-      setPassword('');
-      setInvitation('');
+    onSuccess: (_, id) => {
+      if (!isCurrentAccountOperation(id)) return;
       setError(null);
       setNotice(
         'The account session was cleared from this device. The remote Station account was not signed out or revoked.',
       );
     },
-    onError: () => {
+    onError: (_, id) => {
+      if (!isCurrentAccountOperation(id)) return;
       setError('Station could not clear the local account session.');
     },
+    onSettled: (_, __, id) => settleAccountOperation(id),
   });
 
   if (!isSelected) return null;
 
   const busy =
-    login.isPending || acceptInvitation.isPending || retire.isPending;
+    login.isPending ||
+    acceptInvitation.isPending ||
+    logout.isPending ||
+    retire.isPending;
   return (
     <section
       className="connections-computers__note"
@@ -468,25 +577,48 @@ export function NativeRelayAccountSessionPanel({
               disabled={busy}
             />
           </label>
-          <Button
-            disabled={!invitation.trim() || busy}
-            pending={acceptInvitation.isPending}
-            onClick={() => {
-              invitationRef.current = invitation;
-              setInvitation('');
-              acceptInvitation.mutate();
-            }}
-          >
-            Accept account invitation
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={busy}
-            pending={retire.isPending}
-            onClick={() => retire.mutate()}
-          >
-            Forget account session on this device
-          </Button>
+          <ActionRow
+            overflowLabel={`More account actions for ${profile.name}`}
+            primary={
+              <Button
+                disabled={!invitation.trim() || busy}
+                pending={acceptInvitation.isPending}
+                onClick={() => {
+                  const id = registerAccountOperation({
+                    kind: 'invitation',
+                    invitation,
+                  });
+                  setInvitation('');
+                  acceptInvitation.mutate(id);
+                }}
+              >
+                Accept account invitation
+              </Button>
+            }
+            secondary={
+              <Button
+                disabled={busy}
+                pending={logout.isPending}
+                onClick={() => {
+                  const id = registerAccountOperation({ kind: 'logout' });
+                  logout.mutate(id);
+                }}
+              >
+                Sign out of this Station account
+              </Button>
+            }
+            overflow={[
+              {
+                key: 'forget-local-account-session',
+                label: 'Forget account session on this device',
+                disabled: busy,
+                onSelect: () => {
+                  const id = registerAccountOperation({ kind: 'retire' });
+                  retire.mutate(id);
+                },
+              },
+            ]}
+          />
         </>
       ) : (
         <>
@@ -519,8 +651,11 @@ export function NativeRelayAccountSessionPanel({
             disabled={!username.trim() || !password || busy}
             pending={login.isPending}
             onClick={() => {
-              credentialsRef.current = { username, password };
-              login.mutate();
+              const id = registerAccountOperation({
+                kind: 'login',
+                credentials: { username, password },
+              });
+              login.mutate(id);
             }}
           >
             Sign in to this Station account
@@ -548,8 +683,11 @@ function NativeRelayGrantSummary({ state }: { state: NativeRelayGrantState }) {
 }
 
 export function RelayRouteProfiles() {
-  const { isTauri, isDesktop } = usePlatformProfile();
+  const { isTauri } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
+  const connectionContext = useConnections();
+  const evidence = connectionContext.captureCredentialEvidence();
+  const requestScope = useHostRequestAuthorityScope();
   const subscribe = useCallback(
     (listener: () => void) =>
       repository?.subscribeRelayRouteProfiles(listener) ?? NO_SUBSCRIBE(),
@@ -564,8 +702,80 @@ export function RelayRouteProfiles() {
   const [creating, setCreating] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<StationProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [selectionPending, setSelectionPending] = useState<string | null>(null);
 
   if (!isTauri) return null;
+
+  const isSelected = (profile: StationProfile) =>
+    Boolean(
+      evidence &&
+        relayProfileMatchesEvidence(profile, evidence) &&
+        connectionContext.isCredentialEvidenceCurrent(evidence),
+    );
+
+  const accountIsCurrent = (profile: StationProfile) =>
+    Boolean(
+      isSelected(profile) &&
+        requestScope?.requiresEnrolledCredential === true &&
+        requestScope.isCurrent(),
+    );
+
+  const routeStatus = (profile: StationProfile) => {
+    if (isSelected(profile)) {
+      return accountIsCurrent(profile)
+        ? 'Station selected · account session active'
+        : profile.configurationState === 'configured'
+          ? 'Station selected · account sign-in required'
+          : 'Station selected · Device setup required';
+    }
+    return profile.configurationState === 'configured'
+      ? 'Device configured · not selected'
+      : 'Device setup required';
+  };
+
+  async function selectStation(profile: StationProfile) {
+    setSelectionError(null);
+    const currentProfile = repository
+      ?.getRelayRouteProfiles()
+      .find(
+        (candidate) =>
+          candidate.name.toLowerCase() === profile.name.toLowerCase(),
+      );
+    if (
+      !currentProfile ||
+      currentProfile.updatedAt !== profile.updatedAt ||
+      JSON.stringify(currentProfile.relayRoute) !==
+        JSON.stringify(profile.relayRoute)
+    ) {
+      setSelectionError('The saved Station route changed. Refresh and retry.');
+      return;
+    }
+    const connection = connectionContext.connections.find((candidate) => {
+      const selectedRoute = candidate.nativeBrokerRoute;
+      return (
+        candidate.id === `station-profile:${profile.name.toLowerCase()}` &&
+        candidate.url === profile.endpoint &&
+        selectedRoute?.profileName.toLowerCase() ===
+          profile.name.toLowerCase() &&
+        selectedRoute.brokerOrigin === profile.relayRoute?.brokerOrigin &&
+        selectedRoute.stationId === profile.relayRoute?.stationId &&
+        selectedRoute.enrollmentId === profile.relayRoute?.enrollmentId
+      );
+    });
+    if (!connection) {
+      setSelectionError('This configured Station is no longer available.');
+      return;
+    }
+    setSelectionPending(profile.name.toLowerCase());
+    try {
+      await connectionContext.setActiveConnection(connection.id);
+    } catch {
+      setSelectionError('Station could not select this route. Try again.');
+    } finally {
+      setSelectionPending(null);
+    }
+  }
 
   async function removeRoute() {
     if (!removeTarget || !repository) return;
@@ -587,15 +797,10 @@ export function RelayRouteProfiles() {
     <section className="relay-route-profiles" aria-label="Saved broker routes">
       <h2 className="relay-route-profiles__heading">Saved broker routes</h2>
       <p className="connections-computers__note">
-        These routes are saved locally. They are not connected, signed in, or
-        available for work until the broker transport is enabled.
-        {isDesktop && (
-          <>
-            {' '}
-            Existing approved routing grants renew while this desktop app is
-            awake; remove a saved route to stop maintaining it.
-          </>
-        )}
+        These routes are saved locally. Choose a configured Station to sign in
+        through the native relay. Account access, Device approval, and Project
+        membership remain separate. Approved routing grants renew while this app
+        is awake; remove a saved route to stop maintaining it.
       </p>
       <Button onClick={() => setCreating(true)}>Add broker route</Button>
       {profiles.length === 0 && (
@@ -604,7 +809,7 @@ export function RelayRouteProfiles() {
           broker details provided by the Station operator to begin setup.
         </p>
       )}
-      {isDesktop && profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
+      {profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
         <p className="connections-computers__alert" role="alert">
           Automatic grant renewal is paused for all saved routes because there
           are more than {MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE}. Remove routes to
@@ -623,18 +828,37 @@ export function RelayRouteProfiles() {
           }
           description={`${profile.relayRoute!.brokerOrigin} · ${profile.endpoint}`}
           status={
-            <span className="connections-computers__state">Not connected</span>
+            <span className="connections-computers__state">
+              {routeStatus(profile)}
+            </span>
           }
           control={
-            <Button
-              size="sm"
-              onClick={() => {
-                setCreating(false);
-                setEditing(profile);
-              }}
-            >
-              Edit
-            </Button>
+            <ActionRow
+              primary={
+                !isSelected(profile) &&
+                profile.configurationState === 'configured' ? (
+                  <Button
+                    size="sm"
+                    pending={selectionPending === profile.name.toLowerCase()}
+                    onClick={() => void selectStation(profile)}
+                  >
+                    Use this Station
+                  </Button>
+                ) : undefined
+              }
+              secondary={
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCreating(false);
+                    setEditing(profile);
+                  }}
+                >
+                  Edit
+                </Button>
+              }
+              overflowLabel={`More actions for ${profile.name}`}
+            />
           }
         >
           <NativeRelayGrantControls
@@ -662,6 +886,11 @@ export function RelayRouteProfiles() {
           {error}
         </p>
       )}
+      {selectionError ? (
+        <p className="connections-computers__alert" role="alert">
+          {selectionError}
+        </p>
+      ) : null}
       {(creating || editing) && (
         <RelayRouteProfileDialog
           profile={editing}

@@ -127,6 +127,7 @@ const project: MemberProjectView = {
   id: 'project-shared-1',
   slug: 'relay-shared',
   name: 'Zach shared project',
+  icon: 'https://foreign.example.test/project-icon.png',
   description: 'A member-visible description',
   actions: ['view'],
 };
@@ -206,7 +207,7 @@ afterEach(() => {
   sharedDetails.calls.length = 0;
 });
 
-test('renders the member-safe Project view and shared summaries through one captured signed scope', async () => {
+test('renders the member-safe Project view and shared summaries without raw icon egress', async () => {
   sdk.memberView = project;
   sharedWork.read.mockResolvedValue([summary]);
   renderPage();
@@ -214,6 +215,7 @@ test('renders the member-safe Project view and shared summaries through one capt
   expect(
     await screen.findByRole('heading', { name: project.name }),
   ).toBeTruthy();
+  expect(document.querySelector('img')).toBeNull();
   expect(await screen.findByText('Review the shared design')).toBeTruthy();
   expect(screen.getByText('in progress')).toBeTruthy();
   expect(sdk.operatorHook).not.toHaveBeenCalled();
@@ -300,6 +302,78 @@ test('reads publication, human history and document through the captured member 
     expect(args[3]).toHaveProperty('signal');
   }
   expect(sdk.operatorHook).not.toHaveBeenCalled();
+});
+
+test('hides cached history and document while publication is stale or unshared', async () => {
+  sdk.memberView = project;
+  sharedWork.read.mockResolvedValue([summary]);
+  sharedDetails.publication.mockResolvedValue({
+    kind: 'shared',
+    publication: summary,
+  });
+  sharedDetails.history.mockResolvedValue({
+    kind: 'available',
+    records: [
+      {
+        actor: { kind: 'human', label: 'Zach' },
+        sequence: 2,
+        body: { kind: 'human-message', text: 'Private stale history' },
+        digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+        integrity: 'L0',
+      },
+    ],
+    checkpoint: {
+      throughSeq: 2,
+      checkpointDigest: 'b'.repeat(64),
+      retainedAnchorSeq: 1,
+      retainedAnchorDigest: 'a'.repeat(64),
+    },
+    hasMore: false,
+  });
+  sharedDetails.document.mockResolvedValue({
+    kind: 'snapshot',
+    project: { id: project.id, slug: project.slug },
+    task: { id: summary.task.id, createdAt: summary.task.createdAt },
+    revision: 'revision-1',
+    text: 'Private stale document',
+  });
+  renderPage();
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Read shared item: Review the shared design',
+    }),
+  );
+  expect(await screen.findByText('Private stale history')).toBeTruthy();
+  expect(await screen.findByText('Private stale document')).toBeTruthy();
+
+  let resolvePublication: (value: unknown) => void = () => {};
+  const delayedPublication = new Promise<unknown>((resolve) => {
+    resolvePublication = resolve;
+  });
+  sharedDetails.publication.mockReturnValueOnce(delayedPublication);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Refresh publication status' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByText(
+        'History is hidden until a current publication is confirmed.',
+      ),
+    ).toBeTruthy(),
+  );
+  expect(screen.queryByText('Private stale history')).toBeNull();
+  expect(screen.queryByText('Private stale document')).toBeNull();
+
+  resolvePublication({
+    kind: 'unshared',
+    project: summary.project,
+    task: { id: summary.task.id, createdAt: summary.task.createdAt },
+  });
+  expect(
+    await screen.findByText('This shared item is no longer published.'),
+  ).toBeTruthy();
+  expect(screen.queryByText('Private stale history')).toBeNull();
+  expect(screen.queryByText('Private stale document')).toBeNull();
 });
 
 test('reads its own Station through a cookie session without requiring an enrolled credential (#2598)', async () => {
