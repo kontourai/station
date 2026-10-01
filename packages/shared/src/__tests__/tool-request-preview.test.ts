@@ -5,6 +5,7 @@ import {
   sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
   toolRequestDisplayName,
+  toolRequestEscalates,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestIsPlainCall,
@@ -287,6 +288,126 @@ describe('#2933: what a tool-level allowance may answer', () => {
     expect(
       toolRequestSessionGrantFromPayload({ rawInput: { plan: 'x' } }),
     ).toBe('tool');
+  });
+});
+
+describe('#2932: escalation signals the engine forwards', () => {
+  const localRule = (toolName: string, ruleContent?: string) => ({
+    type: 'addRules',
+    rules: [{ toolName, ...(ruleContent ? { ruleContent } : {}) }],
+    behavior: 'allow',
+    destination: 'localSettings',
+  });
+
+  test('a sandbox network-host ask is never a plain call and offers no session option', () => {
+    const request = {
+      toolName: 'SandboxNetworkAccess',
+      toolInput: { host: 'api.example.com' },
+      suggestions: [localRule('WebFetch', 'domain:api.example.com')],
+    };
+    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestIsPlainCall(request)).toBe(false);
+    expect(
+      toolRequestSessionGrantFromPayload({
+        toolName: 'SandboxNetworkAccess',
+        toolInput: { host: 'api.example.com' },
+        suggestions: request.suggestions,
+      }),
+    ).toBe('none');
+    // It gets no standing answer, and it is not a plan exit.
+    expect(toolRequestNeedsPerson('SandboxNetworkAccess')).toBe(true);
+    expect(toolRequestIsPlanExit('SandboxNetworkAccess')).toBe(false);
+  });
+
+  test.each<[string, Record<string, unknown>]>([
+    [
+      'the sandbox override input alone',
+      { toolInput: { command: 'curl x', dangerouslyDisableSandbox: true } },
+    ],
+    [
+      'the sandbox override reason alone',
+      { decisionReason: 'dangerouslyDisableSandbox' },
+    ],
+    [
+      'the user-interaction reason',
+      { decisionReason: 'requiresUserInteraction' },
+    ],
+    [
+      'the MCP organization ceiling',
+      { decisionReason: 'Your organization requires approval for this tool' },
+    ],
+    ['suppressAlwaysAllowRule', { suppressAlwaysAllowRule: true }],
+    ['defaultToNo', { defaultToNo: true }],
+    ['requiresUserInteraction', { requiresUserInteraction: true }],
+  ])('%s escalates: no tool grant, not a plain call', (_case, signal) => {
+    const request = { toolName: 'Bash', ...signal };
+    expect(toolRequestEscalates(request)).toBe(true);
+    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestIsPlainCall(request)).toBe(false);
+    // The surfaces read the same signals from a request.opened payload.
+    const { toolInput, ...rest } = signal;
+    expect(
+      toolRequestSessionGrantFromPayload({
+        toolName: 'Bash',
+        toolInput: toolInput ?? { command: 'curl x' },
+        ...rest,
+      }),
+    ).toBe('none');
+  });
+
+  test('an escalation keeps a directory grant, except under suppressAlwaysAllowRule', () => {
+    const addDir = {
+      type: 'addDirectories',
+      directories: ['/work/b'],
+      destination: 'session',
+    };
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: 'requiresUserInteraction',
+        suggestions: [addDir],
+      }),
+    ).toBe('folder');
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        suppressAlwaysAllowRule: true,
+        suggestions: [addDir],
+      }),
+    ).toBe('none');
+  });
+
+  test.each<[string, Record<string, unknown>]>([
+    ['a plain Bash call', {}],
+    [
+      'a sandbox override flag that is not true',
+      { toolInput: { dangerouslyDisableSandbox: 'true' } },
+    ],
+    [
+      'flags that are false',
+      {
+        suppressAlwaysAllowRule: false,
+        defaultToNo: false,
+        requiresUserInteraction: false,
+      },
+    ],
+    // Reasons match exactly; prose is part 2's job.
+    [
+      'a reason that only mentions the override',
+      { decisionReason: 'Uses dangerouslyDisableSandbox' },
+    ],
+    [
+      'a Bash safety-check reason',
+      { decisionReason: 'Command contains a sensitive path' },
+    ],
+    [
+      'a reason with a trailing period',
+      { decisionReason: 'Your organization requires approval for this tool.' },
+    ],
+  ])('positive control: %s is still a plain tool call', (_case, extra) => {
+    const request = { toolName: 'Bash', ...extra };
+    expect(toolRequestSessionGrant(request)).toBe('tool');
+    expect(toolRequestIsPlainCall(request)).toBe(true);
   });
 });
 

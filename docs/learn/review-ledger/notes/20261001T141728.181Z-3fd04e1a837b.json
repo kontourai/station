@@ -1,0 +1,7 @@
+{
+  "revision": "c5a2f2b898fa940af8a42a387f7894dffb7195e2",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"The vitest resource manifest lists the read-confinement and checkpoint own-repository test files as process-heavy; no guidance in scripts/AGENTS.md changes"}
+  ]
+}

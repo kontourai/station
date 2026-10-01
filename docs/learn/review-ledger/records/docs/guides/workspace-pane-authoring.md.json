@@ -26,7 +26,7 @@
 
     {"path":"src-server/services/projects/workspace-pane-catalog.ts","digest":"d46e8e6c91c8e1e5ae10ca584759a673bdc90a8d932352348150d140b2275222","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
 
-    {"path":"src-server/services/projects/workspace-pane-known-declarations.ts","digest":"fb388e8a3d6305d71327ed47b6b2ca5fce4135b4fddbdfaa3a6255de95a50c22","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
+    {"path":"src-server/services/projects/workspace-pane-known-declarations.ts","digest":"b6bf90151147637d4f60aac26553a981145103bd7ca5eaca8f4f90b8d0902394","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"a9f5663afcbab53711fe45e5478ea5604d794a7a"},
 

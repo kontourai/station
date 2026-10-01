@@ -101,9 +101,17 @@ create authority.
 selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
 Human input with a current epoch can preempt an Agent; Agents cannot preempt
-a live human holder. Watching needs no control lease. Closing the pane does
-not explicitly release the human lease; it can lapse. A timeout or interrupted
-operation does not establish that an already-sent browser effect was undone.
+a live human holder. Watching needs no control lease. The pane's control line
+says who is driving in one word (**Agent** or **You**) with the float-over-chat's
+rule (the lease holder, or an Agent whose last input is under ten seconds old).
+There is no Take control button: a click or key on the page takes control, and
+while an Agent drives, hovering the page says so. While a person holds control,
+the chip opens **Hand back to agent** (**Release control** when no Agent has
+driven the session), which releases the lease explicitly and is recorded as
+`control-released`; an Agent may then claim at once instead of waiting for the
+person's hold to lapse. Closing the pane does not release the lease; it
+can lapse. A timeout or interrupted operation does not establish that an
+already-sent browser effect was undone.
 
 **Agent access → Let agents run JavaScript in this Project's pages** is off by
 default and is a separate permission from ordinary read/click/type tools. A
@@ -112,6 +120,71 @@ requests cannot. Enabled scripts act with the page's privileges and may keep
 running after the tool call ends. Even without evaluation, dynamic pages can
 move targets between checking and input. Do not treat a tool response or a
 screenshot as independent verification of the application under test.
+
+## Page dialogs, console, screenshots and new windows
+
+The [screencast producer](../../src-server/services/browser/chromium-screencast-producer.ts)
+decides each JavaScript dialog when it opens:
+
+- An `alert`, `confirm` or `prompt` that opens while a **person** holds the
+  view's control is held for them. The pane shows it over the live view with
+  the page's host and text; OK, Cancel (or Escape) and a prompt's answer go
+  back through `POST /api/browser/sessions/:id/dialog`, which needs drive
+  standing and refuses Agent-originated requests. The answer is recorded as
+  `dialog-answered`; a prompt's typed text is not recorded. The input that
+  opened the dialog settles immediately, and further clicks, keys and text are
+  refused (`page-dialog-open`, said in the view) until it is answered. The
+  same card appears in the float-over-chat, with **Open in pane** as an
+  icon-only control that is a 44px target on a coarse pointer. A held
+  dialog is dismissed automatically when the person's control ends
+  (released, lapsed or passed to an Agent) and after two minutes at most.
+  While the card is in view on a visible tab it sends a keep-alive: a
+  separate lease request, not input, that only extends the person's own
+  current hold (a stale one never takes control back from an Agent). The
+  server caps it at four times the 30-second hold, measured from the
+  person's last real input, so a page that keeps opening dialogs in an
+  unwatched tab cannot hold control past that; a real click or key resets
+  the cap. An answer the browser never acknowledges is `504 page-busy` and
+  one whose channel fails is `502`; both keep the dialog answerable. Only
+  Chromium's own "no dialog is showing" (the page navigated away) is
+  `409 no-dialog`.
+- A dialog that opens while an Agent holds control, or nobody does, is
+  answered automatically as before (dismissed; `beforeunload` accepted), and
+  the pane says so. `beforeunload` is never held.
+- While a person's dialog is held, every Browser tool action is refused
+  `dialog-open` and `browser_status` reports `dialogWaitingForPerson`. Agents
+  cannot answer it.
+
+Each live session captures its page's console in memory for that browser
+generation ([BrowserConsoleLog](../../src-server/services/browser/browser-console-log.ts)):
+console API calls, uncaught exceptions and the browser's own log entries. It
+keeps the latest 500 entries, cuts each to 2,000 characters, and counts what
+it evicted; the pane's **Console** drawer reads it incrementally, filters by
+level and shows the dropped count; it can be resized and scrolls on its own.
+Reading it needs view standing. Console text can carry what the pixels never
+showed (a token a page logs), so a request that may be an Agent's (Station's
+internal principal, an Agent-tool marker, a delegation device) reads it only
+where the Project allows **Let agents run JavaScript in this Project's pages**;
+otherwise it is refused `403`. Agents have no console tool.
+
+**Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over
+16 MiB, refused beyond that) with view standing, one capture at a time per
+session (a second request joins the one in flight), and offers **Save image**
+and, where the viewer's clipboard accepts PNGs, **Copy image**.
+
+The session has one tab. A `target=_blank` link or `window.open` loads in
+the same tab and the popup target is closed by the
+[Chromium host](../../src-server/services/browser/hosts/chromium-server-host.ts);
+the history records the navigation as `link-followed`. In-pane tabs are not
+implemented.
+
+The pane's chrome is one row: the address field (host and path, with back,
+forward and reload inside it), the driver chip, **Console** (with a count of
+errors not yet seen), and **⋯**, which holds Screenshot (Mod+Shift+S),
+Viewport, Sessions, Agent access, Local servers and, last, Close session. On
+a coarse pointer or a window up to 768px wide every control is at least 44px
+and the row does not wrap; the path gives way first, then the host. The 390px
+check below found no control under 44px.
 
 ## State, evidence and remaining limits
 
@@ -139,6 +212,13 @@ shared canvas.
 
 Source and fixture evidence lives in the
 [BrowserSessionService module](../architecture/module-map.md#browsersessionservice).
-This documentation review used synthetic acquisition/host/producer seams. It
-did not download or launch a real browser, reach a public site, drive a device,
-measure a saturated browser connection pool, or qualify a release package.
+The page-tools change (dialogs, console, screenshots, hand-back) was
+checked against an installed Chrome on macOS: the real-browser producer test
+answers an `alert` and a `prompt` a person's click opened and reads the
+console and a PNG screenshot, and an isolated Station was driven with
+Playwright at 1280px and at 390px with touch input (including typing into a
+page field through the canvas keyboard target). That run used a local
+fixture page, not a public site, and did not use a physical phone's
+on-screen keyboard, a real Agent, a device, a saturated connection pool, or
+a release package. Earlier documentation reviews used synthetic
+acquisition/host/producer seams only.

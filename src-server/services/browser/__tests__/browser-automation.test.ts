@@ -107,6 +107,10 @@ function fakeHost() {
       beforeSend = fn;
     },
     inputs: () => sent.filter((s) => s.method.startsWith('Input.')),
+    /** A CDP event from the page's session (S1). */
+    emit(event: string, params: unknown) {
+      for (const fn of listeners.get(event) ?? []) fn(params, 'S1');
+    },
     mouse: () =>
       sent
         .filter((s) => s.method === 'Input.dispatchMouseEvent')
@@ -269,6 +273,7 @@ async function harness(
     sessions,
     surfaces,
     surfaceIdFor: (id) => binder.surfaceIdFor(id),
+    dialogWaitingForPerson: (id) => binder.pendingDialogFor(id) !== undefined,
     settings,
     locatorEngine: async () => undefined,
     sleep: async () => {},
@@ -636,6 +641,114 @@ describe('BrowserAutomation: control through the live-surface lease', () => {
     expect(result).toMatchObject({ ok: false, code: 'human-controlling' });
     expect(String((result as { message: string }).message)).toMatch(/wait/i);
     expect(h.fake.inputs()).toEqual([]);
+  });
+
+  test("a dialog the agent's own click opens is answered automatically, as before a person could answer dialogs", async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const authority = await authorityFor();
+    h.fake.onSend((method, params) => {
+      if (
+        method === 'Input.dispatchMouseEvent' &&
+        params.type === 'mouseReleased'
+      )
+        h.fake.emit('Page.javascriptDialogOpening', {
+          type: 'confirm',
+          message: 'Really?',
+        });
+      return undefined;
+    });
+    const result = await h.automation.click(
+      authority,
+      session.browserSessionId,
+      { x: 100, y: 50 },
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(
+      h.fake.sent.filter((s) => s.method === 'Page.handleJavaScriptDialog'),
+    ).toEqual([
+      { method: 'Page.handleJavaScriptDialog', params: { accept: false } },
+    ]);
+    expect(h.binder.pendingDialogFor(session.browserSessionId)).toBeUndefined();
+  });
+
+  test('a dialog held for a person is theirs while they hold control: the agent is held off and never answers it', async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const authority = await authorityFor();
+    const entry = h.entryOf(session.browserSessionId);
+    expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'prompt',
+      message: 'Name?',
+    });
+    expect(h.binder.pendingDialogFor(session.browserSessionId)).toMatchObject({
+      type: 'prompt',
+    });
+    const result = await h.automation.click(
+      authority,
+      session.browserSessionId,
+      { x: 100, y: 50 },
+    );
+    expect(result).toMatchObject({ ok: false });
+    expect(h.fake.inputs()).toEqual([]);
+    expect(
+      h.fake.sent.filter((s) => s.method === 'Page.handleJavaScriptDialog'),
+    ).toEqual([]);
+    const status = await h.automation.status(authority);
+    expect(status[0]).toMatchObject({ dialogWaitingForPerson: true });
+  });
+
+  test('when the person releases control without answering, their held dialog is dismissed and recorded, and the agent can act', async () => {
+    const h = await harness();
+    pageBasics(h.fake);
+    const session = await h.open();
+    const authority = await authorityFor();
+    const entry = h.entryOf(session.browserSessionId);
+    expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'confirm',
+      message: 'Leave?',
+    });
+    releaseHumanControl(entry, HUMAN, entry.lease.snapshot().epoch);
+    expect(h.binder.pendingDialogFor(session.browserSessionId)).toBeUndefined();
+    expect(
+      h.fake.sent.filter((s) => s.method === 'Page.handleJavaScriptDialog'),
+    ).toEqual([
+      { method: 'Page.handleJavaScriptDialog', params: { accept: false } },
+    ]);
+    expect(
+      h.sessions.getSession(session.browserSessionId)!.activity.lastDialog,
+    ).toMatchObject({ type: 'confirm', accepted: false, controlEnded: true });
+    expect(
+      await h.automation.click(authority, session.browserSessionId, {
+        x: 100,
+        y: 50,
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  test("when the person's hold lapses without an answer, the held dialog is dismissed too", async () => {
+    let now = 1_000_000;
+    const h = await harness({ humanHoldMs: 1_000, leaseNow: () => now });
+    pageBasics(h.fake);
+    const session = await h.open();
+    const entry = h.entryOf(session.browserSessionId);
+    expect(claimHumanControl(entry, HUMAN).ok).toBe(true);
+    h.fake.emit('Page.javascriptDialogOpening', {
+      type: 'alert',
+      message: 'Saved',
+    });
+    expect(h.binder.pendingDialogFor(session.browserSessionId)).toBeDefined();
+    now += 1_001;
+    // Expiry applies on the next read of the lease.
+    expect(entry.lease.snapshot().holder).toBeNull();
+    expect(h.binder.pendingDialogFor(session.browserSessionId)).toBeUndefined();
+    expect(
+      h.sessions.getSession(session.browserSessionId)!.activity.lastDialog,
+    ).toMatchObject({ type: 'alert', controlEnded: true });
   });
 
   test('a person taking over while the agent resolves its target interrupts it before any agent input lands', async () => {
