@@ -32,6 +32,7 @@ import {
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import {
   NativeDeviceRequestRefusedError,
+  nativeDeviceOnlyObservationRoute,
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
 import {
@@ -646,7 +647,11 @@ async function admitNativeDeviceProofRequest(
   const accountOperation =
     url.pathname === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
     url.pathname.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
-  if (security.deploymentAuthentication && !accountOperation) {
+  const deviceOnly =
+    nativeDeviceOnlyObservationRoute(method, url.pathname) &&
+    !finalRequest.headers.has(APPLICATION_SESSION_NATIVE_HEADER) &&
+    !finalRequest.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER);
+  if (security.deploymentAuthentication && !accountOperation && !deviceOnly) {
     // The pilot requires a current, matching account session; a native
     // attempt never falls back to a bearer or cookie credential.
     const account =

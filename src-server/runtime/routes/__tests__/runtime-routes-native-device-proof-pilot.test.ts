@@ -247,6 +247,7 @@ describe('native Device request-proof pilot over the production composition', ()
     else process.env.STATION_ROOT = ambientRoot;
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     directories.splice(0);
   });
@@ -1385,6 +1386,57 @@ describe('native Device request-proof pilot over the production composition', ()
         code: 'unavailable',
       },
     });
+  });
+
+  test('current native Device may observe neutral Station identity before account login but cannot read Projects', async () => {
+    vi.stubEnv('STATION_BUILD_SHA', '081bfd979d9f3e180586bafb6b46130556ce5d60');
+    vi.stubEnv('STATION_INSTANCE_ID', 'native-pilot-fixture');
+    vi.stubEnv('STATION_BOOT_ID', 'native-pilot-fixture-boot');
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'neutral-native',
+      'Neutral native',
+      'viewer',
+    );
+    const paired = await h.pairNativeDevice(
+      'neutral-device',
+      guest.login,
+      'orchestration:read',
+    );
+    const peer = await h.startNativePeer(paired);
+    try {
+      const path = '/api/system/identity';
+      const identity = await peer.nativeFetch(
+        new Request(`${ORIGIN}${path}`, {
+          headers: {
+            [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof('GET', path),
+          },
+        }),
+      );
+      expect(identity.status).toBe(200);
+      expect(await identity.json()).toMatchObject({
+        instanceId: 'native-pilot-fixture',
+        bootId: 'native-pilot-fixture-boot',
+        sha: '081bfd979d9f3e180586bafb6b46130556ce5d60',
+      });
+      const project = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: {
+            [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof(
+              'GET',
+              '/api/projects',
+            ),
+          },
+        }),
+      );
+      expect(project.status).toBe(401);
+      await project.text();
+      expect(
+        h.security.devicePairing.identifyDevice(paired.credential)?.id,
+      ).toBe(paired.device.id);
+    } finally {
+      peer.dispose();
+    }
   });
 
   test('mounted native HTTP invitation acceptance composes actual account and Device proof, then preserves Device across account401 and same-person reauthentication', async () => {

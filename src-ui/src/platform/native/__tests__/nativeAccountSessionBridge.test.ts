@@ -49,6 +49,16 @@ async function fixture() {
   const context = opaque(5),
     challengeId = opaque(6),
     challengeNonce = opaque(7);
+  const membership = {
+    scope: {
+      stationId: target.stationId,
+      localProjectId: 'project-1',
+      localProjectSlug: 'shared',
+      portableProjectId: 'portable-1',
+    },
+    grantsDeviceAccess: false as const,
+  };
+  let acceptanceResponse: unknown = { data: membership };
   let hangAcceptance = false;
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const application: NativeAccountApplicationOwner = {
@@ -83,7 +93,7 @@ async function fixture() {
       if (url.endsWith('/accept-invitation'))
         return hangAcceptance
           ? new Response(new ReadableStream())
-          : Response.json({ data: { grantsDeviceAccess: false } });
+          : Response.json(acceptanceResponse);
       throw new Error('unlisted request');
     },
   };
@@ -162,6 +172,10 @@ async function fixture() {
   });
   return {
     bridge,
+    membership,
+    setAcceptance: (result: unknown) => {
+      acceptanceResponse = result;
+    },
     signal,
     calls,
     invoke,
@@ -190,9 +204,23 @@ test('native account bridge composes structured host proofs and forwards fixed i
     path: '/api/projects',
   });
   expect(headers[PROOF]).toBeTypeOf('string');
-  await expect(h.bridge.acceptInvitation(opaque(8))).resolves.toEqual({
-    data: { grantsDeviceAccess: false },
+  await expect(h.bridge.acceptInvitation(opaque(8))).resolves.toEqual(
+    h.membership,
+  );
+  h.setAcceptance({ data: { grantsDeviceAccess: false } });
+  await expect(h.bridge.acceptInvitation(opaque(8))).rejects.toThrow();
+  h.setAcceptance({
+    data: {
+      ...h.membership,
+      scope: {
+        ...h.membership.scope,
+        stationId: '99999999-9999-4999-8999-999999999999',
+      },
+    },
   });
+  await expect(h.bridge.acceptInvitation(opaque(8))).rejects.toThrow(
+    'native_account_membership_owner_mismatch',
+  );
   const accepted = h.calls.find((call) =>
     call.url.endsWith('/accept-invitation'),
   )!;
