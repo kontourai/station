@@ -162,7 +162,7 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/kontour/station-tones.ts","digest":"1eeb2a838deac029d076e722339d6e84bca165b9dc3dc428219f767cd8587d46","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
+    {"path":"src-ui/src/components/kontour/station-tones.ts","digest":"aa02747ff27196bbfeddd883bbe2b68423c4b8e00a19ef15964f210813256179","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
 
     {"path":"src-ui/src/components/chat/HarnessQuestionCard.tsx","digest":"911b4c62834e21d948842f9f2b9762d0a943b97593f62635d226436045c1df42","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
