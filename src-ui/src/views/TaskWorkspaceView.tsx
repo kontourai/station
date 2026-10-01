@@ -430,12 +430,31 @@ function TaskWorkspaceContent({
     <div className="page page--full task-workspace">
       <TaskHeader task={graph.task} />
       <div className="task-workspace__body">
+        <section className="task-workspace__section" aria-label="Task brief">
+          <h3 className="task-workspace__section-title">
+            What we're working toward
+          </h3>
+          <p>
+            {graph.task.description ||
+              'Discuss the objective, questions, and next steps with your team in the shared conversation.'}
+          </p>
+        </section>
+        {activeExperience.id === 'direct' ? (
+          <TaskRoomWorkspaceSection
+            task={graph.task}
+            onOpenActionChange={captureBasisHostOpen}
+          />
+        ) : null}
         <TaskExperienceNavigation
           experiences={experiences}
           activeExperienceId={activeExperience.id}
           onSelect={setActiveExperienceId}
         />
-        <TaskIdentitySection task={graph.task} />
+        <details className="task-workspace__record-details">
+          <summary>Task and workspace details</summary>
+          <TaskIdentitySection task={graph.task} />
+          <WorkspaceBindingSection task={graph.task} />
+        </details>
         <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
           <TaskTurnReferenceView
             taskId={taskId}
@@ -443,7 +462,6 @@ function TaskWorkspaceContent({
           />
         </WorkspacePaneHostOpenContext.Provider>
         <TaskUserInputReferences taskId={taskId} />
-        <WorkspaceBindingSection task={graph.task} />
         <TaskOutputsSection
           task={graph.task}
           promotion={outputPromotion}
@@ -456,10 +474,6 @@ function TaskWorkspaceContent({
         {activeExperience.id === 'direct' ? (
           <>
             <DirectExperienceBoundary experience={activeExperience} />
-            <TaskRoomWorkspaceSection
-              task={graph.task}
-              onOpenActionChange={captureBasisHostOpen}
-            />
             <LocalReferencesSection
               taskId={taskId}
               projectSlug={graph.task.projectId}

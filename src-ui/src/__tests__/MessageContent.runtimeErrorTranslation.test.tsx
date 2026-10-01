@@ -105,7 +105,7 @@ test('a failed engine turn preserves its refusal without claiming the session wa
 test('a station-agent retriable turn failure renders translated copy with a retry hint, not the bare engine sentence', async () => {
   const { container } = renderPart({
     type: 'text',
-    content: '⚠️ Station agent turn failed',
+    content: '⚠️ The response stream failed.',
     runtimeError: true,
     runtimeErrorCode: 'station_agent_turn_failed',
   });
@@ -114,4 +114,32 @@ test('a station-agent retriable turn failure renders translated copy with a retr
   );
   expect(container.textContent).toMatch(/send it again to retry/i);
   expect(container.textContent).not.toContain('Raw engine message');
+});
+
+test('a station-agent failure with a status-derived reason renders that reason', async () => {
+  const reason = 'The model provider returned an error (HTTP 500).';
+  const { container } = renderPart({
+    type: 'text',
+    content: `⚠️ ${reason}`,
+    runtimeError: true,
+    runtimeErrorCode: 'station_agent_turn_failed',
+  });
+  await waitFor(() =>
+    expect(container.textContent).toMatch(/did not complete/i),
+  );
+  expect(container.textContent).toContain(reason);
+  expect(container.textContent).not.toContain('could not finish this turn');
+});
+
+test('a station-agent failure never renders provider text under its code', async () => {
+  const { container } = renderPart({
+    type: 'text',
+    content: '⚠️ upstream exploded sk-live-SECRET-42 leaked detail',
+    runtimeError: true,
+    runtimeErrorCode: 'station_agent_turn_failed',
+  });
+  await waitFor(() =>
+    expect(container.textContent).toMatch(/did not complete/i),
+  );
+  expect(container.textContent).not.toContain('sk-live-SECRET');
 });

@@ -821,8 +821,11 @@ describe('SessionsView', () => {
     expect(
       row?.querySelector('.split-pane__item-subtitle')?.textContent,
     ).toMatch(/^Waiting on you · \d+d ago$/);
+    // The row is named by its title alone; its status line describes it.
+    // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
-      name: /^An independent session Waiting on you · \d+d ago$/,
+      name: 'An independent session',
+      description: /^\s*Waiting on you · \d+d ago$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(

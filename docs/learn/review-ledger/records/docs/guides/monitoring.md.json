@@ -22,7 +22,7 @@
 
     {"path":"src-server/monitoring/schema.ts","digest":"81b50a785e36009c3929cb6b9718944f293225ac1d6d015eb916c34a7a01f406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/routes/chat/chat-lifecycle.ts","digest":"afca720b097f5326b1b8a393136fe0924876f4847ab577d08eaf26fd966dd86a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/routes/chat/chat-lifecycle.ts","digest":"9b8c9f752c22eb9d3986331263f5ce25f5c86f91466fb8fbd1f65cd4db36efb8","revision":"50d1e9a2b4e524d2b761122376f79f976bf90798"},
 
     {"path":"src-server/routes/operations/insights.ts","digest":"7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

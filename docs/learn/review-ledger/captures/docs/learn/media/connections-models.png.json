@@ -2,9 +2,9 @@
   "path": "docs/learn/media/connections-models.png",
 
   "sources": [
-    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"5685b2ffdec3e6ca482cc06b89b340af3fe0d922455e152f855748470ba70469","revision":"c95c15c1da61afdef33a3aa6678286a794a98ef0"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"c95c15c1da61afdef33a3aa6678286a794a98ef0"},
 
     {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
 
