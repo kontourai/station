@@ -5,6 +5,7 @@ import type {
   PullRequestChecksObservation,
   PullRequestMergeMethod,
   PullRequestMergeResult,
+  PullRequestReviewComment,
   PullRequestReviewCommentsObservation,
   PullRequestReviewInput,
   PullRequestReviewOutcome,
@@ -16,7 +17,7 @@ import {
   submitPullRequestReview,
 } from '@kontourai/station-sdk/pull-request-review';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   activeChatsStore,
   useActiveChatActions,
@@ -25,10 +26,14 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { relativeTimeAgo } from '../../utils/relativeTime';
+// The Browser pane's round icon control, until the shared `IconButton` (a
+// sibling change) lands; this import moves there with it.
 import { BrowserIconButton } from '../../workspace-panes/browser-pane/BrowserIconButton';
 import { Button } from '../Button';
 import {
   ArrowLeftGlyph,
+  ArrowRightGlyph,
   ExternalLinkGlyph,
   RefreshGlyph,
 } from '../icons/Glyph';
@@ -96,6 +101,79 @@ const ATTENTION_STATES = new Set<PullRequestCheckState>([
   'pending',
   'cancelled',
 ]);
+
+type Tone = 'success' | 'failure' | 'pending' | 'neutral';
+const CHECK_STATE_TONE: Record<PullRequestCheckState, Tone> = {
+  failure: 'failure',
+  pending: 'pending',
+  cancelled: 'neutral',
+  success: 'success',
+  neutral: 'neutral',
+  skipped: 'neutral',
+};
+
+/**
+ * The pull request's state as a word people use, from the forge's enum
+ * (GitHub `OPEN`/`CLOSED`/`MERGED`, GitLab `opened`/`closed`/`merged`/
+ * `locked`). An enum this pane does not know is written as a word too, never
+ * raw.
+ */
+export function pullRequestStateChip(state: string): {
+  label: string;
+  tone: Tone;
+} {
+  const key = state.trim().toUpperCase();
+  if (key === 'OPEN' || key === 'OPENED')
+    return { label: 'Open', tone: 'success' };
+  if (key === 'DRAFT') return { label: 'Draft', tone: 'neutral' };
+  if (key === 'MERGED') return { label: 'Merged', tone: 'neutral' };
+  if (key === 'CLOSED') return { label: 'Closed', tone: 'failure' };
+  return { label: humanise(state), tone: 'neutral' };
+}
+
+/**
+ * The review decision as a chip, or none when the forge reports no review
+ * yet. GitHub reports the latest review's state; GitLab's `reviewStatus` is
+ * its detailed merge status, read the same way.
+ */
+export function reviewDecisionChip(
+  status: string,
+): { label: string; tone: Tone } | null {
+  const key = status.trim().toUpperCase();
+  if (!key || key === 'NONE') return null;
+  if (key === 'APPROVED') return { label: 'Approved', tone: 'success' };
+  if (key === 'CHANGES_REQUESTED')
+    return { label: 'Changes requested', tone: 'failure' };
+  if (key === 'REVIEW_REQUIRED' || key === 'PENDING' || key === 'NOT_APPROVED')
+    return { label: 'Review required', tone: 'pending' };
+  if (key === 'COMMENTED') return { label: 'Commented', tone: 'neutral' };
+  if (key === 'DISMISSED')
+    return { label: 'Review dismissed', tone: 'neutral' };
+  return { label: humanise(status), tone: 'neutral' };
+}
+
+/** `CI_MUST_PASS` → "Ci must pass": words, with the first capitalised. */
+function humanise(value: string): string {
+  const words = value.trim().replace(/[_-]+/g, ' ').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const plural = (count: number, word: string) =>
+  `${count} ${word}${count === 1 ? '' : 's'}`;
+
+/**
+ * A native disclosure's summary with a visible caret: `display: flex` on a
+ * summary drops the browser's marker, so the affordance is drawn here and
+ * turns when the details opens (CSS). Expanded state stays native.
+ */
+function DisclosureSummary({ children }: { children: React.ReactNode }) {
+  return (
+    <summary className="pull-request-review__summary">
+      <ArrowRightGlyph className="pull-request-review__caret" />
+      <span>{children}</span>
+    </summary>
+  );
+}
 
 function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
   if (checks.length === 0) return null;
@@ -178,27 +256,46 @@ function PullRequestChecks({
     ATTENTION_STATES.has(check.state),
   );
   const settled = sorted.filter((check) => !ATTENTION_STATES.has(check.state));
+  const allPassed =
+    counts.length === 1 && counts[0][0] === 'success' && !checks.partial;
+  // The disclosure names only the states it holds: "passed", or "passed or
+  // skipped", never a list of states that are not there.
+  const settledStates = counts
+    .filter(([state]) => !ATTENTION_STATES.has(state))
+    .map(([state]) => CHECK_STATE_LABEL[state].toLowerCase());
   return (
     <>
-      <p role="status" className="pull-request-review__checks-summary">
-        {counts
-          .map(
-            ([state, count]) =>
-              `${count} ${CHECK_STATE_LABEL[state].toLowerCase()}`,
-          )
-          .join(' · ')}
-        {checks.partial
-          ? '. Only part of the checks could be read; open the forge for the rest.'
-          : ''}
+      <p className="pull-request-review__checks-summary">
+        {allPassed ? (
+          <span
+            className="pull-request-review__count"
+            data-tone="success"
+          >{`${plural(settled.length, 'check')} passed`}</span>
+        ) : (
+          counts.map(([state, count]) => (
+            <span
+              key={state}
+              className="pull-request-review__count"
+              data-tone={CHECK_STATE_TONE[state]}
+            >
+              {count} {CHECK_STATE_LABEL[state].toLowerCase()}
+            </span>
+          ))
+        )}
+        {checks.partial && (
+          <span className="pull-request-review__muted">
+            Only part of the checks could be read; open the forge for the rest.
+          </span>
+        )}
       </p>
       <CheckList checks={needsAttention} />
       {settled.length > 0 && (
         <details className="pull-request-review__settled">
-          <summary>
+          <DisclosureSummary>
             {needsAttention.length === 0 ? 'Show' : 'Show the other'}{' '}
-            {settled.length} passed, neutral or skipped check
-            {settled.length === 1 ? '' : 's'}
-          </summary>
+            {settled.length} {settledStates.join(' or ')}{' '}
+            {plural(settled.length, 'check').replace(/^\d+ /, '')}
+          </DisclosureSummary>
           <CheckList checks={settled} />
         </details>
       )}
@@ -219,14 +316,21 @@ function UnplacedReviewComments({
 }) {
   if (!comments) return null;
   if (comments.state === 'unavailable')
-    return <p className="pull-request-review__muted">{comments.reason}</p>;
+    return (
+      <>
+        <h3>Inline comments</h3>
+        <p className="pull-request-review__muted">{comments.reason}</p>
+      </>
+    );
   const unplaced = comments.comments.filter(
     (comment) =>
       comment.line === null ||
       !placed.get(comment.path)?.[comment.side].has(comment.line),
   );
+  if (unplaced.length === 0 && !comments.partial) return null;
   return (
     <>
+      <h3>Inline comments</h3>
       {comments.partial && (
         <p className="pull-request-review__muted">
           Only part of the inline review comments could be read. Open the forge
@@ -235,16 +339,13 @@ function UnplacedReviewComments({
       )}
       {unplaced.length > 0 && (
         <details className="pull-request-review__unplaced">
-          <summary>
-            {unplaced.length} inline comment{unplaced.length === 1 ? '' : 's'}{' '}
-            not on the current diff
-          </summary>
-          <ol className="pull-request-review__discussion">
+          <DisclosureSummary>
+            {plural(unplaced.length, 'comment')} not on the current diff
+          </DisclosureSummary>
+          <ol className="pull-request-review__forge-comments">
             {unplaced.map((comment) => (
               <li key={comment.id}>
-                <strong>{comment.author}</strong> on <code>{comment.path}</code>
-                {comment.line === null ? ' (outdated)' : ''}
-                <div className="pull-request-review__body">{comment.body}</div>
+                <ForgeComment comment={comment} />
               </li>
             ))}
           </ol>
@@ -255,9 +356,44 @@ function UnplacedReviewComments({
 }
 
 /**
- * Paths with hunks in a unified patch: the new name (`+++ b/x`) and, for a
- * deletion or rename, the old one (`--- a/x`).
+ * One forge comment the diff could not place, as a named article so it
+ * reads apart from a local Station comment. A file-level comment is a
+ * comment on the file; only a line comment the forge no longer maps is
+ * "outdated".
  */
+function ForgeComment({ comment }: { comment: PullRequestReviewComment }) {
+  const where =
+    comment.subject === 'file'
+      ? 'the file'
+      : comment.line === null
+        ? 'an outdated line'
+        : `line ${comment.line}`;
+  return (
+    <article
+      className="pull-request-review__forge-comment"
+      aria-label={`Forge comment by ${comment.author} on ${where} of ${comment.path}`}
+    >
+      <div className="pull-request-review__forge-comment-meta">
+        <strong>{comment.author}</strong>
+        <span className="pull-request-review__muted">
+          on {where} of <code>{comment.path}</code>
+        </span>
+        {comment.url ? (
+          <BrowserIconButton
+            className="pull-request-review__icon"
+            aria-label="Open this comment on the forge"
+            title="Open this comment on the forge"
+            onClick={() => void openExternalLink(comment.url!)}
+          >
+            <ExternalLinkGlyph />
+          </BrowserIconButton>
+        ) : null}
+      </div>
+      <div className="pull-request-review__body">{comment.body}</div>
+    </article>
+  );
+}
+
 /** The lines of each file a unified patch shows, per diff side. */
 type PlacedLines = ReadonlyMap<
   string,
@@ -266,54 +402,141 @@ type PlacedLines = ReadonlyMap<
     readonly deletions: ReadonlySet<number>;
   }
 >;
+const NO_PLACED_LINES: PlacedLines = new Map();
 
 /**
  * Which (path, side, line) the diff surface can anchor a comment to: the
  * lines inside the patch's hunks, numbered as each side numbers them. A
  * comment on a changed file but outside every hunk is as unplaceable as one
  * on a file the patch omits, and must be listed rather than lost.
+ *
+ * A deleted file (`+++ /dev/null`) keeps its old name from `--- a/x`, so a
+ * comment on its deletions side still places. File headers are read only
+ * between hunks: inside one, `+++ x` is an added line whose text starts
+ * with `++ `, and the hunk's own line counts say where it ends.
  */
-function placedLines(patch: string): PlacedLines {
+export function placedLines(patch: string): PlacedLines {
   const files = new Map<
     string,
     { additions: Set<number>; deletions: Set<number> }
   >();
+  const open = (path: string) => {
+    const lines = files.get(path) ?? {
+      additions: new Set<number>(),
+      deletions: new Set<number>(),
+    };
+    files.set(path, lines);
+    return lines;
+  };
   let current: { additions: Set<number>; deletions: Set<number> } | undefined;
+  let oldPath: string | undefined;
   let oldLine = 0;
   let newLine = 0;
+  let oldLeft = 0;
+  let newLeft = 0;
   for (const line of patch.split('\n')) {
-    const header = /^\+\+\+ (?:b\/)?(.+)$/.exec(line);
-    if (header) {
-      const path = header[1] === '/dev/null' ? undefined : header[1];
-      current = path
-        ? (files.get(path) ?? { additions: new Set(), deletions: new Set() })
-        : undefined;
-      if (path && current) files.set(path, current);
-      continue;
+    const inHunk = oldLeft > 0 || newLeft > 0;
+    if (!inHunk) {
+      const old = /^--- (?:a\/)?(.+)$/.exec(line);
+      if (old) {
+        oldPath = old[1] === '/dev/null' ? undefined : old[1];
+        continue;
+      }
+      const header = /^\+\+\+ (?:b\/)?(.+)$/.exec(line);
+      if (header) {
+        const path = header[1] === '/dev/null' ? oldPath : header[1];
+        current = path ? open(path) : undefined;
+        oldPath = undefined;
+        continue;
+      }
     }
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    // A hunk's content lines start with ' ', '+', '-' or '\', so `@@` is
+    // unambiguous wherever it appears.
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (hunk) {
       oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
+      oldLeft = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      newLine = Number(hunk[3]);
+      newLeft = hunk[4] === undefined ? 1 : Number(hunk[4]);
       continue;
     }
-    if (!current || line.startsWith('\\')) continue;
+    if (!current || !inHunk || line.startsWith('\\')) continue;
     if (line.startsWith('+')) {
       current.additions.add(newLine);
       newLine += 1;
+      newLeft -= 1;
     } else if (line.startsWith('-')) {
       current.deletions.add(oldLine);
       oldLine += 1;
-    } else if (line.startsWith(' ') || line === '') {
+      oldLeft -= 1;
+    } else {
       // Context carries both numbers; an empty line is blank context.
-      if (line === '' && !(oldLine > 0 && newLine > 0)) continue;
       current.additions.add(newLine);
       current.deletions.add(oldLine);
       newLine += 1;
       oldLine += 1;
+      newLeft -= 1;
+      oldLeft -= 1;
     }
   }
   return files;
+}
+
+/**
+ * Two scannable lines under the title: the state and review decision as
+ * chips, the branches in monospace, the author and commit count; then the
+ * repository, a short commit id (full value in its title) and when this was
+ * observed, relative, with the absolute time in its title.
+ */
+function ReviewHeader({
+  pullRequest,
+  headSha,
+  observedAt,
+}: {
+  pullRequest: PullRequest;
+  headSha: string;
+  observedAt: string;
+}) {
+  const state = pullRequestStateChip(pullRequest.state);
+  const decision = reviewDecisionChip(pullRequest.reviewStatus);
+  const observed = Date.parse(observedAt);
+  return (
+    <div className="pull-request-review__head">
+      <div className="pull-request-review__meta">
+        <span className="pull-request-review__chip" data-tone={state.tone}>
+          {state.label}
+        </span>
+        {decision && (
+          <span className="pull-request-review__chip" data-tone={decision.tone}>
+            {decision.label}
+          </span>
+        )}
+        <span className="pull-request-review__branches">
+          <code>{pullRequest.sourceBranch}</code>
+          <span aria-hidden="true"> → </span>
+          <span className="sr-only"> into </span>
+          <code>{pullRequest.targetBranch}</code>
+        </span>
+        <span>{pullRequest.author.login}</span>
+        <span>{plural(pullRequest.commits, 'commit')}</span>
+      </div>
+      <div className="pull-request-review__meta pull-request-review__meta--secondary">
+        <span title={pullRequest.host}>
+          {pullRequest.repository.owner}/{pullRequest.repository.name} #
+          {pullRequest.ref}
+        </span>
+        <code title={`Head ${headSha}`}>{headSha.slice(0, 7)}</code>
+        {Number.isNaN(observed) ? null : (
+          <time
+            dateTime={observedAt}
+            title={new Date(observed).toLocaleString()}
+          >
+            observed {relativeTimeAgo(observed, Date.now())}
+          </time>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const loadDiff = () =>
@@ -412,6 +635,13 @@ function ReviewOwner({
   const open = ['OPEN', 'OPENED'].includes(
     data?.pullRequest.state.toUpperCase() ?? '',
   );
+  // Placement is a function of the patch alone; the comment box re-renders
+  // this owner on every keystroke and must not re-parse the diff each time.
+  const patch = data?.diff.state === 'available' ? data.diff.patch : undefined;
+  const placed = useMemo(
+    () => (patch === undefined ? NO_PLACED_LINES : placedLines(patch)),
+    [patch],
+  );
   const submit = async () => {
     if (!intent || !scope?.isCurrent() || submitting.current) return;
     submitting.current = true;
@@ -506,28 +736,44 @@ function ReviewOwner({
         <h2 className="pull-request-review__title">
           {data?.pullRequest.title ?? `#${target.ref}`}
         </h2>
-        <BrowserIconButton
-          className="pull-request-review__icon"
-          aria-label="Refresh"
-          title="Refresh the review from the provider"
-          disabled={review.isFetching || pending || !scope?.isCurrent()}
-          onClick={() => void review.refetch()}
-        >
-          <RefreshGlyph />
-        </BrowserIconButton>
-        {data?.pullRequest.url ? (
-          // The way to the forge stays on the bar. In the Station app the host
-          // opens what its policy admits (#2480), and any refusal shows the
-          // link with a Copy action rather than nothing.
+        {/* The actions wrap under the title as one unit when the bar is
+            narrow, so the title keeps its width. */}
+        <div className="pull-request-review__bar-actions">
+          {data && (
+            // The pane's one labelled action: it acts on the whole review.
+            <Button
+              size="sm"
+              className="pull-request-review__handoff"
+              title="Add this review's reference to the open chat's draft"
+              onClick={addReviewContextToChat}
+              disabled={!activeChat}
+            >
+              Add to chat
+            </Button>
+          )}
           <BrowserIconButton
             className="pull-request-review__icon"
-            aria-label={pullRequestExternalLabel(data.pullRequest.url)}
-            title={pullRequestExternalLabel(data.pullRequest.url)}
-            onClick={() => void openExternalLink(data.pullRequest.url)}
+            aria-label="Refresh"
+            title="Refresh the review from the provider"
+            disabled={review.isFetching || pending || !scope?.isCurrent()}
+            onClick={() => void review.refetch()}
           >
-            <ExternalLinkGlyph />
+            <RefreshGlyph />
           </BrowserIconButton>
-        ) : null}
+          {data?.pullRequest.url ? (
+            // The way to the forge stays on the bar. In the Station app the
+            // host opens what its policy admits (#2480), and any refusal shows
+            // the link with a Copy action rather than nothing.
+            <BrowserIconButton
+              className="pull-request-review__icon"
+              aria-label={pullRequestExternalLabel(data.pullRequest.url)}
+              title={pullRequestExternalLabel(data.pullRequest.url)}
+              onClick={() => void openExternalLink(data.pullRequest.url)}
+            >
+              <ExternalLinkGlyph />
+            </BrowserIconButton>
+          ) : null}
+        </div>
       </div>
       {!scope?.isCurrent() ? (
         <ErrorState
@@ -554,19 +800,12 @@ function ReviewOwner({
         />
       ) : (
         <>
-          <p>
-            {target.host}/{target.owner}/{target.repository} · #{target.ref} ·{' '}
-            {data.pullRequest.state}
-          </p>
-          <p>
-            {data.pullRequest.author.login} · {data.pullRequest.sourceBranch} →{' '}
-            {data.pullRequest.targetBranch} · {data.pullRequest.commits} commits
-            · {data.pullRequest.reviewStatus}
-          </p>
-          <p>
-            Head <code>{data.headSha}</code> · Observed{' '}
-            {new Date(data.observedAt).toLocaleString()}
-          </p>
+          <ReviewHeader
+            pullRequest={data.pullRequest}
+            headSha={data.headSha}
+            observedAt={data.observedAt}
+          />
+          {handoffStatus && <p role="status">{handoffStatus}</p>}
           <h3>Status</h3>
           <p
             className="pull-request-review__mergeability"
@@ -576,12 +815,6 @@ function ReviewOwner({
             <code>{data.pullRequest.targetBranch}</code>.
           </p>
           <PullRequestChecks checks={data.checks} />
-          <ResponsiveSurfaceActions className="pull-request-review__actions">
-            <Button onClick={addReviewContextToChat} disabled={!activeChat}>
-              Add review context to open chat
-            </Button>
-          </ResponsiveSurfaceActions>
-          {handoffStatus && <p role="status">{handoffStatus}</p>}
           <div className="pull-request-review__body">
             {data.pullRequest.body}
           </div>
@@ -623,11 +856,7 @@ function ReviewOwner({
           )}
           <UnplacedReviewComments
             comments={data.reviewComments}
-            placed={
-              data.diff.state === 'available'
-                ? placedLines(data.diff.patch)
-                : new Map()
-            }
+            placed={placed}
           />
           <h3>Discussion</h3>
           {data.discussionPartial && (
@@ -639,7 +868,13 @@ function ReviewOwner({
           <ol className="pull-request-review__discussion">
             {data.discussion.map((item) => (
               <li key={`${item.kind}:${item.id}`}>
-                <strong>{item.author}</strong> {item.state ?? item.kind}
+                <strong>{item.author}</strong>{' '}
+                <span className="pull-request-review__muted">
+                  {item.state
+                    ? (reviewDecisionChip(item.state)?.label ??
+                      humanise(item.state))
+                    : item.kind}
+                </span>
                 <div className="pull-request-review__body">{item.body}</div>
               </li>
             ))}

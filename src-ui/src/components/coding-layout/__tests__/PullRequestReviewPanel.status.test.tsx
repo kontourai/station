@@ -182,9 +182,20 @@ describe('pull request status', () => {
     expect(
       (await screen.findByText(/Has conflicts with/)).textContent,
     ).toContain('Has conflicts with main.');
+    // Small toned counts, failures first; the paragraph is static (no live
+    // region for a value that does not change under the reader).
+    const counts = screen.getByText('1 failed').parentElement as HTMLElement;
+    expect(counts.getAttribute('role')).toBeNull();
     expect(
-      screen.getByText('1 failed · 1 pending · 1 passed · 1 skipped'),
-    ).toBeTruthy();
+      Array.from(counts.querySelectorAll('.pull-request-review__count')).map(
+        (count) => [count.textContent, count.getAttribute('data-tone')],
+      ),
+    ).toEqual([
+      ['1 failed', 'failure'],
+      ['1 pending', 'pending'],
+      ['1 passed', 'success'],
+      ['1 skipped', 'neutral'],
+    ]);
     const items = screen
       .getAllByRole('listitem')
       .filter((item) => item.hasAttribute('data-check-state'));
@@ -200,12 +211,20 @@ describe('pull request status', () => {
     // disclosure.
     expect(items[0].closest('details')).toBeNull();
     expect(items[1].closest('details')).toBeNull();
-    const settled = screen
-      .getByText('Show the other 2 passed, neutral or skipped checks')
-      .closest('details');
+    // The disclosure names only the states it holds, and is a native
+    // summary with a visible caret.
+    const label = screen.getByText('Show the other 2 passed or skipped checks');
+    const summary = label.closest('summary') as HTMLElement;
+    expect(summary.tagName).toBe('SUMMARY');
+    expect(
+      summary.querySelector('svg.pull-request-review__caret'),
+    ).toBeTruthy();
+    const settled = summary.closest('details');
     expect(settled?.open).toBe(false);
     expect(items[2].closest('details')).toBe(settled);
     expect(items[3].closest('details')).toBe(settled);
+    fireEvent.click(summary);
+    expect(settled?.open).toBe(true);
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Open Windows PR portable floor details',
@@ -218,6 +237,71 @@ describe('pull request status', () => {
     expect(
       screen.queryByRole('button', { name: 'Open classify details' }),
     ).toBeNull();
+  });
+
+  test('when every check passed it says so in one line and the disclosure names only "passed"', async () => {
+    snapshot.current = base({
+      checks: {
+        state: 'available',
+        partial: false,
+        checks: [
+          { name: 'a', state: 'success' },
+          { name: 'b', state: 'success' },
+          { name: 'c', state: 'success' },
+        ],
+      },
+    });
+    mount();
+    expect(await screen.findByText('3 checks passed')).toBeTruthy();
+    expect(screen.queryByText(/3 passed$/)).toBeNull();
+    expect(
+      screen.getByText('Show 3 passed checks').closest('summary'),
+    ).toBeTruthy();
+  });
+
+  test('the head is two scannable lines: chips, branches, short id and relative time', async () => {
+    snapshot.current = base({
+      pullRequest: {
+        ...base().pullRequest,
+        state: 'OPEN',
+        reviewStatus: 'CHANGES_REQUESTED',
+        commits: 2,
+      },
+      observedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+    mount();
+    const state = await screen.findByText('Open');
+    expect(state.className).toContain('pull-request-review__chip');
+    expect(state.getAttribute('data-tone')).toBe('success');
+    const decision = screen.getByText('Changes requested');
+    expect(decision.className).toContain('pull-request-review__chip');
+    expect(decision.getAttribute('data-tone')).toBe('failure');
+    // Never the raw enum.
+    expect(screen.queryByText(/CHANGES_REQUESTED/)).toBeNull();
+    expect(screen.queryByText(/\bOPEN\b/)).toBeNull();
+    const short = screen.getByText('aaaaaaa');
+    expect(short.tagName).toBe('CODE');
+    expect(short.getAttribute('title')).toBe(`Head ${'a'.repeat(40)}`);
+    expect(screen.queryByText('a'.repeat(40))).toBeNull();
+    const observed = screen.getByText('observed 5m ago');
+    expect(observed.tagName).toBe('TIME');
+    expect(observed.getAttribute('title')).toBeTruthy();
+    expect(screen.getByText('2 commits')).toBeTruthy();
+    expect(screen.getByText('kontourai/station #2049')).toBeTruthy();
+  });
+
+  test.each([
+    ['MERGED', 'Merged'],
+    ['closed', 'Closed'],
+    ['opened', 'Open'],
+  ])('state %s reads as %s', async (state, label) => {
+    snapshot.current = base({
+      pullRequest: { ...base().pullRequest, state },
+    });
+    mount();
+    expect(
+      (await screen.findByText(label)).getAttribute('data-tone'),
+    ).toBeTruthy();
   });
 
   test.each([
@@ -258,6 +342,7 @@ describe('pull request status', () => {
             createdAt: '2026-09-04T16:43:39Z',
             path: 'src/app.ts',
             side: 'additions',
+            subject: 'line',
             line: 2,
           },
           {
@@ -267,7 +352,19 @@ describe('pull request status', () => {
             createdAt: '2026-09-03T10:00:00Z',
             path: 'src/gone.ts',
             side: 'deletions',
+            subject: 'line',
             line: null,
+          },
+          {
+            id: '13',
+            author: 'reviewer',
+            body: 'Rename this file.',
+            createdAt: '2026-09-03T11:00:00Z',
+            path: 'README.md',
+            side: 'additions',
+            subject: 'file',
+            line: null,
+            url: 'https://github.com/kontourai/station/pull/2049#discussion_r13',
           },
         ],
       },
@@ -286,11 +383,89 @@ describe('pull request status', () => {
     expect(within(placed).getByText('reviewer')).toBeTruthy();
     // Read-only: no reply or delete on a forge comment.
     expect(within(placed).queryByRole('button')).toBeNull();
-    const unplaced = screen.getByText(
-      '1 inline comment not on the current diff',
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Inline comments' }),
+    ).toBeTruthy();
+    const unplaced = screen.getByText('2 comments not on the current diff');
+    expect(unplaced.closest('summary')).toBeTruthy();
+    const list = unplaced.closest('details') as HTMLElement;
+    // Each forge comment is a named article, apart from a local comment.
+    const outdated = within(list).getByRole('article', {
+      name: 'Forge comment by reviewer on an outdated line of src/gone.ts',
+    });
+    expect(outdated.textContent).toContain('This moved.');
+    expect(outdated.textContent).toContain('on an outdated line of');
+    // A file-level comment is on the file; it is not "outdated".
+    const onFile = within(list).getByRole('article', {
+      name: 'Forge comment by reviewer on the file of README.md',
+    });
+    expect(onFile.textContent).toContain('on the file of');
+    expect(onFile.textContent).not.toContain('outdated');
+    fireEvent.click(
+      within(onFile).getByRole('button', {
+        name: 'Open this comment on the forge',
+      }),
     );
-    expect(unplaced.closest('details')?.textContent).toContain('This moved.');
-    expect(unplaced.closest('details')?.textContent).toContain('(outdated)');
+    expect(openExternalLink).toHaveBeenCalledWith(
+      'https://github.com/kontourai/station/pull/2049#discussion_r13',
+    );
+  });
+
+  test('places a comment on a deleted file, and an added line starting with "++ " is not a file header', async () => {
+    const patch = `diff --git a/src/gone.ts b/src/gone.ts
+deleted file mode 100644
+--- a/src/gone.ts
++++ /dev/null
+@@ -1,2 +0,0 @@
+-const gone = 1;
+-export default gone;
+diff --git a/src/inc.ts b/src/inc.ts
+--- a/src/inc.ts
++++ b/src/inc.ts
+@@ -1,2 +1,3 @@
+ let n = 0;
++++ n;
+ export { n };
+`;
+    snapshot.current = base({
+      diff: { state: 'available', patch, completeness: 'provider-output' },
+      reviewComments: {
+        state: 'available',
+        partial: false,
+        comments: [
+          {
+            id: '31',
+            author: 'reviewer',
+            body: 'Why delete this?',
+            createdAt: '2026-09-04T16:43:39Z',
+            path: 'src/gone.ts',
+            side: 'deletions',
+            subject: 'line',
+            line: 2,
+          },
+          {
+            id: '32',
+            author: 'reviewer',
+            body: 'Still exported.',
+            createdAt: '2026-09-04T16:44:00Z',
+            path: 'src/inc.ts',
+            side: 'additions',
+            subject: 'line',
+            line: 3,
+          },
+        ],
+      },
+    });
+    mount();
+    await waitFor(
+      () => expect(screen.getByText('Why delete this?')).toBeTruthy(),
+      { timeout: 5_000 },
+    );
+    // Both place on the diff: nothing is listed as unplaced.
+    expect(screen.queryByText(/not on the current diff/)).toBeNull();
+    expect(
+      screen.queryByRole('heading', { level: 3, name: 'Inline comments' }),
+    ).toBeNull();
   });
 
   test('says when only part of the checks could be read', async () => {
@@ -302,12 +477,14 @@ describe('pull request status', () => {
       },
     });
     mount();
-    const sentence = await screen.findByText(
+    const caveat = await screen.findByText(
       /Only part of the checks could be read; open the forge for the rest\./,
     );
-    // The count and the caveat are one status sentence.
-    expect(sentence.getAttribute('role')).toBe('status');
-    expect(sentence.textContent).toContain('1 passed');
+    // The count and the caveat share one static line; a partial read is
+    // never "all passed".
+    expect(caveat.parentElement?.getAttribute('role')).toBeNull();
+    expect(caveat.parentElement?.textContent).toContain('1 passed');
+    expect(screen.queryByText('1 check passed')).toBeNull();
   });
 
   test('lists an inline comment on a changed file but outside its hunks as not on the current diff', async () => {
@@ -323,6 +500,7 @@ describe('pull request status', () => {
             createdAt: '2026-09-04T16:43:39Z',
             path: 'src/app.ts',
             side: 'additions',
+            subject: 'line',
             line: 3,
           },
           {
@@ -332,6 +510,7 @@ describe('pull request status', () => {
             createdAt: '2026-09-04T16:44:00Z',
             path: 'src/app.ts',
             side: 'additions',
+            subject: 'line',
             line: 40,
           },
           {
@@ -341,6 +520,7 @@ describe('pull request status', () => {
             createdAt: '2026-09-04T16:45:00Z',
             path: 'src/app.ts',
             side: 'deletions',
+            subject: 'line',
             line: 9,
           },
         ],
@@ -351,14 +531,13 @@ describe('pull request status', () => {
       () => expect(screen.getByText('Inside the hunk.')).toBeTruthy(),
       { timeout: 5_000 },
     );
-    const unplaced = screen.getByText(
-      '2 inline comments not on the current diff',
-    );
+    const unplaced = screen.getByText('2 comments not on the current diff');
     const list = unplaced.closest('details');
     expect(list?.textContent).toContain('Far below the hunk.');
+    expect(list?.textContent).toContain('line 40 of');
     expect(list?.textContent).toContain('On the old side, outside.');
     expect(list?.textContent).not.toContain('Inside the hunk.');
-    expect(list?.textContent).not.toContain('(outdated)');
+    expect(list?.textContent).not.toContain('outdated');
   });
 
   test('one quiet row: icon back, the title, icon refresh and forge link', async () => {
@@ -371,20 +550,33 @@ describe('pull request status', () => {
     });
     const bar = title.parentElement as HTMLElement;
     const controls = within(bar).getAllByRole('button');
-    expect(controls.map((b) => b.getAttribute('aria-label'))).toEqual([
+    expect(
+      controls.map((b) => b.getAttribute('aria-label') ?? b.textContent),
+    ).toEqual([
       'Back to pull requests',
+      'Add to chat',
       'Refresh',
       'Open on GitHub',
     ]);
-    for (const control of controls) {
+    // The pane's one labelled action sits on the bar, acting on the whole
+    // review; it is disabled without an open chat to add to.
+    const handoff = controls[1];
+    expect(handoff.textContent).toBe('Add to chat');
+    expect(handoff.getAttribute('title')).toBeTruthy();
+    expect((handoff as HTMLButtonElement).disabled).toBe(true);
+    for (const control of [controls[0], controls[2], controls[3]]) {
       // Icon-only, named and tooltipped: no visible words on the bar.
       expect(control.textContent).toBe('');
       expect(control.getAttribute('title')).toBeTruthy();
       expect(control.querySelector('svg')).toBeTruthy();
     }
+    // The old labelled row between Status and the body is gone.
+    expect(
+      screen.queryByRole('button', { name: 'Add review context to open chat' }),
+    ).toBeNull();
     fireEvent.click(controls[0]);
     expect(onBack).toHaveBeenCalledTimes(1);
-    fireEvent.click(controls[2]);
+    fireEvent.click(controls[3]);
     expect(openExternalLink).toHaveBeenCalledWith(
       'https://github.com/kontourai/station/pull/2049',
     );

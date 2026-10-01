@@ -89,8 +89,13 @@ async function detail(
     ),
   );
 }
-/** More than this many checks or inline comments is reported as partial. */
-const PULL_REQUEST_REVIEW_MAX_CHECKS = 200;
+/**
+ * `gh pr view --json statusCheckRollup` returns the first page of contexts
+ * (100) and nothing says whether more exist, so a full page is reported as
+ * partial: a 150-job head whose failures sit past #100 must not read as
+ * "100 passed". The same page bound applies to inline comments.
+ */
+const GITHUB_CHECK_ROLLUP_PAGE = 100;
 const PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS = 100;
 const INLINE_COMMENT_BODY_MAX = 8192;
 const INLINE_COMMENT_TOTAL_MAX = 65_536;
@@ -157,7 +162,11 @@ function readChecks(
       if (string(p.sha) !== head)
         return {
           state: 'unavailable',
-          reason: 'The latest pipeline ran on a different revision.',
+          // A merged-results pipeline runs on a merge commit the MR payload
+          // never names, so it cannot be tied to the observed head here.
+          reason: /^refs\/merge-requests\/\d+\/merge$/.test(string(p.ref))
+            ? 'The latest pipeline is a merged-results pipeline; it ran on a merge commit, not on the observed head. Open the forge to see it.'
+            : 'The latest pipeline ran on a different revision.',
         };
       const state = GITLAB_PIPELINE_STATE[string(p.status)];
       if (!state)
@@ -192,8 +201,8 @@ function readChecks(
       reason: 'The provider did not report checks.',
     };
   const checks: PullRequestCheck[] = [];
-  let partial = rollup.length > PULL_REQUEST_REVIEW_MAX_CHECKS;
-  for (const entry of rollup.slice(0, PULL_REQUEST_REVIEW_MAX_CHECKS)) {
+  let partial = rollup.length >= GITHUB_CHECK_ROLLUP_PAGE;
+  for (const entry of rollup.slice(0, GITHUB_CHECK_ROLLUP_PAGE)) {
     try {
       const item = record(entry);
       if (item.__typename === 'CheckRun') {
@@ -289,6 +298,7 @@ async function readReviewComments(
           createdAt: string(c.created_at),
           path,
           side: c.side === 'LEFT' ? 'deletions' : 'additions',
+          subject: c.subject_type === 'file' ? 'file' : 'line',
           line:
             c.subject_type !== 'file' && Number.isInteger(c.line)
               ? (c.line as number)
@@ -325,6 +335,7 @@ async function readReviewComments(
           createdAt: string(note.created_at),
           path,
           side,
+          subject: 'line',
           line: string(position.head_sha) === head ? line : null,
           ...(first ? { inReplyTo: first } : {}),
         });
@@ -490,17 +501,19 @@ export async function readPullRequestReview(
     revision.head,
     run,
   );
-  // A gh that predates `statusCheckRollup` refuses the whole view for the
-  // unknown field. The review still loads; its checks are unavailable.
+  // The closing read asks for checks too. When it fails, the review still
+  // loads from a plain read (which still confirms the head) with its checks
+  // unavailable, and only gh's own refusal of the field blames gh's version.
   let last: Json;
   let checksRefused: string | undefined;
   try {
     last = await detail(forge, host, context, ref, run, true);
   } catch (error) {
-    if (forge !== 'github' || !refusesStatusCheckRollup(error)) throw error;
+    if (forge !== 'github') throw error;
     last = await detail(forge, host, context, ref, run);
-    checksRefused =
-      'This gh cannot report checks (it predates the statusCheckRollup field). Update gh to see them.';
+    checksRefused = refusesStatusCheckRollup(error)
+      ? 'This gh cannot report checks (it predates the statusCheckRollup field). Update gh to see them.'
+      : 'The provider did not answer the checks read. Refresh to try again.';
   }
   const latest = revisions(forge, last);
   if (latest.head !== revision.head || latest.base !== revision.base)
@@ -534,11 +547,17 @@ export async function readPullRequestReview(
   };
 }
 
-/** gh's refusal of a `--json` field it does not know, by the field's name. */
+/**
+ * gh's own refusal of the `--json` field, read from stderr alone. The
+ * runner's message carries the argv, and the field name is in that argv, so
+ * matching the message would call a 403, an auth failure or a timeout
+ * "old gh".
+ */
 function refusesStatusCheckRollup(error: unknown): boolean {
-  const failure = error as { message?: unknown; stderr?: unknown };
-  return /statusCheckRollup/.test(
-    `${typeof failure?.message === 'string' ? failure.message : ''} ${typeof failure?.stderr === 'string' ? failure.stderr : ''}`,
+  const stderr = (error as { stderr?: unknown } | null)?.stderr;
+  return (
+    typeof stderr === 'string' &&
+    stderr.includes('Unknown JSON field: "statusCheckRollup"')
   );
 }
 

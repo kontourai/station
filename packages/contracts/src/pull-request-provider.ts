@@ -228,6 +228,12 @@ export interface PullRequestReviewComment {
   path: string;
   /** `additions`: a line of the new file; `deletions`: of the old file. */
   side: 'additions' | 'deletions';
+  /**
+   * `line`: made on a line, `line` null once the forge no longer maps it
+   * onto the diff. `file`: made on the file as a whole; `line` is null and
+   * that is not "outdated".
+   */
+  subject: 'line' | 'file';
   line: number | null;
   inReplyTo?: string;
   url?: string;
