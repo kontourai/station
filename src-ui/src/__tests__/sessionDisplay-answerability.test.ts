@@ -13,8 +13,8 @@ import {
  * The live regression this closes: archive#1791 retired the boot-time
  * cancellation write, so a dead session's `pendingReview` /
  * `lifecycleState: 'review_pending'` never converge. `delegatedTaskPriority`
- * returned 0 — the HIGHEST rank — for exactly that shape, and
- * `DelegatedTaskCoordinator` renders `tasks[0]` only. One stranded task
+ * returned 0 — the HIGHEST rank — for exactly that shape, and the (since
+ * removed) delegated-work coordinator card rendered `tasks[0]` only. One stranded task
  * therefore occupied the single coordinator slot indefinitely while live
  * work sat behind it.
  */

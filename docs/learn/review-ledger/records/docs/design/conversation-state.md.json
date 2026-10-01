@@ -9,14 +9,14 @@
 
   "limits": "The source survey and absence/scheduling claims are historical. Current related contracts/runtime/authorization owners were located; signing, membership, replication, witnesses, hosted tier, and research evidence were not comprehensively audited.",
 
-  "document": {"digest":"26d5d5d889741f76575bf0af0bfe2b5e9c617c81a17ee7f6cea486fede8f2d6d","revision":"4e6af715047509cb4316abe156c51b72d7b7b427"},
+  "document": {"digest":"26d5d5d889741f76575bf0af0bfe2b5e9c617c81a17ee7f6cea486fede8f2d6d","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
 
   "sources": [
     {"path":"packages/contracts/src/channel-log.ts","digest":"97b1ba63bd2a58e98e2d75ef038859c4a003894b8d480f3d5b7b446eb38f75ea","revision":"4e6af715047509cb4316abe156c51b72d7b7b427"},
 
     {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"4e6af715047509cb4316abe156c51b72d7b7b427"},
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5","revision":"4e6af715047509cb4316abe156c51b72d7b7b427"},
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-server/services/orchestration/session-authorization.ts","digest":"2002f39aa4f7cd9dc5c5df260264d1c53be7fb249246de7f54853c0525d7ee20","revision":"4e6af715047509cb4316abe156c51b72d7b7b427"}
   ],

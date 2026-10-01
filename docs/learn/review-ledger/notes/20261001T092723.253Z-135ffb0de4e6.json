@@ -1,0 +1,15 @@
+{
+  "revision": "37bb7649962b2562ac9d10c22b5f22a54195ca03",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the merged source delta: retain the engine-account action evidence alongside current Activity group/menu rows, remove retired Activity rows and the deleted overflow probe, and keep the closed-input CLI relay test in the process-heavy lane. Existing document claims outside these inventory changes retain prior scope and limits. Rebind the actual merged bytes, not either conflict side."},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the merged source delta: retain the engine-account action evidence alongside current Activity group/menu rows, remove retired Activity rows and the deleted overflow probe, and keep the closed-input CLI relay test in the process-heavy lane. Existing document claims outside these inventory changes retain prior scope and limits. Rebind the actual merged bytes, not either conflict side."},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the merged source delta: retain the engine-account action evidence alongside current Activity group/menu rows, remove retired Activity rows and the deleted overflow probe, and keep the closed-input CLI relay test in the process-heavy lane. Existing document claims outside these inventory changes retain prior scope and limits. Rebind the actual merged bytes, not either conflict side."},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the merged source delta: retain the engine-account action evidence alongside current Activity group/menu rows, remove retired Activity rows and the deleted overflow probe, and keep the closed-input CLI relay test in the process-heavy lane. Existing document claims outside these inventory changes retain prior scope and limits. Rebind the actual merged bytes, not either conflict side."},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the merged source delta: retain the engine-account action evidence alongside current Activity group/menu rows, remove retired Activity rows and the deleted overflow probe, and keep the closed-input CLI relay test in the process-heavy lane. Existing document claims outside these inventory changes retain prior scope and limits. Rebind the actual merged bytes, not either conflict side."}
+  ]
+}

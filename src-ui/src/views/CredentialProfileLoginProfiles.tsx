@@ -10,9 +10,11 @@ import { CredentialProfileDeviceCodeLogin } from './CredentialProfileDeviceCodeL
 export function CredentialProfileAccess({
   connectionId,
   children,
+  managementOnly = false,
 }: {
   connectionId: string;
   children: ReactNode;
+  managementOnly?: boolean;
 }) {
   const requestScope = useHostRequestAuthorityScope();
   const authority = useQuery({
@@ -53,6 +55,7 @@ export function CredentialProfileAccess({
     (grant.kind === 'device' && grant.grantedScopes.includes('access:manage'))
   )
     return children;
+  if (managementOnly) return null;
   if (grant.kind === 'device' && grant.grantedScopes.includes('engine:login'))
     return (
       <LoginProfiles connectionId={connectionId} requestScope={requestScope} />

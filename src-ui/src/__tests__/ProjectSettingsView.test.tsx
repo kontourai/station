@@ -215,7 +215,7 @@ const projectFixture: ProjectConfig = {
   name: 'Demo Project',
   icon: 'D',
   description: 'Demo project description',
-  workingDirectory: '/Users/brian/dev/demo',
+  workingDirectory: '/Users/me/dev/demo',
   defaultModel: 'openai:gpt-5',
   agents: [agentId('codex')],
   createdAt: '2026-07-07T12:00:00.000Z',
@@ -323,7 +323,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       screen.getByRole('heading', { name: 'D Demo Project' }),
     ).toBeTruthy();
     expect(inputValue(screen.getByLabelText('Working Directory'))).toBe(
-      '/Users/brian/dev/demo',
+      '/Users/me/dev/demo',
     );
     expect(
       inputValue(container.querySelector('.project-settings__name-input')),

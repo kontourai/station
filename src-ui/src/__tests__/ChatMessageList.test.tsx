@@ -594,10 +594,10 @@ describe('ChatMessageList', () => {
         fontSize={14}
         showReasoning
         showToolDetails
-        owner={{ id: 'brian', label: 'Brian Anderson' }}
+        owner={{ id: 'casey', label: 'Casey Example' }}
       />,
     );
-    expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
+    expect(screen.getByText(/via Casey Example/)).toBeTruthy();
   });
 
   test('omitting the owner prop renders no "Managed by …" chip at all (contrast case for the wiring test above)', () => {

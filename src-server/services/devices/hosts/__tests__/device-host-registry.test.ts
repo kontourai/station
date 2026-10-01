@@ -113,17 +113,17 @@ describe('the device host store', () => {
     const store = new DeviceHostStore(home);
     const host = store.add({
       label: ' Mac mini ',
-      sshTarget: 'brian@mac-mini',
+      sshTarget: 'casey@mac-mini',
     });
     expect(host).toMatchObject({
       label: 'Mac mini',
-      sshTarget: 'brian@mac-mini',
+      sshTarget: 'casey@mac-mini',
       hubEnabled: false,
     });
     expect(host.hostId).toMatch(/^ssh-[0-9a-f]{12}$/);
     expect(new DeviceHostStore(home).list()).toEqual([host]);
     expect(() =>
-      store.add({ label: 'Dup', sshTarget: 'brian@mac-mini' }),
+      store.add({ label: 'Dup', sshTarget: 'casey@mac-mini' }),
     ).toThrow(DeviceHostStoreError);
     for (const sshTarget of ['-oProxyCommand=sh', 'a b', 'host;id', '', 7])
       expect(() => store.add({ label: 'x', sshTarget })).toThrow(
@@ -200,7 +200,7 @@ describe('Test connection', () => {
           hubRunning: false,
         }),
     });
-    const host = s.registry.add({ label: 'Mac', sshTarget: 'brian@mac-mini' });
+    const host = s.registry.add({ label: 'Mac', sshTarget: 'casey@mac-mini' });
     const result = await s.registry.check(host.hostId);
     expect(result.ok).toBe(true);
     expect(result.steps.map((step) => [step.id, step.state])).toEqual([
@@ -252,7 +252,7 @@ describe('Test connection', () => {
   test('a refused key fails the ssh step; no node fails the node step', async () => {
     const auth = setup({
       respond: (child) =>
-        child.exit(255, 'brian@mac-mini: Permission denied (publickey).\r\n'),
+        child.exit(255, 'casey@mac-mini: Permission denied (publickey).\r\n'),
     });
     const a = auth.registry.add({ label: 'Mac', sshTarget: 'mac-mini' });
     const refused = await auth.registry.check(a.hostId);

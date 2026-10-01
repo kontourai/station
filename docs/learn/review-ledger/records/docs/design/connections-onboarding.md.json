@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"ec9497b6123ccb79416f1b1cc616f0cb17e32e7a64929412091ba36342ce441c","revision":"a15d7b09e3b1a1434ac3d51a25d52773d30746a7"},
+  "document": {"digest":"588fccb40602d8b54b08bbb634cb3be0dab9be4ae71a38bd7c236e64af1340c7","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
   "sources": [
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -24,7 +24,7 @@
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/app-home/app-home-profiles.ts","digest":"0e89306e9953c8ef22aeae179debe48d54a5b8e3871d8da22bb3e9cc38f82cdd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/app-home/app-home-profiles.ts","digest":"494b176db7d92fb0e3fe932291fd3fbeaf2880e93ea31f7e481c173550354b83","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
     {"path":"src-server/providers/app-home/credential-profile-registry.ts","digest":"e3293a071e21174d69a03a1fbd16b0085f7e8ead35b2484e8e045b2bebe85fdc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -36,9 +36,9 @@
 
     {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"c83bf9d2893ac0fad3a7b9ee8818cd4de26bb1ae7fa2020436b2fa457dec7673","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"9c900e018d86204dc4c868ae3c58a32870d46bf448648f1f5217a5abd543ef4d","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"src-server/services/acp/acp-process.ts","digest":"07d4606232bc0f0024486ba05c03932c845f2d030656a9861236c1540d20cd46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -54,13 +54,13 @@
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172","revision":"7d1b3d94166917be8991f72c799f4dc8d87dc45d"},
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/components/first-run/first-run-gate.ts","digest":"5098d3dda3a9db7da3e7e8d1552641aaac680ed467bb5c28f151844f18908efc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/ConnectionsHub.tsx","digest":"5c0aa36c80d1c78197030068ba0151e39fbe2bf4566dc492e3555b0ce3046567","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"17a37fa100b2b48f145ddc98798fa5bdbc326bf65701f92a597bee9f9c9ce12c","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
+    {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"e98d62efbf392040c5a52522440698e6d285fd23d9563ee1c1ce4106c81f18f0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],

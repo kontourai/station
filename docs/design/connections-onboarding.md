@@ -114,9 +114,9 @@ Station to copy specific files. Allowlist (top-level entries of the global confi
 only): `settings.json`, `CLAUDE.md`, `skills/`, `agents/`, `commands/`. `.credentials.json`
 copies only when the caller sets `includeCredentials: true` (a separate, explicit checkbox
 in the UI) — on macOS, Claude Code's OAuth credentials actually live in the system
-Keychain, config-dir-independent, so a profile without imported credentials can still
-authenticate there; the status endpoint and UI surface this rather than presenting a
-"failed" state. Always refused, never on any allowlist: `projects/`, `todos/`,
+Keychain. Current saved-profile launches and enrolment bind its secure-store
+namespace to the profile config directory; file absence alone does not establish
+authentication. The engine-account page asks the CLI for status. Always refused, never on any allowlist: `projects/`, `todos/`,
 `statsig/`, `shell-snapshots/`, anything not listed above, any symlink anywhere in a
 copied tree (refuse, never follow — same posture as the skills-materialization module
 below), and a file whose opened descriptor reports more than 5 MiB before reading.

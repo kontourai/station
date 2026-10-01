@@ -42,27 +42,47 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ## Sign an engine profile in from a device
 
-Under **Connections → Engines**, open an engine and its credential profile.
-When the installed engine offers device-code login and the profile is signed
-out, select **Sign in**. Open the verification page, enter the displayed code,
-and finish on the provider's page. Station checks the result automatically and
-reports completion only when the engine confirms sign-in. **Cancel sign-in**
-stops the pending login. Returning to the profile resumes status checks.
+Open **Connections → Engines → Codex** or **Claude**. The account picker shows
+saved accounts and marks the account currently in use. Picking an account changes
+what you view; it does not change the account used by runs. Existing account
+application controls remain under **Advanced**.
 
-This flow applies to credential profiles, not the engine's global CLI account.
-Codex currently supports it; other engines must advertise an observed mechanism
-before the action appears. A paired device needs **Start engine sign-in**
-(`engine:login`), which the operator grants under **Change access**. If access
-cannot be checked, the action remains unavailable with a retry control.
+Choose **Add account**, name it, and select **Sign in**. Codex displays a code:
+open the OpenAI page, enter the code, and approve access. Claude opens its
+subscription sign-in page: finish there, paste the returned code into Station,
+and select **Finish sign-in**. Station reports completion only after the engine
+confirms authentication. **Cancel** stops a pending login. Returning to the
+account resumes status checks. Login capabilities come from the installed CLI;
+unsupported or unreadable installations remain unavailable.
 
-A refused start reports its reason, including an unsupported mechanism, a busy
-engine, an already signed-in profile or an unknown sign-in state. If a request
-or status check fails, check the login status before starting another attempt:
-the server may still be running it. A device with sign-in access alone sees existing profiles and their sign-in
-status. Add profiles, change recovery policy, or obtain manual login commands
-on the Station or through a device with credential-management access. The
-command/manual re-check remains available there for engines without device-code
-support.
+Relayed login applies to saved credential profiles. The default account follows
+the connection's configured home and environment and is managed by the host CLI;
+Station does not replace it through this page. A paired device needs **Start
+engine sign-in** (`engine:login`), granted under **Change access**. That grant
+permits existing profile names and login status, not account creation, manual
+commands or token-backed allowance reads. These require credential-management
+access. Refused starts retain their reason; after a transport failure, check
+status before starting again because the server may still be running the login.
+
+**Allowance** shows the selected account's provider-reported limits and reset
+times. Failed or unrecognized readings say unavailable, never zero. **Refresh**
+requests a new reading; there is no continuous quota polling. Claude credentials
+may be read from its selected macOS Keychain namespace when no credential file
+exists. Tokens remain on the server.
+
+**Activity** shows 7 or 30 days of this engine's runs on this Station, across all
+accounts. Receipts do not identify the credential profile, so this is not
+per-account history. Reported cost and estimates remain separate. The daily chart uses reported cost
+when available, estimates when only estimates are available, and otherwise
+tokens. Missing days keep their place and are marked unreported. Missing costs
+are shown as unavailable, and partial coverage is disclosed. Subscription
+allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
+even when the page requests only this Station.
+
+The component/transport tests exercise both account pages and the login relay
+with controlled provider responses. An isolated Claude CLI probe confirmed the
+browser-code prompt on macOS; these checks do not prove a completed live OAuth
+exchange, every provider plan or Windows secure-store behavior.
 
 ## Saved Station addresses
 
