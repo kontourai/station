@@ -297,8 +297,8 @@ jobs:
   # #2970: the service's Task Scheduler settings on a real Windows host. No
   # leg installs a Windows service end to end, so this registers throwaway
   # tasks the way `station service install` does, applies the install's
-  # settings, reads them back through the task XML, and checks that Task
-  # Scheduler reruns a wrapper that exits non-zero.
+  # settings, reads them back through the task XML, and records that Task
+  # Scheduler does not rerun a wrapper that exits non-zero.
   windows-task-scheduler:
     runs-on: windows-latest
     timeout-minutes: 30

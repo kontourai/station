@@ -79,15 +79,17 @@ function powerShellProgram(args: string[]): string {
 }
 
 // Pinned independently of the constants under test (#2970): no execution time
-// limit, and restart on failure every minute, up to 255 times.
+// limit, the scheduler's restart settings, and no battery rules.
 const EXPECTED_TASK_SETTINGS =
-  'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M';
+  'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False';
 
 type TaskSettingName =
   | 'Priority'
   | 'ExecutionTimeLimit'
   | 'RestartCount'
-  | 'RestartInterval';
+  | 'RestartInterval'
+  | 'DisallowStartIfOnBatteries'
+  | 'StopIfGoingOnBatteries';
 type TaskSettings = Record<TaskSettingName, string>;
 
 /** What `schtasks /Create` leaves without settings XML. */
@@ -97,11 +99,13 @@ function schtasksDefaultSettings(): TaskSettings {
     ExecutionTimeLimit: 'PT72H',
     RestartCount: '0',
     RestartInterval: '',
+    DisallowStartIfOnBatteries: 'True',
+    StopIfGoingOnBatteries: 'True',
   };
 }
 
 function formatTaskSettings(settings: TaskSettings): string {
-  return `Priority=${settings.Priority}, ExecutionTimeLimit=${settings.ExecutionTimeLimit}, RestartCount=${settings.RestartCount}, RestartInterval=${settings.RestartInterval}`;
+  return `Priority=${settings.Priority}, ExecutionTimeLimit=${settings.ExecutionTimeLimit}, RestartCount=${settings.RestartCount}, RestartInterval=${settings.RestartInterval}, DisallowStartIfOnBatteries=${settings.DisallowStartIfOnBatteries}, StopIfGoingOnBatteries=${settings.StopIfGoingOnBatteries}`;
 }
 
 /**
@@ -120,7 +124,9 @@ function runTaskSettingsProgram(
   for (const match of program.matchAll(
     /\$task\.Settings\.(\w+) = '?([^';]*)'?/gu,
   )) {
-    const [, name, value] = match;
+    const [, name, raw] = match;
+    // PowerShell prints a boolean as True or False.
+    const value = raw === '$false' ? 'False' : raw === '$true' ? 'True' : raw;
     if (name in settings && !ignored.has(name)) {
       settings[name as TaskSettingName] = value;
     }
@@ -230,6 +236,8 @@ describe('Windows Task Scheduler service backend', () => {
     ['no restart on failure', { RestartCount: '0', RestartInterval: '' }],
     ['a restart count of 3', { RestartCount: '3' }],
     ['the background priority', { Priority: '7' }],
+    ['no start on battery', { DisallowStartIfOnBatteries: 'True' }],
+    ['a stop when unplugged', { StopIfGoingOnBatteries: 'True' }],
   ])('reports a task with %s as stale scheduling', (_name, drift) => {
     const registration = windowsRegistration(
       'agent',
@@ -243,6 +251,8 @@ describe('Windows Task Scheduler service backend', () => {
             ExecutionTimeLimit: 'PT0S',
             RestartCount: '255',
             RestartInterval: 'PT1M',
+            DisallowStartIfOnBatteries: 'False',
+            StopIfGoingOnBatteries: 'False',
             ...drift,
           };
     const run = vi.fn((_command: string, args: string[]) => {
@@ -720,19 +730,27 @@ describe('Windows Task Scheduler service backend', () => {
   test.each<[TaskSettingName, string]>([
     [
       'Priority',
-      'Priority=7, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M',
+      'Priority=7, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
     ],
     [
       'ExecutionTimeLimit',
-      'Priority=5, ExecutionTimeLimit=PT72H, RestartCount=255, RestartInterval=PT1M',
+      'Priority=5, ExecutionTimeLimit=PT72H, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
     ],
     [
       'RestartCount',
-      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=0, RestartInterval=PT1M',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=0, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
     ],
     [
       'RestartInterval',
-      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'DisallowStartIfOnBatteries',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=True, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'StopIfGoingOnBatteries',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=True',
     ],
   ])(
     'restores a running replacement when its %s does not persist',

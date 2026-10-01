@@ -80,7 +80,7 @@ vi.mock('../commands/service-systemd.js', () => ({
 }));
 vi.mock('../commands/service-windows.js', () => ({
   WINDOWS_TASK_SETTINGS_EXPECTED:
-    'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M',
+    'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
   windowsTaskSettingsObservation: () => '',
   assertWindowsServiceExecutionTrusted,
   installWindowsService,

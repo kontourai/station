@@ -19,7 +19,7 @@ const optedIn = process.env.STATION_REAL_TASK_SCHEDULER === '1';
 
 // Pinned independently of the constants under test.
 const EXPECTED_TASK_SETTINGS =
-  'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M';
+  'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False';
 
 const SYSTEM32 = 'C:\\Windows\\System32';
 const created: string[] = [];
@@ -81,24 +81,34 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
     expect(process.platform).toBe('win32');
   });
 
-  test('a schtasks-registered task gets no time limit and restarts on failure', () => {
+  test('a schtasks-registered task gets no time limit and no battery rules', () => {
     const dir = mkdtempSync(join(tmpdir(), 'station-2970-'));
     try {
       const wrapper = join(dir, 'station-probe.cmd');
       writeFileSync(wrapper, '@echo off\r\nexit /b 0\r\n');
       const registration = registerLikeInstall(wrapper);
 
-      // The premise of #2970: without settings XML the task is limited to 72
-      // hours and has no restart-on-failure.
+      // The premise of #2970, as a Windows runner showed it: without settings
+      // XML the task carries no ExecutionTimeLimit element (the schema's
+      // default applies), no restart-on-failure, and both battery rules on.
       const before = taskXml(registration.taskName as string);
       console.log(`schtasks default settings XML:\n${before}`);
-      expect(before).toContain(
-        '<ExecutionTimeLimit>PT72H</ExecutionTimeLimit>',
-      );
+      expect(before).not.toContain('<ExecutionTimeLimit>PT0S');
       expect(before).not.toContain('<RestartOnFailure>');
-      expect(
-        inspectServiceSchedulingPolicy(registration, { run: defaultRun }),
-      ).toMatchObject({ expected: EXPECTED_TASK_SETTINGS, status: 'stale' });
+      expect(before).toContain(
+        '<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>',
+      );
+      expect(before).toContain(
+        '<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>',
+      );
+      const stale = inspectServiceSchedulingPolicy(registration, {
+        run: defaultRun,
+      });
+      console.log(`default settings as status reads them: ${stale.observed}`);
+      expect(stale).toMatchObject({
+        expected: EXPECTED_TASK_SETTINGS,
+        status: 'stale',
+      });
 
       applyWindowsTaskSettings(registration, defaultRun);
 
@@ -111,6 +121,12 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
         /<RestartOnFailure>\s*<Interval>PT1M<\/Interval>\s*<Count>255<\/Count>\s*<\/RestartOnFailure>/u,
       );
       expect(after).toContain('<Priority>5</Priority>');
+      expect(after).toContain(
+        '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>',
+      );
+      expect(after).toContain(
+        '<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>',
+      );
       expect(
         inspectServiceSchedulingPolicy(registration, { run: defaultRun }),
       ).toEqual({
@@ -123,11 +139,12 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
     }
   });
 
-  // What RestartOnFailure buys: Task Scheduler reruns a wrapper that exited
-  // non-zero, as a crashed `station service run` would. Its shortest
-  // interval is one minute, so this waits for up to two and a half.
-  test('Task Scheduler reruns a wrapper that exits non-zero', {
-    timeout: 240_000,
+  // What RestartOnFailure does NOT buy, measured here because the service
+  // launcher's design depends on it: Task Scheduler does not rerun a wrapper
+  // that exited non-zero, as a crashed `station service run` would. With a
+  // one-minute interval, a second run would land well inside this wait.
+  test('Task Scheduler does not rerun a wrapper that exits non-zero', {
+    timeout: 180_000,
   }, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'station-2970-'));
     try {
@@ -146,28 +163,12 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
       ]);
       expect(started.status, started.stderr).toBe(0);
 
-      const deadline = Date.now() + 150_000;
-      let lines: string[] = [];
-      while (Date.now() < deadline) {
-        try {
-          lines = readFileSync(runs, 'utf8').split(/\r?\n/u).filter(Boolean);
-        } catch {
-          lines = [];
-        }
-        if (lines.length >= 2) break;
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
-      }
+      await new Promise((resolve) => setTimeout(resolve, 100_000));
+      const lines = readFileSync(runs, 'utf8').split(/\r?\n/u).filter(Boolean);
       console.log(`wrapper runs: ${JSON.stringify(lines)}`);
-      const info = defaultRun(join(SYSTEM32, 'schtasks.exe'), [
-        '/Query',
-        '/TN',
-        registration.taskName as string,
-        '/V',
-        '/FO',
-        'LIST',
-      ]);
-      console.log(info.stdout);
-      expect(lines.length).toBeGreaterThanOrEqual(2);
+      // If this ever becomes 2, Task Scheduler relaunches an exited service
+      // after all, and the comment on the restart constants is out of date.
+      expect(lines).toHaveLength(1);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

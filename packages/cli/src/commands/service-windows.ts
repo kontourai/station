@@ -34,19 +34,23 @@ const START_POLL_ATTEMPTS = 20;
 // Task Scheduler defaults to 7, a background-tier priority. 5 is in its
 // interactive band and is appropriate for Station's user-facing service.
 export const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
-// `schtasks /Create` without settings XML leaves a task that Task Scheduler
-// stops after 72 hours and never restarts after a failure (#2970). The launchd
-// (`KeepAlive`) and systemd (`Restart=always`) units restart without a limit,
-// and the service launcher (#2675) relies on that: a failed restore exits and
-// is retried by the next start. `PT0S` removes the time limit. Task Scheduler's
-// shortest restart interval is one minute, and the schema types the restart
-// count as an unsigned byte, so 255 one-minute retries is the closest bounded
-// equivalent of an unconditional restart.
+// `schtasks /Create` without settings XML leaves a task with Task Scheduler's
+// defaults (#2970, measured on a Windows runner): no ExecutionTimeLimit
+// element, which the schema reads as 72 hours, and DisallowStartIfOnBatteries
+// and StopIfGoingOnBatteries both true, so on a laptop the service does not
+// start on battery and is stopped when it unplugs. `PT0S` removes the time
+// limit and both battery rules are turned off.
+//
+// The restart settings are the most Task Scheduler offers (its shortest
+// interval is one minute and the count is an unsigned byte), but they do NOT
+// relaunch a service that exits: a wrapper that exited 3 ran once in 150 s and
+// the task went back to Ready. They cover a task the scheduler could not
+// start. Relaunching an exited service is not provided by these settings.
 export const WINDOWS_TASK_EXECUTION_TIME_LIMIT = 'PT0S';
 export const WINDOWS_TASK_RESTART_COUNT = 255;
 export const WINDOWS_TASK_RESTART_INTERVAL = 'PT1M';
 /** The settings line an install leaves behind and `service status` expects. */
-export const WINDOWS_TASK_SETTINGS_EXPECTED = `Priority=${WINDOWS_INTERACTIVE_TASK_PRIORITY}, ExecutionTimeLimit=${WINDOWS_TASK_EXECUTION_TIME_LIMIT}, RestartCount=${WINDOWS_TASK_RESTART_COUNT}, RestartInterval=${WINDOWS_TASK_RESTART_INTERVAL}`;
+export const WINDOWS_TASK_SETTINGS_EXPECTED = `Priority=${WINDOWS_INTERACTIVE_TASK_PRIORITY}, ExecutionTimeLimit=${WINDOWS_TASK_EXECUTION_TIME_LIMIT}, RestartCount=${WINDOWS_TASK_RESTART_COUNT}, RestartInterval=${WINDOWS_TASK_RESTART_INTERVAL}, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False`;
 
 /**
  * PowerShell that formats a task's persisted settings in the shape of
@@ -55,7 +59,7 @@ export const WINDOWS_TASK_SETTINGS_EXPECTED = `Priority=${WINDOWS_INTERACTIVE_TA
  * use it, so the two cannot disagree about what "current" means.
  */
 export function windowsTaskSettingsObservation(settings: string): string {
-  return `('Priority={0}, ExecutionTimeLimit={1}, RestartCount={2}, RestartInterval={3}' -f [int]${settings}.Priority, [string]${settings}.ExecutionTimeLimit, [int]${settings}.RestartCount, [string]${settings}.RestartInterval)`;
+  return `('Priority={0}, ExecutionTimeLimit={1}, RestartCount={2}, RestartInterval={3}, DisallowStartIfOnBatteries={4}, StopIfGoingOnBatteries={5}' -f [int]${settings}.Priority, [string]${settings}.ExecutionTimeLimit, [int]${settings}.RestartCount, [string]${settings}.RestartInterval, [bool]${settings}.DisallowStartIfOnBatteries, [bool]${settings}.StopIfGoingOnBatteries)`;
 }
 
 function sleepSynchronously(milliseconds: number): void {
@@ -268,8 +272,8 @@ function taskState(
 }
 
 /**
- * `schtasks /Create` has no switch for priority, execution time limit or
- * restart-on-failure. The ScheduledTasks module is already required for our
+ * `schtasks /Create` has no switch for priority, execution time limit,
+ * battery rules or restart-on-failure. The ScheduledTasks module is already required for our
  * locale-independent state query, so update the registered task through that
  * supported API before Station starts it, then read every value back: a
  * setting Task Scheduler accepted but did not persist fails the install.
@@ -293,6 +297,8 @@ export function applyWindowsTaskSettings(
     `$task.Settings.ExecutionTimeLimit = '${WINDOWS_TASK_EXECUTION_TIME_LIMIT}'`,
     `$task.Settings.RestartCount = ${WINDOWS_TASK_RESTART_COUNT}`,
     `$task.Settings.RestartInterval = '${WINDOWS_TASK_RESTART_INTERVAL}'`,
+    '$task.Settings.DisallowStartIfOnBatteries = $false',
+    '$task.Settings.StopIfGoingOnBatteries = $false',
     'Set-ScheduledTask -InputObject $task | Out-Null',
     "$updated = Get-ScheduledTask -TaskName $request.taskName.TrimStart('\\') -TaskPath '\\'",
     `$observed = ${windowsTaskSettingsObservation('$updated.Settings')}`,

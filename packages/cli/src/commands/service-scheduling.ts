@@ -210,7 +210,8 @@ function windowsSchedulingPolicy(
   registration: ServiceRegistration,
   run: CommandRunner,
 ): ServiceSchedulingPolicy {
-  // Priority, execution time limit and restart-on-failure are all set after
+  // Priority, execution time limit, battery rules and restart-on-failure are
+  // all set after
   // `schtasks /Create` (#2970). A task registered by an earlier version keeps
   // Task Scheduler's defaults until it is reinstalled, so report it stale.
   const expected = WINDOWS_TASK_SETTINGS_EXPECTED;
@@ -240,7 +241,7 @@ function windowsSchedulingPolicy(
   const observed = result.stdout?.trim();
   if (
     observed === undefined ||
-    !/^Priority=\d+, ExecutionTimeLimit=\S*, RestartCount=\d+, RestartInterval=\S*$/u.test(
+    !/^Priority=\d+, ExecutionTimeLimit=\S*, RestartCount=\d+, RestartInterval=\S*, DisallowStartIfOnBatteries=(?:True|False), StopIfGoingOnBatteries=(?:True|False)$/u.test(
       observed,
     )
   ) {
