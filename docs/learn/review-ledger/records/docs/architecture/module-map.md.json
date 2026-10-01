@@ -890,7 +890,7 @@
 
     {"path":"src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx","digest":"7865c6849c64ca4882b6ccea899b225c3751f8a233400d4ab0f2035a072627eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"a673b093da5ecc27a1610361349a22f1eea2ab272c2ca81ad40153fcc1ad2c30","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"07a9efd5b6dcaf76252ad859e1d903b513056f439f26ed021b04830f1bc00266","revision":"c780533aa14fbce199898ac95f9c168e73d466a2"},
 
     {"path":"src-ui/src/workspace-panes/TaskRoomEditorPane.tsx","digest":"aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
