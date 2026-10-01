@@ -24,7 +24,7 @@
 
     {"path":"packages/sdk/src/query-domains/projectTaskRooms.ts","digest":"a9d57bd7d3ecf9652ddcd3e9754c30561b83917e0660e45a90c83a3b14cecc1b","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"c64b2ef93cd9086df7905af51a944bda0baee67c389b13911dbaf67bc368dcb5","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"bbbe8cafdbfa7f5b53d9b1fecd34d0dea6953a39bfdc48f7670d74ec0c040e39","revision":"4f47664e668c1f24b247e87c0d755ecbf61cba25"},
 
     {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 

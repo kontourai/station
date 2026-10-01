@@ -696,7 +696,7 @@
 
     {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"c64b2ef93cd9086df7905af51a944bda0baee67c389b13911dbaf67bc368dcb5","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"bbbe8cafdbfa7f5b53d9b1fecd34d0dea6953a39bfdc48f7670d74ec0c040e39","revision":"4f47664e668c1f24b247e87c0d755ecbf61cba25"},
 
     {"path":"src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","digest":"ae5ef724741ab5d319f3a2c0065060294f16da12a4cf1da0228c0f9a95a97c3e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
