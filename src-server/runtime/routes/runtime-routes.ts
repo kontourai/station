@@ -3598,6 +3598,12 @@ export function configureRuntimeRoutes(
                 candidate.slug === task.projectId,
             );
         if (!task || !project) return [];
+        const incarnation = {
+          taskCreatedAt: task.createdAt,
+          roomProjectId: task.projectId,
+          projectId: project.id,
+          projectSlug: project.slug,
+        };
         const requests = await taskRoomWork.readPublicationRequests({
           taskId,
           projectId: project.id,
@@ -3608,6 +3614,25 @@ export function configureRuntimeRoutes(
               sessionId,
             ),
         });
+        const currentTask = context.taskGraphService.readTaskView(taskId);
+        const currentProject =
+          currentTask &&
+          context.projectService
+            .listProjects()
+            .find(
+              (candidate) =>
+                candidate.id === currentTask.projectId ||
+                candidate.slug === currentTask.projectId,
+            );
+        if (
+          !currentTask ||
+          !currentProject ||
+          currentTask.createdAt !== incarnation.taskCreatedAt ||
+          currentTask.projectId !== incarnation.roomProjectId ||
+          currentProject.id !== incarnation.projectId ||
+          currentProject.slug !== incarnation.projectSlug
+        )
+          return [];
         return requests.map((record) => ({
           sessionId: record.sessionId,
           agentId: record.agentId,
@@ -3704,15 +3729,28 @@ export function configureRuntimeRoutes(
       '/api/tasks',
       createProjectTaskRoomRoutes(roomRuntime, {
         listAgentRequests: async (taskId, request) => {
-          const result = await taskRoomWork.list(taskId, async () => {
-            const principal = roomRequestPrincipals.get(request);
-            return principal
-              ? authorizeTaskRoomWork(taskId, request, principal)
+          const principal = roomRequestPrincipals.get(request);
+          const initial =
+            principal &&
+            (await authorizeTaskRoomWork(taskId, request, principal));
+          const authorize = async () => {
+            const current =
+              principal &&
+              (await authorizeTaskRoomWork(taskId, request, principal));
+            return initial &&
+              current &&
+              current.projectId === initial.projectId &&
+              current.projectSlug === initial.projectSlug &&
+              current.roomProjectId === initial.roomProjectId &&
+              current.taskCreatedAt === initial.taskCreatedAt &&
+              current.requesterId === initial.requesterId
+              ? current
               : undefined;
-          });
-          if (result.kind === 'available')
-            await roomRuntime.reconcileAgentLifecycles([taskId]);
-          return result;
+          };
+          const result = await taskRoomWork.list(taskId, authorize);
+          if (result.kind !== 'available') return result;
+          await roomRuntime.reconcileAgentLifecycles([taskId]);
+          return (await authorize()) ? result : { kind: 'refused' as const };
         },
       }),
     );
