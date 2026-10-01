@@ -92,13 +92,10 @@ export function createNativeRelaySurfaceRoutes(
         deps.registry.approve(approval);
       return context.json({ data: { approvalId, revision, scope, surface } });
     } catch (error) {
-      if (
-        error instanceof Error &&
-        ['native_surface_revoked', 'native_surface_capacity'].includes(
-          error.message,
-        )
-      )
-        return context.json({ error: { code: error.message } }, 409);
+      if (error instanceof Error && error.message === 'native_surface_revoked')
+        return context.json({ error: { code: 'native_surface_revoked' } }, 409);
+      if (error instanceof Error && error.message === 'native_surface_capacity')
+        return context.json({ error: { code: 'native_surface_capacity' } }, 409);
       return context.json({ error: { code: 'unavailable' } }, 503);
     }
   });
