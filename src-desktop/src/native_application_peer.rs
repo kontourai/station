@@ -161,6 +161,16 @@ fn verify_transcript(
     answer: &NativeRelaySignalAnswer,
     now: u64,
 ) -> Result<(u64, u64)> {
+    verify_native_route_transcript(&capture.context, nonce, offer, answer, now)
+}
+
+pub(crate) fn verify_native_route_transcript(
+    context: &native_relay_redemption::NativeRedemptionContext,
+    nonce: &str,
+    offer: &str,
+    answer: &NativeRelaySignalAnswer,
+    now: u64,
+) -> Result<(u64, u64)> {
     let sdp = answer
         .answer_sdp
         .as_ref()
@@ -180,7 +190,7 @@ fn verify_transcript(
         serde_json::from_slice(&decode(parts[0])?).map_err(|_| REFUSED.to_owned())?;
     let claims: ConnectionClaims =
         serde_json::from_slice(&decode(parts[1])?).map_err(|_| REFUSED.to_owned())?;
-    let trust = &capture.context.station_trust;
+    let trust = &context.station_trust;
     if header.alg != "ES256"
         || header.typ != "station-connection-proof+jwt"
         || header.kid != key_id(&trust.signing_key)
@@ -201,7 +211,7 @@ fn verify_transcript(
         station_id: trust.station_id.clone(),
         enrollment_id: trust.enrollment_id.clone(),
         generation: trust.generation,
-        connection_id: capture.context.profile.client_instance_id.clone(),
+        connection_id: context.profile.client_instance_id.clone(),
         client_nonce: nonce.to_owned(),
         client_fingerprint: fingerprint(offer)?,
         station_fingerprint: fingerprint(sdp)?,

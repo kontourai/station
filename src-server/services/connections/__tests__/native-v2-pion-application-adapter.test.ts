@@ -1,7 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
 import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
@@ -17,6 +15,7 @@ import {
 } from '@kontourai/station-shared/connection-proof';
 import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import {
   NativeSurfaceOperatorAuthority,
@@ -34,6 +33,8 @@ import {
   transferVerifiedNativeVirtualApplicationRequest,
   VirtualApplicationIngress,
 } from '../virtual-application.js';
+
+const makeTempDir = trackTempDirs();
 
 const ORIGIN = 'https://station.example';
 const CLIENT_FINGERPRINT = Array(32).fill('AA').join(':');
@@ -314,7 +315,7 @@ describe('native v2 Pion application adapter', () => {
 
   test('resolved approved surface reaches application bytes and revocation fences the captured peer', async () => {
     const h = await fixture();
-    const home = mkdtempSync(join(tmpdir(), 'native-resolved-peer-'));
+    const home = makeTempDir('native-resolved-peer-');
     const registry = new NativeSurfaceRegistry(home, h.trust.stationId);
     const authority = new NativeSurfaceOperatorAuthority();
     const tuple = { scope: h.offer.scope, surface: h.surface };
