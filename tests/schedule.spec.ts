@@ -295,6 +295,10 @@ test.describe('Schedule Page', () => {
     await expect(
       dialog.getByRole('button', { name: 'Add Job', exact: true }),
     ).toBeDisabled();
+    await dialog.getByLabel('Name').fill('keep-my-check');
+    await dialog
+      .getByLabel('Instructions')
+      .fill('Check my service each morning');
     await dialog
       .getByRole('button', { name: 'Set up a scheduled-job agent' })
       .click();
@@ -302,6 +306,15 @@ test.describe('Schedule Page', () => {
     await expect(
       page.getByRole('button', { name: /Use a model connection/ }),
     ).toBeVisible();
+    await page.goBack();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('Name')).toHaveValue('keep-my-check');
+    await expect(dialog.getByLabel('Instructions')).toHaveValue(
+      'Check my service each morning',
+    );
+    await expect(
+      dialog.getByRole('button', { name: 'Add Job', exact: true }),
+    ).toBeDisabled();
   });
 
   test('covers add, edit, duplicate, run, filter, toggle, and delete', async ({

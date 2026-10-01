@@ -247,11 +247,30 @@ export function NewChatModal({
     : 0;
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
+    readyToResume:
+      startWithDefault &&
+      !runtimeFetching &&
+      !modelsFetching &&
+      !setupFetching &&
+      !runtimeError &&
+      !modelsError &&
+      !setupError &&
+      Boolean(
+        preservedAgentSlug.current
+          ? flatList.some(
+              (agent) =>
+                agent.slug === preservedAgentSlug.current &&
+                (agentRunnability(agent).runnable ||
+                  (resolveNewChatAgentEnable(agent) &&
+                    agentFixRoute(agent) === 'enable')),
+            )
+          : defaultSelection?.agent,
+      ),
     onCancel: onClose,
     revalidate: async () => {
       if (refreshSetup) await refreshSetup();
       else
-        await Promise.allSettled([
+        await Promise.all([
           refetchAgentConnections?.(),
           refetchModelConnections?.(),
         ]);

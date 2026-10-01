@@ -77,6 +77,9 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
         layoutAvailableAgents: [],
         recentSlugs: [],
       }),
+      defaultSelection: {
+        agent: input.agents.find((agent) => agent.available !== false),
+      },
       runtimeLoading: false,
       modelsLoading: false,
       runtimeFetching: fetching,
@@ -603,3 +606,18 @@ test.each(['cancel', 'authority loss'] as const)(
     }
   },
 );
+
+test('a written goal returns from setup automatically when its selected agent is ready', async () => {
+  const goal = 'Keep the original goal';
+  const view = harness({ startWithDefault: true, initialPrompt: goal });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Connect this agent', exact: true }),
+  );
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
+  );
+  view.update({ agents: [READY] });
+  await waitFor(() => expect(view.onSelect).toHaveBeenCalledOnce());
+  expect(view.onSelect.mock.calls[0]?.[3]).toBe(goal);
+  expect(navigationStore.getSnapshot().pathname).toBe('/');
+});
