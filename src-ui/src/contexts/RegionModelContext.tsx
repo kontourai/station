@@ -1372,6 +1372,8 @@ export function SuspendRegionSurfaces({
  * Exported for tests that supply their own model to App (the source of the
  * model is replaced; the suspension a reader sees is still this one).
  */
+// Also called by AppHomeRoute.test.tsx through a `vi.mock` importOriginal that fallow cannot trace.
+// fallow-ignore-next-line unused-export
 export function useSuspendedRegionModel<T extends RegionModelValue>(
   model: T | null,
 ): T | null {
