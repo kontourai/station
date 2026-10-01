@@ -206,6 +206,11 @@ export function JobFormModal({
   // happened, permanently once the read had failed. Nothing derived from an
   // unanswered catalog may reach the reader.
   const agentRunnabilityKnown = agentsLoaded;
+  const needsAgentSetup =
+    !isEdit &&
+    !init.agent &&
+    agentRunnabilityKnown &&
+    !agentOptions.defaultSlug;
 
   const scheduleFromForm = (): SchedulerSchedule => {
     if (form.scheduleKind === 'every') {
@@ -470,25 +475,22 @@ export function JobFormModal({
             />
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
-                {!isEdit && !init.agent && !agentOptions.defaultSlug
+                {needsAgentSetup
                   ? 'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.'
                   : jobAgentRunnability.reason}
               </span>
             )}
-            {!isEdit &&
-              !init.agent &&
-              agentRunnabilityKnown &&
-              !agentOptions.defaultSlug &&
-              onSetupAgent && (
-                <Button type="button" variant="link" onClick={onSetupAgent}>
-                  Set up a scheduled-job agent
-                </Button>
-              )}
-            {agentOptions.excludedEngineAgents.length > 0 && (
-              <span className="schedule__field-hint">
-                {SCHEDULER_ENGINE_AGENT_NOTE}
-              </span>
+            {needsAgentSetup && onSetupAgent && (
+              <Button type="button" variant="link" onClick={onSetupAgent}>
+                Set up a scheduled-job agent
+              </Button>
             )}
+            {agentOptions.excludedEngineAgents.length > 0 &&
+              !needsAgentSetup && (
+                <span className="schedule__field-hint">
+                  {SCHEDULER_ENGINE_AGENT_NOTE}
+                </span>
+              )}
           </div>
         )}
         <label className="schedule__field">

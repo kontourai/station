@@ -361,6 +361,11 @@ describe('JobFormModal schedule compatibility', () => {
     ];
 
     render(<JobFormModal onClose={vi.fn()} />);
+    expect(
+      screen.queryByText(
+        "Scheduled jobs run on Station's own engine, so Agents bound to an external engine are not listed.",
+      ),
+    ).toBeNull();
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'doomed-job' },
     });
