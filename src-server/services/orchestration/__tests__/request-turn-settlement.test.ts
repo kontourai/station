@@ -575,6 +575,19 @@ describe('#3071: the bounded projection settles exactly what the full log does',
       requestOpened('req-live', 4),
       ...recoveryAbortAndBanner('turn-1', 6),
     ],
+    // The superseding turn is itself neither first nor latest, so only the
+    // settlement facts carry its start.
+    'the superseding turn is neither first nor latest': [
+      turnStarted('turn-0', 0),
+      turnCompleted('turn-0', 0, 'stop'),
+      turnStarted('turn-1', 1),
+      requestOpened('req-dead', 2),
+      turnStarted('turn-2', 3),
+      requestOpened('req-live', 4),
+      ...recoveryAbortAndBanner('turn-1', 6),
+      turnCompleted('turn-2', 7, 'stop'),
+      turnStarted('turn-3', 9),
+    ],
     'recovery abort with no start, request names the turn': [
       turnStarted('turn-1', 1),
       turnCompleted('turn-1', 2, 'stop'),
