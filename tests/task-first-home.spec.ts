@@ -1514,7 +1514,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await composer.fill('Continue from my phone');
       const continueButton = page
         .getByTestId('session-detail')
-        .getByRole('button', { name: 'Continue', exact: true });
+        .getByRole('button', { name: 'Send', exact: true });
       const approveButton = request.getByRole('button', { name: 'Approve' });
       const declineButton = request.getByRole('button', { name: 'Decline' });
       for (const control of [continueButton, approveButton, declineButton]) {
@@ -1573,8 +1573,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       });
       await page.goto('/?surface=activity&session=task-first-home');
 
-      const statusLine = page
-        .getByTestId('session-detail')
+      // Project workflows are evidence: they live in the detail's collapsed
+      // Details disclosure, which the reader opens.
+      const detail = page.getByTestId('session-detail');
+      await detail.locator('summary', { hasText: /^Details$/ }).click();
+      const statusLine = detail
         .locator('.workflow-status-line')
         .filter({ hasText: 'kontourai-station-592' });
       await expect(statusLine).toBeVisible();

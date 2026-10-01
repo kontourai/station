@@ -223,46 +223,6 @@
   overflow-wrap: anywhere;
 }
 
-.sessions-detail__subtle-id {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0.3rem 0 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-}
-
-.sessions-detail__subtle-id span {
-  overflow-wrap: anywhere;
-}
-
-/* (archive#1170): measured 56.45 x 19.08 CSS px at 390px
-   width — well under the WCAG 2.5.8 AA 24x24 minimum, and this PR's own
-   AttentionCard.css already establishes 44px as the convention for every
-   action button (`.attention-item__action`). `min-height` plus centering
-   the label keeps the wider (already-compliant) width unchanged. */
-.sessions-detail__copy-id {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  min-height: 44px;
-  padding: 0.1rem 0.6rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 5px;
-  background: var(--bg-secondary);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  cursor: pointer;
-}
-
-.sessions-detail__copy-id:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
-}
-
 .sessions-detail__error {
   margin: 0;
   color: var(--status-error, var(--text-primary));
@@ -278,17 +238,6 @@
   gap: 0.25rem;
 }
 
-/* (archive#1170): qualified by the `.sessions-detail__meta`
-   ancestor so this beats `.sessions-detail__meta span`'s own `border`
-   shorthand on specificity (two classes vs. one class + one element)
-   instead of needing `!important` — a bare `.sessions-detail__status`
-   alone was losing that fight and rendering with zero visual
-   distinction. `--status-error` is defined in index.css (both themes). */
-.sessions-detail__meta .sessions-detail__status--failed {
-  border-color: var(--status-error);
-  color: var(--status-error);
-}
-
 .sessions-detail__eyebrow {
   margin: 0 0 0.35rem;
   color: var(--accent-primary);
@@ -296,23 +245,6 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-}
-
-.sessions-detail__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.5rem 0 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
-.sessions-detail__meta span {
-  padding: 0.2rem 0.5rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-secondary);
 }
 
 .sessions-detail__header .button {
@@ -633,13 +565,6 @@
   background: var(--bg-secondary);
 }
 
-/* #765 D6: the final-answer block leading the mutable session detail — the
-   transcript-message chrome above, sized to content inside the scroll
-   region. */
-.sessions-detail__result {
-  flex-shrink: 0;
-}
-
 .sessions-detail__transcript-role {
   margin: 0 0 0.35rem;
   color: var(--text-muted);
@@ -674,13 +599,10 @@
     font-size: 1rem;
   }
 
-  .sessions-detail__meta {
-    gap: 0.35rem;
-  }
-
-  .sessions-detail__meta span {
-    max-width: 100%;
-    overflow-wrap: anywhere;
+  /* The detail's action row (SessionDetail.css) starts under the title once
+     the header stacks, instead of hugging the far edge. */
+  .sessions-detail__header .sessions-detail__actions {
+    justify-content: flex-start;
   }
 
   .sessions-detail__context {
@@ -773,14 +695,10 @@
   }
 
   .sessions-detail--viewport-compact .sessions-detail__eyebrow,
-  .sessions-detail--viewport-compact .sessions-detail__subtle-id,
+  .sessions-detail--viewport-compact .sessions-detail__meta-line,
   .sessions-detail--viewport-compact .sessions-detail__stop-task,
   .sessions-detail--viewport-compact .sessions-detail__live-indicator {
     display: none;
-  }
-
-  .sessions-detail--viewport-compact .sessions-detail__meta {
-    margin-top: 0;
   }
 
   /* The note is pinned chrome beside the composer (outside the scroll
@@ -815,13 +733,8 @@
   }
 
   .sessions-detail__eyebrow,
-  .sessions-detail__subtle-id,
   .sessions-detail__note {
     display: none;
-  }
-
-  .sessions-detail__meta {
-    margin-top: 0.35rem;
   }
 
   .sessions-detail__feed {
