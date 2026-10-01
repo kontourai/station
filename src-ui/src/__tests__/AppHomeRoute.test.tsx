@@ -33,6 +33,12 @@ vi.mock('../contexts/open-chats-store', () => ({
 interface QueryState<T> {
   data?: T;
   isLoading?: boolean;
+  /**
+   * TanStack's "no answer yet", fetching or not. Left out, it reads as
+   * settled: every fixture here that gives `data` is an answered query, and
+   * `data: undefined` with it absent is a settled miss (the `/` routes).
+   */
+  isPending?: boolean;
   isError?: boolean;
 }
 
@@ -325,13 +331,26 @@ vi.mock('../components/chat-dock/ChatDock', () => ({
 // reads the registry off a real region model (`surfaces`), which this file's
 // stub does not carry. Reduced to its one contract this file relies on:
 // the host renders Chat's pane through the renderer it is handed.
-vi.mock('../workspace-panes/RegionPaneHost', () => ({
-  RegionPaneHost: ({
-    renderChatPane,
-  }: {
-    renderChatPane: (...args: never[]) => ReactNode;
-  }) => <>{renderChatPane()}</>,
-}));
+vi.mock('../workspace-panes/RegionPaneHost', async () => {
+  const { useRegionModelOptional } = await import(
+    '../contexts/RegionModelContext'
+  );
+  return {
+    // Chat renders where the region (as the shells see it) holds Chat.
+    RegionPaneHost: ({
+      regionId,
+      renderChatPane,
+    }: {
+      regionId: 'left' | 'right' | 'bottom';
+      renderChatPane: (...args: never[]) => ReactNode;
+    }) => {
+      const model = useRegionModelOptional();
+      return model?.regions[regionId].panes.includes('chat') ? (
+        <>{renderChatPane()}</>
+      ) : null;
+    },
+  };
+});
 vi.mock('../components/CommandPalette', () => ({
   CommandPalette: () => null,
 }));
@@ -410,14 +429,22 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => {
 // The stubs below describe an ARRANGEMENT; the registry is the real one,
 // supplied here the way the provider supplies it, because `RegionShells`
 // reads `surfaces` to decide which dock occupants get a host (#2045).
-vi.mock('../contexts/RegionModelContext', async () => {
+vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/RegionModelContext')>();
   const { REGION_SURFACE_REGISTRY } = await import('../regions/region-model');
   return {
+    ...actual,
+    // The provider's STATE is this file's stub; what a reader sees of it
+    // still passes through the real suspension (`SuspendRegionSurfaces`), so
+    // the Coding layout's suspended Chat is App's real behaviour here.
     useRegionModelOptional: () =>
-      hooks.regionModel && {
-        surfaces: REGION_SURFACE_REGISTRY,
-        ...hooks.regionModel,
-      },
+      actual.useSuspendedRegionModel(
+        (hooks.regionModel && {
+          surfaces: REGION_SURFACE_REGISTRY,
+          ...hooks.regionModel,
+        }) as never,
+      ),
   };
 });
 vi.mock('../contexts/useShowSurface', () => ({
@@ -1219,6 +1246,116 @@ describe('App home route resolution', () => {
       expect(registration[5]).toBe(expectedEnabled);
     },
   );
+
+  /**
+   * #928 coding stack: the built-in Coding layout's centre renders Chat, so
+   * the dock's Chat is suspended — one chat event owner, the centre's — while
+   * the region shells stay mounted for every other pane.
+   */
+  describe('the Coding layout owns Chat in its centre', () => {
+    const openBottom = () => ({
+      ...regionModelStub(),
+      regions: {
+        ...DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        bottom: {
+          ...DEFAULT_DEVICE_REGION_ARRANGEMENT.bottom,
+          visible: true,
+        },
+      },
+    });
+
+    test('on a wide fine-pointer screen: one chat owner, the centre’s, and the region host stays', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = { data: { type: 'coding' }, isLoading: false };
+      hooks.regionModel = openBottom();
+
+      render(<App />);
+      await act(async () => undefined);
+
+      expect(screen.getByTestId('fullscreen-chat-controller')).toBeTruthy();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+      expect(registerRegionSurfaceHost).toHaveBeenCalled();
+
+      openChatsStore.focus({ sessionId: 'fixture' });
+      window.dispatchEvent(new CustomEvent('station:open-new-chat'));
+      expect(chatControllerAction.mock.calls).toEqual([
+        ['fullscreen:focus'],
+        ['fullscreen:new'],
+      ]);
+    });
+
+    /**
+     * `PersistQueryClientProvider` keeps every query idle while the persisted
+     * cache restores, so for that frame the layout query has no answer AND
+     * `isLoading` is false. A gate on `isLoading` mounted the dock's Chat
+     * there, then tore it down for the centre's Chat once the record arrived
+     * (the CI trace on #3035: `#chat-dock` attached before the layout request
+     * was even issued). The layout is unknown until the query is no longer
+     * pending, and an unknown layout mounts no dock host at all.
+     */
+    test('while the layout record is pending but idle (a restoring cache), no dock host mounts; it mounts once the record arrives', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = { data: undefined, isLoading: false, isPending: true };
+      hooks.regionModel = openBottom();
+
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+
+      // `RegionShells` is App's only dock host and registers on mount, so a
+      // dock mounted for the pending frame registers here.
+      expect(registerRegionSurfaceHost).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+
+      hooks.layout = {
+        data: { type: 'coding' },
+        isLoading: false,
+        isPending: false,
+      };
+      await act(async () => rerender(<App />));
+
+      // The answer releases the gate: the host mounts (for the other
+      // regions), with Chat still the centre's, never the dock's.
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+    });
+
+    test('a plugin layout typed coding keeps Chat in the dock', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = {
+        data: { type: 'coding', config: { plugin: 'fixture-plugin' } },
+        isLoading: false,
+      };
+      hooks.regionModel = openBottom();
+
+      render(<App />);
+      await act(async () => undefined);
+
+      expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+    });
+
+    test('a bottom-only device keeps Chat in its dock', async () => {
+      const width = window.innerWidth;
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: 390,
+      });
+      try {
+        window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+        hooks.layout = { data: { type: 'coding' }, isLoading: false };
+        hooks.regionModel = openBottom();
+
+        render(<App />);
+        await act(async () => undefined);
+
+        expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+      } finally {
+        Object.defineProperty(window, 'innerWidth', {
+          configurable: true,
+          value: width,
+        });
+      }
+    });
+  });
 
   test('registers no region surface host for a full-screen chat layout', async () => {
     window.history.replaceState({}, '', '/projects/demo/layouts/chat');
