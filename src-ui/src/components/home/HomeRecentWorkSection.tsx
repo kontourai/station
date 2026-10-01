@@ -28,7 +28,7 @@ import { renderHomeWorkRow } from './HomeWorkRow';
 const SETTLED_PAGE_SIZE = 5;
 const loadSnoozeMenu = () => import('./SnoozeMenu');
 
-/** One heading per live lane (`liveLaneFor`) — the pulse counts reveal them. */
+/** One heading per live lane (`workStatus`) — the pulse counts reveal them. */
 const LIVE_LANES: readonly {
   id: LiveLaneId;
   label: string;

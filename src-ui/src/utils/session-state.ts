@@ -207,6 +207,38 @@ export function orchestrationLifecycleLabel(
 }
 
 /**
+ * WHAT an awaiting session is waiting on (#3042), read off the same shared
+ * fold `orchestrationLifecycleLabel` uses plus the summary's own transition
+ * reason. Meaningful only for a session that fold calls `Needs attention`.
+ *
+ * - `review_pending` is the server's fold of every open request that is not
+ *   an `input` request (approval, permission, confirmation), and of the
+ *   `pendingReview` flag: an approval.
+ * - `needs_input` reached through `input_requested` is an open question.
+ * - `needs_input` stamped by interrupted-turn recovery carries
+ *   `transitionReason: 'runtime_exit'`: the turn was cut short.
+ * - any other `needs_input` says only that the session waits on the user.
+ */
+export function sessionAttentionKind(
+  session: Pick<
+    OrchestrationSessionSummary,
+    | 'lifecycleState'
+    | 'status'
+    | 'pendingReview'
+    | 'terminalAttribution'
+    | 'transitionReason'
+  >,
+): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
+  const disposition = sessionAttentionDisposition(session);
+  if (disposition.state !== 'awaiting') return 'waiting';
+  if (disposition.via === 'review_pending') return 'approval';
+  if (disposition.via === 'blocked') return 'blocked';
+  if (session.transitionReason === 'input_requested') return 'answer';
+  if (session.transitionReason === 'runtime_exit') return 'interrupted';
+  return 'waiting';
+}
+
+/**
  * THE RULE THAT MAKES A ROW WORD SAFE (archive#3227 A1).
  *
  * A lane heading is coarser than a row word, and that refinement is worth

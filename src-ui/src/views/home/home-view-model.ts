@@ -22,12 +22,77 @@ import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
+  sessionAttentionKind,
 } from '../../utils/session-state';
 import {
   sessionProjectLabel,
   sessionRecency,
   sessionTitle,
 } from '../../utils/sessionDisplay';
+import { moreUrgentAttention } from './work-status';
+
+/**
+ * WHAT a `Needs attention` item is waiting on (#3042). Each kind is a fact
+ * the server or the chat store already records; none is inferred from copy.
+ *
+ * - `approval`: an open approval, permission or confirmation request (the
+ *   session's `review_pending` fold or `pendingReview` flag; a chat's
+ *   `pendingApprovals`).
+ * - `answer`: an open `input` request (`needs_input` reached through
+ *   `input_requested`).
+ * - `interrupted`: the turn was cut short by a restart and recovery parked
+ *   the session on `needs_input` (`transitionReason: 'runtime_exit'`).
+ * - `blocked`: the session's `blocked` state, or a durable Task's.
+ * - `queued`: a send queued on this device while offline.
+ * - `waiting`: owed something, kind not recorded.
+ */
+export type WorkAttentionKind =
+  | 'approval'
+  | 'answer'
+  | 'interrupted'
+  | 'blocked'
+  | 'queued'
+  | 'waiting';
+
+/**
+ * What the server's `ConversationTurnActivity` says is in flight (#3042).
+ * Copied, never re-derived: the open turn's start, the most recently started
+ * tool still running inside it, and the reported running child count.
+ */
+export interface WorkActivity {
+  turnStartedAt?: string;
+  toolName?: string;
+  childWorkCount?: number;
+}
+
+type TurnActivity = NonNullable<
+  OrchestrationSessionSummary['conversationActivity']
+>;
+
+function workActivityFrom(
+  activity: TurnActivity | undefined,
+): WorkActivity | undefined {
+  if (!activity) return undefined;
+  const toolName = activity.runningTools?.at(-1)?.name;
+  const childWorkCount = activity.runningChildWork?.count;
+  if (!activity.openTurn && !childWorkCount) return undefined;
+  return {
+    ...(activity.openTurn
+      ? { turnStartedAt: activity.openTurn.startedAt }
+      : {}),
+    ...(activity.openTurn && toolName ? { toolName } : {}),
+    ...(childWorkCount ? { childWorkCount } : {}),
+  };
+}
+
+/** The labels under which in-flight work is a present-tense fact. */
+function carriesActivity(label: HomeLifecycleLabel): boolean {
+  return (
+    label === 'Running' ||
+    label === 'Needs attention' ||
+    label === 'Unanswerable'
+  );
+}
 
 export interface HomeWorkItem {
   id: string;
@@ -62,6 +127,24 @@ export interface HomeWorkItem {
   lifecycleLabel: HomeLifecycleLabel;
   /** Reason for a Running label; background work never grants turn controls. */
   activeReason?: 'turn' | 'background';
+  /**
+   * What a `Needs attention` item is waiting on. Bound to that label in both
+   * directions, like the notices below, so the status ladder
+   * (`work-status.ts`) never names an owed decision the label does not.
+   */
+  attention?: WorkAttentionKind;
+  /**
+   * In-flight work from the server's turn record. Independent of
+   * `attention`: a turn stays open across an approval pause, so one item can
+   * carry both, and the status ladder decides which the row says.
+   */
+  activity?: WorkActivity;
+  /**
+   * The branch of the worktree Station provisioned for this session
+   * (`workspaceIsolation.branch`). Absent for a shared-workspace session:
+   * its checkout's branch is a git read, not a fact the summary carries.
+   */
+  worktreeBranch?: string;
   /**
    * archive#1783: the observation behind an `'Unanswerable'` lifecycle
    * label — which arm fired, which process observed it, and when. Set only
@@ -355,6 +438,18 @@ function buildSessionWorkItem(
     lifecycleLabel === 'Failed' || lifecycleLabel === 'Stopped'
       ? session.terminalAttribution?.detail
       : undefined;
+  // The same gate `orchestrationLifecycleLabel` applies before it says
+  // Running: this session's own open turn, or child work on the execution
+  // the server would continue. A retired child's summary still carries the
+  // conversation's record; it must not read as that child's work.
+  const ownsLiveWork =
+    session.hasActiveTurn === true ||
+    (session.conversationActivity?.currentThreadId === session.threadId &&
+      session.conversationActivity.runningChildWork !== undefined);
+  const activity =
+    carriesActivity(lifecycleLabel) && ownsLiveWork
+      ? workActivityFrom(session.conversationActivity)
+      : undefined;
   return {
     id,
     ...(session.conversationId
@@ -410,6 +505,13 @@ function buildSessionWorkItem(
     // of one decoration.
     ...(unanswerableNotice ? { unanswerableNotice } : {}),
     ...(failureNotice ? { failureNotice } : {}),
+    ...(lifecycleLabel === 'Needs attention'
+      ? { attention: sessionAttentionKind(session) }
+      : {}),
+    ...(activity ? { activity } : {}),
+    ...(session.workspaceIsolation?.mode === 'worktree'
+      ? { worktreeBranch: session.workspaceIsolation.branch }
+      : {}),
     ...(lifecycleLabel === 'Running'
       ? {
           activeReason: session.conversationActivity?.openTurn
@@ -622,6 +724,16 @@ function mergeHomeWorkItems(
           ? (orchestration?.activeReason ?? chat?.activeReason)
           : undefined,
       failureNotice: mergedFailureNotice,
+      // Same iff contract as the notices: each side set these only under
+      // its own label, so they are re-bound to the label that won.
+      attention:
+        mergedLifecycleLabel === 'Needs attention'
+          ? moreUrgentAttention(orchestration?.attention, chat?.attention)
+          : undefined,
+      activity: carriesActivity(mergedLifecycleLabel)
+        ? (orchestration?.activity ?? chat?.activity)
+        : undefined,
+      worktreeBranch: orchestration?.worktreeBranch,
       orchestrationThreadId: orchestration?.orchestrationThreadId,
       ...(lineage.length > 0 ? { orchestrationThreadIds: lineage } : {}),
       // A handoff's newest server execution is the only authoritative answer
@@ -779,6 +891,7 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
     modelLabel: 'Model unavailable',
     updatedAt: timestamp(task.updatedAt),
     lifecycleLabel: taskLifecycleLabel(task),
+    ...(task.status === 'blocked' ? { attention: 'blocked' as const } : {}),
     taskSessionId: task.sessionId,
   };
 }
@@ -831,6 +944,18 @@ export function compareTaskRecency(
  */
 function chatFailureNotice(chat: ChatUIState): string | null {
   return chat.queuedMessageFailure?.message?.trim() || null;
+}
+
+/**
+ * What a `Needs attention` chat is waiting on, from the same three facts
+ * `chatLifecycleLabel` reads for that label, most specific first.
+ * `orchestrationStatus: 'awaiting-approval'` is the coarse process status
+ * both an approval and a question map to, so alone it says only "waiting".
+ */
+function chatAttentionKind(chat: ChatUIState): WorkAttentionKind {
+  if (chat.pendingApprovals?.length) return 'approval';
+  if (chat.status === 'queued') return 'queued';
+  return 'waiting';
 }
 
 /**
@@ -1014,6 +1139,18 @@ export function buildActiveChatTaskItems({
         ? turnByConversation.get(chat.conversationId)
         : turnByThread.get(id);
       const lifecycleLabel = chatLifecycleLabel(chat, id, correlated);
+      // The chat's own copy of the server record. `serverWorkLive` is the
+      // gate `chatLifecycleLabel` used, so a turn a Stop receipt already
+      // settled is not reported as still open.
+      const activity =
+        carriesActivity(lifecycleLabel) && serverWorkLive(chat) === true
+          ? workActivityFrom(
+              chat.conversationActivity?.openTurn?.turnId ===
+                chat.stopSettledTurnId
+                ? { ...chat.conversationActivity!, openTurn: undefined }
+                : chat.conversationActivity,
+            )
+          : undefined;
       return {
         id: chat.conversationId || id,
         ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
@@ -1047,6 +1184,10 @@ export function buildActiveChatTaskItems({
                     : ('turn' as const),
             }
           : {}),
+        ...(lifecycleLabel === 'Needs attention'
+          ? { attention: chatAttentionKind(chat) }
+          : {}),
+        ...(activity ? { activity } : {}),
         // Bound to the label in both directions, like unanswerableNotice: a
         // notice may exist only under a 'Failed' chip, and a 'Failed' chip
         // shows its reason whenever one was recorded.

@@ -1,4 +1,11 @@
 import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
+import {
+  changedSinceAcknowledged,
+  type LiveLaneId,
+  workStatus,
+} from './work-status';
+
+export type { LiveLaneId };
 
 /**
  * Position-stable live lanes + snooze/linger model for the Home work list
@@ -43,8 +50,8 @@ export const WOKE_PILL_WINDOW_MS = 15 * 60 * 1000;
  * Settled for lane purposes — deliberately NOT including `'Unanswerable'`
  * (archive#1783). The settled/"Just finished" lane asserts the work FINISHED,
  * and an unanswerable session did not; it stopped being reachable. So it
- * stays in the live lanes (under Idle, see `liveLaneFor`), chipped, with its
- * basis on the row.
+ * stays in the live lanes (under Idle, see `workStatus`), with its basis on
+ * the row.
  *
  * archive#3227 A6: `partitionHomeWorkItems` is the ONE live/finished
  * classifier for every surface — desktop Home lanes, the Sessions lanes
@@ -80,20 +87,17 @@ export function isTerminalLifecycle(
  *   is not "your turn", because an idle session may simply be done from
  *   your point of view, and the fold cannot tell.
  */
-export type LiveLaneId = 'needsYou' | 'running' | 'idle';
-
 /** The live lanes' words — one set for Home, Sessions and the inbox. */
+/*
+ * Which lane an item sits in is the status ladder's answer (`workStatus` in
+ * `work-status.ts`, #3042), never a second reading of `lifecycleLabel` here:
+ * the row's status line and its lane come from one call.
+ */
 export const LIVE_LANE_LABELS: Record<LiveLaneId, string> = {
   needsYou: 'Needs you',
   running: 'Running',
   idle: 'Idle',
 };
-
-function liveLaneFor(label: HomeWorkItem['lifecycleLabel']): LiveLaneId {
-  if (label === 'Needs attention') return 'needsYou';
-  if (label === 'Running') return 'running';
-  return 'idle';
-}
 
 /**
  * A `HomeWorkItem` with a logical identity that survives the two known
@@ -188,7 +192,7 @@ interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
 }
 
 interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
-  /** Live lanes — see `liveLaneFor`. Always present, possibly empty. */
+  /** Live lanes — see `workStatus`. Always present, possibly empty. */
   needsYou: T[];
   running: T[];
   idle: T[];
@@ -236,43 +240,37 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       snoozed.push(item);
       continue;
     }
-    if (item.controlMode === 'read-only-attached') {
+    const { lane } = workStatus(item, now);
+    if (lane === 'external') {
       external.push(item);
       continue;
     }
-    if (item.lifecycleLabel === 'Draft') {
+    if (lane === 'drafts') {
       drafts.push(item);
       continue;
     }
-    if (isTerminalLifecycle(item.lifecycleLabel)) {
+    if (lane === 'finished') {
       // Completed conversations are attention items, not a timed toast.
       // A fresh terminal version remains in Just finished through reloads and
       // device changes until the user actually opens it. Non-conversation
       // work keeps the historic Earlier behavior; it has no transcript to
       // acknowledge through the conversation inventory.
       if (item.conversationUpdatedAt) {
-        if (
-          item.acknowledgedAt !== undefined &&
-          item.acknowledgedAt >= Date.parse(item.conversationUpdatedAt)
-        ) {
-          settled.push(item);
-          continue;
-        }
-        recentlyFinished.push(item);
+        (changedSinceAcknowledged(item) ? recentlyFinished : settled).push(
+          item,
+        );
         continue;
       }
       // Non-conversation work has no transcript version to acknowledge.
       // Retain its historical time-based placement while direct chats and
       // runtime conversations use the durable path above.
       const since = terminalSince.get(item.id) ?? now;
-      if (now - since >= TERMINAL_LINGER_MS) {
-        settled.push(item);
-        continue;
-      }
-      recentlyFinished.push(item);
+      (now - since >= TERMINAL_LINGER_MS ? settled : recentlyFinished).push(
+        item,
+      );
       continue;
     }
-    live[liveLaneFor(item.lifecycleLabel)].push(item);
+    live[lane].push(item);
   }
 
   return {
