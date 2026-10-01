@@ -62,7 +62,7 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e12a8e9c7c3120e32a859ae668138d6da2394f6c1d82d6aadb989ab58b88b7c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"ff7c778d975c7ed813ee07c5ee8cecefea35ff02e3007312f6267b94748c67c6","revision":"c30f672bd6ad608be52490ae20dcd1786989f0c2"},
 
     {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"1eaac93727668859c4347da608d045137ec995e8"},
 
