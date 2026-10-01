@@ -16,7 +16,7 @@
 
     {"path":"docs/reference/connect.md","digest":"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
 
-    {"path":"docs/reference/contracts.md","digest":"303ff096d0eb4c2d3117a1c165f209e1dd50ae02c2dc35dc55e0684a5058ef50","revision":"8c4cf9b920af95b446eceb3ffa3de6fae7137d10"},
+    {"path":"docs/reference/contracts.md","digest":"164bf82aecbeff9fe134157d47a0676ee6fb8ecbdc6ee9f4b82b619c30d383f6","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -130,7 +130,7 @@
 
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"a48c98f49fefb566c7cd8618e3798ed3697645a3fecd662897ec2340f9a9e8ae","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"c03b5a74f9f2ae6dabdd4c37515189fec2e4fa9ad21e0b84913030042b28c0ab","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38","revision":"c82192d89121275a4b40400a4c110927beff4344"},
 

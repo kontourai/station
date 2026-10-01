@@ -12,7 +12,7 @@
   "document": {"digest":"a2971c46c0cd8f8f7d8d315da79f4cb22faf67389e354e563f5c957411645d11","revision":"d7f3dc8591b9993d2fbf1d8156cbc27a3219af11"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"4ac9cfcfba62eeee83cb4128192aa18d85b730eb37121538ea0243d06840b26f","revision":"50fecf62c1354c54d754f1b5d14402ff61680944"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"c8e436c58fb06b5ce8df1b1ad4400b5e0cb1f774d8e3686c4f628a8dbe48fa21","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"73b79688f9837f5f22ec96b2b3a485a6a72cbd2b930983703756631ef897c9ee","revision":"8c4cf9b920af95b446eceb3ffa3de6fae7137d10"},
+    {"path":"src-ui/src/index.css","digest":"d5c92bc739425dfcf40ec525f14660779bede95ba01396c0cd0b28eac635e4f9","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
@@ -82,7 +82,7 @@
 
     {"path":"src-ui/src/components/ActionRow.tsx","digest":"ef0435148ae876bb76c336e0140d9b64cebbd4a6003a658bd40a6dad6afbb8a5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"abf2213fe224cd34badca2fad09f4b73fdad9e278fc07297de3146c5ebf39bf5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
+    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"a189bfd435f1a6eee850fbbf779c6ee32fc6771d134154d90c4a7ce75d8eb681","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"tests/helpers/visible-action-count.ts","digest":"b598b668d2fad8e2b6076100868eb5f9bc446b01487f1a761415b5fcc25ed412","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"}
   ],

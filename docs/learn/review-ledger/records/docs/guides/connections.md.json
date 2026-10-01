@@ -200,7 +200,7 @@
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/index.css","digest":"73b79688f9837f5f22ec96b2b3a485a6a72cbd2b930983703756631ef897c9ee","revision":"8c4cf9b920af95b446eceb3ffa3de6fae7137d10"},
+    {"path":"src-ui/src/index.css","digest":"d5c92bc739425dfcf40ec525f14660779bede95ba01396c0cd0b28eac635e4f9","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"src-ui/src/lib/browserRelayEnrollmentController.ts","digest":"fa5b8a6212f796c4302346dbd82370ab0d8fae95d76ad58db584080c4086b7bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
