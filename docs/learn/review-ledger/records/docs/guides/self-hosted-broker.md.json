@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
 
-  "document": {"digest":"069254200af71e444c1ccb959c35cce1931b56db475ee74a63e3c1f73b37ffd8","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+  "document": {"digest":"b1527bc987a784eda32e707cdd22fa74a05043579fed46cc9b1980b092762b80","revision":"3cc2806e5e1cb691b37ee0b62f688bb456f2971e"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
@@ -128,7 +128,17 @@
 
     {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"}
+    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"deployment/self-hosted-broker/compose.yaml","digest":"236dc3357eb52f96e942914bbeab383f51be82e92718eab117bc15f8aea1b67e","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
+
+    {"path":"deployment/self-hosted-broker/Caddyfile","digest":"609544b0060b97fd9167078d768a4538444c39682ebe33a18539dbd47efa8e7f","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
+
+    {"path":"deployment/self-hosted-broker/.env.example","digest":"de8309f7da6466dc058f975e6bcb7730f5a0e0fb959a0f69abf58357312838a4","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
+
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"e01bc77122b9ed7b4323dde178d7c82334f7de49"},
+
+    {"path":"scripts/lib/turn-fixture.ts","digest":"cce759228189ccf1849d9e339a08ca6bbf82558d0a1a501e9e3c1723237d6917","revision":"60a7e0cc312d3dd061f5f30babcf966131b6129e"}
   ],
 
   "checks": [
