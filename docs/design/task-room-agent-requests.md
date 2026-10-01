@@ -59,10 +59,47 @@ the checks passed all 11 mounted principal-suite tests. These are local
 implementation receipts, not shipped, browser or actual-provider proof.
 
 This publishes lifecycle facts and agent presence, not an accepted result. Agent
-document edits still use the lead Task/session association. Shared brief context,
+document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below;
 artifact/result links, versioned previews and feedback remain unfinished. The
 existing private room agent principal includes its requesting owner identity;
 this history is not a public publication projection.
+
+## Selected Task brief
+
+The request-list response advertises `station.task-room-context/v1` and returns
+an authorized snapshot or `null` when a complete brief cannot be obtained.
+The snapshot contains the Task title/description and shared document text/revision.
+Its digest binds those values to canonical Project identity, Task identity and
+Task incarnation. Capture rechecks authority, scope and Task metadata after
+worker I/O; incomplete projections and metadata changes do not become a brief.
+
+The composer pins the preview when choosing an agent. Background edits do not
+replace it. **Use latest brief** is an explicit refresh; late responses cannot
+replace a newer recipient/mode selection or a frozen request. Unchecking
+**Include Task brief** explicitly sends the request text alone. Saved request
+details show the retained brief rather than the current document.
+
+A context-bearing create sends only `{ version, digest }` beside its operation.
+The server resolves that reference under the journal's mutation lock before
+reserving a new execution, persists the bounded snapshot and passes its saved
+bytes to delegation. It does not trust browser-supplied brief text. Stale or
+unavailable context returns a pre-invocation context refusal. An existing
+operation with matching intent replays its saved snapshot without rereading an
+edited brief or invoking the provider. Context is part of intent and settlement
+identity; a substituted valid snapshot cannot receive a successful settlement.
+
+The public request/record protocol remains v1. The private journal promotes to
+`station.task-room-work-store/v2` when the first snapshot is saved; newer servers
+continue reading context-free v1 journals. Older servers fail closed on the new
+private format, so downgrading after context use needs an explicit migration.
+No text is silently truncated to fit; the existing four-MiB/256-request journal
+bound remains. Context is not provider authority or an accepted result.
+
+Controlled transport, storage and mounted/UI tests cover retained context,
+stale references, substituted snapshots, metadata edits and late refreshes.
+Missing-check controls failed before their fixes. Browser layout, a live model
+consuming the selected brief and the complete invited/public journey remain
+unverified. SDK/composer integration does not complete those acceptance tracks.
 
 ## Durable identity and uncertainty
 
