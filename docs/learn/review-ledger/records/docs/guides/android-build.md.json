@@ -30,6 +30,24 @@
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"package.json#/packageManager","digest":"50fca3fe5c025e96dd5375620d17ab71c3e90fec05d7fe4a572a638193d73bd0","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"package.json#/scripts/build:android","digest":"51d728b57564c0b1427d0d7b57d86086ab1168a689e7dba583b4cd2d79374c21","revision":"7a2154aaa17b18483ce8876f8066cb856e173b3d"},
+
+    {"path":"package.json#/scripts/build:android:arm64","digest":"7c8e7595e4f86ff4e7bd2047866f7b29bb079c00ecc0efb9243cca4b50f3174a","revision":"7a2154aaa17b18483ce8876f8066cb856e173b3d"},
+
+    {"path":"package.json#/scripts/build:ui","digest":"5d6db1ff0eb3b9bf67c76c4416e548e1315cb0666e18a52fcc57c6f10668aeca","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/install:playwright","digest":"72ceae4ea454289696c3237a8fe3f23a56d801056d131f320665cdb067f6c5a0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/tauri","digest":"8a4b6b67be2e18f2e85f9bf4c290ebe225eebbd698aefd41de8a542d5fd3e7df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:android","digest":"058f9f96db317d87e95f55d040b37aea61b7fab096a8e3f4391adc5b560108c9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/dev-ports.ts","digest":"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -44,7 +62,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -90,7 +108,7 @@
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"a3f7fb4ecb63910a8166f4a6a919b54727c62ffaa028e43348173ccf4f7c213d","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -128,25 +146,7 @@
 
     {"path":"src-ui/src/views/settings/SystemSection.tsx","digest":"628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/build:android","digest":"51d728b57564c0b1427d0d7b57d86086ab1168a689e7dba583b4cd2d79374c21","revision":"7a2154aaa17b18483ce8876f8066cb856e173b3d"},
-
-    {"path":"package.json#/scripts/build:android:arm64","digest":"7c8e7595e4f86ff4e7bd2047866f7b29bb079c00ecc0efb9243cca4b50f3174a","revision":"7a2154aaa17b18483ce8876f8066cb856e173b3d"},
-
-    {"path":"package.json#/scripts/build:ui","digest":"5d6db1ff0eb3b9bf67c76c4416e548e1315cb0666e18a52fcc57c6f10668aeca","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/install:playwright","digest":"72ceae4ea454289696c3237a8fe3f23a56d801056d131f320665cdb067f6c5a0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/tauri","digest":"8a4b6b67be2e18f2e85f9bf4c290ebe225eebbd698aefd41de8a542d5fd3e7df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/test:android","digest":"058f9f96db317d87e95f55d040b37aea61b7fab096a8e3f4391adc5b560108c9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
-
-    {"path":"package.json#/packageManager","digest":"50fca3fe5c025e96dd5375620d17ab71c3e90fec05d7fe4a572a638193d73bd0","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
+    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

@@ -9,7 +9,7 @@
 
   "limits": "No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence.",
 
-  "document": {"digest":"e8c379ea43903adb6e834101925f7e70ef9b39c903e522c77c94f9b8c716f123","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+  "document": {"digest":"a20eaba5f0f2d0701e85a50da690ff0f39167db2a9df95181b6c9c3e2eec77c7","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
   "sources": [
     {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -24,13 +24,13 @@
 
     {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"package.json","digest":"93fd2602f701684ddbe9743dffddc8d4855b3fc80de7db7a8b2716b11a05be31","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"2b6d3419b16d603f952a728829b7670dbea33e4e0975ea2abde6aaca37db4c03","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
-    {"path":"pnpm-workspace.yaml","digest":"24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -82,7 +82,11 @@
 
     {"path":"scripts/workspace-dependency-provenance.mjs","digest":"8e26b9bba267b682ba2f800bbb948dc46fad7071ff93ffcfe8060b60908c400b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts","digest":"8b5245ec85e9c85728be53067a9916953ab979880a3172a09d6cc4e89ded07fb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts","digest":"8b5245ec85e9c85728be53067a9916953ab979880a3172a09d6cc4e89ded07fb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/components/chat/SanitizedHtml.tsx","digest":"801ed68ce1b7b8dc71b1f2e269d600f89b868ce1bcf00c7afac819c667bfab2f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"}
   ],
 
   "checks": [

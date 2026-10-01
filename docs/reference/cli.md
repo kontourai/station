@@ -2366,9 +2366,10 @@ station fresh --force --allow-default-home-clean
 
 ### `home verify`
 
-Run an integrity check over the SQLite stores this home owns
-(`data/orchestration.sqlite` and `scheduler/scheduler.sqlite`) and report each
-one. The stores are opened read-only, so this is safe to run while Station is
+Run an integrity check over `data/orchestration.sqlite` and
+`scheduler/scheduler.sqlite` and report each one. This command does not inspect
+the home's other authentication, membership, native replay or Knowledge stores.
+The stores are opened read-only, so this is safe to run while Station is
 up -- it is the only `home` action that does not require the home to be idle.
 
 ```
@@ -2401,7 +2402,11 @@ is covered by this command, not by that schedule.
 
 Create an offline, content-hashed backup of one Station home. Every Station
 using that home must be stopped. SQLite stores are checkpointed and integrity
-checked before copy for selected `*.sqlite` files; symlinks in included content,
+checked before copy for every included `*.sqlite` file, a database named by the
+[home store registry](../../packages/shared/src/station-home-store-registry.ts),
+or a file with an existing SQLite WAL. This includes
+`security/native-device-proof-replay.sqlite` and `knowledge-index/index.db`;
+WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level

@@ -9,12 +9,12 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"17d25cd92d51dab41f590067e5c0cf3bc03eff1e2f1358313b0e9f4aca972a4e","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+  "document": {"digest":"c03ab6d3f5c0283c243cff3e5881aaf27150994665cf8927a46008da98fb6d9f","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/package.json","digest":"6e8052b5e9b9ee0d8ca1ec8b69780925ccf032fff0a8c1a8c6ffa17431533580","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -28,6 +28,8 @@
 
     {"path":"packages/contracts/src/conversation-pull-request-links.ts","digest":"f49fc639b21741343e1a4fce0ea30314cec0e8b36c1ac34a8dd69fff4ab0777c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+
     {"path":"packages/contracts/src/index.ts","digest":"ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -35,6 +37,8 @@
     {"path":"packages/contracts/src/learning-review.ts","digest":"b62b6b9a2a3c6d8e623ca9851f5a9f7a870b9eee0f96a87677967a95c4b05ad6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/mobile-device.ts","digest":"0b7073c81f961bf6f06ee49bf2c2c25ef9f2fead7bebe8b0a677181540701f1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/native-device-proof.ts","digest":"b127a8c088a98e9c5b2b99f1eae2848f6f61a848be415f6496ff32b6bedcd502","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -88,11 +92,11 @@
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7e8ea199dce79fcc5d2aae5932158f1d4df17f3b9db0348312727f5ac50cf16e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"src-server/runtime/conversation/conversation-stats-view.ts","digest":"60cde631c8481e21f8abf3223648d922604e2c31376e805fc3a80caef81a6a23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/identity/application-session-service.ts","digest":"cc70339848fe5e20624f090135360d8f7794b9b7897c387fb3705afe47eed8db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/identity/application-session-service.ts","digest":"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"src-server/services/identity/authority-observation.ts","digest":"71f96895de96f7be3db860b3d1ce15fac53a09b786eb7be7f0c906ece5573c48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -108,15 +112,13 @@
 
     {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
 
     {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"},
-
-    {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"}
+    {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"}
   ],
 
   "checks": [
