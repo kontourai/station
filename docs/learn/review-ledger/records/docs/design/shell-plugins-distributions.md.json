@@ -9,7 +9,7 @@
 
   "limits": "Design, not shipped behavior. Current-state claims are source inspection at 2e8ddc0f7; no test executed. The feat/coding-chat-main branch diff was not reviewed. Plugin-to-plugin isolation claims rest on the build shim source, not an executed probe.",
 
-  "document": {"digest":"e7bddadd866697ca34643af93cfed6fadf214deb9f0893c1d75795ff20537f81","revision":"70e58c2bb75767545200021868ab35969793307a"},
+  "document": {"digest":"247b4e14283eaf342acf3cf902c5e6247f711d09f857b9d5115ce705ffab059a","revision":"4a713f56aa373e739087a551b5fa6ec4511b84a5"},
 
   "sources": [
     {"path":"packages/contracts/src/distribution.ts","digest":"0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},

@@ -1,0 +1,9 @@
+{
+  "revision": "6a6d04c35043f6c451dfa530b0bacfd419a58359",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Merged tree: the index differs from main only by this change's one generated row for shell-plugins-distributions.md; regenerated with docs:index and compared against main's index. No other row changed."},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reworded three mentions of the example distribution so they no longer read as a path in this repository (the docs reference gate treats examples/... as local). No claim, decision or delivery-plan item changed."}
+  ]
+}
