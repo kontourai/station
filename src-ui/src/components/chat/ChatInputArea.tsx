@@ -584,38 +584,51 @@ export function ChatInputArea({
     // the banner and the transcript give way instead.
     const reserve = () => {
       const floor = draftFloorRef.current;
-      // Measure the composer's natural height with the draft at its floor:
-      // unsqueezed (no shrink, no cap) so overlapping rows cannot hide
-      // height, then restore and reserve exactly that.
+      // The composer's natural height with the draft at its floor: unsqueezed
+      // (no shrink, no cap) so overlapping rows cannot hide height.
       const saved = [
         root.style.minHeight,
         root.style.flexShrink,
         root.style.maxHeight,
         textarea.style.height,
       ] as const;
-      root.style.minHeight = '';
-      root.style.flexShrink = '0';
-      root.style.maxHeight = 'none';
-      textarea.style.height = `${floor}px`;
-      const needed = Math.ceil(root.getBoundingClientRect().height);
-      root.style.flexShrink = saved[1];
-      root.style.maxHeight = saved[2];
-      textarea.style.height = saved[3];
-      // In a dock too short for the transcript's and banner's own padding on
-      // top of that, they step aside entirely (data-composer-priority) rather
-      // than the composer overflowing its dock. And the reservation never
-      // exceeds what the dock can give: past that point Send staying on screen
-      // outranks the draft's two-line floor.
+      const measure = () => {
+        root.style.minHeight = '';
+        root.style.flexShrink = '0';
+        root.style.maxHeight = 'none';
+        textarea.style.height = `${floor}px`;
+        const height = Math.ceil(root.getBoundingClientRect().height);
+        root.style.flexShrink = saved[1];
+        root.style.maxHeight = saved[2];
+        textarea.style.height = saved[3];
+        return height;
+      };
       if (!body?.classList.contains('chat-dock__body')) {
-        const next = `${needed}px`;
+        const next = `${measure()}px`;
         root.style.minHeight = saved[0] === next ? saved[0] : next;
         return;
       }
+      // In a dock too short for the transcript's and the banner's own frame
+      // (padding and border) on top of the composer and its fixed siblings,
+      // the banner steps aside and the transcript gives up its padding
+      // (data-composer-priority) rather than the composer overflowing its
+      // dock. The transcript is never taken out of the layout: this is a
+      // measurement, and a reading that went stale must not be able to remove
+      // the conversation.
+      //
+      // Always decided in the plain layout, with the attribute off: what the
+      // attribute changes (the banner, the transcript's padding, the
+      // send-failure line) then cannot feed back into the decision.
+      body.removeAttribute('data-composer-priority');
+      let needed = measure();
+      // `others`: siblings that keep their size. `yielding`: what the
+      // transcript and the banner still occupy once shrunk to their frame.
       let others = 0;
-      let fixed = needed;
+      let yielding = 0;
       for (const child of body.children) {
         if (child === root || !(child instanceof HTMLElement)) continue;
         const style = getComputedStyle(child);
+        if (style.display === 'none') continue;
         const edge = (name: string) =>
           Number.parseFloat(style.getPropertyValue(name)) || 0;
         const margins = edge('margin-top') + edge('margin-bottom');
@@ -623,24 +636,25 @@ export function ChatInputArea({
           child.classList.contains('chat-messages') ||
           child.classList.contains('chat-dock__session-failure')
         ) {
-          fixed +=
+          yielding +=
             margins +
             edge('padding-top') +
             edge('padding-bottom') +
             edge('border-top-width') +
             edge('border-bottom-width');
-        } else if (style.display !== 'none') {
-          const size = child.getBoundingClientRect().height + margins;
-          fixed += size;
-          others += size;
+        } else {
+          others += child.getBoundingClientRect().height + margins;
         }
       }
-      // The send-failure line is shown only while this is set, which makes the
-      // composer taller and the dock tighter: setting it can only keep it set.
-      body.toggleAttribute(
-        'data-composer-priority',
-        fixed > body.clientHeight + 0.5,
-      );
+      const priority = needed + others + yielding > body.clientHeight + 0.5;
+      if (priority) {
+        body.setAttribute('data-composer-priority', '');
+        // The send-failure line shows only now, and it is part of what the
+        // composer needs.
+        needed = measure();
+      }
+      // The reservation never exceeds what the dock can give: past that point
+      // Send staying on screen outranks the draft's two-line floor.
       const granted = Math.max(0, Math.min(needed, body.clientHeight - others));
       // A shortfall comes out of the draft's floor, so it scrolls rather than
       // overflowing onto the controls row.
@@ -666,8 +680,9 @@ export function ChatInputArea({
       if (frame) cancelAnimationFrame(frame);
       if (scheduleReserveRef.current === scheduleReserve)
         scheduleReserveRef.current = null;
-      // The attribute hides the transcript through `.chat-dock__body`, which
-      // outlives this composer (replay mounts none): do not leave it behind.
+      // The attribute restyles the transcript and banner through
+      // `.chat-dock__body`, which outlives this composer (replay mounts
+      // none): do not leave it behind.
       body?.removeAttribute('data-composer-priority');
       root.style.minHeight = '';
       textarea.style.minHeight = '';
@@ -680,7 +695,15 @@ export function ChatInputArea({
     const observer = new ResizeObserver(scheduleReserve);
     const observeRows = () => {
       observer.disconnect();
-      if (body) observer.observe(body);
+      if (body) {
+        observer.observe(body);
+        // The reservation depends on every sibling's size (a loading
+        // skeleton, the status line, the banner), not only on the dock's:
+        // one that appears, leaves or resizes without changing the dock's own
+        // height must still be re-measured.
+        for (const sibling of body.children)
+          if (sibling !== root) observer.observe(sibling);
+      }
       for (const row of root.querySelectorAll(observed)) observer.observe(row);
     };
     observeRows();
@@ -689,6 +712,7 @@ export function ChatInputArea({
       scheduleReserve();
     });
     mutations.observe(root, { childList: true, subtree: true });
+    if (body) mutations.observe(body, { childList: true });
     return () => {
       observer.disconnect();
       mutations.disconnect();

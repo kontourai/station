@@ -1579,6 +1579,57 @@ describe('ChatInputArea dock reservation', () => {
     }
   });
 
+  test('a sibling that leaves the dock is re-measured, and the transcript is never removed', async () => {
+    // A loading skeleton above the composer leaves no room; when it goes the
+    // dock's own height does not change, so only watching the siblings sees
+    // it.
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('skeleton-block')
+            ? 150
+            : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div className="skeleton-block" />
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      const transcript = view.container.querySelector('.chat-messages');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(true);
+      // Shrunk, not removed: no rule takes the transcript out of the layout.
+      expect(transcript?.isConnected).toBe(true);
+      expect(getComputedStyle(transcript as Element).display).not.toBe('none');
+
+      view.container.querySelector('.skeleton-block')?.remove();
+      await waitFor(() =>
+        expect(body?.hasAttribute('data-composer-priority')).toBe(false),
+      );
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('typing does not rebuild the observers', () => {
     const constructed = vi.fn();
     class CountingObserver {

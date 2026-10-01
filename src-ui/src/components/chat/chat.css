@@ -1230,9 +1230,9 @@
   overflow-y: auto;
 }
 
-/* Too short even for their padding: they step aside until the dock grows.
-   The send-failure notice lives in the transcript, so the composer repeats
-   the latest one as a single line while the transcript is hidden. */
+/* No room above the composer (data-composer-priority): the transcript has
+   shrunk to nothing, so the send-failure notice inside it cannot be read; the
+   composer repeats the latest one as a single line. */
 .chat-input__send-failure {
   display: none;
   padding: 0 var(--space-2);
@@ -1248,9 +1248,15 @@
   display: block;
 }
 
-.chat-dock__body[data-composer-priority] > .chat-dock__session-failure,
-.chat-dock__body[data-composer-priority] > .chat-messages {
+/* The banner steps aside (the composer's own line repeats what failed). The
+   transcript only gives up its padding and shrinks to nothing: it is never
+   taken out of the layout, so a stale reading cannot remove the conversation. */
+.chat-dock__body[data-composer-priority] > .chat-dock__session-failure {
   display: none;
+}
+
+.chat-dock__body[data-composer-priority] > .chat-messages {
+  padding-block: 0;
 }
 
 /* Composer validation and attach-time notes sit in the fieldset's normal
