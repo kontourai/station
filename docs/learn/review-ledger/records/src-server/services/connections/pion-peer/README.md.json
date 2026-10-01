@@ -20,11 +20,11 @@
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"f87990d77137ce4f78503ebe5e2af9a2646ff69d6df1dddc5644ea68cabc4cab","revision":"1e99a85dacdb704350016425b5bda1d77ba4e9cd"},
+    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"b5cce8223164854715689def13c452fc70a03d2f3200526d856c92ae9b9172bb","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"c35e8d3412cd113680e56653d06f04dcae821359175a39339a2504a837969f2b","revision":"1e99a85dacdb704350016425b5bda1d77ba4e9cd"},
 
-    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"467b2f9d1da99055b26b24e7ce09d225440a2a145f653bbc96025662e14bf771","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
+    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"e07aedf5e3b36a1ff86dd1afc49ab581b0c085e1ad8be78e834e9eccc2730b3b","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
 
     {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"fe87d55c8a067d068c07d79d3d1f3e5dbd488db7795bea0a5eafd4913629903a","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
