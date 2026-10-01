@@ -228,7 +228,7 @@ test.describe('ACP + Project Context', () => {
     await page.goto('/');
     await page
       .locator('.home-view__actions')
-      .getByRole('button', { name: /^Start a chat/i })
+      .getByRole('button', { name: /Chat options/i })
       .click();
     await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeVisible();
     await page.locator('.new-chat-modal__context-button').click();

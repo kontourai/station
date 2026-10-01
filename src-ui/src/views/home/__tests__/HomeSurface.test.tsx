@@ -170,7 +170,10 @@ describe('HomeSurface composition', () => {
   test('the start card names the agent it can actually open on', () => {
     renderHome();
     const card = screen.getByRole('button', { name: /Start a chat/ });
-    expect(card.textContent).toContain('Codex · gpt-5.4');
+    expect(card).toHaveProperty('disabled', true);
+    expect(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toBeTruthy();
   });
 
   test('with no runnable agent the start card becomes a set-up CTA', () => {
@@ -185,9 +188,16 @@ describe('HomeSurface composition', () => {
         effectiveModel: { label: 'Model not reported' },
       },
     });
-    expect(screen.queryByRole('button', { name: /Start a chat/ })).toBe(null);
-    const cta = screen.getByRole('button', { name: /Connect an AI app/ });
-    expect(cta.textContent).toContain('Set up an AI app to start chatting');
+    expect(screen.getByRole('button', { name: /Start a chat/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    const cta = screen.getByRole('button', { name: /Start a chat/ });
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me' } },
+    );
+    expect(cta).toHaveProperty('disabled', false);
     // And it names no agent at all.
     expect(cta.textContent).not.toContain('Codex');
   });

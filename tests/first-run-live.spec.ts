@@ -173,23 +173,19 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
 
-  // The run was DEFERRED, so this home has no Agent to chat with — and since
-  // archive#3627 Home says so rather than recommending one. The card used to
-  // read "Start a chat" unconditionally over `flatList[0]`, which on a
-  // fresh home named an Agent the New Chat picker one click away flagged "Not
-  // set up". Asserting the old label here would be asserting that
-  // contradiction back into place.
-  const startAgent = page.getByRole('button', { name: /Connect an AI app/i });
+  // An unfinished optional setup flow does not block entering a goal.
+  const goal = page.getByRole('textbox', { name: 'What would you like done?' });
+  await expect(goal).toBeVisible();
+  await expect(goal).toBeEditable();
+  const startAgent = page
+    .locator('.home-view__actions')
+    .getByRole('button', { name: 'Start a chat', exact: true });
+  await expect(startAgent).toBeDisabled();
+  await goal.fill('Help me get started');
+  await expect(startAgent).toBeEnabled();
   const openLocalProject = page.getByRole('button', {
     name: /Open local project/i,
   });
-  await expect(startAgent).toBeVisible();
-  await expect(startAgent).toBeEnabled();
-  await expect(
-    page
-      .locator('.home-view__actions')
-      .getByRole('button', { name: /Start a chat/i }),
-  ).toHaveCount(0);
   await expect(openLocalProject).toBeVisible();
   await expect(openLocalProject).toBeEnabled();
 

@@ -108,9 +108,20 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-You can also choose **Start a chat** on Home whenever an agent is ready. If
-none is ready, **Connect an AI app** opens the same picker with setup actions.
-**Explore agents** opens the available AI apps and agents directly from Home.
+On Home, write what you want done and choose **Start a chat**. Station uses
+working defaults, waits for discovery, and carries your original request into
+the conversation. You do not need to choose an Agent, Model, or provider first.
+An already-ready engine can be prepared through the existing idempotent setup
+path; installed, unconnected apps can be connected when needed. Explicitly
+disabled apps remain disabled. A missing account, permission, or working target
+is shown at the point where it is needed, without claiming preparation succeeded.
+
+**Chat options** opens the full picker when you want a different app, Model,
+or workspace. **Explore agents** remains available for deliberate customization.
+Optional first-run preferences appear after the work entry rather than ahead of it.
+Closing preparation prevents a late response from starting work. The request stays
+in the Home field while that Home view remains mounted and through the temporary
+setup-return flow; changing Stations or authorization ends that flow.
 
 When creating an agent, choose **Use a model connection** for Station's engine
 or **Use an AI app** for Claude Code, Codex, or another connected engine. Those

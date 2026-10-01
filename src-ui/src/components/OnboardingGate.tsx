@@ -1,3 +1,4 @@
+import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
 /**
  * OnboardingGate keeps the shell available when a Station endpoint is
  * unavailable. ConnectionBannerSource owns reachability disclosure while this
@@ -679,6 +680,14 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [profile.isDesktop, observedAuthFailure, forceRefetch]);
+
+  useEffect(() => {
+    const startWork = (event: Event) => {
+      if (readNewChatIntent(event).startWithDefault) deferSetupBanner();
+    };
+    window.addEventListener(OPEN_NEW_CHAT_EVENT, startWork);
+    return () => window.removeEventListener(OPEN_NEW_CHAT_EVENT, startWork);
+  }, [deferSetupBanner]);
 
   // `shouldRenderSetupLauncher` already requires non-null content; the
   // explicit `&& setupBannerContent` only exists so TypeScript narrows the

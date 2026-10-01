@@ -579,7 +579,7 @@ async function mockTaskFirstHome(
 async function startProjectTask(page: Page) {
   await page
     .locator('.home-view__actions')
-    .getByRole('button', { name: /Start a chat/i })
+    .getByRole('button', { name: /Chat options/i })
     .click();
   const dialog = page.getByRole('dialog', { name: 'New Chat' });
   await dialog.getByRole('button', { name: 'Workspace: No workspace' }).click();
@@ -700,6 +700,35 @@ async function mockStationModelProviders(page: Page) {
 }
 
 test.describe('Task-first Home (#332, mocked)', () => {
+  test('starts a written goal with working defaults and no configuration choices', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands });
+    await page.goto('/');
+    const prompt = 'Reply exactly GOAL READY. Use no tools.';
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await page
+      .locator('.home-view__goal')
+      .getByRole('button', { name: 'Start a chat', exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({ message: prompt });
+    await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Workspace: No workspace' }),
+    ).toHaveCount(0);
+  });
+
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
     page,
   }) => {
@@ -739,7 +768,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // assertion (now after an explicit click, not implicit) moved.
     await page
       .locator('.home-view__actions')
-      .getByRole('button', { name: /Start a chat/i })
+      .getByRole('button', { name: /Chat options/i })
       .click();
     const newChat = page.getByRole('dialog', { name: 'New Chat' });
     await expect(newChat).toBeVisible();
@@ -846,7 +875,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page
         .locator('.home-view__actions')
-        .getByRole('button', { name: /Start a chat/i }),
+        .getByRole('button', { name: /Chat options/i }),
     ).toContainText('Codex · gpt-5.3-codex');
     await expect(
       page.getByRole('button', { name: /Open local project/i }),
@@ -880,12 +909,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const advertisedIdentity = await page
       .locator('.home-view__actions')
-      .getByRole('button', { name: /Start a chat/i })
+      .getByRole('button', { name: /Chat options/i })
       .locator('small')
       .textContent();
     await page
       .locator('.home-view__actions')
-      .getByRole('button', { name: /Start a chat/i })
+      .getByRole('button', { name: /Chat options/i })
       .click();
     const selectedAgent = page.locator('.new-chat-modal__agent--selected');
     await expect(selectedAgent).toContainText('Codex');
@@ -952,7 +981,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     await page
       .locator('.home-view__actions')
-      .getByRole('button', { name: /Start a chat/i })
+      .getByRole('button', { name: /Chat options/i })
       .click();
     await selectNoWorkspace(page);
     await page.locator('.new-chat-modal__agent--selected').click();
@@ -1461,7 +1490,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
       await page
         .locator('.home-view__actions')
-        .getByRole('button', { name: /Start a chat/i })
+        .getByRole('button', { name: /Chat options/i })
         .click();
       await page.locator('.new-chat-modal__agent--selected').click();
       await expect(page.locator('.chat-dock')).toBeVisible();

@@ -8,8 +8,7 @@ import type {
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
 import { SkeletonBlock } from '../state';
-
-const OPEN_NEW_CHAT_EVENT = 'station:open-new-chat';
+import { HomeChatStartForm } from './HomeChatStartForm';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
 
@@ -111,15 +110,7 @@ export function HomeActionSection({
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
   const showLocalProject = hasLocalStationForProfile(profile);
-  if (model.actionsLoading) {
-    return (
-      <SkeletonBlock
-        count={3}
-        className="home-view__actions home-view__actions--loading"
-        label="Loading Home actions"
-      />
-    );
-  }
+
   return (
     <section className="home-view__actions" aria-label="Work actions">
       {showPrimary && model.primaryWorkItem && (
@@ -131,22 +122,12 @@ export function HomeActionSection({
           onClick={() => model.continueWork(model.primaryWorkItem!)}
         />
       )}
-      {/*
-        One card, two honest states. With something runnable it recommends it
-        by name; with nothing runnable it stops recommending and asks for the
-        setup instead — the picker it opens is where the per-engine Enable
-        lives, so the destination is the same and only the promise changes.
-      */}
-      <HomeActionCard
-        label={model.startReady ? 'Start a chat' : 'Connect an AI app'}
-        title={
-          model.startReady
-            ? 'Write a message and begin'
-            : 'Set up an AI app to start chatting'
-        }
-        detail={model.startIdentity}
-        onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}
+      <HomeChatStartForm
+        identity={model.startReady ? model.startIdentity : undefined}
       />
+      {model.actionsLoading ? (
+        <SkeletonBlock count={1} label="Finding available ways to help" />
+      ) : null}
       <HomeActionCard
         label="Explore agents"
         title="Choose an AI app or create an agent"

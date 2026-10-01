@@ -364,7 +364,13 @@ describe('HomeView', () => {
     window.addEventListener('station:open-new-chat', newChat, { once: true });
     renderHomeView({ continuation: null, onNavigate });
 
-    expect(screen.getByText('Codex · gpt-5.3-codex')).toBeTruthy();
+    expect(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toBeTruthy();
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me plan my day' } },
+    );
     expect(screen.queryByText(/Default Model/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Start a chat/i }));
     expect(newChat).toHaveBeenCalledTimes(1);
@@ -395,15 +401,13 @@ describe('HomeView', () => {
     });
 
     expect(
-      screen.getByRole('status', { name: 'Loading Home actions' }),
+      screen.getByRole('status', { name: 'Finding available ways to help' }),
     ).toBeTruthy();
-    expect(
-      container.querySelectorAll(
-        '.home-view__actions--loading > .skeleton--block',
-      ),
-    ).toHaveLength(3);
+    expect(container.querySelector('.home-view__goal textarea')).toBeTruthy();
     expect(screen.queryByText('No agent is ready yet')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Start a chat/i })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /Start a chat/i }),
+    ).toHaveProperty('disabled', true);
     expect(
       screen.queryByRole('button', { name: /Connect an AI app/i }),
     ).toBeNull();
@@ -885,7 +889,9 @@ describe('HomeView', () => {
     ).toBeTruthy();
     // The card it names is the one that stays.
     expect(screen.getByText('Start a chat')).toBeTruthy();
-    expect(screen.getByText('Write a message and begin')).toBeTruthy();
+    expect(
+      screen.getAllByRole('textbox', { name: 'What would you like done?' }),
+    ).toHaveLength(1);
   });
 
   test('separates Running from terminal Recently finished work with counts and compact cwd metadata', () => {

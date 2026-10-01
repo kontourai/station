@@ -50,7 +50,7 @@ async function openComposer(
   await dismissSetupLauncher(page);
   await page
     .locator('.home-view__actions')
-    .getByRole('button', { name: /^Start a chat/i })
+    .getByRole('button', { name: /Chat options/i })
     .click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });

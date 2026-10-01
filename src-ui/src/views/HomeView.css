@@ -429,3 +429,27 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.home-view__goal {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  width: 100%;
+}
+.home-view__goal textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  resize: vertical;
+}
+.home-view__goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
