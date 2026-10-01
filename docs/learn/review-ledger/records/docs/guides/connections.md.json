@@ -96,7 +96,7 @@
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/routes/system/relay-enrollment-routes.ts","digest":"3844e28d46c1394058412e854d53c725d813651ebea53c7de22430bc409fc52f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -132,7 +132,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b3d6cc66077eb50e31ec87f9f31fedd69e8d9aa164badf377061b1e748e5c27f","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"b69b9dadeb2ee6cf31bdc948ce60ee508bbfc6fda3206d388e1c48566cc42de5","revision":"961cd7dc4de593491ef1c5fb7adf2b0fc5bab114"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"930feaa5c2d9670b5e04fbdd6e16d68c477fa6fcc00c7b3e8691906b735bfdef","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
@@ -172,7 +172,7 @@
 
     {"path":"src-server/tools/station-control-catalog-tools.ts","digest":"bdbc3859eb839956ce824fea173bb4d1d366bb9adf068d294327a67c7a7a55a2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

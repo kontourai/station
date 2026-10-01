@@ -16,7 +16,7 @@
 
     {"path":"src-server/services/peers/peer-credential-store.ts","digest":"08c2e2a1069e62cdc8196dffe4ed7a9c0dfc709047431d775e70c3c30e2378c3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
   ],
