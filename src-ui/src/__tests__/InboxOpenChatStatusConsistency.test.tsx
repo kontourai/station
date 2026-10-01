@@ -64,6 +64,7 @@ const SESSIONS: OrchestrationSessionSummary[] = [
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => null,
