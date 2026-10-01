@@ -1,5 +1,6 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
+import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
   getProjectView,
@@ -11,7 +12,7 @@ import {
   QueryClientProvider,
   useQuery,
 } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -35,7 +36,15 @@ const options = {
   },
 } as const;
 
-function NativeSavedStations() {
+type InvitationAccepted = (
+  accepted: ProjectInvitationAcceptance,
+  capturedScope: Scope,
+) => void;
+function NativeSavedStations({
+  onInvitationAccepted,
+}: {
+  onInvitationAccepted: InvitationAccepted;
+}) {
   const { connections, activeConnection, setActiveConnection } =
     useConnections();
   const [selectionError, setSelectionError] = useState<string | null>(null);
@@ -70,7 +79,7 @@ function NativeSavedStations() {
         </select>
       </label>
       {selectionError && <p role="alert">{selectionError}</p>}
-      <RelayRouteProfiles />
+      <RelayRouteProfiles onInvitationAccepted={onInvitationAccepted} />
     </section>
   );
 }
@@ -243,18 +252,12 @@ function NativeMemberProjects({
 function NativeMemberEpoch({
   scope,
   stationId,
+  client,
 }: {
   scope: Scope;
   stationId: string;
+  client: QueryClient;
 }) {
-  const [client] = useState(() => new QueryClient({ defaultOptions: options }));
-  useEffect(
-    () => () => {
-      void client.cancelQueries();
-      client.clear();
-    },
-    [client],
-  );
   return (
     <QueryClientProvider client={client}>
       <NativeMemberProjects scope={scope} stationId={stationId} />
@@ -269,6 +272,19 @@ function NativeRelayMemberContent() {
   const { navigate } = useNavigation();
   const authorityKey = scope?.isCurrent() ? scope.authorityKey : null;
   const previousAuthority = useRef(authorityKey);
+  const memberClient = useMemo(
+    () => (authorityKey ? new QueryClient({ defaultOptions: options }) : null),
+    [authorityKey],
+  );
+  useEffect(
+    () => () => {
+      if (memberClient) {
+        void memberClient.cancelQueries();
+        memberClient.clear();
+      }
+    },
+    [memberClient],
+  );
   useEffect(() => {
     if (previousAuthority.current !== authorityKey) {
       previousAuthority.current = authorityKey;
@@ -292,13 +308,34 @@ function NativeRelayMemberContent() {
       <div className="project-page__inner">
         <h1>{activeConnection.name}</h1>
         <QueryClientProvider client={recoveryClient}>
-          <NativeSavedStations />
+          <NativeSavedStations
+            onInvitationAccepted={(accepted, capturedScope) => {
+              if (
+                !memberClient ||
+                !scope?.isCurrent() ||
+                !capturedScope.isCurrent() ||
+                capturedScope.authorityKey !== scope.authorityKey ||
+                capturedScope.apiBase !== scope.apiBase ||
+                accepted.scope.stationId !== route.stationId
+              )
+                return;
+              void memberClient.invalidateQueries({
+                queryKey: [
+                  'native-member-projects',
+                  scope.apiBase,
+                  scope.authorityKey,
+                ],
+                exact: true,
+              });
+            }}
+          />
         </QueryClientProvider>
-        {scope?.isCurrent() ? (
+        {scope?.isCurrent() && memberClient ? (
           <NativeMemberEpoch
             key={scope.authorityKey}
             scope={scope}
             stationId={route.stationId}
+            client={memberClient}
           />
         ) : (
           <p>
