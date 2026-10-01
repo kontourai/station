@@ -10,6 +10,7 @@ import type {
 import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import { SelfHostedBrokerRuntime } from '../../../runtime/bootstrap/self-hosted-broker-runtime.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
@@ -23,6 +24,8 @@ import {
 } from '../self-hosted-broker-client.js';
 import { SelfHostedBrokerConnector } from '../self-hosted-broker-connector.js';
 import { SelfHostedBrokerService } from '../self-hosted-broker-service.js';
+
+const makeTempDir = trackTempDirs();
 
 const roots = new Set<string>();
 afterEach(() => {
@@ -112,9 +115,7 @@ describe.runIf(process.platform !== 'win32')(
   () => {
     test('resolved native offer refuses revocation during answer preparation before publication', async () => {
       const f = fixture(() => 1_000, nativeTrustScope);
-      const home = mkdtempSync(
-        join(tmpdir(), 'station-native-offer-registry-'),
-      );
+      const home = makeTempDir('station-native-offer-registry-');
       roots.add(home);
       const registry = new NativeSurfaceRegistry(
         home,

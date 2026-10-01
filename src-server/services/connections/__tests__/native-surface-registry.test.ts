@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import {
   NativeSurfaceOperatorAuthority,
   NativeSurfaceRegistry,
   type NativeSurfaceTuple,
 } from '../native-surface-registry.js';
+
+const makeTempDir = trackTempDirs();
 
 const homes: string[] = [];
 const stores: NativeSurfaceRegistry[] = [];
@@ -19,7 +21,7 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
 });
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'native-surface-registry-'));
+  const home = makeTempDir('native-surface-registry-');
   homes.push(home);
   const tuple: NativeSurfaceTuple = {
     scope: {

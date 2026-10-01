@@ -68,6 +68,8 @@ async function fixture() {
   > = {
     version: NATIVE_RELAY_ENROLLMENT_VERSION,
     state: 'delivered',
+    responsePeerNonce: 'P'.repeat(43),
+    stationSigningGeneration: 1,
     binding: {
       stationId,
       stationAudience: 'https://station.example',
