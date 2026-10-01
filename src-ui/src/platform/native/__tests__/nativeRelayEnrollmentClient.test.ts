@@ -317,6 +317,10 @@ test('a recreated client resumes the exact host journal attempt without allocati
     phase: 'active',
     profileRevision: 8,
   });
+  await expect(restarted.status()).resolves.toMatchObject({
+    state: 'active',
+    profileRevision: 8,
+  });
   await restarted.dispose();
   expect(
     f.calls.filter((call) => call.command.endsWith('_begin_prepare')),
