@@ -11,7 +11,10 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
-import { WorkspaceFileChangesService } from '../../services/projects/workspace-file-changes-service.js';
+import {
+  WorkspaceFileChangesQueueFullError,
+  WorkspaceFileChangesService,
+} from '../../services/projects/workspace-file-changes-service.js';
 import { WorkspaceFilePreviewService } from '../../services/projects/workspace-file-preview-service.js';
 import { expandTilde } from '../../utils/paths.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
@@ -181,10 +184,36 @@ export function createWorkspacePanePreviewRoutes(
           404,
         );
       }
+      const busy = () => {
+        // Not a refusal, and not a result: the repository was being written
+        // (a commit landing, a `.git` swapped under the read) each time
+        // Station read it, and a read is only answered from one that held
+        // still; or this workspace's queue of waiting reads is full. The
+        // same answer as the coding git reads.
+        c.header('Retry-After', '1');
+        return c.json(
+          {
+            success: false,
+            error:
+              'The repository was being changed while Station read it. Nothing is wrong with it; try again in a moment',
+            code: 'repository-busy',
+            retryable: true,
+          },
+          503,
+        );
+      };
       let changes: Awaited<ReturnType<typeof changesService.changes>>;
       try {
-        changes = await changesService.changes(workingDirectory, path);
+        changes = await changesService.changes(workingDirectory, path, {
+          // A reader that navigated away stops waiting for its turn.
+          signal: c.req.raw.signal,
+        });
       } catch (error) {
+        if (c.req.raw.signal.aborted) {
+          // Nobody is listening; nothing is said.
+          return new Response(null, { status: 499 });
+        }
+        if (error instanceof WorkspaceFileChangesQueueFullError) return busy();
         const failure = error as { killed?: unknown; signal?: unknown };
         if (
           error instanceof Error &&
@@ -216,21 +245,13 @@ export function createWorkspacePanePreviewRoutes(
           404,
         );
       }
-      if (changes.state === 'busy') {
-        // Not a refusal, and not a result: the repository was being written
-        // (a commit landing, a `.git` swapped under the read) each time
-        // Station read it, and a read is only answered from one that held
-        // still. The same answer as the coding git reads.
-        c.header('Retry-After', '1');
+      if (changes.state === 'busy') return busy();
+      if (changes.state === 'not-found') {
+        // Neither tracked, in HEAD, nor in the work tree: as the preview
+        // answers a file that is not there.
         return c.json(
-          {
-            success: false,
-            error:
-              'The repository was being changed while Station read it. Nothing is wrong with it; try again in a moment',
-            code: 'repository-busy',
-            retryable: true,
-          },
-          503,
+          { success: false, error: 'File not found', code: 'file-not-found' },
+          404,
         );
       }
       return c.json({ success: true, data: changes });

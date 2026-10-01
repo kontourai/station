@@ -18,7 +18,9 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -484,6 +486,40 @@ describe('POST /:slug/file-preview/changes', () => {
       expect(body.data.patch).toContain('diff --git a/app/a.txt b/app/a.txt');
     });
 
+    /**
+     * git trusts an index entry's cached size and mtime unless the file was
+     * modified in the same second the index was written (a "racy" entry,
+     * which it re-reads by content). Station runs git on a COPY of the
+     * index; a copy with a fresh timestamp is newer than every entry, so a
+     * same-size rewrite that landed in the same second as the index, read a
+     * second later, read as unchanged (3 of 20 runs of the two tests above
+     * before the copy kept the index's own timestamp). Here the race is made
+     * certain: the entry's cached mtime, the file's mtime and the index's
+     * mtime are all two seconds in the past, so any copy made now is newer.
+     */
+    test('a same-size rewrite in the same second as the index was written is read by content, as plain git reads it', async () => {
+      const root = repo({ 'a.txt': 'one\n' });
+      const file = join(root, 'a.txt');
+      const index = join(root, '.git', 'index');
+      const past = new Date(statSync(file).mtimeMs - 2_000);
+      // The index caches the file's stat with that mtime...
+      utimesSync(file, past, past);
+      git(root, ['update-index', '--refresh']);
+      // ...then the file changes without its size or mtime changing, and
+      // the index is as old as the entry: racy, in git's own reading.
+      writeFileSync(file, 'two\n');
+      utimesSync(file, past, past);
+      utimesSync(index, past, past);
+
+      const { body } = await changes(root, { path: 'a.txt' });
+
+      expect(body.data.state).toBe('changed');
+      expect(body.data.patch).toContain('+two');
+      // Control, last (plain git refreshes the index as it reads): reading
+      // its own index, git sees the change.
+      expect(git(root, ['diff', 'HEAD', '--', 'a.txt'])).toContain('+two');
+    });
+
     test('refuses a planted repository whose core.worktree steers discovery above the Project', async () => {
       // The operator's repository holds a file at the path the Project's
       // own file would have if the work tree started one folder too high.
@@ -574,5 +610,46 @@ describe('POST /:slug/file-preview/changes', () => {
       );
       expect(git(folder, ['log', '-1', '--format=%s']).trim()).toBe('base');
     });
+  });
+});
+
+describe('POST /:slug/file-preview/changes: what an empty patch means', () => {
+  test('a path that is neither tracked, in HEAD, nor present is not found, never "matches HEAD"', async () => {
+    const root = repo({ 'a.txt': 'a\n' });
+
+    const { status, body } = await changes(root, { path: 'never.txt' });
+
+    expect(status).toBe(404);
+    expect(body).toMatchObject({ success: false, code: 'file-not-found' });
+    expect(JSON.stringify(body)).not.toContain(root);
+    // The same path, present and untracked, is a different fact.
+    writeFileSync(join(root, 'never.txt'), 'now\n');
+    expect((await changes(root, { path: 'never.txt' })).body.data).toEqual({
+      state: 'untracked',
+    });
+    // And an ignored file is still a file git sees, not one that is missing.
+    writeFileSync(join(root, '.gitignore'), 'secret.env\n');
+    writeFileSync(join(root, 'secret.env'), 'x\n');
+    expect((await changes(root, { path: 'secret.env' })).body.data).toEqual({
+      state: 'untracked',
+    });
+  });
+
+  test('a HEAD check that fails for any reason but "no commits yet" is a failure, not "no commits"', async () => {
+    const root = repo({ 'a.txt': 'a\n' });
+    hooks.beforeGit = (args) => {
+      if (args.includes('rev-parse') && args.includes('--verify')) {
+        throw Object.assign(new Error('fatal: bad object HEAD'), {
+          code: 128,
+          stderr: 'fatal: bad object HEAD\n',
+        });
+      }
+    };
+
+    const { status, body } = await changes(root, { path: 'a.txt' });
+
+    expect(status).toBe(502);
+    expect(body.success).toBe(false);
+    expect(JSON.stringify(body)).not.toContain('no-commits');
   });
 });

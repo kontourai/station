@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from 'vitest';
 import type { readProjectRepository } from '../git-read-repository.js';
 import {
   WORKSPACE_FILE_CHANGES_CONCURRENCY,
+  WORKSPACE_FILE_CHANGES_MAX_QUEUE,
+  WorkspaceFileChangesQueueFullError,
   WorkspaceFileChangesService,
 } from '../workspace-file-changes-service.js';
 
@@ -160,5 +162,141 @@ describe("WorkspaceFileChangesService: the shared resolver's answers", () => {
       }) as unknown as ReadRepository);
       await expect(failing.changes('/w', 'a')).rejects.toBe(failure);
     }
+  });
+});
+
+describe('WorkspaceFileChangesService: the queue and a reader that leaves', () => {
+  /** Reads that block until released, one gate per call. */
+  function gated() {
+    const gates: Array<() => void> = [];
+    const readRepository = vi.fn(
+      () =>
+        new Promise<Outcome>((resolve) => {
+          gates.push(() =>
+            resolve({ ok: true, top: '/w', value: { state: 'untracked' } }),
+          );
+        }),
+    ) as unknown as ReadRepository;
+    const service = new WorkspaceFileChangesService(preview, readRepository);
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    return { service, readRepository, gates, settle };
+  }
+
+  test('beyond the cap and the queue, a request is refused as busy rather than queued without bound', async () => {
+    const { service, readRepository, gates, settle } = gated();
+    expect(WORKSPACE_FILE_CHANGES_MAX_QUEUE).toBe(8);
+    const admitted = Array.from(
+      {
+        length:
+          WORKSPACE_FILE_CHANGES_CONCURRENCY + WORKSPACE_FILE_CHANGES_MAX_QUEUE,
+      },
+      (_, index) => service.changes('/w', `${index}.ts`),
+    );
+    await settle();
+    expect(readRepository).toHaveBeenCalledTimes(
+      WORKSPACE_FILE_CHANGES_CONCURRENCY,
+    );
+
+    await expect(
+      service.changes('/w', 'one-too-many.ts'),
+    ).rejects.toBeInstanceOf(WorkspaceFileChangesQueueFullError);
+    // Another workspace has its own cap and queue.
+    const elsewhere = service.changes('/elsewhere', 'a.ts');
+    await settle();
+    expect(readRepository).toHaveBeenCalledTimes(
+      WORKSPACE_FILE_CHANGES_CONCURRENCY + 1,
+    );
+
+    while (gates.length) gates.shift()?.();
+    await settle();
+    while (gates.length) gates.shift()?.();
+    await settle();
+    while (gates.length) gates.shift()?.();
+    await settle();
+    while (gates.length) gates.shift()?.();
+    await settle();
+    while (gates.length) gates.shift()?.();
+    await settle();
+    await expect(Promise.all([...admitted, elsewhere])).resolves.toHaveLength(
+      admitted.length + 1,
+    );
+    expect(readRepository).toHaveBeenCalledTimes(admitted.length + 1);
+  });
+
+  test('a queued request whose signal aborts stops waiting at once, never reads, and frees its place', async () => {
+    const { service, readRepository, gates, settle } = gated();
+    const running = [
+      service.changes('/w', 'a.ts'),
+      service.changes('/w', 'b.ts'),
+    ];
+    const controller = new AbortController();
+    const queued = service.changes('/w', 'c.ts', { signal: controller.signal });
+    const behind = service.changes('/w', 'd.ts');
+    await settle();
+    expect(readRepository).toHaveBeenCalledTimes(2);
+
+    controller.abort(new Error('the reader left'));
+
+    await expect(queued).rejects.toThrow('the reader left');
+    // Its read never started; the one behind it takes the freed turn.
+    gates.shift()?.();
+    await settle();
+    expect(readRepository).toHaveBeenCalledTimes(3);
+    expect(
+      (
+        readRepository as unknown as { mock: { calls: unknown[][] } }
+      ).mock.calls.map((call) => call[1]),
+    ).toEqual(['/w', '/w', '/w']);
+    while (gates.length) gates.shift()?.();
+    await settle();
+    await expect(Promise.all([...running, behind])).resolves.toHaveLength(3);
+  });
+
+  test('a shared read is given up only when every requester has left; one that stays is still answered', async () => {
+    const { service, readRepository, gates, settle } = gated();
+    service.changes('/w', 'a.ts');
+    service.changes('/w', 'b.ts');
+    const first = new AbortController();
+    const second = new AbortController();
+    const one = service.changes('/w', 'c.ts', { signal: first.signal });
+    const two = service.changes('/w', 'c.ts', { signal: second.signal });
+    await settle();
+
+    first.abort();
+    await expect(one).rejects.toMatchObject({ name: 'AbortError' });
+    gates.shift()?.();
+    await settle();
+    // The shared read ran for the requester that stayed.
+    expect(readRepository).toHaveBeenCalledTimes(3);
+    while (gates.length) gates.shift()?.();
+    await expect(two).resolves.toEqual({ state: 'untracked' });
+  });
+
+  test('a request already aborted is refused before it is queued, and an aborted requester of a running read is told at once', async () => {
+    const { service, readRepository, gates, settle } = gated();
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      service.changes('/w', 'a.ts', { signal: aborted.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(readRepository).not.toHaveBeenCalled();
+
+    const controller = new AbortController();
+    const running = service.changes('/w', 'b.ts', {
+      signal: controller.signal,
+    });
+    await settle();
+    expect(readRepository).toHaveBeenCalledTimes(1);
+    controller.abort();
+    await expect(running).rejects.toMatchObject({ name: 'AbortError' });
+    // The read itself completes; a later identical request is not left
+    // waiting on a read nobody will answer.
+    gates.shift()?.();
+    await settle();
+    const again = service.changes('/w', 'b.ts');
+    await settle();
+    expect(readRepository).toHaveBeenCalledTimes(2);
+    gates.shift()?.();
+    await expect(again).resolves.toEqual({ state: 'untracked' });
   });
 });
