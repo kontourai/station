@@ -181,7 +181,7 @@ describe('RunBoardSummary', () => {
     // The user's words for the observation (ProgressSilenceObservation's
     // copy family), never the internal 'quiet' term.
     expect(cluster.getAttribute('aria-label')).toBe(
-      'Focus running member with no recent progress (2 running)',
+      '2 running — focus the one with no recent progress',
     );
     fireEvent.click(cluster);
     expect(onFocusMember).toHaveBeenCalledWith('quiet-cause');

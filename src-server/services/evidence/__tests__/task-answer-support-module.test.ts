@@ -366,12 +366,12 @@ describe('CanonicalProjectTrustReportReader', () => {
       sep: win32.sep,
     };
     expect(
-      enumerateOwnedAncestors('C:\\Users\\brian\\basis.json', flavor),
+      enumerateOwnedAncestors('C:\\Users\\me\\basis.json', flavor),
     ).toEqual([
       'C:\\',
       'C:\\Users',
-      'C:\\Users\\brian',
-      'C:\\Users\\brian\\basis.json',
+      'C:\\Users\\me',
+      'C:\\Users\\me\\basis.json',
     ]);
     expect(
       enumerateOwnedAncestors('\\\\server\\share\\trust\\basis.json', flavor),

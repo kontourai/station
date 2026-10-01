@@ -483,6 +483,8 @@ export {
   refetchAuthoritativeProjectTaskRoomDocument,
   submitProjectTaskRoomBatch,
   subscribeProjectTaskRoomEvents,
+  TaskRoomWorkNotSentError,
+  type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
@@ -491,6 +493,9 @@ export {
   useProjectTaskRoomHistoryQuery,
   useProjectTaskRoomStream,
   useSubmitProjectTaskRoomBatchMutation,
+  useSubmitTaskRoomAgentRequestMutation,
+  useTaskRoomAgentOptionsQuery,
+  useTaskRoomAgentRequestsQuery,
 } from './query-domains/projectTaskRooms';
 export {
   approveProposedChange,

@@ -525,7 +525,7 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_ENGINE_LOGIN]: {
     label: 'Start engine sign-in',
     summary:
-      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine stores the account in this Station's credential profile, so agents using that profile run as it; Station never sees the token.",
+      "Can sign a saved credential profile in through the engine's own login. You approve on the provider page; Claude may ask you to return a code. The engine stores the account so agents using that profile run as it. This does not allow quota reads, account creation or replacement of the host's default account.",
   },
   [PAIRING_SCOPE_CODING_EXEC]: {
     label: 'Run commands',

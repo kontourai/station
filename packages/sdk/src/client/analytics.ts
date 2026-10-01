@@ -22,6 +22,8 @@ import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
 import { type ClientRequestOptions, getJson } from './http';
 
 export interface UsageRollupQuery {
+  provider?: 'claude' | 'codex';
+  localOnly?: boolean;
   days: 7 | 14 | 30;
   groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
   cursor?: string;
@@ -64,6 +66,8 @@ export async function fetchUsageRollup(
   opts?: ClientRequestOptions,
 ): Promise<UsageRollupResponse> {
   const params = new URLSearchParams({ days: String(query.days) });
+  if (query.provider) params.set('provider', query.provider);
+  if (query.localOnly) params.set('localOnly', '1');
   if (query.groupBy) params.set('groupBy', query.groupBy);
   if (query.cursor) params.set('cursor', query.cursor);
   if (query.pageSize !== undefined)
