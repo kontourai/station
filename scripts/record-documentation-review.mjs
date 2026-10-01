@@ -4,6 +4,7 @@
 //
 //   npm run docs:review:record -- <path> --note "<what you checked>" [--drop-source <path>]... [--add-source <path>]... [--rereview]
 //   npm run docs:review:record -- --batch <file.json>
+//   npm run docs:review:record -- --advance-baseline
 //   npm run docs:review:record -- --show-delta [<path>...]
 //   npm run docs:review:record -- --verify-bindings [<path>...]
 //
@@ -19,6 +20,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  assertDocumentationFresh,
+  checkDocumentationFreshness,
   createRepositorySnapshot,
   resolveDocumentationFreshness,
 } from './lib/documentation-freshness.mjs';
@@ -48,6 +51,7 @@ import {
 const USAGE = [
   'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview] [--json]',
   '       docs:review:record -- --batch <file.json>',
+  '       docs:review:record -- --advance-baseline',
   '       docs:review:record -- --show-delta [<path>...]',
   '       docs:review:record -- --verify-bindings [<path>...]',
 ].join('\n');
@@ -96,7 +100,11 @@ export function parseRecordArguments(argv) {
     else if (arg === '--add-source') addedSources.push(value());
     else if (arg === '--rereview') rereview = true;
     else if (arg === '--json') continue;
-    else if (arg === '--show-delta' || arg === '--verify-bindings') {
+    else if (
+      arg === '--show-delta' ||
+      arg === '--verify-bindings' ||
+      arg === '--advance-baseline'
+    ) {
       if (mode !== 'record')
         throw reviewError(
           'usage',
@@ -114,10 +122,12 @@ export function parseRecordArguments(argv) {
     removedSources.length ||
     addedSources.length;
   if (mode !== 'record') {
+    if (mode === 'advance-baseline' && paths.length)
+      throw reviewError('usage', USAGE);
     if (recording)
       throw reviewError(
         'usage',
-        `--${mode} reads the ledger and records nothing\n${USAGE}`,
+        `--${mode} cannot be combined with recording options\n${USAGE}`,
       );
     return { mode, paths };
   }
@@ -922,6 +932,30 @@ export async function main(argv = process.argv.slice(2)) {
   const json = argv.includes('--json');
   const parsed = parseRecordArguments(argv);
   const root = git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
+  if (parsed.mode === 'advance-baseline') {
+    if (git(root, ['status', '--porcelain']).trim())
+      throw reviewError(
+        'dirty-tree',
+        'Commit all changes before advancing the coverage baseline.',
+      );
+    const result = await checkDocumentationFreshness({
+      root,
+      env: { STATION_DOCS_FRESHNESS: 'strict' },
+    });
+    assertDocumentationFresh(result);
+    if (readReviewState(root, { history: false }).ledger.layoutVersion !== 3)
+      throw reviewError(
+        'unsupported-version',
+        'Advance the baseline only after path-only migration.',
+      );
+    const head = git(root, ['rev-parse', 'HEAD']).trim();
+    writeFileSync(
+      path.join(root, REVIEW_LEDGER_INDEX),
+      serializeLedgerIndex({ version: 3, coverageBaseline: head }),
+    );
+    console.log(`Advanced coverage baseline to ${head}; commit the index.`);
+    return;
+  }
   if (parsed.mode === 'show-delta') {
     const deltas = await showReviewDelta({ root, paths: parsed.paths });
     console.log(json ? JSON.stringify({ deltas }) : formatReviewDelta(deltas));

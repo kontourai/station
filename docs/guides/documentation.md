@@ -82,6 +82,26 @@ lead, not an assertion that every intermediate change is visible in the net diff
 not change the freshness baseline. The one-time path-only migration sets the
 baseline to its pre-migration HEAD and grandfathers existing decisions; it does
 not establish a new semantic review. Do not advance it just to hide gaps.
+The scoped PR check reads only the change's own range and never replays the
+coverage baseline. Main-history reader state uses one first-parent
+`git log --name-status` stream and one batched read of relevant notes, record
+changes and JSON values. Git process count is constant as commits increase;
+bytes read and replay work grow with the range. Replay uses HEAD's source lists
+for old commits: removed citations stop tracking older changes, and newly
+added citations can expose older changes that now need review.
+
+After catch-up has covered every outstanding input, run this on a clean,
+fully fetched checkout of main and commit the resulting index:
+
+```sh
+npm run docs:review:record -- --advance-baseline
+```
+
+The command checks strict coverage before moving the baseline to HEAD. Run it
+after a catch-up audit, and periodically (for example weekly) when strict is
+green, to bound history cost. It refuses dirty trees and unavailable history;
+it cannot erase outstanding gaps.
+
 Both modes report files with no known documentation dependency. Trace those
 through actual callers, add missing source relationships, or give a concrete
 no-documentation-impact reason in the PR. Shallow or unavailable history is
@@ -113,8 +133,10 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
   base touches needs a new note covering those inputs. Human record edits also
   need a note. Dependencies at the merge base and in the working tree are both
   considered, so dropping a citation cannot hide a changed input. A removed
-  record whose document remains cannot hide source changes either. Notes
-  already on the base branch do not qualify as this PR's review. A later edit
+  record whose document remains cannot hide source changes either. Committed
+  notes must name a revision inside `merge base..HEAD`; an
+  uncommitted note must name HEAD. After squash, that revision remains context
+  only. Notes already on the base branch do not qualify as this PR's review. A later edit
   on the PR needs another review; another PR landing on the base branch never
   invalidates its notes.
   The base resolution order remains `STATION_DOCS_FRESHNESS_BASE`, then
@@ -123,9 +145,14 @@ serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
 - **Advisory** (other GitHub Actions events, including the merge queue, main
   pushes, Nightly and manual runs): outstanding reviews are reported, never
   failed. One-commit shallow checkouts report unavailable history instead of
-  judging it, including when scoped mode was requested.
+  judging it, including when scoped mode was requested. In `ci.yml`, the
+  `fast-checks` aggregate and `repo-scans` jobs use fetch-depth 1;
+  `fast-checks-statics` and `fork-smoke` use depth 1 only for their initial
+  base-policy/title checkout, then fetch full candidate history. The scoped
+  freshness jobs and Nightly sweep use fetch-depth 0.
 - **Strict** (`STATION_DOCS_FRESHNESS=strict`): all known outstanding reviews
-  block. Shallow or unavailable history remains explicitly unjudged.
+  block. Shallow history, a missing or invalid baseline, or a baseline that is
+  absent or unreachable fails with an explicit unavailable-history error.
 
 After inspecting the changed claims and their callers:
 
@@ -173,7 +200,10 @@ Two PRs can review different edits to the same source and add distinct notes
 files; neither rewrites shared derived data. Real concurrent edits to the same
 human decision or additions at the same place in a dependency list can still
 conflict and need a human resolution. The loader requires canonical bytes and
-rejects edited notes or unexpected files. All consumers use
+rejects edited notes or unexpected files. The name hash detects accidental
+changes; it is not protection against forgery. The gate proves that a covering
+note exists for each touched input, not that its prose is accurate. All consumers
+use
 [`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including
 impact/catch-up, the learning reader and knowledge graph. Legacy digest layouts
 remain readable from history.
@@ -192,7 +222,11 @@ it folds Git's three index stages after discarding bindings and preserves
 independent source-list edits. Then stage `docs/learn/review-ledger` and finish
 the merge. It stops and names genuinely conflicting human fields; it never
 picks a source digest as a resolution. Notes recorded by that old branch are
-carried into new notes with explicit input coverage. No fresh review of merged
+converted into notes covering only binding lines changed by that branch
+relative to its merge base, using the record at the note's introduction. If
+those bindings cannot be recovered, coverage is limited to the document itself.
+The original note is replaced so checks do not duplicate it. No fresh review of
+merged
 source bytes is required merely because main moved.
 
 For the older single-file layout, use

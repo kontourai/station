@@ -197,7 +197,9 @@ export function resolveDocumentationFreshness({
       reason: `cannot compute this change's scope against ${base} (${detail}); every stale entry blocks. Set ${DOCS_FRESHNESS_BASE_ENV} to the change's base.`,
     };
   }
-  const current = ledger ? { ledger, media } : readReviewState(root);
+  const current = ledger
+    ? { ledger, media }
+    : readReviewState(root, { history: false });
   const previous = readReviewStateAt(root, selection.mergeBase);
   const reader = createLearningSourceReader(root);
   const changedPaths = new Set(selection.paths);
@@ -216,6 +218,12 @@ export function resolveDocumentationFreshness({
       .filter(Boolean),
   );
   const noteIntroductions = new Map();
+  const rangeCommits = new Set(
+    git(root, ['rev-list', `${selection.mergeBase}..HEAD`])
+      .trim()
+      .split('\n')
+      .filter(Boolean),
+  );
   const head = git(root, ['rev-parse', 'HEAD']).trim();
   if (current.ledger?.layoutVersion === 3) {
     const baseState = readReviewStateAt(root, base);
@@ -272,13 +280,14 @@ export function resolveDocumentationFreshness({
                     '--diff-filter=A',
                     '--format=%H',
                     '-1',
-                    'HEAD',
+                    `${selection.mergeBase}..HEAD`,
                     '--',
                     note.file,
                   ]).trim(),
                 );
               const introduced = noteIntroductions.get(note.file);
               if (!introduced) return note.revision === head;
+              if (!rangeCommits.has(note.revision)) return false;
               const later = git(root, [
                 'log',
                 '--no-merges',
@@ -403,9 +412,14 @@ export async function checkDocumentationFreshness({
   policy,
 } = {}) {
   const { tracked, read } = createRepositorySnapshot(root);
-  const { ledger, media } = readReviewState(root);
+  let { ledger, media } = readReviewState(root, { history: false });
   const resolved =
     policy ?? resolveDocumentationFreshness({ root, env, ledger, media });
+  if (resolved.mode !== 'scoped') ({ ledger, media } = readReviewState(root));
+  if (resolved.mode === 'strict' && ledger.historyUnavailable)
+    throw new Error(
+      `Strict documentation freshness cannot judge freshness. ${ledger.historyUnavailable}`,
+    );
   const documents = new Map();
   for (const file of tracked)
     if (/\.(md|mdx|markdown)$/i.test(file))

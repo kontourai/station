@@ -1884,17 +1884,160 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(git(f.root, ['merge-base', base, 'HEAD'])).toBe(base);
   });
 
-  it('reports unavailable history in a shallow checkout rather than blocking', () => {
+  it('fails strict on a real depth-one clone while scoped remains advisory', () => {
     const f = pathOnlyFixture();
     f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
     commit(f.root, 'unreviewed source');
     const shallow = makeTempDir('station-doc-shallow-');
     git(shallow, ['clone', '-q', '--depth=1', `file://${f.root}`, '.']);
-    const result = check(shallow, scoped);
-    expect(result.status).toBe(0);
-    expect(result.mode).toBe('advisory');
-    expect(readReviewState(shallow).ledger.historyUnavailable).toContain(
-      'shallow checkout',
+    expect(check(shallow, scoped).mode).toBe('advisory');
+    expect(check(shallow, scoped).status).toBe(0);
+    const result = run(
+      shallow,
+      'check-documentation-freshness.mjs',
+      [],
+      strict,
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'Strict documentation freshness cannot judge freshness',
+    );
+    expect(result.stderr).toContain('shallow checkout');
+  });
+
+  it('fails strict on missing, invalid, absent and unreachable baselines', () => {
+    const f = pathOnlyFixture();
+    const index = `${REVIEW_LEDGER_DIR}/ledger.json`;
+    const original = f.read(index);
+    git(f.root, ['switch', '--orphan', 'unreachable']);
+    f.write('orphan.txt', 'orphan');
+    const unreachable = commit(f.root, 'orphan baseline');
+    git(f.root, ['switch', 'main']);
+    for (const baseline of [null, 'invalid', 'a'.repeat(40), unreachable]) {
+      f.write(
+        index,
+        original.replace(
+          /"coverageBaseline": "[a-f0-9]+"/,
+          `"coverageBaseline": ${JSON.stringify(baseline)}`,
+        ),
+      );
+      expect(check(f.root, strict).status).toBe(1);
+    }
+  });
+
+  it('scoped checks never walk the main-history baseline', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'PR change');
+    const trace = join(f.root, '.git', 'scoped.trace');
+    const result = check(f.root, { ...scoped, GIT_TRACE: trace });
+    expect(entryPaths(result.blocking)).toEqual(['docs/c.md', 'docs/map.md']);
+    expect(readFileSync(trace, 'utf8')).not.toMatch(
+      /(?:log|rev-list) --first-parent/,
+    );
+  });
+
+  it('main-history Git invocation count stays constant as landing commits grow', () => {
+    const f = pathOnlyFixture();
+    const count = () => {
+      const trace = join(f.root, '.git', 'history.trace');
+      rmSync(trace, { force: true });
+      expect(check(f.root, { ...strict, GIT_TRACE: trace }).status).toBe(0);
+      return readFileSync(trace, 'utf8')
+        .split('\n')
+        .filter((line) => line.includes('built-in: git ')).length;
+    };
+    f.write('unrelated.txt', '1');
+    commit(f.root, 'one landing');
+    const one = count();
+    for (let n = 2; n <= 15; n++) {
+      f.write('unrelated.txt', String(n));
+      commit(f.root, `landing ${n}`);
+    }
+    expect(count()).toBe(one);
+    expect(one).toBeLessThanOrEqual(16);
+  });
+
+  it('copied notes from outside the PR range do not cover a change; genuine notes do', () => {
+    const f = pathOnlyFixture();
+    reviewShared(f, 'Existing main review.');
+    commit(f.root, 'main review');
+    const old = notesFiles(f.root);
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'PR source');
+    for (const file of old)
+      f.write(
+        `${REVIEW_LEDGER_DIR}/notes/${file.replace(/^.{20}/, '20990101T000000.000Z')}`,
+        f.read(`${REVIEW_LEDGER_DIR}/notes/${file}`),
+      );
+    commit(f.root, 'copy unrelated notes');
+    expect(entryPaths(check(f.root, scoped).blocking)).toEqual([
+      'docs/c.md',
+      'docs/map.md',
+    ]);
+    reviewShared(f, 'Inspected this PR source.');
+    commit(f.root, 'genuine review');
+    expect(check(f.root, scoped).status).toBe(0);
+  });
+
+  it('advances the baseline only after every accumulated input is covered', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'unreviewed landing');
+    expect(
+      run(f.root, 'record-documentation-review.mjs', ['--advance-baseline'])
+        .status,
+    ).toBe(1);
+    reviewShared(f, 'Catch-up review.');
+    commit(f.root, 'cover gaps');
+    const head = git(f.root, ['rev-parse', 'HEAD']);
+    expect(
+      run(f.root, 'record-documentation-review.mjs', ['--advance-baseline'])
+        .status,
+    ).toBe(0);
+    expect(
+      JSON.parse(f.read(`${REVIEW_LEDGER_DIR}/ledger.json`)).coverageBaseline,
+    ).toBe(head);
+    commit(f.root, 'advance baseline');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('legacy conversion covers only reviewed binding lines and leaves another changed source blocking', () => {
+    const f = fixture();
+    git(f.root, ['switch', '-qc', 'old-pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'reviewed source');
+    expect(
+      record_(f.root, ['docs/map.md', '--note', 'Reviewed C only.']).status,
+    ).toBe(0);
+    commit(f.root, 'old bindings review C');
+    f.write('src/d.ts', 'export const d = 2;\n');
+    commit(f.root, 'unreviewed D');
+    git(f.root, ['switch', '-q', 'main']);
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    commit(f.root, 'main migrates');
+    git(f.root, ['switch', '-q', 'old-pr']);
+    expect(merge(f.root, 'main').status).toBe(1);
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    commit(f.root, 'finish merge');
+    const record = compiled(f.root, 'docs/map.md');
+    expect(
+      record.notes.filter((note) => note.note === 'Reviewed C only.'),
+    ).toHaveLength(1);
+    expect(
+      record.notes.find((note) => note.note === 'Reviewed C only.')?.inputs,
+    ).toEqual(['src/c.ts']);
+    expect(
+      record.checks.filter((note) => note === 'Reviewed C only.'),
+    ).toHaveLength(1);
+    expect(check(f.root, scoped).blocking).toContainEqual(
+      stale('review', 'docs/map.md', ['src/d.ts']),
     );
   });
 

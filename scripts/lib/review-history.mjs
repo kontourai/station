@@ -73,13 +73,39 @@ export function touchedReviewInputs(root, paths, changedPaths, before, after) {
   );
 }
 
+/** One stream of landing units; callers choose the range, never one log per commit. */
+function landingChanges(root, range) {
+  const tokens = git(root, [
+    'log',
+    '--first-parent',
+    '--reverse',
+    '--format=%x00COMMIT:%H',
+    '--name-status',
+    '-z',
+    '--diff-merges=first-parent',
+    '--no-renames',
+    range,
+  ]).split('\0');
+  const commits = [];
+  let current;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index].trim();
+    if (token.startsWith('COMMIT:')) {
+      current = { revision: token.slice(7), changes: [] };
+      commits.push(current);
+    } else if (/^[AMDT]$/.test(token) && current) {
+      current.changes.push({ status: token, file: tokens[++index] });
+    }
+  }
+  return commits;
+}
+
 /**
- * Replay first-parent landing units: squash commits contain both code and notes;
- * ordinary merge commits introduce the other branch's notes with its code.
- * Later explicit catch-up notes discharge named outstanding inputs. Stored
- * revisions are context for inspection, never identities of shared source bytes.
+ * Use HEAD's dependency lists throughout history. Removed citations stop tracking
+ * old changes; new citations can expose old changes. Scoped checks separately
+ * compare both ends of the PR and retain source-drop protection.
  */
-export function deriveReviewHistory(root, state, readStateAt) {
+export function deriveReviewHistory(root, state) {
   const baseline = state.ledger.coverageBaseline;
   const current = entries(state).filter(
     (entry) => entry.historyChanges !== undefined,
@@ -89,84 +115,151 @@ export function deriveReviewHistory(root, state, readStateAt) {
     if (git(root, ['rev-parse', '--is-shallow-repository']) === 'true')
       throw new Error('shallow checkout');
     if (!baseline || !/^[a-f0-9]{40}$/.test(baseline))
-      throw new Error('missing coverage baseline');
+      throw new Error('missing or invalid coverage baseline');
     git(root, ['merge-base', '--is-ancestor', baseline, 'HEAD']);
-    commits = git(root, [
-      'rev-list',
-      '--first-parent',
-      '--reverse',
-      `${baseline}..HEAD`,
-    ])
-      .split('\n')
-      .filter(Boolean);
+    commits = landingChanges(root, `${baseline}..HEAD`);
   } catch (error) {
-    state.ledger.historyUnavailable = `Review history unavailable: ${String(error.message).split('\n')[0]}; reporting only. Fetch full history to judge freshness.`;
+    state.ledger.historyUnavailable = `Review history unavailable: ${String(error.message).split('\n')[0]}. Fetch full history and restore a reachable coverage baseline before judging freshness.`;
     for (const entry of current)
       entry.historyUnavailable = state.ledger.historyUnavailable;
     return;
   }
-  const outstanding = new Map(current.map((entry) => [entry.path, new Set()]));
-  let previous = readStateAt(root, baseline);
-  let parent = baseline;
+  const capturePaths = new Set(
+    (state.media?.captures ?? []).map((entry) => entry.path),
+  );
+  const recordPath = (entry) =>
+    `docs/learn/review-ledger/${capturePaths.has(entry.path) ? 'captures' : 'records'}/${entry.path}.json`;
+  const owned = new Map(current.map((entry) => [recordPath(entry), entry]));
+  const pointers = [
+    ...new Set(
+      current.flatMap(inputs).filter((input) => input !== bindingFile(input)),
+    ),
+  ];
+  const specs = new Set([
+    'HEAD:docs/learn/media.json',
+    ...current.map((entry) => `HEAD:${recordPath(entry)}`),
+  ]);
   for (const commit of commits) {
-    const next = readStateAt(root, commit);
-    const before = new Map(
-      entries(previous).map((entry) => [entry.path, entry]),
-    );
-    const after = new Map(entries(next).map((entry) => [entry.path, entry]));
-    const changed = new Set(
-      git(root, [
-        'diff',
-        '--no-renames',
-        '--name-only',
-        '-z',
-        parent,
-        commit,
-        '--',
-      ])
-        .split('\0')
-        .filter(Boolean),
-    );
-    for (const entry of current) {
-      const old = before.get(entry.path);
-      const now = after.get(entry.path);
-      const dependencies = [
-        ...new Set([...(old ? inputs(old) : []), ...(now ? inputs(now) : [])]),
-      ];
-      const touched = touchedReviewInputs(
-        root,
-        dependencies,
-        changed,
-        parent,
-        commit,
-      );
-      const pending = outstanding.get(entry.path);
-      if (now && reviewDecisionChanged(old, now)) pending.add(entry.path);
-      for (const input of touched) pending.add(input);
-      const earlier = new Set(notes(old).map((note) => note.file));
-      for (const note of notes(now).filter((note) => !earlier.has(note.file)))
-        for (const input of note.inputs ?? []) pending.delete(input);
+    const changed = new Set(commit.changes.map(({ file }) => file));
+    if (changed.has('docs/learn/media.json')) {
+      specs.add(`${commit.revision}^1:docs/learn/media.json`);
+      specs.add(`${commit.revision}:docs/learn/media.json`);
     }
-    previous = next;
-    parent = commit;
+    for (const { status, file } of commit.changes) {
+      if (status === 'A' && file.startsWith('docs/learn/review-ledger/notes/'))
+        specs.add(`${commit.revision}:${file}`);
+      if (owned.has(file)) {
+        specs.add(`${commit.revision}^1:${file}`);
+        specs.add(`${commit.revision}:${file}`);
+      }
+    }
+    for (const input of pointers)
+      if (changed.has(bindingFile(input))) {
+        specs.add(`${commit.revision}^1:${bindingFile(input)}`);
+        specs.add(`${commit.revision}:${bindingFile(input)}`);
+      }
   }
-  // Uncommitted source edits cannot be accepted by a note about committed inputs.
+  const requested = [...specs];
+  const blobs = new Map(
+    readGitObjects(root, requested).map((bytes, index) => [
+      requested[index],
+      bytes,
+    ]),
+  );
+  const json = (spec) =>
+    blobs.get(spec) === undefined
+      ? undefined
+      : JSON.parse(blobs.get(spec).toString('utf8'));
+  const captureMetadata = (ref, file) =>
+    json(`${ref}:docs/learn/media.json`)?.captures.find(
+      (capture) => capture.path === file,
+    );
+  const decision = (data) =>
+    data && {
+      ...data,
+      sources: data.sources.map((source) =>
+        typeof source === 'string' ? { path: source } : source,
+      ),
+    };
+  const pending = new Map(current.map((entry) => [entry.path, new Set()]));
+  for (const commit of commits) {
+    const changed = new Set(commit.changes.map(({ file }) => file));
+    for (const entry of current) {
+      const outstanding = pending.get(entry.path);
+      for (const input of inputs(entry)) {
+        const file = bindingFile(input);
+        if (!changed.has(file)) continue;
+        const a = blobs.get(`${commit.revision}^1:${file}`);
+        const b = blobs.get(`${commit.revision}:${file}`);
+        if (
+          input === file ||
+          a === undefined ||
+          b === undefined ||
+          bindingDigest(input, a) !== bindingDigest(input, b)
+        )
+          outstanding.add(input);
+      }
+      if (
+        capturePaths.has(entry.path) &&
+        changed.has('docs/learn/media.json')
+      ) {
+        const a = captureMetadata(`${commit.revision}^1`, entry.path);
+        const b = captureMetadata(commit.revision, entry.path);
+        if (JSON.stringify(a) !== JSON.stringify(b))
+          outstanding.add(entry.path);
+      }
+      const file = recordPath(entry);
+      if (
+        changed.has(file) &&
+        reviewDecisionChanged(
+          decision(json(`${commit.revision}^1:${file}`)),
+          decision(json(`${commit.revision}:${file}`)),
+        )
+      )
+        outstanding.add(entry.path);
+    }
+    for (const { status, file } of commit.changes) {
+      if (status !== 'A' || !file.startsWith('docs/learn/review-ledger/notes/'))
+        continue;
+      for (const note of json(`${commit.revision}:${file}`).notes)
+        for (const input of note.inputs ?? [])
+          pending.get(note.path)?.delete(input);
+    }
+  }
+  const committedNotes = new Set(
+    git(root, [
+      'ls-tree',
+      '-r',
+      '--name-only',
+      'HEAD',
+      '--',
+      'docs/learn/review-ledger/notes',
+    ]).split('\n'),
+  );
   const dirty = new Set(
     git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
       .split('\0')
       .filter(Boolean),
   );
-  const atHead = new Map(entries(previous).map((entry) => [entry.path, entry]));
   for (const entry of current) {
-    const pending = outstanding.get(entry.path);
-    const committed = atHead.get(entry.path);
-    if (reviewDecisionChanged(committed, entry)) pending.add(entry.path);
-    const earlier = new Set(notes(committed).map((note) => note.file));
-    for (const note of notes(entry).filter((note) => !earlier.has(note.file)))
-      for (const input of note.inputs ?? []) pending.delete(input);
+    const outstanding = pending.get(entry.path);
+    const committed = decision(json(`HEAD:${recordPath(entry)}`));
+    if (
+      reviewDecisionChanged(
+        capturePaths.has(entry.path) && committed
+          ? { ...captureMetadata('HEAD', entry.path), ...committed }
+          : committed,
+        entry,
+      )
+    )
+      outstanding.add(entry.path);
+    for (const note of notes(entry).filter(
+      (note) => !committedNotes.has(note.file),
+    ))
+      for (const input of note.inputs ?? []) outstanding.delete(input);
     for (const input of inputs(entry))
-      if (dirty.has(bindingFile(input))) pending.add(input);
-    entry.historyChanges = [...pending].sort();
+      if (dirty.has(bindingFile(input))) outstanding.add(input);
+    entry.historyChanges = [...outstanding].sort();
     entry.reviewBaseline = baseline;
   }
 }

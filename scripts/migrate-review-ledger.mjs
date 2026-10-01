@@ -598,10 +598,58 @@ function migratePathOnly(root) {
         readGitObjects(root, [`${base}:${file}`])[0] !== undefined
       )
         continue;
-      const covered = run.notes.map((note) => ({
-        ...note,
-        inputs: [note.path, ...(decisions.get(note.path)?.sources ?? [])],
-      }));
+      const introduction = git(root, [
+        'log',
+        '--format=%H',
+        '--diff-filter=A',
+        '-1',
+        'HEAD',
+        '--',
+        file,
+      ]).trim();
+      const covered = run.notes.map((note) => {
+        if (note.inputs !== undefined) return note;
+        const record = decisions.get(note.path);
+        const owner = record?.checks
+          ? recordFile(note.path)
+          : captureReviewFile(note.path);
+        const [before, after] = readGitObjects(root, [
+          `${base}:${owner}`,
+          `${introduction || 'HEAD'}:${owner}`,
+        ]).map((bytes) =>
+          bytes === undefined ? undefined : JSON.parse(bytes.toString('utf8')),
+        );
+        // Only old binding lines the branch reviewed grant coverage. When the
+        // old state is unavailable, retain the note with document-only coverage.
+        const bindings = (data) =>
+          new Map(
+            (data?.sources ?? [])
+              .filter((source) => typeof source !== 'string')
+              .map((source) => [source.path, source]),
+          );
+        const old = bindings(before);
+        const reviewed = [...bindings(after)]
+          .filter(
+            ([input, binding]) =>
+              JSON.stringify(old.get(input)) !== JSON.stringify(binding),
+          )
+          .map(([input]) => input);
+        const document =
+          before?.document &&
+          after?.document &&
+          JSON.stringify(before.document) !== JSON.stringify(after.document);
+        return {
+          ...note,
+          inputs:
+            !before ||
+            !after ||
+            !introduction ||
+            (!after.document &&
+              !after.sources.some((source) => typeof source !== 'string'))
+              ? [note.path]
+              : [...(document ? [note.path] : []), ...reviewed],
+        };
+      });
       const text = serializeNotesFile({
         revision: run.revision,
         notes: covered,
@@ -610,6 +658,7 @@ function migratePathOnly(root) {
       const date = new Date(
         `${time.slice(0, 4)}-${time.slice(4, 6)}-${time.slice(6, 8)}T${time.slice(9, 11)}:${time.slice(11, 13)}:${time.slice(13)}`,
       );
+      planned.set(file, undefined);
       planned.set(notesFileName(text, date), text);
     }
   }
@@ -619,6 +668,10 @@ function migratePathOnly(root) {
   );
   for (const [file, text] of planned) {
     const target = path.join(root, file);
+    if (text === undefined) {
+      rmSync(target, { force: true });
+      continue;
+    }
     if (
       !createLearningSourceReader(root).exists(file) ||
       readFileSync(target, 'utf8') !== text

@@ -374,7 +374,7 @@ function compileRecord(data, notes = []) {
         }
       : { historyChanges: [] }),
     sources: data.sources.map(binding),
-    checks: [...data.checks, ...notes.map(({ note }) => note)],
+    checks: [...new Set([...data.checks, ...notes.map(({ note }) => note)])],
     notes,
   };
 }
@@ -385,7 +385,9 @@ function compileCaptureReview(data, notes = []) {
       ? { historyChanges: [] }
       : {}),
     sources: data.sources.map(binding),
-    reviewNotes: [...data.reviewNotes, ...notes.map(({ note }) => note)],
+    reviewNotes: [
+      ...new Set([...data.reviewNotes, ...notes.map(({ note }) => note)]),
+    ],
     notes,
   };
 }
@@ -575,11 +577,10 @@ export function readReviewFiles(root) {
  * The compiled ledger and capture manifest of a working tree.
  * @param {string} root
  */
-export function readReviewState(root) {
+export function readReviewState(root, { history = true } = {}) {
   const { parsed, manifest } = readReviewFiles(root);
   const state = compileReviewState(parsed, manifest);
-  if (parsed.index.version === 3)
-    deriveReviewHistory(root, state, readReviewStateAt);
+  if (history && parsed.index.version === 3) deriveReviewHistory(root, state);
   return state;
 }
 
