@@ -201,6 +201,30 @@ test('retiring a ready owner publishes its account removal even after its route 
   unsubscribe();
 });
 
+test('a ready owner that loses currentness is retired before a same-key preparation', async () => {
+  let selectionEpoch = 1;
+  const base = input();
+  const oldSelection = {
+    ...base,
+    selectionIsCurrent: () => selectionEpoch === 1,
+  };
+  const newSelection = {
+    ...base,
+    selectionIsCurrent: () => selectionEpoch === 2,
+  };
+  const oldOwner = await prepareNativeRelayConnectionOwner(oldSelection);
+  selectionEpoch = 2;
+
+  expect(oldOwner.isCurrent()).toBe(false);
+  const currentOwner = await prepareNativeRelayConnectionOwner(newSelection);
+
+  expect(currentOwner).not.toBe(oldOwner);
+  expect(createNativeRelayApplicationRuntime).toHaveBeenCalledTimes(2);
+  expect(
+    captureNativeRelayConnectionOwner(nativeRelayAccountScopeKey(base)),
+  ).toBe(currentOwner);
+});
+
 test('late completion and disposal of a retired pending owner cannot remove or clear its same-key replacement', async () => {
   const selected = input();
   const key = nativeRelayAccountScopeKey(selected);
