@@ -310,8 +310,20 @@ describe.skipIf(!chromiumAvailable)(
             // A StatusGlyph is a symbol (●, ✓) with an aria-label; axe files
             // symbol-only text as "incomplete" because 1.4.3 does not apply
             // to it. Anything else it could not decide is a failure here.
-            incomplete: describe(run.incomplete).filter(
-              (entry) => !/contains only non-text characters/.test(entry),
+            incomplete: describe(
+              run.incomplete.map((group) => ({
+                ...group,
+                nodes: group.nodes.filter((node) => {
+                  const element =
+                    node.target.length === 1
+                      ? document.querySelector(node.target[0]!)
+                      : null;
+                  return !(
+                    element?.matches('.status-glyph[role="img"]') &&
+                    /^[^\p{L}\p{N}]+$/u.test(element.textContent?.trim() ?? '')
+                  );
+                }),
+              })),
             ),
             passed: run.passes.reduce(
               (total, group) => total + group.nodes.length,
