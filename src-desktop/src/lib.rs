@@ -42,6 +42,7 @@ mod native_relay_key_approval;
 pub(crate) mod native_relay_proof_key;
 #[cfg(not(mobile))]
 mod native_relay_redemption;
+mod native_secure_entry;
 #[cfg(not(mobile))]
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
@@ -1446,10 +1447,12 @@ fn initialize_credential_store() -> Result<(), String> {
     Err("This desktop platform has no supported OS credential store; Station will not fall back to plaintext storage.".to_string())
 }
 
-fn credential_entry(reference: &NativeCredentialReference) -> Result<keyring_core::Entry, String> {
+fn credential_entry(
+    reference: &NativeCredentialReference,
+) -> Result<native_secure_entry::NativeSecureEntry, String> {
     initialize_credential_store()?;
     let account = credential_account(reference)?;
-    keyring_core::Entry::new(STATION_CREDENTIAL_SERVICE, &account)
+    native_secure_entry::NativeSecureEntry::new(STATION_CREDENTIAL_SERVICE, &account)
         .map_err(|error| format!("create OS credential entry: {error}"))
 }
 

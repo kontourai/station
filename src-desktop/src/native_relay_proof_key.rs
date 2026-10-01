@@ -180,9 +180,10 @@ trait SecretBackend: Send + Sync {
 struct KeyringSecretBackend;
 
 impl KeyringSecretBackend {
-    fn entry(account: &str) -> ProofResult<keyring_core::Entry> {
+    fn entry(account: &str) -> ProofResult<crate::native_secure_entry::NativeSecureEntry> {
         super::initialize_credential_store().map_err(|_| ProofKeyError::Store)?;
-        keyring_core::Entry::new(KEYRING_SERVICE, account).map_err(|_| ProofKeyError::Store)
+        crate::native_secure_entry::NativeSecureEntry::new(KEYRING_SERVICE, account)
+            .map_err(|_| ProofKeyError::Store)
     }
 }
 
