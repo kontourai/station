@@ -108,6 +108,15 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
+You can also choose **Start a chat** on Home whenever an agent is ready. If
+none is ready, **Connect an AI app** opens the same picker with setup actions.
+**Explore agents** opens the available AI apps and agents directly from Home.
+
+When creating an agent, choose **Use a model connection** for Station's engine
+or **Use an AI app** for Claude Code, Codex, or another connected engine. Those
+apps run on the computer hosting your Station, including when you use a phone.
+An agent's setup warning names that agent; other ready agents can still run.
+
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
 questions add no profile. If saving those answers fails, setup stays open so

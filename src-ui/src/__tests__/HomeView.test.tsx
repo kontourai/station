@@ -366,7 +366,7 @@ describe('HomeView', () => {
 
     expect(screen.getByText('Codex · gpt-5.3-codex')).toBeTruthy();
     expect(screen.queryByText(/Default Model/i)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Start direct chat/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Start a chat/i }));
     expect(newChat).toHaveBeenCalledTimes(1);
     fireEvent.click(
       screen.getByRole('button', { name: /Open local project/i }),
@@ -403,11 +403,9 @@ describe('HomeView', () => {
       ),
     ).toHaveLength(3);
     expect(screen.queryByText('No agent is ready yet')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Start a chat/i })).toBeNull();
     expect(
-      screen.queryByRole('button', { name: /Start direct chat/i }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: /Set up an agent/i }),
+      screen.queryByRole('button', { name: /Connect an AI app/i }),
     ).toBeNull();
   });
 
@@ -871,7 +869,7 @@ describe('HomeView', () => {
   });
 
   /**
-   * #1536 C2: three doors to one room. Home offered the "Start direct chat"
+   * #1536 C2: three doors to one room. Home offered the "Start a chat"
    * action card, a "Start your first chat" button inside this empty state, and
    * the dock's own "Start a chat". The empty state now names the card instead
    * of being a third one.
@@ -886,7 +884,7 @@ describe('HomeView', () => {
       screen.getByText(/Your chats and project work will appear here/),
     ).toBeTruthy();
     // The card it names is the one that stays.
-    expect(screen.getByText('Start direct chat')).toBeTruthy();
+    expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(screen.getByText('Write a message and begin')).toBeTruthy();
   });
 

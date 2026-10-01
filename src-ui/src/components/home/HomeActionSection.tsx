@@ -138,7 +138,7 @@ export function HomeActionSection({
         lives, so the destination is the same and only the promise changes.
       */}
       <HomeActionCard
-        label={model.startReady ? 'Start direct chat' : 'Set up an agent'}
+        label={model.startReady ? 'Start a chat' : 'Connect an AI app'}
         title={
           model.startReady
             ? 'Write a message and begin'
@@ -146,6 +146,12 @@ export function HomeActionSection({
         }
         detail={model.startIdentity}
         onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}
+      />
+      <HomeActionCard
+        label="Explore agents"
+        title="Choose an AI app or create an agent"
+        detail="See what is ready and what needs setup"
+        onClick={() => onNavigate({ type: 'agents' })}
       />
       {showLocalProject ? (
         <HomeActionCard

@@ -961,7 +961,7 @@ export class AttentionProjectionService {
       {
         id: `setup-incomplete:model-connection:${requirement.agentSlug}`,
         kind: 'setup-incomplete',
-        title: `${requirement.agentName} cannot run yet`,
+        title: `Agent “${requirement.agentName}” needs setup`,
         body: requirement.reason,
         createdAt: observedAt,
         updatedAt: observedAt,

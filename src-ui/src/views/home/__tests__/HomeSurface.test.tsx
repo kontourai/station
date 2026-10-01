@@ -171,7 +171,7 @@ describe('HomeSurface composition', () => {
 
   test('the start card names the agent it can actually open on', () => {
     renderHome();
-    const card = screen.getByRole('button', { name: /Start direct chat/ });
+    const card = screen.getByRole('button', { name: /Start a chat/ });
     expect(card.textContent).toContain('Codex · gpt-5.4');
   });
 
@@ -187,14 +187,21 @@ describe('HomeSurface composition', () => {
         effectiveModel: { label: 'Model not reported' },
       },
     });
-    expect(screen.queryByRole('button', { name: /Start direct chat/ })).toBe(
-      null,
-    );
-    const cta = screen.getByRole('button', { name: /Set up an agent/ });
+    expect(screen.queryByRole('button', { name: /Start a chat/ })).toBe(null);
+    const cta = screen.getByRole('button', { name: /Connect an AI app/ });
     expect(cta.textContent).toContain('Set up an AI app to start chatting');
     // And it names no agent at all.
     expect(cta.textContent).not.toContain('Codex');
   });
+
+  test.each([true, false])(
+    'Home can open agent discovery when chat readiness is %s',
+    (startReady) => {
+      const { onNavigate } = renderHome({ startReady });
+      fireEvent.click(screen.getByRole('button', { name: /Explore agents/ }));
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ type: 'agents' });
+    },
+  );
 
   test('renders the activity chart and the counts alongside one work list', () => {
     renderHome({

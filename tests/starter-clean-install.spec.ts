@@ -70,7 +70,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     await engineChapter.getByRole('button', { name: 'Not now' }).click();
     await expect(page.getByTestId('first-run-home-card')).toBeVisible();
 
-    await page.getByRole('button', { name: /Set up an agent/i }).click();
+    await page.getByRole('button', { name: /Connect an AI app/i }).click();
     const newChat = page.getByRole('dialog', { name: 'New Chat' });
     await expect(newChat).toBeVisible();
     await newChat.getByRole('button', { name: 'Connect Station' }).click();

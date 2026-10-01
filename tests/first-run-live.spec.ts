@@ -175,19 +175,19 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
 
   // The run was DEFERRED, so this home has no Agent to chat with — and since
   // archive#3627 Home says so rather than recommending one. The card used to
-  // read "Start direct chat" unconditionally over `flatList[0]`, which on a
+  // read "Start a chat" unconditionally over `flatList[0]`, which on a
   // fresh home named an Agent the New Chat picker one click away flagged "Not
   // set up". Asserting the old label here would be asserting that
   // contradiction back into place.
-  const startAgent = page.getByRole('button', { name: /Set up an agent/i });
+  const startAgent = page.getByRole('button', { name: /Connect an AI app/i });
   const openLocalProject = page.getByRole('button', {
     name: /Open local project/i,
   });
   await expect(startAgent).toBeVisible();
   await expect(startAgent).toBeEnabled();
-  await expect(
-    page.getByRole('button', { name: /Start direct chat/i }),
-  ).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Start a chat/i })).toHaveCount(
+    0,
+  );
   await expect(openLocalProject).toBeVisible();
   await expect(openLocalProject).toBeEnabled();
 
