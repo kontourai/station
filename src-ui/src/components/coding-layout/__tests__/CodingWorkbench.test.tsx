@@ -1229,6 +1229,18 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
         vi.advanceTimersByTime(200);
       });
       expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+      // And unfolds it by hand on a window too narrow for both: a narrower
+      // window still does not fold it again.
+      act(() => deviceSettingsStore.set('inboxOpen', true));
+      expect(remembered('~')?.inbox).toBe(true);
+      withViewportWidth(1024);
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
     } finally {
       withViewportWidth(width);
       vi.useRealTimers();
