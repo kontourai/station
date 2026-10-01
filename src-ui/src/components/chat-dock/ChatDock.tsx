@@ -365,8 +365,43 @@ interface ChatWorkspacePaneSharedProps {
  */
 type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
   (
-    | { placement: 'dock'; shellChrome: DockShellChrome }
-    | { placement: 'fullscreen'; shellChrome?: never }
+    | {
+        placement: 'dock';
+        shellChrome: DockShellChrome;
+        ownsDockShortcuts?: never;
+        onPresentationTitleChange?: never;
+        conversationScope?: never;
+        onScreen?: never;
+      }
+    | {
+        placement: 'fullscreen';
+        shellChrome?: never;
+        /**
+         * Whether this full-screen placement registers the dock's maximize
+         * chord. True for the Chat layout, which owns the whole viewport. The
+         * Coding layout's centre passes false: its page has nothing to
+         * maximize, and the chord would write the (suspended) dock region.
+         */
+        ownsDockShortcuts?: boolean;
+        /** The title a host's breadcrumb shows for the conversation on screen. */
+        onPresentationTitleChange?: (title: string) => void;
+        /**
+         * `project` (the default): the Chat layout's pane belongs to its
+         * Project — its inbox lists that Project's conversations and a chat of
+         * another Project routes there. `ambient`: the Coding layout's centre
+         * holds the Chat the dock would otherwise hold, so it keeps the dock's
+         * scope — every conversation, with the dock's optional Project filter
+         * — and a sidebar or notification can open any conversation in it.
+         */
+        conversationScope?: 'project' | 'ambient';
+        /**
+         * Whether the reader can see this placement now. The Coding stack
+         * keeps its Chat page mounted behind a drill-in; while it is hidden,
+         * the conversation is not in the foreground, so end-of-turn and
+         * approval toasts must still reach the reader. Default true.
+         */
+        onScreen?: boolean;
+      }
   );
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
@@ -374,9 +409,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const isFullscreenPlacement = placement === 'fullscreen';
   // A full-screen Chat shows its active chat without opening the dock; end-of-
   // turn toasts must treat that chat as on screen (`isChatInForeground`).
+  const fullscreenOnScreen = isFullscreenPlacement && props.onScreen !== false;
   useEffect(
-    () => (isFullscreenPlacement ? registerFullscreenChatSurface() : undefined),
-    [isFullscreenPlacement],
+    () => (fullscreenOnScreen ? registerFullscreenChatSurface() : undefined),
+    [fullscreenOnScreen],
   );
   // A full-screen placement never mounts inside the ambient `DockShell`, so
   // it owns an independent chrome instance (cmd+D / cmd+M keep working
@@ -391,7 +427,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the same ids (station#4460 review H1).
   const localShellChrome = useDockShellChrome({
     publishesDockSlotClearance: false,
-    registersDockShortcuts: isFullscreenPlacement,
+    registersDockShortcuts:
+      isFullscreenPlacement && props.ownsDockShortcuts !== false,
   });
   // Narrowed on `props.placement` directly (not a destructured alias) so
   // TypeScript proves `props.shellChrome` is defined in the docked branch —
@@ -485,7 +522,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Derive sessions first so activeSessionCount is available for useChatDockState
   const [projectFilter, _setProjectFilter] = useState<string | null>(null);
-  const hasImmutableProjectScope = isFullscreenPlacement;
+  const hasImmutableProjectScope =
+    isFullscreenPlacement && props.conversationScope !== 'ambient';
   const scopedProjectSlug = hasImmutableProjectScope
     ? projectSlug
     : projectFilter;
@@ -1011,6 +1049,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const importedOrigin = importedSession
     ? `Started in ${displayProvider(importedSession)}`
     : 'Started in another app';
+  // The same title the header leads with, published to a host that shows it
+  // elsewhere (the Coding stack's breadcrumb).
+  const presentationTitle = importedSessionId
+    ? importedTitle
+    : activeSession?.title || 'Chat';
+  const onPresentationTitleChange = props.onPresentationTitleChange;
+  useEffect(() => {
+    onPresentationTitleChange?.(presentationTitle);
+  }, [onPresentationTitleChange, presentationTitle]);
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,
@@ -2777,7 +2824,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             returnFocusTarget: backgroundTasksTriggerRef.current,
             onOpenTranscript: (threadId) => {
               setIsBackgroundTasksOpen(false);
-              setDockState(false, isDockMaximized);
+              // A full-screen Chat is no dock: closing "the dock" from it would
+              // write the real dock region's visibility behind the reader.
+              if (!isFullscreenPlacement) setDockState(false, isDockMaximized);
               showSurface('activity', { session: threadId });
             },
             onClose: () => setIsBackgroundTasksOpen(false),

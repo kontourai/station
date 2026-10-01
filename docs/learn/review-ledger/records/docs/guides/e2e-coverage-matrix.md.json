@@ -42,13 +42,13 @@
 
     {"path":"tests/agents-new-muse-echo-turn.spec.ts","digest":"2ce8fa9a4e4df0cb06eb0ddd05812ebbbbc728a9397895fd2c821810bfe50922","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/agents-pane.spec.ts","digest":"a73b7bc4881123e0f5e9d50b57aede3c352d285d99f48de900a2405da875d101","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/agents-pane.spec.ts","digest":"8fd2f45e57980348671a765d1f010f2624ebb63aeedc0fbec41cf438ebc6efe5","revision":"df62575539f60e72aaabb60b9688b87c531aea37"},
 
     {"path":"tests/agents-readiness-board.spec.ts","digest":"3b2f83838f7efc9d8b7de06de6ba69e4869faefabdfc52329086e49e195a97b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/android/mobile-layout.spec.ts","digest":"9af44459879393c00dc6d39aaf6149c9f37b6f2846c236cede82049c9129aa4f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"47e9fa69bdd7a255fb11cac907781343146e7d5fab962ad5fb8e371db5e39668","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab","revision":"955afd3f496da8d9536e133d2cdeea83bb967c34"},
 
     {"path":"tests/connect-modal.spec.ts","digest":"6d63119b07073540c9dd1326af41d26d59e12da070bb0c3a2386ecd435db45b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -60,7 +60,7 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"2dca267ed3cfe8b8283ae38ff62436b2620d258491b7c3fff4993eb0151ccc7f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f","revision":"54a0ca4aabfc38bd1e4a3cbec1727ea0a5495a93"},
+    {"path":"tests/e2e-manifest.mjs","digest":"2fbba39624069865e8b0ab8e45746f104001e3be4e591e098e916e9a405ae873","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
 
     {"path":"tests/mobile-chat-composer.spec.ts","digest":"83e26f4ffcfb4d08e4ddb5ada2a4444f8793a15d81a2379baa5fd3e8cd840c24","revision":"131795a171eadd22d12aae2c2f98a190e4f47cf7"},
 

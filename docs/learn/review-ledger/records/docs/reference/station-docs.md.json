@@ -116,7 +116,7 @@
 
     {"path":"src-ui/src/components/monitoring/FleetRoutingReceipts.tsx","digest":"6fbaad9aca8523ce87fab5a8ccb20f2c9da40ab7b70f4e5a6bf965dfac4089bd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"}
   ],
 
   "checks": [
