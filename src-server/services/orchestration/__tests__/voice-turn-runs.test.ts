@@ -163,7 +163,7 @@ describe('VoiceTurnRuns', () => {
     await expect(
       service.readRun(first.handle.runId, {
         mode: 'personal',
-        userId: 'brian',
+        userId: 'casey',
       } as any),
     ).resolves.toMatchObject({ runId: first.handle.runId, source: 'voice' });
   });
@@ -186,7 +186,7 @@ describe('VoiceTurnRuns', () => {
       providerId: 'voice-provider',
       source: 'voice' as const,
     };
-    const authority = { mode: 'personal', userId: 'brian' } as any;
+    const authority = { mode: 'personal', userId: 'casey' } as any;
     const orchestration = {
       listAgentRuns: async () => [],
       readAgentRun: async () => null,
