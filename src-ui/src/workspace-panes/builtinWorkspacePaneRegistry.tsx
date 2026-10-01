@@ -135,6 +135,8 @@ export {
   isCanonicalBuiltinTrustDescriptor,
 } from './builtinWorkspacePaneCanonical';
 
+import { requestsWaitingOnUser } from '../utils/waiting-approvals';
+
 const LazyFilePreviewPane = lazy(() =>
   import('./FilePreviewPane').then(({ FilePreviewPane }) => ({
     default: FilePreviewPane,
@@ -653,7 +655,9 @@ function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
   const runtimeState = useMemo(
     () => ({
       status: planSession?.orchestrationStatus ?? planSession?.status ?? null,
-      pendingApprovals: planSession?.pendingApprovals?.length ?? 0,
+      pendingApprovals: planSession
+        ? requestsWaitingOnUser(planSession).length
+        : 0,
       isProcessingStep: planSession?.isProcessingStep ?? false,
     }),
     [planSession],

@@ -162,6 +162,7 @@ export function handleSessionStateChangedEvent(
           isProcessingStep: false,
           activityHint: undefined,
           pendingApprovals: [],
+          answeredApprovals: [],
           pendingApprovalTurnIds: {},
           approvalToasts: new Map(),
         }
