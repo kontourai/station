@@ -122,8 +122,9 @@ every other route. These rules make it a region rather than a special case
     below the page, and the reader's maximize memory (`lastDockMaximized`,
     what `focusSession` reopens Chat with) is kept. This holds for Home's row
     as well, which shares the path. `placeSurface` (a tab's Move to Main, the
-    Layout picker) does not go through `commit` and does not restore a
-    maximized region yet. On a phone the page is not a layer over
+    Layout picker) does not go through `commit` but restores a maximized
+    region the same way, with the same memory rule, when the target is
+    `main` (#2988). On a phone the page is not a layer over
     Chat; when the layer is showing the very pane being opened as the page,
     the layer is ended through its own restore first (without asking its
     guards — only a guard-free surface can be both), and its history entry
@@ -137,21 +138,31 @@ every other route. These rules make it a region rather than a special case
     transient, like the phone layer's origin — it is not in the persisted
     arrangement record, so after a reload the chord returns to
     `defaultRegion`. An explicit placement clears it.
-  - **Accepted gap: swapping `main` at `/` adds no history entry.** The page
-    is placement, not a URL, as Home's row always was. From another route
-    the navigation to `/` is one entry, and Back returns to that route. At
-    `/`, Back after the swap leaves `/` for the previous entry rather than
-    returning to Home — and on a phone, where Back used to close Activity's
-    layer back to Chat, Back from the Activity page now leaves the page
-    (in the Android app, from the first entry, that can close the app).
-    When the page was opened from Activity's phone layer, the layer's
-    history entry is consumed by that open, so Back lands on the entry
-    before the layer, whose URL carries Chat's maximize: Chat comes back
-    full screen over the Activity page, which is still `main`'s occupant.
-    A history entry per swap would need a restore-on-popstate rule for
-    `main` that survives reload, forward and interleaved route navigation;
-    that is a design decision for `main`'s URL identity, not part of this
-    rule.
+  - **A page swap at `/` is a history entry (#2986).** The page is
+    placement, not a URL, so its identity lives in `history.state`
+    (`main-page-history.ts`): every `/` entry is stamped with the surface
+    `main` showed on it, and a swap made at `/` pushes a same-URL entry for
+    the new page. A traversal that lands on a stamped entry puts that page
+    back, so Back from Activity returns to Home, Forward re-opens Activity,
+    and a reload on either entry keeps the stamp. From another route the
+    navigation to `/` is still one entry and Back returns to that route. On a
+    phone with Chat full screen, the entry being left keeps `maximize` in its
+    URL, so Back returns to the full-screen Chat the page was opened over
+    — also when the page was opened from Activity's phone layer, whose own
+    entry is left orphaned beneath and skipped on the way back.
+    The pushed entry copies the state it lands on and so shares the
+    navigation index of the entry beneath, the way a dialog layer does: a
+    traversal between the two is not a route change and asks no
+    unsaved-changes guard. A stamp says what the entry showed, so a change
+    of occupant that is not a page open (the chord returning Activity to its
+    dock, a tab moved out of `main`) rewrites the live entry's stamp rather
+    than adding an entry; a route entry carries no stamp, and an unstamped
+    `/` entry leaves `main` as it is. Limits: a page chosen from a dialog
+    (the command palette) leaves that dialog's entry orphaned beneath, which
+    costs one extra Forward press on the way back; and a jump of several
+    entries at once that an unsaved-changes guard interrupts is restored by
+    navigation index, which these same-URL entries share, so it can land on
+    the neighbouring page entry.
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,

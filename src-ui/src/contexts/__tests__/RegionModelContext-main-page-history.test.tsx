@@ -338,6 +338,31 @@ describe('the page at / has a history entry of its own', () => {
   });
 });
 
+describe('the page opened from the phone layer', () => {
+  test('Back skips the ended layer and returns to the full-screen Chat', async () => {
+    stubDevice({ phone: true });
+    await mount();
+    act(() => navigationStore.setDockState(true, true));
+    await waitFor(() => expect(current().regions.bottom.maximized).toBe(true));
+    act(() => current().showSurface('activity'));
+    await waitFor(() => expect(current().phoneLayer).not.toBeNull());
+
+    await openActivityPage();
+    expect(current().phoneLayer).toBeNull();
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false),
+    );
+
+    // One press: the layer's orphaned entry is skipped by the dialog layer.
+    act(() => window.history.back());
+    await waitFor(() => expect(page()).toBe('home'));
+    await waitFor(() => expect(current().regions.bottom.maximized).toBe(true));
+    expect(current().phoneLayer).toBeNull();
+    expect(current().regions.bottom.occupant).toBe('chat');
+    expect(window.location.pathname).toBe('/');
+  });
+});
+
 describe('a pane moved into main is shown (#2988)', () => {
   test.each(['bottom', 'right'] as const)(
     'with Chat maximized in %s, Move to Main restores the dock and keeps the maximize memory',
