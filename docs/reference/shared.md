@@ -31,6 +31,21 @@ complete answer batch and translate selected IDs to display labels/custom
 text. They do not authorize a reply or prove engine delivery. Stable types
 come from `@kontourai/station-contracts/harness-questions`.
 
+## Request settlement
+
+`@kontourai/station-shared/request-settlement` owns
+[`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts):
+given one session's events in order, the ids of the requests their turn's
+abort settled without a `request.resolved`. A recovery abort
+(`turn.aborted` with `recoveryTerminal`) settles every unresolved request
+opened since that turn started; any other abort, or a
+`turn.completed` with `finishReason: 'cancelled'`, settles only the requests
+whose `request.opened` names that turn. It reads five fields and accepts
+untyped event records. The server's session summary, attention feed and
+request inspection apply it, as do the CLI's `approvals` and `operate`; a
+client that folds `request.opened` / `request.resolved` itself should too.
+The [Session API](session-api.md#respondtorequest) states the behavior.
+
 ---
 
 ## plugin types
