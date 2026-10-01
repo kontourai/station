@@ -1,14 +1,20 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
+  TASK_ROOM_CONTEXT_VERSION,
   TASK_ROOM_WORK_VERSION,
+  type TaskRoomContextSnapshot,
   type TaskRoomWorkInput,
   type TaskRoomWorkList,
   type TaskRoomWorkOutcome,
   type TaskRoomWorkRecord,
 } from '@kontourai/station-contracts/task-room-work';
-import { mutateJsonFile } from '../../domain/file-storage-helpers.js';
+import {
+  mutateJsonFile,
+  mutateJsonFileWithGuardedRead,
+} from '../../domain/file-storage-helpers.js';
 import type { ReceiverExecutionEffectAdmission } from '../orchestration/session-command-module.js';
+import { validTaskRoomContext } from './task-room-context.js';
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_REQUESTS = 256;
@@ -45,7 +51,16 @@ function validRecord(value: unknown): value is StoredRecord {
   if (!value || typeof value !== 'object') return false;
   const r = value as Record<string, unknown>;
   return (
-    Object.keys(r).length === 11 &&
+    Object.keys(r).length === (r.context === undefined ? 11 : 12) &&
+    validText(r.taskId, 160) &&
+    validText(r.projectId, 160) &&
+    validText(r.taskCreatedAt, 40) &&
+    (r.context === undefined ||
+      validTaskRoomContext(r.context, {
+        taskId: r.taskId,
+        projectId: r.projectId,
+        taskCreatedAt: r.taskCreatedAt,
+      })) &&
     r.version === TASK_ROOM_WORK_VERSION &&
     ['taskId', 'projectId', 'operationId', 'ownerId', 'agentId'].every((key) =>
       validText(r[key], 160),
@@ -200,22 +215,50 @@ export class TaskRoomWorkModule {
       sessionId: string,
       scope: Scope,
       recheck: () => Promise<void>,
+      context?: TaskRoomContextSnapshot,
     ) => Promise<{ sessionId: string }>,
+    resolveContext?: () => Promise<TaskRoomContextSnapshot | undefined>,
   ): Promise<TaskRoomWorkOutcome> {
     if (
       ![taskId, requesterId, input.operationId, input.agentId].every((v) =>
         validText(v, 160),
       ) ||
-      !validText(input.prompt, 12_000)
+      !validText(input.prompt, 12_000) ||
+      (input.context !== undefined &&
+        (input.context.version !== TASK_ROOM_CONTEXT_VERSION ||
+          !/^[0-9a-f]{64}$/.test(input.context.digest)))
     )
       return { kind: 'refused', reason: 'input' };
     const scope = await authorize();
     if (!scope || scope.requesterId !== requesterId)
       return { kind: 'refused', reason: 'access' };
     let selected: TaskRoomWorkOutcome | undefined;
-    await mutateJsonFile<Store>(
+    let captured: TaskRoomContextSnapshot | undefined;
+    await mutateJsonFileWithGuardedRead<Store>(
       this.file,
       { version: TASK_ROOM_WORK_VERSION, records: [] },
+      async () => {
+        let store: Store;
+        try {
+          const bytes = await readFile(this.file);
+          if (bytes.length > MAX_BYTES)
+            throw new TaskRoomWorkUnavailableError(
+              'Agent request history exceeds its limit.',
+            );
+          store = checkedStore(JSON.parse(bytes.toString('utf8')));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          store = { version: TASK_ROOM_WORK_VERSION, records: [] };
+        }
+        const existing = store.records.some(
+          (record) =>
+            record.taskId === taskId &&
+            record.ownerId === requesterId &&
+            record.operationId === input.operationId,
+        );
+        if (!existing && input.context) captured = await resolveContext?.();
+        return store;
+      },
       (store) => {
         const checked = checkedStore(store);
         const existing = checked.records.find(
@@ -229,7 +272,8 @@ export class TaskRoomWorkModule {
             existing.projectId !== scope.projectId ||
             existing.taskCreatedAt !== scope.taskCreatedAt ||
             existing.agentId !== input.agentId ||
-            existing.prompt !== input.prompt
+            existing.prompt !== input.prompt ||
+            existing.context?.digest !== input.context?.digest
               ? { kind: 'refused', reason: 'conflict' }
               : {
                   kind: 'recorded',
@@ -240,6 +284,19 @@ export class TaskRoomWorkModule {
         }
         if (checked.records.length >= MAX_REQUESTS) {
           selected = { kind: 'refused', reason: 'capacity' };
+          return checked;
+        }
+        if (
+          input.context &&
+          (!captured ||
+            captured.digest !== input.context.digest ||
+            !validTaskRoomContext(captured, {
+              taskId,
+              projectId: scope.projectId,
+              taskCreatedAt: scope.taskCreatedAt,
+            }))
+        ) {
+          selected = { kind: 'refused', reason: 'context' };
           return checked;
         }
         const record: StoredRecord = {
@@ -254,6 +311,7 @@ export class TaskRoomWorkModule {
           sessionId: `task:${randomUUID()}`,
           createdAt: new Date().toISOString(),
           state: 'starting',
+          ...(captured ? { context: Object.freeze({ ...captured }) } : {}),
         };
         selected = {
           kind: 'recorded',
@@ -283,20 +341,25 @@ export class TaskRoomWorkModule {
     const record = selected.record;
     let state: TaskRoomWorkRecord['state'] = 'indeterminate';
     try {
-      const started = await start(record.sessionId, current, async () => {
-        const effectScope = await authorize();
-        if (
-          !effectScope ||
-          effectScope.projectId !== scope.projectId ||
-          effectScope.roomProjectId !== scope.roomProjectId ||
-          effectScope.projectSlug !== scope.projectSlug ||
-          effectScope.taskCreatedAt !== scope.taskCreatedAt ||
-          effectScope.requesterId !== scope.requesterId
-        )
-          throw new TaskRoomWorkAuthorityChangedError(
-            'Task authority changed before agent invocation.',
-          );
-      });
+      const started = await start(
+        record.sessionId,
+        current,
+        async () => {
+          const effectScope = await authorize();
+          if (
+            !effectScope ||
+            effectScope.projectId !== scope.projectId ||
+            effectScope.roomProjectId !== scope.roomProjectId ||
+            effectScope.projectSlug !== scope.projectSlug ||
+            effectScope.taskCreatedAt !== scope.taskCreatedAt ||
+            effectScope.requesterId !== scope.requesterId
+          )
+            throw new TaskRoomWorkAuthorityChangedError(
+              'Task authority changed before agent invocation.',
+            );
+        },
+        record.context,
+      );
       if (started.sessionId === record.sessionId) state = 'dispatched';
     } catch {
       // The invocation may have started work; the durable request is never replayed.
