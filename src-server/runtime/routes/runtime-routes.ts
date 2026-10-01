@@ -4917,6 +4917,11 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/connections',
     createAppHomeRoutes({
+      isLoginReadCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
       // #896 wave 2: the DELETE clear route's 409-while-enabled guard reads
       // the connection's SAVED config directly — never the in-memory
       // adapter state — same source of truth `runtimeDefaultConfig`/

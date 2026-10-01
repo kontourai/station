@@ -121,7 +121,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
 
   useEffect(() => {
-    if (!profile.isTauri || !profile.isDesktop) return;
+    if (!profile.isTauri) return;
     let disposed = false;
     let supervisor: { start(): void; stop(): void } | undefined;
     void Promise.all([
@@ -159,7 +159,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
       disposed = true;
       supervisor?.stop();
     };
-  }, [profile.isDesktop, profile.isTauri]);
+  }, [profile.isTauri]);
 
   // Resolve one host-supplied, never-persisted connection. An explicit CLI
   // base is deliberate user intent and therefore always wins over desktop
@@ -861,6 +861,7 @@ export function useNativeRelayAccountSession() {
       (await selectedOwner()).login(credentials),
     acceptInvitation: async (token: string) =>
       (await selectedOwner()).acceptInvitation(token),
+    logout: async () => (await selectedOwner()).logout(),
     retireAccount: async () => (await selectedOwner()).retireAccount(),
   };
 }

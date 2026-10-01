@@ -183,6 +183,28 @@ export interface NativeRelayEnrollmentHostInactiveAccepted {
   readonly state: 'pending' | 'cancelled' | 'expired' | 'revoked';
 }
 
+/** Public recovery hints; an active transition still requires host currentness verification. */
+export interface NativeRelayEnrollmentHostResumeAttempt {
+  readonly enrollmentHandle: string;
+  readonly phase:
+    | 'begin-required'
+    | 'candidate'
+    | 'staged'
+    | 'activation-unknown'
+    | 'active'
+    | 'cancel-required';
+  readonly profileRevision: number;
+  readonly expiresAt: number;
+  readonly registrationAvailable: boolean;
+  readonly candidate: NativeDeviceBindingCandidateV1 | null;
+  readonly transition: NativeRelayEnrollmentHostActivationAccepted | null;
+}
+
+export interface NativeRelayEnrollmentHostResumeProjection {
+  readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;
+  readonly attempts: readonly NativeRelayEnrollmentHostResumeAttempt[];
+}
+
 /** Signed only through fixed host operations after validating the exact challenge. */
 export interface NativeRelayEnrollmentProofClaims
   extends NativeRelayEnrollmentBinding {

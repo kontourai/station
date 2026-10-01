@@ -1,0 +1,7 @@
+{
+  "revision": "3059a6573285c28a92a51e39842ccb7ff8474651",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Regenerated tracked design index; new shared-task-channels entry is explicitly an active delivery target rather than shipped completion."}
+  ]
+}

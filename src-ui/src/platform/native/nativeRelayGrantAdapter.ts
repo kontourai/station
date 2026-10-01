@@ -101,6 +101,15 @@ export interface NativeRelayGrantAdapter {
       'brokerOrigin' | 'stationId' | 'enrollmentId'
     >;
   }): Promise<NativeRelayGrantState>;
+  assertCurrentRoute(input: {
+    profileName: string;
+    expectedProfileRevision: number;
+    expectedUpdatedAt: number;
+    expectedRoute: Pick<
+      NativeRelayGrantRoute,
+      'brokerOrigin' | 'stationId' | 'enrollmentId'
+    >;
+  }): Promise<void>;
   redeem(input: {
     profileName: string;
     expectedProfileRevision: number;
@@ -685,6 +694,50 @@ function parseRecovery(
 export function createNativeRelayGrantAdapter(
   invoke: Invoke = invokeTauri,
 ): NativeRelayGrantAdapter {
+  const readCurrentStore = async () => {
+    const raw = await invoke<unknown>('station_profile_store_read');
+    let value: unknown = raw;
+    if (typeof raw === 'string') {
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new Error('The saved route metadata could not be read.');
+      }
+    }
+    if (!isStationProfileStore(value))
+      throw new Error('The saved route metadata could not be verified.');
+    return value;
+  };
+  const assertCurrentRoute: NativeRelayGrantAdapter['assertCurrentRoute'] =
+    async (input) => {
+      const profileName = stringField(input.profileName, 'profileName', 256);
+      const expectedProfileRevision = integerField(
+        input.expectedProfileRevision,
+        'expectedProfileRevision',
+        1,
+      );
+      const expectedUpdatedAt = integerField(
+        input.expectedUpdatedAt,
+        'expectedUpdatedAt',
+        1,
+      );
+      const currentValue = await readCurrentStore();
+      const currentProfile = currentValue.profiles.find(
+        (profile) => profile.name.toLowerCase() === profileName.toLowerCase(),
+      );
+      if (
+        currentValue.revision !== expectedProfileRevision ||
+        !currentProfile ||
+        currentProfile.updatedAt !== expectedUpdatedAt ||
+        !currentProfile.relayRoute ||
+        currentProfile.relayRoute.brokerOrigin !==
+          input.expectedRoute.brokerOrigin ||
+        currentProfile.relayRoute.stationId !== input.expectedRoute.stationId ||
+        currentProfile.relayRoute.enrollmentId !==
+          input.expectedRoute.enrollmentId
+      )
+        throw new Error('staleProfile');
+    };
   return {
     status: async ({ profileName, expectedRoute }) =>
       parseGrantState(
@@ -694,6 +747,7 @@ export function createNativeRelayGrantAdapter(
         profileName,
         expectedRoute,
       ),
+    assertCurrentRoute,
     redeem: async (input) => {
       const profileName = stringField(input.profileName, 'profileName', 256);
       const expectedProfileRevision = integerField(
@@ -705,33 +759,12 @@ export function createNativeRelayGrantAdapter(
         input.invitationJson,
         input.expectedRoute,
       );
-      const currentRaw = await invoke<unknown>('station_profile_store_read');
-      let currentValue: unknown = currentRaw;
-      if (typeof currentRaw === 'string') {
-        try {
-          currentValue = JSON.parse(currentRaw);
-        } catch {
-          throw new Error('The saved route metadata could not be read.');
-        }
-      }
-      if (!isStationProfileStore(currentValue))
-        throw new Error('The saved route metadata could not be verified.');
-      const currentProfile = currentValue.profiles.find(
-        (profile) => profile.name.toLowerCase() === profileName.toLowerCase(),
-      );
-      if (
-        currentValue.revision !== expectedProfileRevision ||
-        !currentProfile ||
-        currentProfile.updatedAt !== input.expectedUpdatedAt ||
-        !currentProfile.relayRoute ||
-        currentProfile.relayRoute.brokerOrigin !==
-          input.expectedRoute.brokerOrigin ||
-        currentProfile.relayRoute.stationId !== input.expectedRoute.stationId ||
-        currentProfile.relayRoute.enrollmentId !==
-          input.expectedRoute.enrollmentId
-      ) {
-        throw new Error('staleProfile');
-      }
+      await assertCurrentRoute({
+        profileName,
+        expectedProfileRevision,
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        expectedRoute: input.expectedRoute,
+      });
       const response = await invoke<unknown>(
         'station_native_relay_grant_redeem',
         { profileName, expectedProfileRevision, invitation },

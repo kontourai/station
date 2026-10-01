@@ -53,9 +53,12 @@ host to sign the exact bounded request for the approved Device; it refuses
 caller-supplied Authorization, Cookie or Device-proof headers. It has no direct
 HTTP fallback and does not read the routing-grant bearer or signing key.
 
-This remains an opt-in library contract. It does not enable a default UI route,
-enroll or activate a Device, authenticate an account, or grant Project access.
-The separate account-continuation proof is still required where applicable.
+The library does not enroll or activate a Device, authenticate an account or
+grant Project access. Station now composes it in its native saved-route owner
+for a configured host-owned Device binding. Each peer obtains fresh ICE, and
+a separate account bridge supplies continuation proof for bounded Project
+reads. Unsupported resources and writes fail before peer allocation. The CLI
+continues to exclude these routes from default selection.
 Source and focused tests do not establish executed Tauri IPC, packaged-client,
 physical-device or complete authenticated Project-journey evidence.
 
