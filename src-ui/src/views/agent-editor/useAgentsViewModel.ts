@@ -173,11 +173,16 @@ export function useAgentsViewModel({
     Record<string, string>
   >({});
   const previousUrlSlugRef = useRef(urlSlug);
-  // The route as of this render, for work that awaits: a save that settles
-  // after the reader moved to another record must not write into that
-  // record's state (the hook outlives a selection since #2992).
+  // Counts selections, for work that awaits: a save that settles after the
+  // reader moved to another record must not write into that record's state
+  // (the hook outlives a selection since #2992). A count rather than the slug,
+  // so leaving and coming back to the same record is still a different visit.
   const liveUrlSlugRef = useRef(urlSlug);
-  liveUrlSlugRef.current = urlSlug;
+  const selectionVisitRef = useRef(0);
+  if (liveUrlSlugRef.current !== urlSlug) {
+    liveUrlSlugRef.current = urlSlug;
+    selectionVisitRef.current += 1;
+  }
   const createNavigationRef = useRef(false);
 
   const { data: availableTools = [] } = useIntegrationsQuery() as {
@@ -661,8 +666,9 @@ export function useAgentsViewModel({
     // connection just because another connection happens to be ready.
     if (isCreating && !createEngineReady) return;
     if (!validate()) return;
-    const savedFromSlug = urlSlug;
-    const stillOnSavedRecord = () => liveUrlSlugRef.current === savedFromSlug;
+    const savedDuringVisit = selectionVisitRef.current;
+    const stillOnSavedRecord = () =>
+      selectionVisitRef.current === savedDuringVisit;
     try {
       setIsSaving(true);
       setActionError(null);
