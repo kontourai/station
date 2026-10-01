@@ -3137,11 +3137,23 @@ already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
+`browser-live-surfaces.ts` also owns per-generation page tools: a JavaScript
+dialog opened while a person holds the lease is held in
+`ChromiumScreencastProducer` for that person (answered through
+`POST /api/browser/sessions/:id/dialog`, never by an Agent, which is refused
+`dialog-open` meanwhile); dialogs under an Agent or no holder are answered
+automatically, and a held dialog is dismissed when the person's control
+ends. `browser-console-log.ts` keeps a bounded in-memory console per browser
+generation (agent-capable requests read it only under `browserEvaluate`), and
+the registry's `captureScreenshot` serves the pane's screenshot, one capture
+in flight per session.
 
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
-`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`, and
-`BrowserPane.test.tsx`; real-host suites are separate `.real.test.ts` files.
+`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`,
+`browser-pane-page.routes.test.ts`, `BrowserPane.test.tsx` and
+`BrowserPane.pageTools.test.tsx`; real-host suites are separate
+`.real.test.ts` files.
 Synthetic PASS is not browser-version compatibility, hostile-page completeness,
 Windows process-tree cleanup, mobile viewing or release evidence. Keep
 `desktop-cef`/peer-host plans and the ADR's original research distinct from the
@@ -3166,11 +3178,18 @@ one pending frame per viewer, latest-frame replacement, acknowledgments and
 adaptive delivery. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
-an Agent cannot preempt a live human. Epoch identifies controller succession;
+an Agent cannot preempt a live human. A person's `keep-alive` lease request
+extends only their own current hold at the current epoch, never claims, and
+is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
+controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
 resurrect old work. The registry serializes and fences input, cancels held
 buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
-It cannot cancel an arbitrary producer effect already in flight.
+A producer may refuse an event for a reason the viewer can act on
+(`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
+page dialog waits for its person), which reaches the viewer as that code
+rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
+already in flight.
 
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.
