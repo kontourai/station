@@ -13,6 +13,7 @@
 import {
   APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
   APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
 } from '@kontourai/station-contracts/application-session';
 import type {
   DevicePrincipalBinding,
@@ -134,6 +135,7 @@ export function nativeDeviceProofPilotRoute(
     return (
       path === APPLICATION_SESSION_NATIVE_CHALLENGE_PATH ||
       path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH ||
+      path === APPLICATION_SESSION_NATIVE_REVOKE_PATH ||
       path === '/api/account-auth/accept-invitation'
     );
   if (method === 'GET' || method === 'HEAD')
