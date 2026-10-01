@@ -6,13 +6,18 @@ no UI in the loop. It is the API-parity contract for the composer: every action 
 takes in the chat dock has a documented, scriptable equivalent here
 (`docs/design/chat-composer.md` §4).
 
-There is one execution surface: `POST /api/orchestration/chat` accepts an
+For foreground chat, the canonical execution surface is
+`POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
 model, and workspace binding on the target Environment. A bound continuation
 uses `POST /api/orchestration/chat/:conversationId/continue`; it preserves the
 Environment, workspace and current Agent/engine binding. Supported per-turn model
 overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
+
+Independent [Task room agent requests](../design/task-room-agent-requests.md)
+use the existing delegation route with a separate durable request journal.
+They do not replace foreground chat or the Task's current-session association.
 
 ---
 
