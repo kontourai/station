@@ -4456,7 +4456,7 @@ export class EventStore {
   ): DeclaredOutputDescriptorRow | undefined {
     const row = this.db
       .prepare(
-        `SELECT o.event_id, o.thread_id, o.turn_id, o.tool_call_id,
+        `SELECT o.event_id, o.declaration_id, o.thread_id, o.turn_id, o.tool_call_id,
                 o.declared_at, o.label, o.descriptor, e.sequence
            FROM orchestration_declared_outputs o
            INNER JOIN orchestration_events e ON e.id = o.event_id
