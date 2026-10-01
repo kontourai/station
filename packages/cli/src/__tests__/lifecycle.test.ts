@@ -7796,7 +7796,9 @@ describe('lifecycle build + restart ergonomics', () => {
       socket.destroy = vi.fn();
       socket.setTimeout = vi.fn();
       queueMicrotask(() => {
-        now = 90_000;
+        // Each refused probe spends a whole base budget, so the wait walks
+        // through its bounded slow-boot extensions (#2964) and still gives up.
+        now += 90_000;
         socket.emit('error', new Error('seeded terminal refusal'));
       });
       return socket;
