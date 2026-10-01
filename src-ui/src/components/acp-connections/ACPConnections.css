@@ -209,10 +209,6 @@
   margin-top: auto;
 }
 
-.acp-connection-card__actions-spacer {
-  flex: 1;
-}
-
 .acp-connections-section__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
