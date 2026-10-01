@@ -206,7 +206,7 @@
 
     {"path":"src-server/knowledge-store/adapter-registry.ts","digest":"fc614e5d3702ebf9bb315257b6e0f1cdd2e86605c1663d27b20f553771ceb78e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/knowledge-store/adapters/conversation-store.ts","digest":"349b4e7f4f0620b306d1ac82f816cd36446f1c31a843878b3fcbcf2484701c9d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/knowledge-store/adapters/conversation-store.ts","digest":"f49321e1e2ba42b416887ccec379cd71d7725d34b12c56d2511af3e7b30673f9","revision":"50d1e9a2b4e524d2b761122376f79f976bf90798"},
 
     {"path":"src-server/knowledge-store/adapters/default-store.ts","digest":"003db4b89b4f5fb5238cfececcffdb33c36953e8922fc12ba941c1619d619cc6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -232,7 +232,7 @@
 
     {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"28ae9ecb204f2a9653577f674a5faae2076a1f7c93038e94cdc143d99d03b8f1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"816a95380f960a7d06c9ffd37744d8d9f2d710aebb75a14cdc5f5e6e5149be17","revision":"11d74764719f6778a58dc7b4fa83a32af49c7c25"},
 
     {"path":"src-server/providers/finish-reason-authority.ts","digest":"fbb1229f78ccbbce579c20cac7bcb8a728797b45c57f935eb4a7effc28ba790d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -258,9 +258,9 @@
 
     {"path":"src-server/routes/browser.ts","digest":"41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"e4e59243168f765fe50be9735a1b09bb6aa724c4fdf3bb82daeb5b4fd063f67e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/chat/chat-primary-stream.ts","digest":"ff7c778d975c7ed813ee07c5ee8cecefea35ff02e3007312f6267b94748c67c6","revision":"c30f672bd6ad608be52490ae20dcd1786989f0c2"},
 
-    {"path":"src-server/routes/chat/chat.ts","digest":"530ad2600e139dd112163b996ab743fadd0464871bd2165e251ef12d9d677f3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/chat/chat.ts","digest":"db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841","revision":"68a5eae4cbf2421447443d47b902fd7758e319fc"},
 
     {"path":"src-server/routes/connections/acp.ts","digest":"6db3c46657279acff2c9cee04a7973146fd343440fbf1f40f7467a9165888f3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

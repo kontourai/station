@@ -34,7 +34,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-source-observation-policy.ts","digest":"d4cb2a7bae52db410ea472b7a936c944503253b59037f7f1bf55caa28e16cbff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/routes/chat/conversations.ts","digest":"919104312a529ed63f517fc75017bc29d868b782306c0d04726fdc19f522ba17","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/routes/chat/conversations.ts","digest":"d96099cd4787a5dc4f5707cc66b1dbe723dcedbd76991a4f81ec0cad64b333f4","revision":"d9f09f8fbc1dbf7c563debe7a7f40802897ce59e"},
 
     {"path":"src-server/routes/knowledge/knowledge-source-routes.ts","digest":"0534e5e64bc316e9637e2892d321daa77323d7c1d0bc389a8cc82f829c10fc67","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
