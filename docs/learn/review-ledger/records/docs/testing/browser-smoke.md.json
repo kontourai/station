@@ -38,7 +38,7 @@
 
     {"path":"tests/csp-shell.spec.ts","digest":"d970b0c1d9081b74d24dccd4faa3a8a4d87f97b38c6c05074ed0824ba1b287b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"38594778cae73b0d19a64b4d2652cb99bf3b1c071c610b2c492870daa739c632","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
+    {"path":"tests/e2e-manifest.mjs","digest":"1640f5bd8ecce94275a90dc941b0515da1b881c6a10db8e5ca028ebcc77496b9","revision":"92977a2a51bf0d4410bc5871cba4b2f5e87410c9"},
 
     {"path":"tests/helpers/browser-health.ts","digest":"67b5cf9fe4f17a137bea6daeffc4a3cd81433f2058938f9d0bcf90a91efc3921","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

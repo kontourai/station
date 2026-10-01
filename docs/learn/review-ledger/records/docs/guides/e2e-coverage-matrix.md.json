@@ -60,7 +60,7 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"a568dd21059a806543958a1dd8603afcf6aa753c1a0d2c63960d305b8af325d5","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"38594778cae73b0d19a64b4d2652cb99bf3b1c071c610b2c492870daa739c632","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
+    {"path":"tests/e2e-manifest.mjs","digest":"1640f5bd8ecce94275a90dc941b0515da1b881c6a10db8e5ca028ebcc77496b9","revision":"92977a2a51bf0d4410bc5871cba4b2f5e87410c9"},
 
     {"path":"tests/mobile-chat-composer.spec.ts","digest":"42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 

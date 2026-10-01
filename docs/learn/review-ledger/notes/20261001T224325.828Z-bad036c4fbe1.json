@@ -1,0 +1,7 @@
+{
+  "revision": "fb91b0deacf9ac3d59fd86e8e5eaaa3182df74e5",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed against ChatDock.tsx's change: the new onInboxNeedsYouChange callback reads no configuration; no config key or default changed, so the reference stands."}
+  ]
+}
