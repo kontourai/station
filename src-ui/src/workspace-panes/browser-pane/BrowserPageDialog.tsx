@@ -146,28 +146,16 @@ export function BrowserPageDialog({
       ) : null}
       <div className="browser-pane__page-dialog-actions">
         {onOpenInPane ? (
-          compact ? (
-            <Button
-              type="button"
-              variant="icon"
-              className="browser-pane__page-dialog-open"
-              aria-label="Open in pane"
-              title="Open in pane"
-              onClick={onOpenInPane}
-            >
-              <MonitorGlyph />
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="browser-pane__control browser-pane__page-dialog-open"
-              onClick={onOpenInPane}
-            >
-              Open in pane
-            </Button>
-          )
+          <Button
+            type="button"
+            variant="icon"
+            className="browser-pane__page-dialog-open"
+            aria-label="Open in pane"
+            title="Open in pane"
+            onClick={onOpenInPane}
+          >
+            <MonitorGlyph />
+          </Button>
         ) : null}
         {dialog.type === 'alert' ? null : (
           <Button
