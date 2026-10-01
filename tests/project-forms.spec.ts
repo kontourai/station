@@ -253,6 +253,9 @@ test.describe('Project forms', () => {
   test('a long working directory leaves the Workspace section header, description and controls intact at 360px, 768px and 1280px (#2799)', async ({
     page,
   }) => {
+    // Three paths at three widths, every measurement a browser round trip:
+    // about 10s on a quiet host, past the 30s default on a loaded one.
+    test.setTimeout(90_000);
     const deep = Array.from(
       { length: 9 },
       (_, index) => `deeply-nested-directory-segment-${index}`,
@@ -312,12 +315,13 @@ test.describe('Project forms', () => {
     for (const [label, value] of Object.entries(paths)) {
       expect(value.length, `${label}: fixture length`).toBeGreaterThan(200);
       workingDirectory = value;
+      await page.goto('/projects/long-path/edit');
+      await expect(section.locator('#project-working-directory')).toHaveValue(
+        value,
+      );
       for (const width of [360, 768, 1280]) {
         const context = `${label} at ${width}px`;
         await page.setViewportSize({ width, height: 900 });
-        await page.goto('/projects/long-path/edit');
-        const input = section.locator('#project-working-directory');
-        await expect(input).toHaveValue(value);
 
         const card = await box(':scope', context);
         const inside = async (selector: string) => {
