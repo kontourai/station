@@ -231,6 +231,18 @@ export function useAgentsViewModel({
     generation: number;
     agent: AgentData;
   }>();
+  // `refetchOnMount: 'always'` only covers a mount. Agents keeps this hook
+  // mounted across selections (#2992), and a change of query key refetches
+  // only when the cached entry is stale — so coming back to a recently read
+  // Agent would wait forever for the newer response this generation requires.
+  // Ask for it. `cancelRefetch: false` joins a fetch the key change started.
+  const refreshedGenerationRef = useRef(0);
+  useEffect(() => {
+    if (isCreating || !selectedAgentSlug) return;
+    if (refreshedGenerationRef.current === detailRoute.generation) return;
+    refreshedGenerationRef.current = detailRoute.generation;
+    void refetchAgent({ cancelRefetch: false });
+  }, [detailRoute.generation, isCreating, refetchAgent, selectedAgentSlug]);
   useEffect(() => {
     if (isCreating || !selectedAgentSlug) {
       setAuthoritativeDetail(undefined);
@@ -517,17 +529,26 @@ export function useAgentsViewModel({
     );
   }, [dirty, pendingCreatedSlug]);
 
+  // A selection is a route change, and a dirty form's route change is already
+  // arbitrated by the unsaved guard (`registerNavigationGuard`). Wrapping that
+  // navigation in `guard` as well asked "Discard?" twice for one decision, so
+  // a dirty form only navigates here; the URL effect above resets the
+  // per-record state once the navigation is admitted.
   function handleSelect(slug: string) {
-    guard(() => {
-      urlSelect(slug);
-      setIsCreating(false);
-      setEngineKindOverride(null);
-      setActionError(null);
-      setValidationErrors({});
-    });
+    urlSelect(slug);
+    if (dirty) return;
+    setIsCreating(false);
+    setEngineKindOverride(null);
+    setActionError(null);
+    setValidationErrors({});
   }
 
   function handleNew(initialForm?: Partial<AgentFormData>) {
+    if (dirty && !initialForm && urlSlug !== 'new') {
+      // Same single decision; the URL effect prepares the blank form.
+      urlSelect('new');
+      return;
+    }
     guard(() => {
       // When this action changes the URL, the URL effect must retain the form
       // prepared below instead of replacing the starting point just chosen.
