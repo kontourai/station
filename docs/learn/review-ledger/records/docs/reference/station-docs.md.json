@@ -18,7 +18,7 @@
 
     {"path":"packages/contracts/src/agent-plugin.ts","digest":"65c2a7246e4083f7297878671dced18226b95f16486e794860d3d1430176af23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/fleet-contribution.ts","digest":"6a898f68b1e2c9796bcc0c62ee3688a9880b8e5634c001185c0bbcbc4aa24445","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b37bf446801986b1d3f4ff2237a0a0dc8209732e1e507699405e592d060ab0d7","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
     {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -80,7 +80,7 @@
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"99d71dd9ff2be2c17ca9c7bc8603f22cc57554c301c56ce7e1109e4774250aa1","revision":"e1ce3538d977a5e3bbde7395e08aebe66e29781c"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04","revision":"d721bd87d11a593f8d14d47c7a3184b797e61093"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"4ae696c9139d773206465e2b509b896006872e607013454095b79c9b32d363c6","revision":"5454ef1b6bc46049c6db7d95675711b93402be21"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"27cfd3498b4543c9d1f04538671ffeb60dc245442284d6983cc97c20f901d113","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

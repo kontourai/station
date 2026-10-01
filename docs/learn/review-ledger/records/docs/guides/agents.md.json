@@ -9,7 +9,7 @@
 
   "limits": "Local source/fixture review. Native provider compatibility, physical UI, real approvals, and platform/runtime setup are not established by this record.",
 
-  "document": {"digest":"b28d533268d33758318539723a00a9259b904c777690a4c947c71e3be7a7f8c7","revision":"5148a05e2089e41546cfed52b0046ed64f938af5"},
+  "document": {"digest":"1ebaf5821d7fe94bf50fae7d2ddbd516ff3993eee61939d2a959f91b65b82fef","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
 
   "sources": [
     {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/managed-model-binding.ts","digest":"fb7351b6bf56a0132790c8efc754d8650f54503904ef799dd403a69d18e7e7ec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -36,9 +36,9 @@
 
     {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b37bf446801986b1d3f4ff2237a0a0dc8209732e1e507699405e592d060ab0d7","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"7f03adbf1b54dcd4a7fa983c1580d64f1ba9c284af54cb9fc9e29d8b4b1ef64a","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-server/routes/connections/app-home.ts","digest":"9c900e018d86204dc4c868ae3c58a32870d46bf448648f1f5217a5abd543ef4d","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -118,7 +118,7 @@
 
     {"path":"src-server/services/orchestration/attached-session-follow-service.ts","digest":"2af62de4e6e4414dd204b33bd4724d382daf5b147946be6a4a2744619e6f563c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"99d71dd9ff2be2c17ca9c7bc8603f22cc57554c301c56ce7e1109e4774250aa1","revision":"e1ce3538d977a5e3bbde7395e08aebe66e29781c"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

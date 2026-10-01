@@ -299,13 +299,13 @@
       "name": "sessions",
       "width": 1440,
       "height": 900,
-      "sha256": "2bad1003423aedd5e05678d093a7302366981d77c9f0e437aab0819a7aec7295"
+      "sha256": "000c5c4c6e8c677a7fc5c93bc22393def715e325272e1d25332178ad5ee14994"
     },
     {
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "69aed5ae2c5070488d9d5e1b901f152b97ba9d3d6df3f4742541b1054af045b0"
+      "sha256": "7757bbe47caf5aaa352995acd952f48fdca3180efea0677f92a54484054e4963"
     },
     {
       "name": "settings",

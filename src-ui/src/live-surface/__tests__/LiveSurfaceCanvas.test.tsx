@@ -25,7 +25,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
-import { LiveSurfaceCanvas } from '../LiveSurfaceCanvas';
+import {
+  LiveSurfaceCanvas,
+  type LiveSurfaceControlState,
+} from '../LiveSurfaceCanvas';
 
 const SURFACE = 'browser:session-1';
 const API = 'http://station.test';
@@ -1284,6 +1287,79 @@ describe('LiveSurfaceCanvas: which input may take control', () => {
         batch.events.map((event) => (event as { type: string }).type),
       ),
     ).toEqual(['move', 'wheel']);
+  });
+
+  test("releaseControl (the host's hand-back) posts a release at the held epoch and adopts the lease the server answers", async () => {
+    const h = harness();
+    const bodies: unknown[] = [];
+    const transport = vi.fn(
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).endsWith('/lease')) {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Response.json({
+            success: true,
+            data: { ok: true, lease: lease(9, null) },
+          });
+        }
+        return h.transport(input, init);
+      },
+    );
+    const states: LiveSurfaceControlState[] = [];
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={transport as never}
+        hostControls
+        onControlState={(state) => states.push(state)}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(7, MY_HOLD)));
+    await stream.push(frameRecord(1, 7));
+    await flush();
+    expect(states.at(-1)?.tone).toBe('you');
+    await states.at(-1)!.releaseControl();
+    await flush();
+    expect(bodies).toEqual([{ action: 'release', epoch: 7 }]);
+    expect(states.at(-1)?.tone).toBe('none');
+  });
+
+  test('keepControlAlive posts a keep-alive (never a claim) at the held epoch', async () => {
+    const h = harness();
+    const bodies: unknown[] = [];
+    const transport = vi.fn(
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (String(input).endsWith('/lease')) {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Response.json({
+            success: true,
+            data: { ok: true, lease: lease(7, MY_HOLD) },
+          });
+        }
+        return h.transport(input, init);
+      },
+    );
+    const states: LiveSurfaceControlState[] = [];
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={transport as never}
+        hostControls
+        onControlState={(state) => states.push(state)}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(7, MY_HOLD)));
+    await stream.push(frameRecord(1, 7));
+    await flush();
+    await states.at(-1)!.keepControlAlive();
+    expect(bodies).toEqual([{ action: 'keep-alive', epoch: 7 }]);
   });
 
   test('inputRequiresLease: nothing is sent — not a click, a key or text — until Take control, and the keyboard target is out of the tab order', async () => {

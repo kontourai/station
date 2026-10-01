@@ -1983,9 +1983,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       // switch such as leaving plan mode with the `switch_mode` tool kind;
       // it reports no other escalation signal on a permission request.
       // The shared predicate also covers a tool the agent names
-      // `AskUserQuestion` (#3021): Station has no ACP question card, but a
-      // question is still a person's to answer, so it prompts as an ordinary
-      // approval rather than being accepted by a pattern or a session grant.
+      // `AskUserQuestion` (#3021) or `SandboxNetworkAccess` (#2932). Station
+      // has no ACP question card, but a question is still a person's to
+      // answer, and a network-host ask is asked per host. Either prompts as
+      // an ordinary approval rather than being accepted by a pattern or a
+      // session grant.
       const needsPerson = toolRequestNeedsPerson(
         toolName,
         params.toolCall?.kind,
