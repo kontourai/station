@@ -100,7 +100,7 @@
 
     {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"157157e7fa3f0b182b50ccba2dd6bf298f6fba9c787252f617bda3d82fe9380a","revision":"363462bb4b6ebc1a46303a31187d2996e8e57579"},
 
     {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
