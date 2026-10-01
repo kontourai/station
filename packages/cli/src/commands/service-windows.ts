@@ -36,7 +36,7 @@ const START_POLL_ATTEMPTS = 20;
 export const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
 // `schtasks /Create` without settings XML leaves a task with Task Scheduler's
 // defaults (#2970, measured on a Windows runner): no ExecutionTimeLimit
-// element, which the schema reads as 72 hours, and DisallowStartIfOnBatteries
+// element, which Get-ScheduledTask reports as PT72H, and DisallowStartIfOnBatteries
 // and StopIfGoingOnBatteries both true, so on a laptop the service does not
 // start on battery and is stopped when it unplugs. `PT0S` removes the time
 // limit and both battery rules are turned off.

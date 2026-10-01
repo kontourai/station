@@ -89,8 +89,8 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
       const registration = registerLikeInstall(wrapper);
 
       // The premise of #2970, as a Windows runner showed it: without settings
-      // XML the task carries no ExecutionTimeLimit element (the schema's
-      // default applies), no restart-on-failure, and both battery rules on.
+      // XML the task carries no ExecutionTimeLimit element (the scheduler
+      // applies 72 hours), no restart-on-failure, and both battery rules on.
       const before = taskXml(registration.taskName as string);
       console.log(`schtasks default settings XML:\n${before}`);
       expect(before).not.toContain('<ExecutionTimeLimit>PT0S');
@@ -109,6 +109,10 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
         expected: EXPECTED_TASK_SETTINGS,
         status: 'stale',
       });
+      // The 72-hour limit is not in the XML but is what the scheduler applies.
+      expect(stale.observed).toContain('ExecutionTimeLimit=PT72H');
+      expect(stale.observed).toContain('DisallowStartIfOnBatteries=True');
+      expect(stale.observed).toContain('StopIfGoingOnBatteries=True');
 
       applyWindowsTaskSettings(registration, defaultRun);
 
@@ -117,9 +121,12 @@ describe.runIf(optedIn)('real Windows Task Scheduler settings', () => {
       const after = taskXml(registration.taskName as string);
       console.log(`settings XML after install:\n${after}`);
       expect(after).toContain('<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>');
-      expect(after).toMatch(
-        /<RestartOnFailure>\s*<Interval>PT1M<\/Interval>\s*<Count>255<\/Count>\s*<\/RestartOnFailure>/u,
-      );
+      // Windows writes Count before Interval; the order is not the claim.
+      const restart = after.match(
+        /<RestartOnFailure>([\s\S]*?)<\/RestartOnFailure>/u,
+      )?.[1];
+      expect(restart).toContain('<Count>255</Count>');
+      expect(restart).toContain('<Interval>PT1M</Interval>');
       expect(after).toContain('<Priority>5</Priority>');
       expect(after).toContain(
         '<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>',
