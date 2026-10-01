@@ -33,7 +33,7 @@ const START_POLL_INTERVAL_MS = 100;
 const START_POLL_ATTEMPTS = 20;
 // Task Scheduler defaults to 7, a background-tier priority. 5 is in its
 // interactive band and is appropriate for Station's user-facing service.
-export const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
+const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
 // `schtasks /Create` without settings XML leaves a task with Task Scheduler's
 // defaults (#2970, measured on a Windows runner): no ExecutionTimeLimit
 // element, which Get-ScheduledTask reports as PT72H, and DisallowStartIfOnBatteries
@@ -46,9 +46,9 @@ export const WINDOWS_INTERACTIVE_TASK_PRIORITY = 5;
 // relaunch a service that exits: a wrapper that exited 3 ran once in 100 s and
 // the task went back to Ready. They cover a task the scheduler could not
 // start. Relaunching an exited service is not provided by these settings.
-export const WINDOWS_TASK_EXECUTION_TIME_LIMIT = 'PT0S';
-export const WINDOWS_TASK_RESTART_COUNT = 255;
-export const WINDOWS_TASK_RESTART_INTERVAL = 'PT1M';
+const WINDOWS_TASK_EXECUTION_TIME_LIMIT = 'PT0S';
+const WINDOWS_TASK_RESTART_COUNT = 255;
+const WINDOWS_TASK_RESTART_INTERVAL = 'PT1M';
 /** The settings line an install leaves behind and `service status` expects. */
 export const WINDOWS_TASK_SETTINGS_EXPECTED = `Priority=${WINDOWS_INTERACTIVE_TASK_PRIORITY}, ExecutionTimeLimit=${WINDOWS_TASK_EXECUTION_TIME_LIMIT}, RestartCount=${WINDOWS_TASK_RESTART_COUNT}, RestartInterval=${WINDOWS_TASK_RESTART_INTERVAL}, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False`;
 
