@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"278903557f2cbcfe8e4179fd930f7a8824c518c83387da546970fa3956a1fa08","revision":"ed7085f59e12659653228c48ae3493dc2c3811e7"},
+  "document": {"digest":"278903557f2cbcfe8e4179fd930f7a8824c518c83387da546970fa3956a1fa08","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -32,7 +32,7 @@
 
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"ed7085f59e12659653228c48ae3493dc2c3811e7"},
+    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
 
     {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"1ef7d183b06ac39f704660542495e0fddd62bdaffb1d2d1ea38847d3b06af8e3","revision":"ed7085f59e12659653228c48ae3493dc2c3811e7"},
 
@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-placement.ts","digest":"25fbfd594288f945664092139e20c1e37c1a74888cdddb1bf7826b0a7bf3a296","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"b853b6386918e278a2884d89d3e39b04119cc43ce8cadd73d6dc3e384b695372","revision":"ed7085f59e12659653228c48ae3493dc2c3811e7"},
+    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"0206fa64a6bdd00ae2db8b9e64488faf2d49afdb253e67c9fa3d8109bda722da","revision":"700ace0b37982f308d6d2f8a470f1aa0c28a6576"},
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx","digest":"adbfc13058751ddc325188504ed102282546456b531287a3ae12b773c0b900e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
