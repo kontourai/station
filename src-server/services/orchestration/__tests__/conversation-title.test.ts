@@ -80,7 +80,8 @@ describe('derivedConversationTitle', () => {
     // The literal 1000, next to the constant it pins.
     expect(TITLE_SOURCE_MAX_CODE_POINTS).toBe(1000);
     expect(derivedConversationTitle(`${' '.repeat(1000)}late`)).toBeUndefined();
-    expect(derivedConversationTitle(`${' '.repeat(999)}late`)).toBe('late');
+    // Exactly 1000 are read: 999 spaces and the first letter.
+    expect(derivedConversationTitle(`${' '.repeat(999)}late`)).toBe('l');
   });
 
   test('the bound counts code points, not UTF-16 units', () => {
