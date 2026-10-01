@@ -12,7 +12,7 @@
   "document": {"digest":"9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"b38e8fff2feac60a53ce342236e2063edfc6f79edefbd87d0e59cebec3f53fcc","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"docs/architecture/module-map.md","digest":"b38e8fff2feac60a53ce342236e2063edfc6f79edefbd87d0e59cebec3f53fcc","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
 
     {"path":"docs/contexts/agent-runtime/CONTEXT.md","digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -24,7 +24,7 @@
 
     {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","digest":"0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/glossary.md","digest":"f61bfd49b6194a18bd9bb4d39c11e9515178904d61bfe7a61be47879b87f0c78","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+    {"path":"docs/glossary.md","digest":"b48c9d7578ec1a86bbdf9916f69cbc2b0b498bc4aa7c6802a0dda6767594a51e","revision":"64f3119bfb0354a49f2b3e017effd21ae28ad0c4"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -32,7 +32,7 @@
 
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"f0d9e41bd82af31138b45cc9c36935cf9230721cad5ade5bf073da3feaa56ab6","revision":"669d892fd958eba4a67c57395955b787a100de7a"},
 
     {"path":"packages/sdk/src/client/delegations.ts","digest":"148d12ffed1091b83149a7d0caa834088f58eebf295ce4c97b697ec1fad747db","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

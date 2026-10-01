@@ -18,7 +18,7 @@
 
     {"path":"packages/contracts/src/workspace-composition.ts","digest":"3a63323df9da3e2d7e4f6a4c304f05c08bc81b85083f7466c6d59af904e81082","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"f0d9e41bd82af31138b45cc9c36935cf9230721cad5ade5bf073da3feaa56ab6","revision":"669d892fd958eba4a67c57395955b787a100de7a"},
 
     {"path":"packages/contracts/src/workspace-layout-pane.ts","digest":"975cdb27a0100129aefee48a33e96cb7de065430c841e07f7cc2e9862d6c1988","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
