@@ -26,6 +26,7 @@ import {
   importJWK,
 } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import {
   BrokerIceService,
@@ -147,8 +148,9 @@ test('fails closed where private path custody is not implemented', () => {
 describe.runIf(process.platform !== 'win32')(
   'self-hosted broker control plane',
   () => {
+    const makeIceTempDir = trackTempDirs();
     test('ICE HTTP routes require exact native PoP or connector authority and refuse retired owners', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-broker-ice-routes-'));
+      const root = makeIceTempDir('station-broker-ice-routes-');
       const now = 1_000;
       const service = new SelfHostedBrokerService(
         join(root, 'broker.sqlite'),
@@ -342,7 +344,7 @@ describe.runIf(process.platform !== 'win32')(
       }
     });
     test('connector withdrawal during TURN issuance discards the issued credential', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-broker-ice-withdraw-'));
+      const root = makeIceTempDir('station-broker-ice-withdraw-');
       const service = new SelfHostedBrokerService(
         join(root, 'broker.sqlite'),
         () => 1000,
