@@ -7,7 +7,6 @@ mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
-mod native_enrollment;
 #[cfg(not(mobile))]
 mod desktop_companion;
 #[cfg(not(mobile))]
@@ -16,6 +15,10 @@ mod desktop_installation;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+mod native_enrollment;
+mod native_enrollment_host;
+mod native_enrollment_peer;
+mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
 // Proof keys remain host-only; bounded account and Device operations are IPC.
@@ -4830,6 +4833,274 @@ fn credential_vault_commit_pairing_internal(
         pending,
         handle,
     )
+}
+
+fn publish_authenticated_native_enrollment(
+    app: &AppHandle,
+    authenticated: &native_enrollment_host::AuthenticatedEnrollmentActivation,
+    cancelled: impl Fn() -> Result<bool, String>,
+) -> Result<u64, String> {
+    let route = authenticated.route();
+    let name = &route.context.profile.profile_name;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let pending = app
+        .try_state::<NativePendingPairingCredentials>()
+        .ok_or("Station pairing state is unavailable")?;
+    let reference = authenticated.reference();
+    let mut store = parse_station_profile_store(&station_profile_store_read_with_host(
+        &AppProfileWriteHost::new(app)?,
+        &authority,
+    )?)?;
+    let profile = selected_profile_from_store(&store, name)?;
+    if store.revision != route.context.profile.revision
+        || exact_origin(&profile.endpoint)? != route.context.profile.station_endpoint
+        || profile.client_instance_id.as_deref() != Some(&route.surface.client_instance_id)
+    {
+        return Err("The enrollment profile changed before publication".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    if profile
+        .credential_ref
+        .as_ref()
+        .is_some_and(|value| value != reference)
+    {
+        return Err("The enrollment cannot replace another credential".into());
+    }
+    if profile.credential_ref.as_ref() == Some(reference)
+        && profile.configuration_state == "configured"
+    {
+        if cancelled()? {
+            return Err("The enrollment was cancelled".into());
+        }
+        station_profile_authorize_active_internal(app, &authority, name)?;
+        return Ok(store.revision);
+    }
+    let handle = reference.id.clone();
+    let resumed = profile.credential_ref.as_ref() == Some(reference)
+        && profile.configuration_state == "requires-auth";
+    if !resumed && profile.credential_ref.is_some() {
+        return Err("The enrollment profile is not fresh".into());
+    }
+    let entry = PendingPairingCredential {
+        credential: authenticated.credential().into(),
+        reference: reference.clone(),
+        exact_origin: route.context.profile.station_endpoint.clone(),
+        environment_id: route.scope.station_id.clone(),
+        client_instance_id: route.surface.client_instance_id.clone(),
+        device_id: authenticated.device_id().into(),
+        device_kind: "device".into(),
+        expires_at: SystemTime::now() + Duration::from_secs(120),
+        phase: if resumed {
+            NativePairingPhase::RequiresAuthPersisted {
+                profile_name: name.clone(),
+            }
+        } else {
+            NativePairingPhase::AwaitingRequiresAuth
+        },
+    };
+    {
+        let mut entries = pending
+            .0
+            .lock()
+            .map_err(|_| "Station pairing state is unavailable")?;
+        if entries.len() >= 128 && !entries.contains_key(&handle) {
+            return Err("Station pairing capacity reached".into());
+        }
+        entries.insert(handle.clone(), entry);
+    }
+    if resumed {
+        let mut state = authority
+            .0
+            .lock()
+            .map_err(|_| "Station native authority is unavailable")?;
+        state.bindings.remove(&credential_reference_key(reference)?);
+        state
+            .transitioning
+            .insert(credential_reference_key(reference)?);
+    } else {
+        if cancelled()? {
+            return Err("The enrollment was cancelled".into());
+        }
+        let next = native_enrollment_next_store(
+            &store,
+            name,
+            reference,
+            &route.scope.station_id,
+            &route.surface.client_instance_id,
+            "requires-auth",
+        )?;
+        station_profile_store_write_internal(
+            app,
+            &authority,
+            &pending,
+            next,
+            store.revision,
+            Some(handle.clone()),
+        )?;
+        store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    }
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    credential_vault_commit_pairing_internal(app, &authority, &pending, &handle)?;
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    let next = native_enrollment_next_store(
+        &store,
+        name,
+        reference,
+        &route.scope.station_id,
+        &route.surface.client_instance_id,
+        "configured",
+    )?;
+    station_profile_store_write_internal(
+        app,
+        &authority,
+        &pending,
+        next,
+        store.revision,
+        Some(handle),
+    )?;
+    station_profile_authorize_active_internal(app, &authority, name)?;
+    let published = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    if authenticated
+        .assert_current(app, published.revision)
+        .is_err()
+    {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment owner changed during publication".into());
+    }
+    Ok(published.revision)
+}
+
+fn native_enrollment_next_store(
+    current: &CredentialProfileStore,
+    name: &str,
+    reference: &NativeCredentialReference,
+    station_id: &str,
+    client_instance_id: &str,
+    state: &str,
+) -> Result<String, String> {
+    let mut next = current.clone();
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or("Station revision overflow")?;
+    let profile = next
+        .profiles
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or("The enrollment profile is missing")?;
+    profile.credential_ref = Some(reference.clone());
+    profile._environment_id = Some(station_id.into());
+    profile.client_instance_id = Some(client_instance_id.into());
+    profile.configuration_state = state.into();
+    profile.updated_at = now_millis_f64()?;
+    serde_json::to_string(&next).map_err(|_| "The enrollment profile update is invalid".into())
+}
+
+fn native_enrollment_owned_revision(
+    app: &AppHandle,
+    name: &str,
+    original_revision: u64,
+    reference: Option<&NativeCredentialReference>,
+    origin: &str,
+    station_id: &str,
+    client_instance_id: &str,
+    cancel_requested: bool,
+) -> Result<u64, String> {
+    let path = station_profiles_path(app)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "The enrollment profile is unavailable")?,
+    )?;
+    let profile = selected_profile_from_store(&store, name)?;
+    if exact_origin(&profile.endpoint)? != origin
+        || profile.client_instance_id.as_deref() != Some(client_instance_id)
+    {
+        return Err("The enrollment profile owner changed".into());
+    }
+    if store.revision == original_revision {
+        if profile.credential_ref.is_some() && profile.credential_ref.as_ref() != reference {
+            return Err("The enrollment cannot replace another credential".into());
+        }
+        return Ok(store.revision);
+    }
+    let owned = reference.is_some()
+        && profile.credential_ref.as_ref() == reference
+        && profile._environment_id.as_deref() == Some(station_id)
+        && ["requires-auth", "configured"].contains(&profile.configuration_state.as_str());
+    let retired = cancel_requested
+        && reference.is_some()
+        && profile.credential_ref.is_none()
+        && profile._environment_id.is_none()
+        && profile.configuration_state == "unconfigured";
+    if store.revision > original_revision
+        && ((owned && store.revision <= original_revision.saturating_add(2))
+            || (retired && store.revision <= original_revision.saturating_add(3)))
+    {
+        Ok(store.revision)
+    } else {
+        Err("The enrollment profile revision changed outside its owned transaction".into())
+    }
+}
+
+fn retire_owned_native_enrollment(
+    app: &AppHandle,
+    name: &str,
+    reference: &NativeCredentialReference,
+) -> Result<(), String> {
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let pending = app
+        .try_state::<NativePendingPairingCredentials>()
+        .ok_or("Station pairing state is unavailable")?;
+    let current = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let Some(profile) = current
+        .profiles
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+    else {
+        return Ok(());
+    };
+    if profile.credential_ref.as_ref() != Some(reference) {
+        return Ok(());
+    }
+    let mut next = current.clone();
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or("Station revision overflow")?;
+    let profile = next
+        .profiles
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or("The enrollment profile is missing")?;
+    profile.credential_ref = None;
+    profile._environment_id = None;
+    profile.configuration_state = "unconfigured".into();
+    profile.updated_at = now_millis_f64()?;
+    station_profile_store_write_internal(
+        app,
+        &authority,
+        &pending,
+        serde_json::to_string(&next).map_err(|_| "The enrollment retirement is invalid")?,
+        current.revision,
+        None,
+    )?;
+    Ok(())
 }
 
 fn credential_vault_commit_pairing_with_host(
@@ -11528,6 +11799,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativePairingExchangeCancellation::default())
         .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(native_application_peer::NativeApplicationPeers::default())
+        .manage(native_enrollment_peer::NativeEnrollmentPeers::default())
+        .manage(native_enrollment_host::NativeEnrollmentHost::default())
         .manage(native_account_operations::NativeAccountOperations::default());
     #[cfg(not(mobile))]
     let builder = builder
@@ -11579,6 +11852,26 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_redemption::station_native_relay_signal_diagnostic_open,
         native_relay_redemption::station_native_relay_signal_diagnostic_read,
         native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_enrollment_binding,
+        native_enrollment_peer::station_native_enrollment_peer_prepare,
+        native_enrollment_peer::station_native_enrollment_peer_open,
+        native_enrollment_peer::station_native_enrollment_peer_read,
+        native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
+        native_enrollment_host::station_native_enrollment_begin_prepare,
+        native_enrollment_host::station_native_enrollment_challenge_accept,
+        native_enrollment_host::station_native_enrollment_login_prepare,
+        native_enrollment_host::station_native_enrollment_finalize_prepare,
+        native_enrollment_host::station_native_enrollment_delivery_accept,
+        native_enrollment_host::station_native_enrollment_activate_prepare,
+        native_enrollment_host::station_native_enrollment_activation_accept,
+        native_enrollment_host::station_native_enrollment_transition_current,
+        native_enrollment_host::station_native_enrollment_status_prepare,
+        native_enrollment_host::station_native_enrollment_status_accept,
+        native_enrollment_host::station_native_enrollment_cancel_prepare,
+        native_enrollment_host::station_native_enrollment_abort,
+        native_enrollment_host::station_native_enrollment_pending_accept,
+        native_enrollment_host::station_native_enrollment_resume,
         native_relay_redemption::station_native_relay_application_open,
         native_relay_redemption::station_native_relay_application_read,
         relay_grant_vault::relay_client_grant_store,
@@ -11648,6 +11941,26 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_redemption::station_native_relay_grant_cleanup_pending,
         native_relay_redemption::station_native_relay_grant_cleanup_retry,
         native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_enrollment_binding,
+        native_enrollment_peer::station_native_enrollment_peer_prepare,
+        native_enrollment_peer::station_native_enrollment_peer_open,
+        native_enrollment_peer::station_native_enrollment_peer_read,
+        native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
+        native_enrollment_host::station_native_enrollment_begin_prepare,
+        native_enrollment_host::station_native_enrollment_challenge_accept,
+        native_enrollment_host::station_native_enrollment_login_prepare,
+        native_enrollment_host::station_native_enrollment_finalize_prepare,
+        native_enrollment_host::station_native_enrollment_delivery_accept,
+        native_enrollment_host::station_native_enrollment_activate_prepare,
+        native_enrollment_host::station_native_enrollment_activation_accept,
+        native_enrollment_host::station_native_enrollment_transition_current,
+        native_enrollment_host::station_native_enrollment_status_prepare,
+        native_enrollment_host::station_native_enrollment_status_accept,
+        native_enrollment_host::station_native_enrollment_cancel_prepare,
+        native_enrollment_host::station_native_enrollment_abort,
+        native_enrollment_host::station_native_enrollment_pending_accept,
+        native_enrollment_host::station_native_enrollment_resume,
         native_relay_redemption::station_native_relay_application_open,
         native_relay_redemption::station_native_relay_application_read,
         relay_grant_vault::relay_client_grant_store,

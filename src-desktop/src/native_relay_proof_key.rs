@@ -1034,6 +1034,7 @@ pub(crate) enum NativeBrokerRequestBody<'a> {
         nonce: &'a str,
     },
     Retire,
+    IceConfiguration,
     Renew {
         renewal_id: &'a str,
         expected_expires_at: u64,
@@ -1133,6 +1134,15 @@ impl NativeBrokerRequestProofChallenge {
                     scope,
                     surface,
                     nonce,
+                }),
+            ),
+            NativeBrokerRequestBody::IceConfiguration => (
+                "/broker/v1/native/ice/configuration",
+                "station-native-ice-configuration-v1",
+                serde_json::to_vec(&NativeRequestRetireBody {
+                    version: "station-relay-ice-configuration/v1",
+                    scope,
+                    surface,
                 }),
             ),
             NativeBrokerRequestBody::Retire => (
@@ -1424,7 +1434,7 @@ fn validate_native_request_identity(
                 && offer_sdp.as_bytes().len() <= 128 * 1024
         }
         NativeBrokerRequestBody::Read { nonce } => valid_request_token(nonce),
-        NativeBrokerRequestBody::Retire => true,
+        NativeBrokerRequestBody::Retire | NativeBrokerRequestBody::IceConfiguration => true,
         NativeBrokerRequestBody::Renew { renewal_id, .. } => valid_request_token(renewal_id),
     };
     if !valid_origin
@@ -2275,6 +2285,48 @@ mod tests {
             server.join().unwrap();
             assert!(redirect_sink.accept().is_err());
         }
+    }
+
+    #[test]
+    fn native_ice_request_has_one_fixed_body_path_and_purpose() {
+        let bearer = "S".repeat(43);
+        let key_thumbprint = "T".repeat(43);
+        let signing_key_id = "K".repeat(43);
+        let challenge = NativeBrokerRequestProofChallenge::from_request_with_jti(
+            NativeBrokerRequestIdentity {
+                broker_origin: "https://broker.example",
+                grant_id: "grant-12345678",
+                station_id: "11111111-1111-4111-8111-111111111111",
+                enrollment_id: "22222222-2222-4222-8222-222222222222",
+                routing_generation: 1,
+                app_identifier: "io.kontourai.station",
+                channel: "dev",
+                client_instance_id: "33333333-3333-4333-8333-333333333333",
+                key_thumbprint: &key_thumbprint,
+                station_signing_key_id: &signing_key_id,
+                station_signing_generation: 3,
+                bearer_secret: &bearer,
+            },
+            NativeBrokerRequestBody::IceConfiguration,
+            1000,
+            [7; 32],
+        )
+        .unwrap();
+        assert_eq!(challenge.path(), "/broker/v1/native/ice/configuration");
+        let body: serde_json::Value = serde_json::from_slice(challenge.body()).unwrap();
+        assert_eq!(body["version"], "station-relay-ice-configuration/v1");
+        assert_eq!(body.as_object().unwrap().len(), 3);
+        assert_eq!(body["scope"]["routingGeneration"], 1);
+        assert_eq!(
+            body["surface"]["clientInstanceId"],
+            "33333333-3333-4333-8333-333333333333"
+        );
+        assert!(!String::from_utf8_lossy(challenge.body()).contains(&bearer));
+        let payload = challenge.signing_input.split('.').nth(1).unwrap();
+        let claims: serde_json::Value =
+            serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap();
+        assert_eq!(claims["purpose"], "station-native-ice-configuration-v1");
+        assert_eq!(claims["path"], "/broker/v1/native/ice/configuration");
     }
 
     #[test]

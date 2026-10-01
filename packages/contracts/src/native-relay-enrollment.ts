@@ -73,6 +73,7 @@ export interface NativeRelayEnrollmentBeginRequest {
   /** Host-owned idempotence identity; retained before the first request can leave the host. */
   readonly clientAttemptId: string;
   readonly peerNonce: string;
+  readonly expiresAt: number;
   readonly recipient: NativeRelayEnrollmentRecipient;
 }
 

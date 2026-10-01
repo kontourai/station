@@ -46,6 +46,7 @@ const OPEN_PATH: &str = "/broker/v1/native/connections/open";
 const READ_PATH: &str = "/broker/v1/native/connections/read";
 const RETIRE_PATH: &str = "/broker/v1/native/grants/retire";
 const RENEW_PATH: &str = "/broker/v1/native/grants/renew";
+const ICE_CONFIGURATION_PATH: &str = "/broker/v1/native/ice/configuration";
 const NATIVE_INVITATION_VERSION: &str = "station-broker-native-route-invitation/v2";
 const NATIVE_GRANT_VERSION: &str = "station-broker-native-client-grant/v2";
 const NATIVE_RETIRE_VERSION: &str = "station-broker-native-grant-retire/v2";
@@ -2538,7 +2539,15 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let path = challenge.path();
-        if !matches!(path, OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH) {
+        let response_limit = if path == ICE_CONFIGURATION_PATH {
+            16 * 1024
+        } else {
+            MAX_RESPONSE_BYTES
+        };
+        if !matches!(
+            path,
+            OPEN_PATH | READ_PATH | RETIRE_PATH | RENEW_PATH | ICE_CONFIGURATION_PATH
+        ) {
             return Err(NativeRedemptionError::GrantInvalid);
         }
         let base = url::Url::parse(&grant.broker_origin)
@@ -2575,7 +2584,7 @@ impl NativeBrokerRequestTransport for UreqNativeBrokerTransport {
             if read == 0 {
                 break;
             }
-            if body.len().saturating_add(read) > MAX_RESPONSE_BYTES {
+            if body.len().saturating_add(read) > response_limit {
                 return Err(NativeRedemptionError::BrokerTransport);
             }
             body.extend_from_slice(&chunk[..read]);
@@ -7247,6 +7256,48 @@ pub(crate) fn with_existing_native_device_candidate<T>(
     expected_profile_revision: u64,
     operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
 ) -> Result<T, String> {
+    with_current_native_device_candidate(
+        app,
+        profile_name,
+        expected_profile_revision,
+        |authority, manager, keys| manager.existing_candidate(authority, keys),
+        operation,
+    )
+}
+
+pub(crate) fn adopt_authenticated_native_enrollment(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    authenticated: &crate::native_enrollment_host::AuthenticatedEnrollmentActivation,
+) -> Result<(), String> {
+    with_current_native_device_candidate(
+        app,
+        profile_name,
+        expected_profile_revision,
+        |authority, manager, keys| {
+            manager.adopt_authenticated_enrollment(authority, authenticated, keys)
+        },
+        |_| Ok(()),
+    )
+}
+
+fn with_current_native_device_candidate<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    candidate_operation: impl FnOnce(
+        &crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
+        &crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager<
+            crate::native_proof_key_core::KeyringSecretBackend,
+        >,
+        &crate::native_device_proof_key::NativeDeviceProofKeyVault,
+    ) -> Result<
+        crate::native_device_binding_candidate::NativeDeviceBindingCandidateV1,
+        String,
+    >,
+    operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
+) -> Result<T, String> {
     let result = with_locked_saved_relay_profile_store(
         app,
         profile_name,
@@ -7294,7 +7345,7 @@ pub(crate) fn with_existing_native_device_candidate<T>(
                     )?;
                     let manager = crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
                     let keys = crate::native_device_proof_key::NativeDeviceProofKeyVault::new();
-                    let candidate = manager.existing_candidate(&authority, &keys)?;
+                    let candidate = candidate_operation(&authority, &manager, &keys)?;
                     let current_grant = grants
                         .load_request_grant(
                             &relay_owner,
@@ -7869,6 +7920,134 @@ pub(crate) async fn station_native_relay_signal_diagnostic_read(
 /// Shared host path for the diagnostic and application signaling commands.
 /// Both names resolve the saved profile, approved Station trust, and the
 /// keyring-held grant in the host; the renderer never supplies custody.
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct NativeEnrollmentRouteCapture {
+    pub(crate) context: NativeRedemptionContext,
+    pub(crate) scope: crate::native_enrollment::NativeEnrollmentScope,
+    pub(crate) surface: crate::native_enrollment::NativeEnrollmentSurface,
+    pub(crate) grant_digest: String,
+    pub(crate) grant_id: String,
+    pub(crate) grant_expires_at: u64,
+}
+
+/// Route custody only: no paired Device or account identity is derived here.
+pub(crate) fn with_current_native_enrollment_route<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    profile_revision: u64,
+    operation: impl FnOnce(NativeEnrollmentRouteCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    let contexts = AppNativeRedemptionContextProvider::new(app.clone());
+    let grants = native_relay_grant_vault();
+    let now = native_now_ms().map_err(|_| "native_enrollment_route_refused".to_owned())?;
+    contexts
+        .with_current_context(profile_name, |context| {
+            validate_profile_context(&context)?;
+            if context.profile.revision != profile_revision {
+                return Err(NativeRedemptionError::StaleProfile);
+            }
+            let owner = NativeProofKeyOwner::new(
+                &context.profile.app_identifier,
+                context.profile.channel,
+                &context.profile.client_instance_id,
+            )
+            .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+            let record = grants.load_request_grant(&owner, &context, now, false)?;
+            let grant = &record.grant;
+            let digest_bytes = Zeroizing::new(
+                serde_json::to_vec(grant).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+            );
+            let capture = NativeEnrollmentRouteCapture {
+                context: context.clone(),
+                scope: crate::native_enrollment::NativeEnrollmentScope {
+                    station_id: grant.scope.station_id.clone(),
+                    enrollment_id: grant.scope.enrollment_id.clone(),
+                    routing_generation: grant.scope.routing_generation,
+                },
+                surface: crate::native_enrollment::NativeEnrollmentSurface {
+                    kind: grant.surface.kind.clone(),
+                    app_identifier: grant.surface.app_identifier.clone(),
+                    channel: grant.surface.channel.clone(),
+                    client_instance_id: grant.surface.client_instance_id.clone(),
+                    key_thumbprint: grant.surface.key_thumbprint.clone(),
+                },
+                grant_digest: URL_SAFE_NO_PAD
+                    .encode(ring::digest::digest(&ring::digest::SHA256, &digest_bytes)),
+                grant_id: grant.credential.id.clone(),
+                grant_expires_at: grant.expires_at,
+            };
+            Ok(operation(capture))
+        })
+        .map_err(|_| "native_enrollment_route_refused".to_owned())?
+}
+
+pub(crate) fn read_native_relay_ice_configuration(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+) -> RedemptionResult<crate::native_relay_ice::NativeRelayIceConfiguration> {
+    let captured = with_current_native_enrollment_route(
+        app,
+        profile_name,
+        expected_profile_revision,
+        |capture| Ok(capture),
+    )
+    .map_err(|_| NativeRedemptionError::StaleProfile)?;
+    let contexts = AppNativeRedemptionContextProvider::new(app.clone());
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport {
+        timeout: Duration::from_secs(10),
+    };
+    let grants = native_relay_grant_vault();
+    let service = NativeRelaySignalService::new(
+        &contexts,
+        &proof_keys,
+        &http,
+        &grants,
+        native_now_ms_or_zero,
+    );
+    let (context, owner, grant) =
+        service.load_current_grant(profile_name, expected_profile_revision)?;
+    let exact_grant = Zeroizing::new(
+        serde_json::to_vec(&grant).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+    );
+    let digest = URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &exact_grant));
+    if context != captured.context
+        || grant.credential.id != captured.grant_id
+        || grant.expires_at != captured.grant_expires_at
+        || digest != captured.grant_digest
+    {
+        return Err(NativeRedemptionError::StaleProfile);
+    }
+    let challenge = NativeBrokerRequestProofChallenge::from_request(
+        native_request_identity(&grant),
+        NativeBrokerRequestBody::IceConfiguration,
+        native_now_ms_or_zero() / 1000,
+    )
+    .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+    let signature = proof_keys
+        .sign_native_request(&owner, &challenge)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    let compact = challenge
+        .compact_jws(&signature)
+        .map_err(|_| NativeRedemptionError::ProofKey)?;
+    service.recheck_current_grant(profile_name, &context, &owner, &grant)?;
+    let response = http.send_fixed_request(&grant, &challenge, &compact);
+    service.recheck_current_grant(profile_name, &context, &owner, &grant)?;
+    let response = response?;
+    if response.status != 200 || response.body.len() > 16 * 1024 {
+        return Err(NativeRedemptionError::BrokerRejected);
+    }
+    crate::native_relay_ice::parse_native_relay_ice_configuration(
+        &response.body,
+        &serde_json::to_value(&grant.scope).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+        &serde_json::to_value(&grant.surface).map_err(|_| NativeRedemptionError::GrantInvalid)?,
+        native_now_ms_or_zero(),
+        grant.expires_at,
+    )
+    .map_err(|_| NativeRedemptionError::BrokerRejected)
+}
+
 fn run_native_relay_binding_request(
     app: AppHandle,
     request: NativeRelayDiagnosticBindingInput,
@@ -7985,6 +8164,26 @@ pub(crate) async fn station_native_relay_application_binding(
     tauri::async_runtime::spawn_blocking(move || run_native_relay_binding_request(app, request))
         .await
         .map_err(|_| "Station could not verify native relay application trust.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_enrollment_binding(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<NativeRelayDiagnosticBinding, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    let request = NativeRelayDiagnosticBindingInput {
+        profile_name,
+        expected_profile_revision,
+    };
+    if validate_native_relay_binding_input(&request).is_err() {
+        return Err("native_enrollment_binding_invalid".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_binding_request(app, request))
+        .await
+        .map_err(|_| "native_enrollment_binding_refused".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]

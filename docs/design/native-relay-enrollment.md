@@ -1,8 +1,11 @@
 # Native relay enrollment
 
-This page records the additive backend foundation for fresh native enrollment.
-The ordinary client flow and fresh enrollment routes remain unmounted. The
-existing native Device-proof pilot still requires an already paired Device.
+This page records the native enrollment ceremony and its evidence boundaries.
+Server routes are composed only with `STATION_NATIVE_ENROLLMENT_PILOT=1`, the
+existing native Device-proof pilot, a configured relay and a supported pending
+account provider. Ordinary solo operation does not construct this service.
+The host command source is registered on desktop and mobile; compilation,
+physical iOS lifecycle and the ordinary UI journey still require qualification.
 
 The [native contract](../../packages/contracts/src/native-relay-enrollment.ts)
 separates Station trust, routing scope, native installation surface, fresh
@@ -27,7 +30,9 @@ Station/enrollment/routing generation. The
 [native Pion adapter](../../src-server/services/connections/native-v2-pion-application-adapter.ts)
 captures one immutable approval per peer and rechecks it through Station proof
 issuance, request admission and response delivery. Revocation fences that
-peer's private provenance. These adapters are not mounted by this foundation.
+peer's private provenance. Connector configuration accepts either the existing
+fixed native surface or `nativeClient: { kind: 'station-native-registry' }`; the
+registry mode polls only exact operator-approved surfaces.
 
 ## Credential delivery
 
@@ -53,11 +58,46 @@ or recipient private scalar.
 The Rust recipient owner binds private OS storage to app/channel, saved profile
 revision, Station audience, routing generation, grant digest and peer nonce.
 It uses `NativeSecureEntry`; on iOS that adapter selects
-`AfterFirstUnlockThisDeviceOnly`. This module registers no renderer IPC.
-Its caller must retain the authoritative attempt, challenge and candidate,
-recheck current owners around awaits, and own durable cleanup/reconciliation
-before it publishes a profile or activation receipt. Those lifecycle and
-mounted application seams remain unfinished.
+`AfterFirstUnlockThisDeviceOnly`. The
+[host coordinator](../../src-desktop/src/native_enrollment_host.rs) retains the
+attempt, Station challenge, exact Device candidate and private bundle in OS
+storage. It writes an allocation index and owner intent before recipient key
+creation, and clips Station's signed enrollment deadline to the host recipient
+deadline. Request bodies and proof digests use [RFC 8785 JCS](https://www.rfc-editor.org/rfc/rfc8785.html).
+
+Each ceremony operation uses a fresh
+[verified enrollment peer](../../src-desktop/src/native_enrollment_peer.rs). The
+application channel carries one request. A bounded host request handle retains
+its verified tuple after network cleanup, so accepting a signed response does
+not require a still-open RTC connection. Status/recovery signs a new current
+peer nonce while preserving the original owner, recipient and candidate.
+Network cleanup is distinct from explicit user cancellation.
+
+The [service](../../src-server/services/identity/native-relay-enrollment-service.ts)
+uses the supported provider's private pending session owner. The local username
+provider adds invitation-gated registration using its maintained signup and
+sign-in APIs. Pending provider sessions remain outside ordinary account
+authority until ACK promotion. An authenticated operator approves the actual
+issuer/subject and exact candidate through GET
+`/api/pairing/native-relay-enrollments` and POST
+`/api/pairing/native-relay-enrollments/:enrollmentId/approve`. The legacy browser
+Pairing confirm route does not approve this native candidate.
+
+The [private SQLite journal](../../src-server/services/relay/native-relay-enrollment-journal.ts)
+persists lifecycle, provider references and proof replay state; it contains no
+Device bearer. After a signed activation receipt, the host reuses the existing
+pending-pairing transaction to write bearer and Device companion, publish the
+configured profile and adopt the preapproved Device key/binding without minting
+a replacement candidate. Publication returns an owned transition and new profile
+revision; its fixed currentness lookup checks the actual local profile, grant,
+trust and Device candidate independently of RTC. Partial writes retain their
+exact credential reference for reconciliation. Explicit cancellation invalidates
+in-flight captures and retires only that owned reference.
+
+The sealed bundle contains the Device bearer only. Activation does not create an
+account continuation or Project membership. The native account challenge/exchange
+uses a separate account key and login; accepting a Project invitation remains
+an independent account/self-service operation.
 
 The pinned libraries are `@hpke/core@1.9.0` and Rust `hpke@0.13.0` with default
 features disabled and only `alloc,p256`. Registry publication metadata was
@@ -81,9 +121,16 @@ interoperability fixture input fails the test.
 
 These checks establish cryptographic assembly and source-level authority
 fences. They do not establish a Tauri IPC journey, Keychain prompts, mobile
-backgrounding or physical iOS operation. The remaining integration must add
-the fresh enrollment-only peer, durable attempt journal, supported provider
-verification, exact operator candidate approval, Device/binding activation,
-Keychain staging/ACK recovery and account continuation. It must qualify the
-ordinary native UI over a public relay with a physical second person before
-claiming the full [relay acceptance](connection-broker.md).
+backgrounding or physical iOS operation. Focused server integration exercises actual Project invitation eligibility, the
+maintained local provider, real operator credentials, private Pion adapter facts,
+Device/binding owners, sealed delivery, ACK, new-peer status and cancellation.
+An await barrier around actual Station receipt crypto verifies that concurrent
+Device revocation cannot return a stale signed ACTIVE receipt. The test replaces
+the Pion process with typed in-memory channels; membership acceptance currently
+drives the actual membership service, not its native HTTP consumer.
+
+Rust coordinator compilation, host journal/publication cancellation and lost-ACK
+races, actual Keychain lifecycle, native account/invitation HTTP composition and
+public TURN/physical iOS operation remain **NOT_VERIFIED** for this slice. The
+ordinary native UI must qualify those seams with a physical second person before
+claiming full [relay acceptance](connection-broker.md).

@@ -85,6 +85,7 @@ import {
   PUBLIC_STATION_PROOF_PATH,
 } from '@kontourai/station-contracts/environment-security';
 import { FLEET_INFERENCE_ROUTE_PREFIX } from '@kontourai/station-contracts/fleet-inference';
+import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import {
   RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
@@ -858,6 +859,22 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit' as const,
   })),
+  {
+    id: '/api/pairing/native-relay-enrollments:manage',
+    method: 'GET',
+    prefix: '/api/pairing/native-relay-enrollments',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/pairing/native-relay-enrollments/:enrollmentId/approve:manage',
+    method: 'POST',
+    prefix: '/api/pairing/native-relay-enrollments/:enrollmentId/approve',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   ...(['GET', 'HEAD'] as const).map((method) => ({
     id: `/api/auth/native-device-bindings/:bindingId/receipt:${method}:read`,
     method,
@@ -1684,6 +1701,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       capability: 'public',
       reason: 'public challenge proof',
     },
+    ...NATIVE_RELAY_ENROLLMENT_PATHS.map((path) => ({
+      id: `native-enrollment:${path}`,
+      transport: 'http' as const,
+      method: 'POST' as const,
+      prefix: path,
+      match: 'exact' as const,
+      capability: 'public' as const,
+      reason:
+        'fixed native enrollment bootstrap; private capability owner verifies current Pion provenance, approved transport surface and candidate proof before any effect',
+    })),
     {
       id: 'public:relay-enrollment-begin',
       transport: 'http',

@@ -23,7 +23,7 @@ type Result<T> = std::result::Result<T, String>;
 type Kem = DhP256HkdfSha256;
 type PrivateKey = <Kem as hpke::Kem>::PrivateKey;
 
-fn decode(value: &str, limit: usize) -> Result<Vec<u8>> {
+pub(crate) fn decode(value: &str, limit: usize) -> Result<Vec<u8>> {
     if value.len() > limit.div_ceil(3) * 4 {
         return Err(REFUSED.into());
     }
@@ -78,6 +78,7 @@ impl NativeEnrollmentSecretBackend for NativeEnrollmentSystemBackend {
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeEnrollmentRecipientOwner {
+    pub(crate) client_attempt_id: String,
     pub(crate) app_identifier: String,
     pub(crate) channel: String,
     pub(crate) profile_name: String,
@@ -160,6 +161,84 @@ pub(crate) struct NativeEnrollmentDeliveryMetadata {
     pub(crate) activation_nonce: String,
     pub(crate) bundle_digest: String,
     pub(crate) expires_at: u64,
+    pub(crate) response_peer_nonce: String,
+    pub(crate) station_signing_generation: u64,
+}
+
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct NativeEnrollmentChallenge {
+    pub(crate) version: String,
+    pub(crate) station_id: String,
+    pub(crate) station_audience: String,
+    pub(crate) scope: NativeEnrollmentScope,
+    pub(crate) surface: NativeEnrollmentSurface,
+    pub(crate) peer_nonce: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) reserved_device_id: String,
+    pub(crate) recipient: NativeEnrollmentRecipient,
+    pub(crate) nonce: String,
+    pub(crate) expires_at: u64,
+    pub(crate) client_attempt_id: String,
+    pub(crate) response_peer_nonce: String,
+    pub(crate) requested_scope: String,
+    pub(crate) registration_available: bool,
+    pub(crate) station_signing_generation: u64,
+}
+impl NativeEnrollmentChallenge {
+    pub(crate) fn binding(&self) -> NativeEnrollmentBinding {
+        NativeEnrollmentBinding {
+            station_id: self.station_id.clone(),
+            station_audience: self.station_audience.clone(),
+            scope: self.scope.clone(),
+            surface: self.surface.clone(),
+            peer_nonce: self.peer_nonce.clone(),
+            enrollment_id: self.enrollment_id.clone(),
+            reserved_device_id: self.reserved_device_id.clone(),
+            recipient: self.recipient.clone(),
+        }
+    }
+}
+
+pub(crate) fn verify_native_statement(
+    public_key: &NativeEnrollmentPublicJwk,
+    proof: &str,
+    typ: &str,
+) -> Result<Vec<u8>> {
+    if proof.len() > 16384 || public_key.kty != "EC" || public_key.crv != "P-256" {
+        return Err(REFUSED.into());
+    }
+    let parts: Vec<_> = proof.split('.').collect();
+    if parts.len() != 3 {
+        return Err(REFUSED.into());
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Header {
+        alg: String,
+        typ: String,
+    }
+    let header: Header =
+        serde_json::from_slice(&decode(parts[0], 256)?).map_err(|_| REFUSED.to_owned())?;
+    if header.alg != "ES256" || header.typ != typ {
+        return Err(REFUSED.into());
+    }
+    let mut point = vec![4u8];
+    let x = decode(&public_key.x, 32)?;
+    let y = decode(&public_key.y, 32)?;
+    if x.len() != 32 || y.len() != 32 {
+        return Err(REFUSED.into());
+    }
+    point.extend(x);
+    point.extend(y);
+    let signature = decode(parts[2], 64)?;
+    if signature.len() != 64 {
+        return Err(REFUSED.into());
+    }
+    signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, &point)
+        .verify(format!("{}.{}", parts[0], parts[1]).as_bytes(), &signature)
+        .map_err(|_| REFUSED.to_owned())?;
+    decode(parts[1], 8192)
 }
 
 impl NativeEnrollmentRecipientOwner {
@@ -168,6 +247,7 @@ impl NativeEnrollmentRecipientOwner {
             .is_ok_and(|id| id.to_string() == self.station_id);
         let origin = url::Url::parse(&self.station_origin).map_err(|_| REFUSED.to_owned())?;
         if self.app_identifier.is_empty()
+            || decode(&self.client_attempt_id, 32)?.len() != 32
             || self.app_identifier.len() > 255
             || !self
                 .app_identifier
@@ -536,6 +616,7 @@ mod tests {
             }
         }
         let owner = NativeEnrollmentRecipientOwner {
+            client_attempt_id: URL_SAFE_NO_PAD.encode([5u8; 32]),
             app_identifier: "io.kontourai.station".into(),
             channel: "nightly".into(),
             profile_name: "Custody fixture".into(),
