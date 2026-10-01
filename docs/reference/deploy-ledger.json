@@ -1,5 +1,46 @@
 [
   {
+    "timestampUtc": "2026-10-01T14:30:40Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2465.1",
+    "sha": "a91c50d32c2d96d89330c31054ca00c72e82d606",
+    "artifactBuiltAt": "2026-10-01T13:07:16.972Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36865249714",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36865249714)"
+    ],
+    "changelog": {
+      "previousSha": "3b001e5e54358931bb4c090eec900d4ecb488620",
+      "groups": {
+        "feat": [
+          "[#3078](https://github.com/kontourai/station/pull/3078) feat(connections): add intuitive Codex and Claude account overview",
+          "[#3084](https://github.com/kontourai/station/pull/3084) feat(tasks): show independent agent contributions in room history",
+          "[#3080](https://github.com/kontourai/station/pull/3080) feat(tasks): call agents from shared Task rooms",
+          "[#3069](https://github.com/kontourai/station/pull/3069) feat(ui): bump @kontourai/ui to 1.18.0 and drop Station's redundant brand text rule",
+          "[#3057](https://github.com/kontourai/station/pull/3057) feat(ui): Activity groups by state, with filters, New task and a row menu",
+          "[#3073](https://github.com/kontourai/station/pull/3073) feat(ui): cap labelled actions per row, with a shared ActionRow and eight conversions (#3045)",
+          "[#3038](https://github.com/kontourai/station/pull/3038) feat(ui): Activity's session detail leads with the conversation"
+        ],
+        "fix": [
+          "[#3017](https://github.com/kontourai/station/pull/3017) fix(approvals): autoApprove never covers escalations or plan exits (#2933)"
+        ],
+        "ci": [],
+        "docs": [
+          "[#2994](https://github.com/kontourai/station/pull/2994) docs(design): Station as a shell — plugins, trust, layouts, distributions (#2993)"
+        ],
+        "other": [
+          "[#3060](https://github.com/kontourai/station/pull/3060) chore(tests): use neutral placeholders in test fixtures"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
     "timestampUtc": "2026-10-01T14:08:22Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2465.36865249714",
