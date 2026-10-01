@@ -1,7 +1,7 @@
 {
   "_comment": [
     "can_use_tool request bodies captured from the Claude Code 2.1.278 CLI bundled with Agent SDK 0.3.278, each from a live turn in permissionMode default with the listed permissions.ask rules (#2932 review probe).",
-    "Scrubbed: the probe directories are rewritten to /probe/cwd and /probe/outside. The probe dropped tool_use_id and the input description, and printed a long engine description truncated.",
+    "Scrubbed: the probe directories are rewritten to /probe/cwd and /probe/outside. The probe dropped tool_use_id and the input description. Where the probe printed the engine's description truncated mid-path, the description field is omitted here.",
     "stationVerdictUnderBashGrant is what Station does with the ask under a Bash session grant: plain (the grant answers it) or prompts."
   ],
   "cases": [
@@ -62,6 +62,38 @@
       }
     },
     {
+      "name": "whole-exact",
+      "what": "GAP (i): an ask rule written for the whole chain, Bash(make build && git push origin main)",
+      "askRules": ["Bash(make build && git push origin main)"],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Build and push to main branch",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build && git push origin main"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              },
+              {
+                "toolName": "Bash",
+                "ruleContent": "git push *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
       "name": "outside-write-and",
       "what": "GAP (ii): a redirect write outside the working directories in an && chain",
       "askRules": [],
@@ -69,7 +101,6 @@
       "request": {
         "tool_name": "Bash",
         "display_name": "Bash",
-        "description": "echo hi > /probe/outside/f.txt && make build…",
         "decision_reason_type": "subcommandResults",
         "input": {
           "command": "echo hi > /probe/outside/f.txt && make build"
@@ -133,7 +164,6 @@
       "request": {
         "tool_name": "Bash",
         "display_name": "Bash",
-        "description": "make build | sort > /probe/outside/f.txt…",
         "decision_reason_type": "subcommandResults",
         "input": {
           "command": "make build | sort > /probe/outside/f.txt"

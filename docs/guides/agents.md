@@ -169,16 +169,18 @@ A pattern allows plain calls to a matching tool. It never answers a request
 that reaches beyond the call or a plan exit, even when the pattern is `*`. On
 Claude Code these always reach a person:
 
-- a path outside the session's working directories (a `Read` pattern means
-  reading the workspace, not reading anywhere), or a suggestion to widen them;
-- a call forced to ask by a `permissions.ask` rule, when the engine reports
-  the rule that matched;
+- a path outside the session's working directories on a single command or
+  call (a `Read` pattern means reading the workspace, not reading anywhere),
+  or a suggestion to widen them;
+- a single command or call forced to ask by a `permissions.ask` rule, when
+  the engine reports the rule that matched;
 - a safety check the engine raises, on a read, a file edit (a sensitive
   file such as `.git/config`) or a shell command (the engine allows reads
   inside the working directories itself, so any Read, Glob, Grep or LSP ask
   it raises prompts);
-- a call a `permissions.ask` rule forced to ask, whether or not the engine
-  names the rule, including a WebFetch domain rule (#2932);
+- a single command or call a `permissions.ask` rule forced to ask, whether
+  or not the engine names the rule, including a WebFetch domain rule
+  (#2932);
 - a chained Bash command (`a && b`, a pipeline) when any part raises a
   safety check, and every PowerShell command (#2932);
 - a sandbox network-host ask (each new host prompts), a call that disables
@@ -192,9 +194,10 @@ only. ACP reports no other escalation signal. Codex and Muse do not
 honour `autoApprove`. Station reads why Claude Code asks from the engine's
 own request, and a request it cannot read counts as an escalation, so a
 pattern never answers one. A pattern such as `Bash` covers chained commands
-too, and the engine does not report what their parts raise. Inside a chain,
-a `permissions.ask` rule on one part (when another part also needs
-approval), a write or delete outside the working directories in an `&&` or
+too, and the engine does not report what their parts raise. So the first
+two items above do not hold inside a chained Bash command: a
+`permissions.ask` rule on the chain or on one part (when more than one part
+needs approval), a write or delete outside the working directories in an `&&` or
 `;` chain or behind a pipeline's output redirect, and a part's non-safety
 warning are answered by the pattern. A safety check on any part still
 prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
@@ -210,7 +213,10 @@ External engines differ. On Claude Code and ACP, `autoApprove` does not cover
 escalations or plan exits, even for `*` ([what autoApprove never covers](#what-autoapprove-never-covers)).
 A headless run on those engines that reaches one waits on an approval request
 until someone answers it (for example from the approval inbox). A delegated
-child that cannot grant approvals is denied the call at once.
+child that cannot grant approvals is denied the call at once. On Claude Code
+every PowerShell call is such an escalation, so a `PowerShell` pattern
+answers nothing there: a headless run waits on each PowerShell call, and a
+child that cannot grant approvals is denied it.
 
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime

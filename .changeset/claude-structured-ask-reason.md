@@ -19,6 +19,8 @@ Any other ask with no reason type, and a request with no `claudeAsk` at all
 prompt for safety checks, ask rules on a single command, sensitive-file
 edits and every PowerShell ask, under a session grant and under an agent's
 `tools.autoApprove`. A chained Bash command with no safety check is still
-answered by a grant: an ask rule on one of its parts, and a write outside
-the working directories in an `&&` or `;` chain or behind a pipeline's
-redirect, are not visible on the engine's request, as before this change.
+answered by a grant. When more than one part needs approval, an ask rule on
+the chain or on one of its parts, a write or delete outside the working
+directories in an `&&` or `;` chain or behind a pipeline's redirect, and a
+part's warning that is not a safety check are not visible on the engine's
+request, as before this change.

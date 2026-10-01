@@ -227,8 +227,9 @@ to forward.
 
 An ask with no reason type is a plain call: that is what the engine sends for
 an ordinary MCP tool call, WebFetch, and a file edit inside the working
-directories. A Bash or PowerShell ask with no reason type prompts, because
-the engine sends one with every shell ask. `request.opened` carries the result as `claudeAsk`: an object
+directories. A Bash or PowerShell ask with no reason type prompts: the
+ordinary Bash ask carries `other`, and the Bash asks the engine sends without
+a type are path checks, which carry a blocked path. `request.opened` carries the result as `claudeAsk`: an object
 with `decisionReasonType`, `classifierApprovable` and `decisionReasonCode`
 where the engine set them, or `null` when the request could not be read.
 Other engines send no `claudeAsk`.
@@ -238,8 +239,8 @@ grant or an `autoApprove` pattern answers it. The engine does not send the
 reasons of a chain's parts, which leaves an accepted gap. A safety check on
 any part always prompts, and an ask rule on a single command always prompts.
 Inside a chained command these carry no signal and are answered: (i) any
-`permissions.ask` rule on one part, exact or prefix, when another part also
-needs approval; (ii) a write or delete outside the working directories in an
+`permissions.ask` rule that applies to the chain or to one of its parts,
+exact or prefix, whenever more than one part needs approval; (ii) a write or delete outside the working directories in an
 `&&` or `;` chain, or in a pipeline with an output redirect; (iii) a part's
 warning that is not a safety check. These gaps exist on `main` today, and
 closing them needs the engine to send the nested reasons (the

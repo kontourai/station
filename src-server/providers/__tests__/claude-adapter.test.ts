@@ -3795,7 +3795,7 @@ describe('ClaudeAdapter', () => {
           );
           expect(
             verdicts.filter((verdict) => verdict === 'plain'),
-          ).toHaveLength(5);
+          ).toHaveLength(6);
           expect(
             verdicts.filter((verdict) => verdict === 'prompts'),
           ).toHaveLength(4);

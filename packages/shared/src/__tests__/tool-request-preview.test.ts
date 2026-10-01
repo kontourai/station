@@ -529,6 +529,9 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       ['requiresUserInteraction', { requiresUserInteraction: true }],
       ['a tool that is not a shell tool', { toolName: 'mcp__x__y' }],
       ['PowerShell', { toolName: 'PowerShell' }],
+      // The engine names the tool `Bash`; no other spelling is the tool.
+      ['the tool name bash', { toolName: 'bash' }],
+      ['the tool name BASH', { toolName: 'BASH' }],
       [
         'a decision reason code',
         {

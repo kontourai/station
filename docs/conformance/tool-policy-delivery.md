@@ -280,9 +280,12 @@ session grant and `toolRequestIsPlainCall`:
   substitution.
 - No reason type is a plain call, except on a shell tool. It is the ordinary
   ask of an MCP tool, WebFetch, and a file edit inside the working
-  directories. Bash and PowerShell asks always carry a reason type in
-  2.1.278, so a shell ask without one escalates: an engine that stopped
-  sending the field must not turn every shell ask into a plain call.
+  directories. An ordinary Bash ask carries type `other` in 2.1.278, so a
+  shell ask without a type is never the ordinary one and escalates. The
+  engine does send such asks: a Bash path-check ask carries a blocked path
+  and no reason type, and prompts on both counts. The rule also means an
+  engine that stopped sending the field cannot turn every shell ask into a
+  plain call.
 - A Claude ask with no record escalates. This is the fail-closed rule: an
   unread, oversize, reshaped or evicted request costs a prompt, never a
   grant.
@@ -301,11 +304,14 @@ What this costs, and what it still does not cover:
   on any part always prompts, and an ask rule on a single command always
   prompts. Under a Bash session grant or an agent's `autoApprove`, inside a
   chained command, these carry no signal and are answered:
-  - (i) any `permissions.ask` rule on one part, exact or prefix, when
-    another part also needs approval. With `Bash(git push:*)`, `make build
-    && git push origin main` arrives with no `matched_ask_rule`. When the
-    ruled part is the only one needing approval (`ls && git push origin
-    main`) the engine sends type `rule`, which prompts.
+  - (i) any `permissions.ask` rule that applies to the chained command or to
+    one of its parts, exact or prefix, whenever the chain arrives as
+    `subcommandResults`, which is when more than one part needs approval.
+    With `Bash(git push:*)`, `make build && git push origin main` arrives
+    with no `matched_ask_rule`; so does the same command under a rule
+    written for the whole chain, `Bash(make build && git push origin
+    main)`. When the ruled part is the only one needing approval (`ls && git
+    push origin main`) the engine sends type `rule`, which prompts.
   - (ii) a write or delete outside the working directories in an `&&` or `;`
     chain (`make build && rm /outside/f`), or in a pipeline with an output
     redirect (`make build | sort > /outside/f`). The engine sends no blocked
@@ -317,12 +323,15 @@ What this costs, and what it still does not cover:
 
   These gaps exist on `main` today: before Station read the structured
   reason, a Bash grant answered every chained command. Closing them needs
-  the engine to send the nested reasons. The request shapes were captured
-  from live turns against the bundled 2.1.278 CLI and are pinned, with
-  Station's verdict for each, in
+  the engine to send the nested reasons. The request shapes for (i) and
+  (ii), and for the two guarantees, were captured from live turns against
+  the bundled 2.1.278 CLI and are pinned, with Station's verdict for each,
+  in
   `src-server/providers/__tests__/fixtures/claude-2.1.278-chained-bash-asks.json`.
+  Gap (iii) was read in the engine's code, not captured.
 - **Every PowerShell ask prompts.** See the type bullet above: a PowerShell
-  grant or pattern answers nothing.
+  grant or pattern answers nothing. The list of PowerShell security warnings
+  there was read in the engine's code, not captured.
 - **The ordinary Bash ask is recognised by its text.** `other` covers both
   the ordinary ask and safety prose, and only the text tells them apart. The
   text was read in 2.1.278. If a later engine rewords it, ordinary Bash calls

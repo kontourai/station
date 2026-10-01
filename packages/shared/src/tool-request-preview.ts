@@ -365,9 +365,10 @@ const ORDINARY_OTHER_DECISION_REASONS: ReadonlySet<string> = new Set([
   'This command requires approval',
 ]);
 /**
- * #2932: Claude Code's shell tools. Every ask they raise carries a reason
- * type in 2.1.278 (the ordinary one included), unlike an MCP tool, WebFetch
- * or a file edit, whose ordinary ask carries none.
+ * #2932: Claude Code's shell tools. Their ordinary ask carries a reason
+ * type in 2.1.278 (`other` for Bash, `subcommandResults` for PowerShell),
+ * unlike an MCP tool, WebFetch or a file edit, whose ordinary ask carries
+ * none. Matched exactly, as the engine names them.
  */
 const CLAUDE_SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
 /**
@@ -538,19 +539,21 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  *   answers chained commands. The engine does not send the reasons of a
  *   chain's parts, so three things a part raised are NOT visible here and
  *   a grant can answer them, as it could before this reader existed:
- *   (i) any `permissions.ask` rule on one part, exact or prefix, when
- *   another part also needs approval (the engine sets no
- *   `matched_ask_rule` for it; that clause is only a second layer for a
- *   rule the engine does report); (ii) a write or delete outside the
+ *   (i) any `permissions.ask` rule that applies to the chain or to one of
+ *   its parts, exact or prefix, whenever the chain arrives as
+ *   `subcommandResults`, which is when more than one part needs approval
+ *   (the engine sets no `matched_ask_rule` for it; that clause is only a
+ *   second layer for a rule the engine does report); (ii) a write or delete outside the
  *   working directories in an `&&` or `;` chain, or in a pipeline with an
  *   output redirect, which arrives with no blocked path and no directory
  *   suggestion; (iii) a part's warning that is not a safety check.
  *   Closing these needs the engine to send the nested reasons.
  * - type `other` with any reason text but the ordinary one.
- * - no reason type on a shell tool (Bash, PowerShell). The engine attaches
- *   a reason to every shell ask, so its absence means the field is no
- *   longer sent as this reader knows it: prompt, rather than treat every
- *   shell ask as plain.
+ * - no reason type on a shell tool (Bash, PowerShell). An ordinary Bash
+ *   ask carries `other`, so an ask without a type is never the ordinary
+ *   one. The engine does send such asks (a Bash path check, which also
+ *   carries a blocked path), and an engine that dropped the field must not
+ *   turn every shell ask into a plain call.
  *
  * A plain call is therefore an ask with no reason type on any other tool
  * (an MCP tool, WebFetch, a file edit inside the working directories),
