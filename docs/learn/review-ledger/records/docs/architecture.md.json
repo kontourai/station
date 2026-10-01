@@ -62,7 +62,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"631cd108f28ca17190a9a8fed8f36eda83d4695ceb8766de438f0e21c148a83f","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"7fc42bc4728646375044efd3b85bc5341f828dbbca0bbed63cdb3cef997451f3","revision":"b3e03916cee441245a015ac51c5b06bf44165fc9"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -169,6 +169,9 @@ frames. Text and successful tool frames retain their contracts. Failed VoltAgent
 tool-result frames omit the raw `output`, including error messages, stack traces
 and other error properties. Their `error` carries a safe Station-composed denial
 reason or the fixed `Tool call failed.` message; policy-denial badges remain.
+Any other frame field holding a raw error object (for example a `tool-error`
+part's `error`) is sent as the fixed text "The response stream failed.", and a
+mid-stream `error` part ends the turn with a single outward error frame.
 
 The framework compatibility route `POST /agents/:slug/chat` remains behind
 Station authentication. Its HTTP 5xx responses contain fixed failure text and
@@ -735,6 +738,19 @@ Respect `hasMore` rather than assuming one response contains the entire history.
 from orchestration when the file-memory path has no usable record. Messages
 carry the owner's current parts/metadata shape; do not depend on every message
 having the old `content: string`/`timestamp` pair.
+
+A `/chat` turn that failed before producing output is recorded as a user-role
+`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+provider's own error message. It is one of: a status sentence such as
+"The model provider returned an error (HTTP 500).", "The model provider
+rejected the credentials.", "Stream aborted by client", or "The response
+stream failed.". A marker stored before this rule holds provider text on
+disk; this route and everything behind the same read seam (export, fork and
+summary), title regeneration and the knowledge store's conversation records
+serve it as "The response stream failed." instead
+([marker scrubber](../../src-server/runtime/conversation/chat-error-marker.ts)).
+The marker never reaches a model: the Station-engine prompt, native-memory
+history and a direct Strands conversation's replayed history all exclude it.
 
 ### Update Conversation
 
