@@ -28,9 +28,9 @@
 
     {"path":"docs/reference/api.md","digest":"ed05e33d2688331c4ae675e82ce97079043cb0d3f886de04c0d2fc6f1d0ca01b","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
-    {"path":"docs/reference/cli.md","digest":"fa84924b9349b15f5b5f075e4ff9aefdb22092f2e88db93355bbccf4f179fd1a","revision":"c34cd4069c2c0a2f7284d6b5e4aa1f259076f2f8"},
+    {"path":"docs/reference/cli.md","digest":"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee","revision":"4a1fc2197028ded07d0e389e98a30042ab7cadb5"},
 
-    {"path":"docs/reference/contracts.md","digest":"02c541bee46622d0a91c8c34003a6dae93863bd9dfa556d2b9c635e66408b64c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    {"path":"docs/reference/contracts.md","digest":"164bf82aecbeff9fe134157d47a0676ee6fb8ecbdc6ee9f4b82b619c30d383f6","revision":"5fe409ae3a57e640ad6e9e9271eeaa7a5d58c717"},
 
     {"path":"docs/reference/sdk.md","digest":"690b8587ab798617108cf1b62e2f9b0a102b3bd52df148da5be3f12027a2892c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
