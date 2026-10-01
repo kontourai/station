@@ -46,7 +46,7 @@ from the canonical Session projection. A journal row without the durable executi
 binding publishes nothing. The request view rechecks its original Project, Task
 incarnation and requester after reconciliation before delivery. Session exit also
 uses the immutable room binding to find independently requested work. Recovery
-publishes history only; it never retries provider execution.
+reconciles lifecycle history and agent presence; it never retries provider execution.
 
 Local persistence tests at `9f8b407fa` exercised the real journal, SQLite binding
 and room history; the old lifecycle implementation failed the independent-agent
