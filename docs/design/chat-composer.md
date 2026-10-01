@@ -170,10 +170,18 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   shows the reason instead of opening a file picker, so a touch user sees it
   too.
 - When support is not confirmed, attaching an image shows a non-blocking
-  note: an ACP engine that has not reported its answer yet, or OpenCode, whose
-  engine-wide "yes" says nothing about the selected model (it swaps an image
-  for an error text when the model lacks image input). Other engines get no
-  per-model note.
+  note: an ACP engine that has not reported its answer yet, or OpenCode with a
+  selected model whose image input is unknown (its engine-wide "yes" says
+  nothing about the model: it swaps an image for an error text when the model
+  lacks image input). Other engines get no per-model note.
+- OpenCode's per-model answer comes from OpenCode itself. After an ACP
+  handshake the server reads `opencode models --verbose` in the background,
+  caches `capabilities.input.image` per connection, and puts it on each model
+  option as `capabilities.imageInput`. The composer maps `true` to no note,
+  `false` to the pre-send refusal naming the model, and an absent value (not
+  listed, listing unavailable or not yet read) to the note above; absent is
+  never treated as "no". It outranks the Bedrock-only capability catalog,
+  which has no row for an OpenCode model id.
 - Each chip shows one short status that names what happened, such as
   **Upload expired**, **Upload didn't finish** or **Upload limit reached**, and
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
