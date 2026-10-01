@@ -28,6 +28,8 @@ vi.mock('../../../contexts/ToastContext', () => ({
     // `notifyTurnTerminal` reports a settled turn; not under test here.
     showTurnActivity: vi.fn(),
   },
+  // Read by the delayed turn-terminal notice.
+  stripAnsi: (text: string) => text,
 }));
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
