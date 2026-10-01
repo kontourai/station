@@ -1,7 +1,5 @@
 /** @vitest-environment jsdom */
 
-import '@testing-library/jest-dom/vitest';
-
 import {
   act,
   fireEvent,
@@ -210,12 +208,14 @@ describe('browser broker route acceptance', () => {
 
   it('keeps broker setup out of the ordinary view until explicitly expanded', () => {
     render(<BrowserRelayRoutes />);
-    expect(screen.getByLabelText('Station name')).not.toBeVisible();
-    fireEvent.click(screen.getByText('Advanced: broker setup'));
-    expect(screen.getByRole('textbox', { name: 'Station name' })).toBeVisible();
-    expect(
-      screen.getByRole('textbox', { name: 'Station application address' }),
-    ).toBeVisible();
+    const summary = screen.getByText('Advanced: broker setup');
+    const disclosure = summary.closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(summary);
+    expect(disclosure?.open).toBe(true);
+    expect(screen.getByLabelText('Station name')).toBeTruthy();
+    expect(screen.getByLabelText('Station application address')).toBeTruthy();
     expect(mocks.redeem).not.toHaveBeenCalled();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
   });
