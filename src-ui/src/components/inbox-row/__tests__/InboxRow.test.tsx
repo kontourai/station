@@ -18,6 +18,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatDraftsStore } from '../../../contexts/chat-drafts-store';
@@ -187,7 +188,7 @@ describe('the row says exactly what the ladder says', () => {
   ] as const)('%s', (_name, over) => {
     const row = rowFor(over as Partial<OrchestrationSessionSummary>);
     renderRow(row);
-    const status = workStatus(row.item, NOW, { facts: row.facts });
+    const status = workStatus(row.item, NOW, row.facts);
     expect(statusText()).toBe(status.line);
     const element = screen.getByTestId('inbox-row');
     expect(element.dataset.statusRung).toBe(status.rung);
@@ -253,28 +254,6 @@ describe('the row says exactly what the ladder says', () => {
     expect(glyphPath()).not.toBe(healthyGlyph);
     // The turn is open and nothing is owed: it stays in the Running lane.
     expect(screen.getByTestId('inbox-row').dataset.lane).toBe('running');
-  });
-
-  it('does not mark the chat on screen as unread', () => {
-    const idle = rowFor({
-      hasActiveTurn: false,
-      conversationActivity: undefined,
-    });
-    const row = {
-      ...idle,
-      item: { ...idle.item, conversationUpdatedAt: '2026-09-30T10:00:05.000Z' },
-    };
-    const other = renderRow(row);
-    expect(screen.getByTestId('inbox-row').className).toContain('is-unread');
-    expect(statusText()).toMatch(/new activity/);
-    expect(describedText()).toContain('Unread.');
-    other.unmount();
-    renderRow(row, { isCurrent: true });
-    expect(screen.getByTestId('inbox-row').className).not.toContain(
-      'is-unread',
-    );
-    expect(statusText()).toMatch(/last activity/);
-    expect(describedText()).not.toContain('Unread.');
   });
 });
 
@@ -520,7 +499,12 @@ describe('two sizes and two chromes', () => {
     expect(screen.queryByRole('button', { name: /^Open / })).toBeNull();
   });
 
-  it('touch chrome keeps two targets: with snooze and close it shows Details and one menu', () => {
+  const directActions = () =>
+    [...document.querySelectorAll('.inbox-row__actions > button')].map(
+      (button) => button.getAttribute('aria-label'),
+    );
+
+  it('touch chrome shows Details and one direct action; the rest are buttons in the sheet', async () => {
     const onSnoozeWake = vi.fn();
     const onCloseChat = vi.fn();
     const base = rowFor();
@@ -530,48 +514,70 @@ describe('two sizes and two chromes', () => {
         chrome: 'touch',
         hoverCard: true,
         isOpenChat: true,
+        snoozeMenuOnly: true,
         onSnoozeWake,
         onCloseChat,
       },
     );
-    const actions = [
-      ...document.querySelectorAll('.inbox-row__actions > button'),
-    ].map((button) => button.getAttribute('aria-label'));
-    expect(actions).toEqual([
-      'Details for Migrate sessions table',
-      'More actions for Migrate sessions table',
-    ]);
-    const more = screen.getByRole('button', {
-      name: 'More actions for Migrate sessions table',
-    });
-    fireEvent.click(more);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Snooze: 3 hours' }));
-    // The host is handed the trigger, which is inside the row.
-    expect(onSnoozeWake).toHaveBeenCalledWith(
-      expect.objectContaining({ id: base.item.id }),
-      NOW + 3 * 3_600_000,
-      more,
-    );
-    fireEvent.click(more);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Close chat' }));
-    expect(onCloseChat).toHaveBeenCalledWith('tab-1', more);
-  });
-
-  it('touch chrome with one other action keeps it as its own target', () => {
-    renderRow(rowFor(), {
-      chrome: 'touch',
-      hoverCard: true,
-      onSnoozeWake: vi.fn(),
-      snoozeMenuOnly: true,
-    });
-    expect(
-      [...document.querySelectorAll('.inbox-row__actions > button')].map(
-        (button) => button.getAttribute('aria-label'),
-      ),
-    ).toEqual([
+    // Snooze is the live row's one direct action; close moved to the sheet.
+    expect(directActions()).toEqual([
       'Details for Migrate sessions table',
       'Snooze Migrate sessions table',
     ]);
+    const details = screen.getByRole('button', {
+      name: 'Details for Migrate sessions table',
+    });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    fireEvent.click(
+      within(actions).getByRole('button', { name: 'Close chat' }),
+    );
+    // The host is handed the Details trigger, which is inside the row.
+    expect(onCloseChat).toHaveBeenCalledWith('tab-1', details);
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+  });
+
+  it('a row whose one action is close keeps it beside Details', () => {
+    const base = rowFor();
+    renderRow(
+      { ...base, item: { ...base.item, chatSessionId: 'tab-1' } },
+      {
+        chrome: 'touch',
+        hoverCard: true,
+        isOpenChat: true,
+        onCloseChat: vi.fn(),
+      },
+    );
+    expect(directActions()).toEqual([
+      'Details for Migrate sessions table',
+      'Close Migrate sessions table',
+    ]);
+  });
+
+  it('a slim touch row shows Details alone, with its actions in the sheet', async () => {
+    const onSnoozeWake = vi.fn();
+    const row = rowFor();
+    renderRow(row, {
+      chrome: 'touch',
+      size: 'slim',
+      hoverCard: true,
+      isSnoozed: true,
+      onSnoozeWake,
+    });
+    expect(directActions()).toEqual(['Details for Migrate sessions table']);
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    fireEvent.click(within(actions).getByRole('button', { name: 'Unsnooze' }));
+    expect(onSnoozeWake).toHaveBeenCalledWith(row.item, null, details);
   });
 
   it('a host that offers no actions gets no slot and no extra tab stop', () => {

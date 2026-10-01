@@ -88,11 +88,7 @@ import {
   buildHomeTaskItems,
   chatTaskSessionId,
 } from '../../views/home/home-view-model';
-import {
-  useAcknowledgeDisplayedConversation,
-  useInventoryAcknowledgeWriter,
-  useWorkFacts,
-} from '../../views/home/useWorkFacts';
+import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
@@ -772,21 +768,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
 
   // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
-  // (never carried on them), and the acknowledgement of whichever
-  // conversation the open dock is showing, so a chat read here is not
-  // "unread" in the inbox the moment the user switches away. Nothing is
-  // displayed while the dock is closed or the task switcher sheet covers
-  // the chat; the desktop inbox panel sits beside the chat and covers
-  // nothing.
+  // (never carried on them).
   const workFacts = useWorkFacts(taskItems, orchestrationSessions);
-  useAcknowledgeDisplayedConversation({
-    items: taskItems,
-    displayedChatSessionId:
-      isPaneOpen && !isTaskSwitcherOpen
-        ? (importedSessionId ?? activeSessionId)
-        : null,
-    acknowledge: useInventoryAcknowledgeWriter(),
-  });
 
   const rehydrateSessions = useRehydrateSessions(apiBase);
   const {

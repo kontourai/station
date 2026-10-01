@@ -128,11 +128,6 @@ export function InboxRowStatusLine({
       data-testid="inbox-row-status"
     >
       <InboxRowStatusGlyph rung={status.rung} />
-      {status.unread && (
-        <span className="inbox-row__unread">
-          <span className="sr-only">Unread. </span>
-        </span>
-      )}
       <span className="inbox-row__word">{status.word}</span>
       {status.detail && (
         <>

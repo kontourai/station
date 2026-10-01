@@ -91,10 +91,6 @@
   white-space: nowrap;
 }
 
-.inbox-row.is-unread .inbox-row__title {
-  font-weight: 750;
-}
-
 /* The ONE status line. Icon and word always; colour only reinforces them. */
 .inbox-row__status {
   display: flex;
@@ -205,15 +201,6 @@
   50% {
     opacity: 0.4;
   }
-}
-
-.inbox-row__unread {
-  flex: 0 0 auto;
-  margin-right: var(--space-2);
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
 }
 
 /* Chip line. Absent from the DOM when there is no chip. */

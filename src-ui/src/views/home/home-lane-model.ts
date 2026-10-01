@@ -1,9 +1,5 @@
 import { compareTaskRecency, type HomeWorkItem } from './home-view-model';
-import {
-  changedSinceAcknowledged,
-  type LiveLaneId,
-  workStatus,
-} from './work-status';
+import { type LiveLaneId, workStatus } from './work-status';
 
 export type { LiveLaneId };
 
@@ -256,9 +252,14 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       // work keeps the historic Earlier behavior; it has no transcript to
       // acknowledge through the conversation inventory.
       if (item.conversationUpdatedAt) {
-        (changedSinceAcknowledged(item) ? recentlyFinished : settled).push(
-          item,
-        );
+        if (
+          item.acknowledgedAt !== undefined &&
+          item.acknowledgedAt >= Date.parse(item.conversationUpdatedAt)
+        ) {
+          settled.push(item);
+          continue;
+        }
+        recentlyFinished.push(item);
         continue;
       }
       // Non-conversation work has no transcript version to acknowledge.

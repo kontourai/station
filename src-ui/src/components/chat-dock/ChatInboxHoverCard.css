@@ -256,3 +256,14 @@
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
+
+.chat-dock-inbox-details__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chat-dock-inbox-details__actions:empty {
+  display: none;
+}

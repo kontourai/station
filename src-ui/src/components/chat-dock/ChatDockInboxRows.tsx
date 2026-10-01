@@ -19,12 +19,12 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
+import { Button } from '../Button';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
   ArrowDownGlyph,
   InfoGlyph,
-  MenuGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
@@ -410,141 +410,6 @@ interface InboxRowProps {
 }
 
 /**
- * Touch chrome shows at most two targets beside a row. Three 44px columns
- * leave a 320px phone's title under 160px, so a row with Details and two or
- * more other actions keeps Details and folds the rest into one menu.
- */
-function RowOverflowMenu({
-  item,
-  isSnoozed,
-  now,
-  onSnoozeWake,
-  onSnoozeMenu,
-  onClose,
-  onDetails,
-  triggerRef: sharedTriggerRef,
-  discard,
-}: {
-  /** Slim rows fold Details in too, leaving one target beside the title. */
-  onDetails?: () => void;
-  /** Lets the row anchor its Details sheet to this menu's trigger. */
-  triggerRef?: React.RefObject<HTMLButtonElement | null>;
-  item: HomeWorkItem;
-  isSnoozed: boolean;
-  now: number;
-  onSnoozeWake?: (wakeAt: number | null, action: HTMLButtonElement) => void;
-  onSnoozeMenu?: (trigger: HTMLButtonElement) => void;
-  onClose?: (action: HTMLButtonElement) => void;
-  discard?: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const ownTriggerRef = useRef<HTMLButtonElement>(null);
-  const triggerRef = sharedTriggerRef ?? ownTriggerRef;
-  // Every action hands the host the TRIGGER, which lives in the row, so the
-  // host's focus move can find the row; the menu itself is portaled away.
-  const run = (action: (trigger: HTMLButtonElement) => void) => {
-    setOpen(false);
-    if (triggerRef.current) action(triggerRef.current);
-  };
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="chat-dock-inbox__row-action inbox-row__action"
-        title="More actions"
-        aria-label={`More actions for ${item.title}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <MenuGlyph />
-      </button>
-      {open && (
-        <ResponsiveDialogSurface
-          layer="popover"
-          ariaLabel={`Actions for ${item.title}`}
-          onClose={() => setOpen(false)}
-          returnFocusTarget={triggerRef.current}
-          anchorRef={triggerRef}
-          overlayClassName="composer-popover-overlay composer-popover-overlay--start"
-          panelClassName="composer-popover-panel chat-dock-inbox__snooze-menu"
-        >
-          <ResponsiveDialogHeader
-            title="Actions"
-            closeLabel="Close actions menu"
-            onClose={() => setOpen(false)}
-          />
-          <div role="menu" aria-label={`Actions for ${item.title}`}>
-            {onDetails && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onDetails();
-                }}
-              >
-                Details
-              </button>
-            )}
-            {onSnoozeWake &&
-              (isSnoozed ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => run((trigger) => onSnoozeWake(null, trigger))}
-                >
-                  Unsnooze
-                </button>
-              ) : (
-                SNOOZE_OPTIONS.map((option) => (
-                  <button
-                    key={option.label}
-                    type="button"
-                    role="menuitem"
-                    onClick={() =>
-                      run((trigger) =>
-                        onSnoozeWake(snoozeWakeAt(option, now), trigger),
-                      )
-                    }
-                  >
-                    {`Snooze: ${option.label}`}
-                  </button>
-                ))
-              ))}
-            {onSnoozeMenu && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => run(onSnoozeMenu)}
-              >
-                Snooze…
-              </button>
-            )}
-            {onClose && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => run(onClose)}
-              >
-                Close chat
-              </button>
-            )}
-            {discard && (
-              <div className="chat-dock-inbox__menu-discard">
-                {discard}
-                <span aria-hidden="true">Discard draft</span>
-              </div>
-            )}
-          </div>
-        </ResponsiveDialogSurface>
-      )}
-    </>
-  );
-}
-
-/**
  * Whether this row's chat holds unsent composer text on THIS device.
  *
  * Read from the store the composer itself writes (`chatDraftsStore`, keyed
@@ -605,9 +470,8 @@ export function InboxRow({
   useEffect(() => setMounted(true), []);
   const hasUnsentDraft = useHasUnsentComposerDraft(item);
   // The ONE status read (#3042): the line here and the lane this row was
-  // filed under come from the same function. The chat on screen is being
-  // read, so it is never unread.
-  const status = workStatus(item, now, { facts, current: isCurrent });
+  // filed under come from the same function.
+  const status = workStatus(item, now, facts);
   const chips = inboxRowChips(item, { hasUnsentDraft, isWoken });
   const agentText =
     item.controlMode === 'read-only-attached'
@@ -622,14 +486,31 @@ export function InboxRow({
   const hasActions = Boolean(
     details || onSnoozeWake || onSnoozeMenu || discardThreadId || closable,
   );
-  const otherActions =
-    Number(Boolean(onSnoozeWake || onSnoozeMenu)) +
-    Number(closable) +
-    Number(Boolean(discardThreadId));
-  // A card keeps Details beside one more target. A slim row is one line, so
-  // it keeps a single target and Details moves into the menu with the rest.
-  const overflow = details && otherActions >= (size === 'slim' ? 1 : 2);
-  const detailsInMenu = overflow && size === 'slim';
+  // TOUCH CHROME shows Details and at most ONE direct action, so a phone
+  // row keeps its title: snooze where the row can be snoozed, otherwise the
+  // row's one other action. A slim row is one line and shows Details alone.
+  // Whatever is not beside the row is an ordinary button inside the Details
+  // sheet. Hover chrome reveals every action over the time slot as before.
+  const snoozable = Boolean(onSnoozeWake || onSnoozeMenu);
+  const direct: 'all' | 'snooze' | 'close' | 'discard' | 'none' = !details
+    ? 'all'
+    : size === 'slim'
+      ? 'none'
+      : snoozable
+        ? 'snooze'
+        : closable
+          ? 'close'
+          : discardThreadId
+            ? 'discard'
+            : 'none';
+  const beside = (action: 'snooze' | 'close' | 'discard') =>
+    direct === 'all' || direct === action;
+  // Sheet actions hand the host the Details trigger: it lives in the row, so
+  // the host's focus move can find the row the action is about to remove.
+  const fromSheet = (action: (trigger: HTMLButtonElement) => void) => {
+    setDetailsOpen(false);
+    if (detailsTriggerRef.current) action(detailsTriggerRef.current);
+  };
   const discardButton =
     discardThreadId && onDraftDiscarded ? (
       <DiscardDraftButton
@@ -652,7 +533,6 @@ export function InboxRow({
         `inbox-row--${chrome}`,
         hasActions ? 'inbox-row--has-actions' : '',
         isCurrent ? 'is-current' : '',
-        status.unread ? 'is-unread' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -759,7 +639,7 @@ export function InboxRow({
         <div className="chat-dock-inbox__row-actions inbox-row__actions">
           {/* No separate "open" control: the row itself opens, and a second
               one would be a redundant tab stop on every row. */}
-          {details && !detailsInMenu && (
+          {details && (
             <button
               ref={detailsTriggerRef}
               type="button"
@@ -773,32 +653,7 @@ export function InboxRow({
               <InfoGlyph />
             </button>
           )}
-          {overflow && (
-            <RowOverflowMenu
-              item={item}
-              isSnoozed={isSnoozed}
-              now={now}
-              onSnoozeWake={
-                onSnoozeWake
-                  ? (wakeAt, action) => onSnoozeWake(item, wakeAt, action)
-                  : undefined
-              }
-              onSnoozeMenu={
-                onSnoozeMenu
-                  ? (trigger) => onSnoozeMenu(item, trigger)
-                  : undefined
-              }
-              onClose={
-                closable
-                  ? (action) => onCloseChat?.(item.chatSessionId!, action)
-                  : undefined
-              }
-              discard={discardButton}
-              onDetails={detailsInMenu ? () => setDetailsOpen(true) : undefined}
-              triggerRef={detailsInMenu ? detailsTriggerRef : undefined}
-            />
-          )}
-          {!overflow && onSnoozeWake && (
+          {beside('snooze') && onSnoozeWake && (
             <SnoozeActions
               item={item}
               isSnoozed={isSnoozed}
@@ -807,7 +662,7 @@ export function InboxRow({
               menuOnly={snoozeMenuOnly}
             />
           )}
-          {!overflow && onSnoozeMenu && (
+          {beside('snooze') && onSnoozeMenu && (
             <button
               type="button"
               className="chat-dock-inbox__row-action inbox-row__action"
@@ -819,7 +674,7 @@ export function InboxRow({
               <TimeGlyph />
             </button>
           )}
-          {!overflow && closable && (
+          {beside('close') && closable && (
             <button
               type="button"
               className="chat-dock-inbox__row-action inbox-row__action"
@@ -832,7 +687,7 @@ export function InboxRow({
               <span aria-hidden="true">×</span>
             </button>
           )}
-          {!overflow && discardButton}
+          {beside('discard') && discardButton}
         </div>
       )}
       {tooltip && hover.anchor && (
@@ -843,7 +698,6 @@ export function InboxRow({
             item,
             now,
             facts,
-            current: isCurrent,
             gitLocation,
             anchor: hover.anchor,
             onClose: hover.close,
@@ -859,10 +713,68 @@ export function InboxRow({
             item,
             now,
             facts,
-            current: isCurrent,
             gitLocation,
             triggerRef: detailsTriggerRef,
             onClose: () => setDetailsOpen(false),
+            actions: (
+              <>
+                {!beside('snooze') &&
+                  onSnoozeWake &&
+                  (isSnoozed ? (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        fromSheet((trigger) =>
+                          onSnoozeWake(item, null, trigger),
+                        )
+                      }
+                    >
+                      Unsnooze
+                    </Button>
+                  ) : (
+                    SNOOZE_OPTIONS.map((option) => (
+                      <Button
+                        key={option.label}
+                        size="sm"
+                        onClick={() =>
+                          fromSheet((trigger) =>
+                            onSnoozeWake(
+                              item,
+                              snoozeWakeAt(option, now),
+                              trigger,
+                            ),
+                          )
+                        }
+                      >
+                        {`Snooze: ${option.label}`}
+                      </Button>
+                    ))
+                  ))}
+                {!beside('snooze') && onSnoozeMenu && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      fromSheet((trigger) => onSnoozeMenu(item, trigger))
+                    }
+                  >
+                    Snooze…
+                  </Button>
+                )}
+                {!beside('close') && closable && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      fromSheet((trigger) =>
+                        onCloseChat?.(item.chatSessionId!, trigger),
+                      )
+                    }
+                  >
+                    Close chat
+                  </Button>
+                )}
+                {!beside('discard') && discardButton}
+              </>
+            ),
           }}
         />
       )}

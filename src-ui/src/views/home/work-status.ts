@@ -84,34 +84,8 @@ export interface WorkStatus {
   detail?: string;
   /** Epoch ms a ticking duration counts from; only while a turn is open. */
   since?: number;
-  /** The conversation changed since the version the user last opened. */
-  unread: boolean;
   /** The whole line as text at `now`. */
   line: string;
-}
-
-export interface WorkStatusContext {
-  /** The facts derived beside the item; absent says only what the label says. */
-  facts?: WorkFacts;
-  /** This conversation is on screen right now, so it is not unread. */
-  current?: boolean;
-}
-
-/**
- * Whether the item's conversation has a version the user has not opened.
- * The partition's finished-lane split and the row's unread marker both read
- * this, so "still in Just finished" and "marked unread" are one answer.
- * False for an item with no conversation inventory record: there is nothing
- * to have acknowledged.
- */
-export function changedSinceAcknowledged(
-  item: Pick<HomeWorkItem, 'conversationUpdatedAt' | 'acknowledgedAt'>,
-): boolean {
-  if (!item.conversationUpdatedAt) return false;
-  return !(
-    item.acknowledgedAt !== undefined &&
-    item.acknowledgedAt >= Date.parse(item.conversationUpdatedAt)
-  );
 }
 
 function epochMs(value: string | undefined): number | undefined {
@@ -131,7 +105,7 @@ export function formatElapsed(elapsedMs: number): string {
   return `${seconds}s`;
 }
 
-type Rung = Omit<WorkStatus, 'unread' | 'line'>;
+type Rung = Omit<WorkStatus, 'line'>;
 
 const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
   approval: 'Needs approval',
@@ -247,19 +221,20 @@ function rungFor(
   }
 }
 
+/**
+ * `facts` are the item's `WorkFacts`, derived beside it; without them the
+ * line says only what the lifecycle label says, and the lane is the same.
+ */
 export function workStatus(
   item: HomeWorkItem,
   now: number,
-  { facts, current = false }: WorkStatusContext = {},
+  facts?: WorkFacts,
 ): WorkStatus {
   const rung = rungFor(item, facts, now);
-  const unread = !current && changedSinceAcknowledged(item);
-  let detail = rung.detail;
-  if (rung.rung === 'idle' && item.updatedAt > 0) {
-    detail = `${unread ? 'new' : 'last'} activity ${relativeTimeAgo(item.updatedAt, now)}`;
-  } else if (rung.rung === 'done' && unread) {
-    detail = 'not opened yet';
-  }
+  const detail =
+    rung.rung === 'idle' && item.updatedAt > 0
+      ? `last activity ${relativeTimeAgo(item.updatedAt, now)}`
+      : rung.detail;
   const line = [
     rung.word,
     detail,
@@ -267,5 +242,5 @@ export function workStatus(
   ]
     .filter(Boolean)
     .join(' · ');
-  return { ...rung, detail, unread, line };
+  return { ...rung, detail, line };
 }

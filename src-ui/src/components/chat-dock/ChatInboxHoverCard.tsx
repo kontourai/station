@@ -73,7 +73,6 @@ export function ChatInboxHoverCard({
   item,
   now,
   facts,
-  current,
   gitLocation,
   anchor,
   onClose,
@@ -83,8 +82,6 @@ export function ChatInboxHoverCard({
   now: number;
   /** The row's status facts, so the card's status word is the row's. */
   facts?: WorkFacts;
-  /** This conversation is on screen; see `WorkStatusContext.current`. */
-  current?: boolean;
   /**
    * The row's local session working directory and its Project (#2412: git
    * reads name the Project), resolved by the host from its own session
@@ -161,7 +158,6 @@ export function ChatInboxHoverCard({
         item={item}
         now={now}
         facts={facts}
-        current={current}
         gitLocation={gitLocation}
       />
     </div>,
@@ -178,19 +174,22 @@ export function ChatInboxDetailsSheet({
   item,
   now,
   facts,
-  current,
   gitLocation,
   triggerRef,
   onClose,
+  actions,
 }: {
   item: HomeWorkItem;
   now: number;
   facts?: WorkFacts;
-  /** This conversation is on screen; see `WorkStatusContext.current`. */
-  current?: boolean;
   gitLocation?: GitReadLocation;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
+  /**
+   * The row's actions that are not shown beside it on a touch chrome
+   * (ordinary buttons). Absent or empty renders no action strip.
+   */
+  actions?: React.ReactNode;
 }) {
   return (
     <ResponsiveDialogSurface
@@ -215,10 +214,15 @@ export function ChatInboxDetailsSheet({
           item={item}
           now={now}
           facts={facts}
-          current={current}
           gitLocation={gitLocation}
           showTitle={false}
         />
+        <div
+          className="chat-dock-inbox-details__actions"
+          data-testid="inbox-row-details-actions"
+        >
+          {actions}
+        </div>
       </div>
     </ResponsiveDialogSurface>
   );
@@ -236,20 +240,17 @@ function ChatInboxCardBody({
   item,
   now,
   facts,
-  current,
   gitLocation,
   showTitle = true,
 }: {
   item: HomeWorkItem;
   now: number;
   facts?: WorkFacts;
-  /** This conversation is on screen; see `WorkStatusContext.current`. */
-  current?: boolean;
   gitLocation?: GitReadLocation;
   showTitle?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
-  const status = workStatus(item, now, { facts, current });
+  const status = workStatus(item, now, facts);
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).

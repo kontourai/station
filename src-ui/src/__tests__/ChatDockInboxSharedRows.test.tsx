@@ -173,28 +173,29 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
-  it('sheet host rows reach snooze and close through one menu beside Details', () => {
-    const onCloseChat = vi.fn();
-    renderSheetHost(workItem(), onCloseChat);
+  it('sheet host rows show Details and snooze; the snooze control opens the duration menu', () => {
+    renderSheetHost(workItem());
 
-    // A touch row shows at most two 44px targets: Details, and one menu
-    // holding the rest. Three columns cost a phone row its title.
-    expect(
-      screen.queryByRole('button', { name: 'Snooze Shared row title' }),
-    ).toBeNull();
+    // A touch row shows Details and ONE direct action. Snooze is one 44px
+    // control that opens the menu, not a one-tap default beside a caret.
     expect(
       screen.getByRole('button', { name: 'Details for Shared row title' }),
     ).not.toBeNull();
-    const more = screen.getByRole('button', {
-      name: 'More actions for Shared row title',
-    });
-    expect(more.getAttribute('aria-haspopup')).toBe('menu');
-    fireEvent.click(more);
     expect(
-      screen.getByRole('menuitem', { name: 'Snooze: 3 hours' }),
-    ).not.toBeNull();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Close chat' }));
-    expect(onCloseChat).toHaveBeenCalledWith('shared');
+      screen.queryByRole('button', {
+        name: 'Choose snooze duration for Shared row title',
+      }),
+    ).toBeNull();
+    // Close is in the Details sheet, not a third column.
+    expect(
+      screen.queryByRole('button', { name: 'Close Shared row title' }),
+    ).toBeNull();
+    const snooze = screen.getByRole('button', {
+      name: 'Snooze Shared row title',
+    });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(snooze);
+    expect(screen.getByRole('menuitem', { name: '3 hours' })).not.toBeNull();
   });
 
   it('the desktop panel keeps the one-tap snooze beside its duration caret', () => {
@@ -245,9 +246,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     const item = workItem();
     const sheet = renderSheetHost(item);
     fireEvent.click(
-      screen.getByRole('button', { name: 'More actions for Shared row title' }),
+      screen.getByRole('button', { name: 'Snooze Shared row title' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Snooze: 30 min' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '30 min' }));
     sheet.unmount();
 
     renderPanelHost(item);
