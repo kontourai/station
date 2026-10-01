@@ -631,7 +631,11 @@ export function NativeRelayEnrollmentWizard({
                   </span>
                   <input
                     className="editor-input"
+                    type="password"
                     autoComplete="off"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={invitation}
                     onChange={(event) => setInvitation(event.target.value)}
                     disabled={busy}

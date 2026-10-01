@@ -452,7 +452,7 @@ export function RelayRouteKeyApproval({
                   event.clipboardData.getData('text');
                 if (!text) return;
                 event.preventDefault();
-                setInvitation(text.replace(/\r\n?/gu, ' '));
+                setInvitation(text.replace(/\r\n?|\n/gu, ''));
               }}
             />
           </label>
