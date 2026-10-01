@@ -79,18 +79,30 @@ read-only; they can still display and copy the complete address. Ordinary
 browser-local saved Stations retain their existing edit and endpoint-verification
 flow.
 
-On native Desktop, **Add computer → Save an encrypted broker route** records
-the Station address, broker address and exact Station enrollment. **Saved broker
-routes** lists, edits and removes those records and reports whether this device
-has a separately approved Station signing key. Saving a route does not connect,
-sign in, pair a Device or grant Project access. Until the broker transport is
-wired into the ordinary client, these records remain unconnected and cannot be
-selected as direct Station connections or CLI defaults. The CLI also refuses
-`--station` and `STATION_TARGET` when they name one of these inert routes.
+On native clients, **Add computer → Save an encrypted broker route** records
+public Station and broker addresses and the exact Station enrollment. Saving
+this record does not connect, sign in, pair a Device or grant Project access.
+**Saved broker routes** exposes separate Station signing-key approval, routing
+grant redemption and Device setup. The host keeps routing and Device
+credentials in OS custody, outside the saved public record.
 
-Desktop now registers [host signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
-for an existing routing grant, but the ordinary native client does not call
-them yet. They add no Connect or account-sign-in action to these saved routes.
+**Device setup** verifies a supported account, presents the exact Device
+candidate for operator approval, then requires explicit activation. Reopening
+setup recovers an existing attempt from the host journal; an uncertain
+activation is checked before the UI reports **Device configured**. That label
+establishes Device configuration only, not an account session or membership.
+See [native enrollment](../design/native-relay-enrollment.md) for the separate
+Station, routing, Device and account owners and current qualification limits.
+
+A configured native route can now be projected into saved Station selection.
+The ordinary native transport obtains fresh ICE and verifies Station proof for
+each encrypted application peer. Its current resource surface is health,
+authority and member Project reads; operator Workspace features and writes
+remain unsupported. Account continuation is a separate step from Device
+activation. No direct HTTP fallback is used. The CLI continues to refuse these
+routes as defaults or explicit `--station`/`STATION_TARGET` targets.
+The integrated source and mocked-IPC checks do not establish installed Nightly
+or physical iOS acceptance.
 
 Already redeemed native routing grants have a separate Desktop maintenance
 path. While the Desktop renderer is visible, it observes every saved broker
@@ -201,8 +213,8 @@ Device approval, Project access, and a published Task through the Station UI;
 the unpublished Task remains hidden, and the browser sends no direct Station
 `/api` requests after accepting the route. This fixture does not prove Internet
 NAT traversal, a second physical machine, or the real two-person journey.
-Cookie-session adoption, native route selection, and the full account,
-cookie-adoption, and revocation matrix remain separate checks. Browser broker
+Cookie-session adoption, installed native route selection, and the full account
+and revocation matrix remain separate acceptance checks. Browser broker
 routes also disable attachment staging uploads, interactive terminal WebSockets
 and Nova voice sockets for now: those features still require direct browser
 XHR, fetch or WebSocket access, so Station reports them unavailable before
