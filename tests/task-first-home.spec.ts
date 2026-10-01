@@ -146,11 +146,11 @@ async function mockTaskFirstHome(
     if (
       route.request().method() === 'GET' &&
       path === '/api/browser/sessions' &&
-      new URL(route.request().url()).searchParams.get('project') ===
+      new URL(route.request().url()).searchParams.get('projectSlug') ===
         project.slug
     ) {
       const sessions: BrowserSessionView[] = [];
-      await route.fulfill(json({ sessions }));
+      await route.fulfill(json(sessions));
       return;
     }
     // `PluginRegistry.ts:207-212` destructures `{ plugins }` off the RAW body
