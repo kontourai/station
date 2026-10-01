@@ -116,7 +116,6 @@ import {
   OrchestrationStreamPresence,
   orchestrationStreamPresenceSubjectFromAuthority,
 } from '../../services/orchestration/orchestration-stream-presence.js';
-import type { ReceiverExecutionEffectAdmission } from '../../services/orchestration/session-command-module.js';
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import {
@@ -132,6 +131,7 @@ import {
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
 import {
+  type TaskRoomInvocationAdmission,
   TaskRoomWorkAuthorityChangedError,
   type TaskRoomWorkModule,
   type TaskRoomWorkScope,
@@ -795,7 +795,7 @@ interface DelegateTaskRequest {
   target: ExecutionTarget;
   parentTaskId?: string;
   sessionId?: string;
-  taskRoomInvocationAdmission?: ReceiverExecutionEffectAdmission;
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
   userId: string;
@@ -2384,7 +2384,11 @@ export function createOrchestrationRoutes(
       });
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
-      const dispatch = (sessionId?: string, recheck?: () => Promise<void>) =>
+      const dispatch = (
+        sessionId?: string,
+        recheck?: () => Promise<void>,
+        roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
+      ) =>
         delegate({
           ...request,
           ...(delegation ? { delegation } : {}),
@@ -2399,9 +2403,10 @@ export function createOrchestrationRoutes(
           ...(sessionId
             ? { sessionId, parentTaskId: roomRequest?.taskId }
             : {}),
-          ...(recheck
+          ...(recheck && roomBinding
             ? {
                 taskRoomInvocationAdmission: {
+                  roomBinding,
                   recheck: async () => {
                     try {
                       await recheck();
@@ -2464,7 +2469,8 @@ export function createOrchestrationRoutes(
             c.req.raw,
             principal,
           );
-          return scope?.projectSlug === workspace.projectSlug &&
+          return scope &&
+            scope.projectSlug === workspace.projectSlug &&
             scope.taskCreatedAt === roomRequest.taskCreatedAt
             ? scope
             : undefined;
@@ -2478,8 +2484,11 @@ export function createOrchestrationRoutes(
             prompt: body.prompt,
           },
           authorize,
-          async (sessionId, _scope, recheck) => {
-            const handle = await dispatch(sessionId, recheck);
+          async (sessionId, scope, recheck) => {
+            const handle = await dispatch(sessionId, recheck, {
+              projectId: scope.roomProjectId,
+              taskId: roomRequest.taskId,
+            });
             if (
               !handle ||
               typeof handle !== 'object' ||

@@ -41,7 +41,10 @@ export function TaskRoomComposer({
     projectSlug,
     scope,
   );
-  const message = useAppendProjectTaskRoomHumanMessageMutation(taskId);
+  const message = useAppendProjectTaskRoomHumanMessageMutation(taskId, {
+    requestScope: scope,
+    taskCreatedAt,
+  });
   const [draft, setDraft] = useState('');
   const [recipient, setRecipient] = useState<{ id: string; name: string }>();
   const [mention, setMention] = useState<{
@@ -137,8 +140,12 @@ export function TaskRoomComposer({
         }
       } catch (error) {
         if (error instanceof TaskRoomWorkNotSentError) {
-          setUnconfirmed(undefined);
-          setNotice(error.message);
+          if (!unconfirmed) setUnconfirmed(undefined);
+          setNotice(
+            unconfirmed
+              ? `${error.message} The original request is still unconfirmed.`
+              : error.message,
+          );
           return;
         }
         setNotice(

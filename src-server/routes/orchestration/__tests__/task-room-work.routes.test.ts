@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import type {
+  ProjectTaskRoomGrant,
+  ProjectTaskRoomGrantKind,
+} from '@kontourai/station-contracts/project-task-room';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { TaskRoomWorkOutcome } from '@kontourai/station-contracts/task-room-work';
 import { expect, test, vi } from 'vitest';
@@ -16,6 +20,7 @@ import type { ProviderSessionStartInput } from '../../../providers/adapter-shape
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { hasPendingProjectTaskRoomExecution } from '../../../services/orchestration/project-task-room-source-seal.js';
 import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { delegateTask } from '../../../tools/station-control-delegation.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
@@ -43,6 +48,7 @@ test('the delegation route records one channel request and refuses a target outs
   const scope = {
     projectId: 'project',
     projectSlug: 'demo',
+    roomProjectId: 'room-project',
     taskCreatedAt: '2026-09-30T12:00:00.000Z',
     requesterId: principal.id,
   };
@@ -243,6 +249,7 @@ test('real delegation refuses revoked Task authority at provider effects and lea
           ? {
               projectId: 'project',
               projectSlug: 'demo',
+              roomProjectId: 'room-project',
               taskCreatedAt: '2026-09-30T12:00:00.000Z',
               requesterId: principal.id,
             }
@@ -250,7 +257,7 @@ test('real delegation refuses revoked Task authority at provider effects and lea
       },
     },
   });
-  const send = (operationId: string) =>
+  const send = (operationId: string, taskId = 'durable-task') =>
     app.request('/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -262,7 +269,7 @@ test('real delegation refuses revoked Task authority at provider effects and lea
           workspace: { kind: 'project', projectSlug: 'demo' },
         },
         taskRoomRequest: {
-          taskId: 'durable-task',
+          taskId,
           taskCreatedAt: '2026-09-30T12:00:00.000Z',
           operationId,
         },
@@ -279,6 +286,21 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     });
     expect(started).toHaveBeenCalledOnce();
     expect(turned).toHaveBeenCalledOnce();
+    if (control.data.kind !== 'recorded')
+      throw new Error('Missing positive-control request');
+    expect(
+      inspector
+        .prepare(
+          'SELECT project_id,task_id FROM project_task_room_execution_bindings WHERE session_id=?',
+        )
+        .get(control.data.record.sessionId),
+    ).toMatchObject({ project_id: 'room-project', task_id: 'durable-task' });
+    expect(
+      hasPendingProjectTaskRoomExecution(inspector, {
+        projectId: 'room-project',
+        taskId: 'durable-task',
+      }),
+    ).toBe(true);
     revokeDuringProjectRead = true;
     const refused = await send('revoked');
     expect(refused.status).toBe(403);
@@ -318,6 +340,58 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     );
     expect(continuation.receipt.status).toBe('accepted');
     expect(turned).toHaveBeenCalledTimes(2);
+    const sealedScope = {
+      projectId: 'room-project',
+      projectSlug: 'demo',
+      taskId: 'sealed-task',
+    };
+    const history = eventStore.createProjectTaskRoomHistory({
+      capabilities: {
+        resolve: async ({ required }) => ({
+          kind: 'granted',
+          receipt: {
+            receiptId: `sealed-test-${required}`,
+            capability: required,
+            scope: sealedScope,
+            principal: {
+              kind: 'operator',
+              operatorId: 'alice',
+              deviceId: 'test-device',
+            },
+            policyRevision: 'sealed-test',
+          },
+        }),
+      },
+    });
+    const grant = <K extends ProjectTaskRoomGrantKind>(
+      capability: K,
+    ): ProjectTaskRoomGrant<K> =>
+      Object.freeze({
+        schemaVersion: 'station.project-task-room-grant/v1',
+        capability,
+        opaqueToken: 'sealed-test',
+      }) as ProjectTaskRoomGrant<K>;
+    try {
+      await history.open({ grant: grant('discover') });
+      const seal = await history.sealSource({
+        grant: grant('home-transfer'),
+        operationId: 'seal-task',
+        sourceHomeRef: 'station:source-test',
+        targetHomeRef: 'paired:target',
+      });
+      expect(seal.kind).toBe('sealed');
+      const afterSeal = await readJson<{ data: TaskRoomWorkOutcome }>(
+        await send('sealed-request', sealedScope.taskId),
+      );
+      expect(afterSeal.data).toMatchObject({
+        kind: 'recorded',
+        record: { state: 'indeterminate' },
+      });
+      expect(started).toHaveBeenCalledTimes(3);
+      expect(turned).toHaveBeenCalledTimes(2);
+    } finally {
+      await history.close();
+    }
   } finally {
     inspector.close();
     vi.unstubAllGlobals();

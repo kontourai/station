@@ -508,6 +508,50 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test('a human message bound to an earlier Task incarnation never appends to its replacement', async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'station-room-message-incarnation-'),
+    );
+    directories.push(directory);
+    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const currentTask: TaskRecord = { ...task, createdBy: 'operator-1' };
+    const { runtime } = runtimeComposition(store, { taskRecord: currentTask });
+    const request = new Request('http://station');
+    try {
+      expect((await runtime.discover({ taskId: task.id, request })).kind).toBe(
+        'opened',
+      );
+      const first = await runtime.message({
+        taskId: task.id,
+        request,
+        proposalId: 'message-before-replacement',
+        text: 'Original discussion',
+        expectedTaskCreatedAt: task.createdAt,
+      });
+      expect(first.kind).toBe('committed');
+      currentTask.createdAt = '2026-09-30T00:00:00.000Z';
+      const stale = await runtime.message({
+        taskId: task.id,
+        request,
+        proposalId: 'message-after-replacement',
+        text: 'Old private draft',
+        expectedTaskCreatedAt: task.createdAt,
+      });
+      expect(stale.kind).toBe('not-found');
+      const history = await runtime.history({ taskId: task.id, request });
+      expect(history.kind).toBe('available');
+      if (history.kind !== 'available')
+        throw new Error('Missing real history read');
+      expect(history.records).toHaveLength(1);
+      expect(history.records[0].body).toMatchObject({
+        kind: 'human-message',
+        text: 'Original discussion',
+      });
+    } finally {
+      await runtime.close();
+      store.close();
+    }
+  });
   test.each(['heartbeat', 'cadence', 'snapshot'] as const)(
     'concurrent %s cannot arm another request or invalidate its pending announcement',
     async (activity) => {

@@ -1718,11 +1718,15 @@ a separate Station-wide JSON journal for explicit agent requests. It reserves
 an execution identity before existing delegation runs, rechecks Task/Project
 incarnation and requester authority, and never re-invokes a recorded operation.
 The delegation route supplies a private admission that OrchestrationService
-rechecks at provider start and initial-turn effects. Known authority loss uses
+rechecks at provider start and initial-turn effects. The same private admission
+supplies the existing room-execution binding so source seals and pending-work
+joins cover independent room sessions. Known authority loss uses
 clean pre-effect refusal; unknown failures retain uncertainty. The
 [composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
-Request cards currently poll the journal read and link to existing execution
+Ordinary composer messages also use captured transport authority and an expected
+Task incarnation that the history grant rechecks before commit. Request cards
+currently poll the journal read and link to existing execution
 inspection; they are not room-SSE lifecycle events. Invited/public result
 projection and actual-provider acceptance remain unfinished.
 

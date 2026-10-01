@@ -26,6 +26,7 @@ import {
   subscribeProjectTaskRoomEvents,
 } from '../client/project-task-rooms';
 import { projectTaskRoomQueries } from '../queryFactories';
+import type { TaskRoomWorkRequestScope } from './taskRoomWork';
 
 export { TaskRoomWorkNotSentError } from '../client/task-room-work';
 export {
@@ -175,24 +176,49 @@ export function useProjectTaskRoomDocumentQuery(taskId: string) {
     staleTime: 0,
   });
 }
-export function useAppendProjectTaskRoomHumanMessageMutation(taskId: string) {
+export function useAppendProjectTaskRoomHumanMessageMutation(
+  taskId: string,
+  config?: {
+    requestScope: TaskRoomWorkRequestScope | undefined;
+    taskCreatedAt: string;
+  },
+) {
   const client = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: async (input: {
       proposalId: string;
       text: string;
       occurredAt?: string;
-    }) =>
-      appendProjectTaskRoomHumanMessage(await _getApiBase(), {
-        taskId,
-        ...input,
-      }),
+    }) => {
+      const scope = config?.requestScope;
+      if (config && (!scope?.isCurrent() || !config.taskCreatedAt))
+        throw new ProjectTaskRoomProtocolError(
+          'Task message connection or identity is unavailable.',
+        );
+      const apiBase = scope ? scope.apiBase : await _getApiBase();
+      const result = await appendProjectTaskRoomHumanMessage(
+        apiBase,
+        {
+          taskId,
+          ...input,
+          ...(config ? { expectedTaskCreatedAt: config.taskCreatedAt } : {}),
+        },
+        scope ? { requestScope: scope } : undefined,
+      );
+      if (scope && !scope.isCurrent())
+        throw new ProjectTaskRoomProtocolError(
+          'Task message connection changed after sending. Check history before retrying.',
+        );
+      return result;
+    },
     onSuccess: () =>
       client.invalidateQueries({
         queryKey: projectTaskRoomQueries.history(taskId).queryKey,
       }),
   });
 }
+
 export function usePlanProjectTaskRoomEditMutation(taskId: string) {
   return useMutation({
     mutationFn: async (input: {

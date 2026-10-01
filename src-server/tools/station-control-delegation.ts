@@ -102,7 +102,6 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
-import type { ReceiverExecutionEffectAdmission } from '../services/orchestration/session-command-module.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
@@ -113,6 +112,7 @@ import {
   ReceiverExecutionRefusal,
   receiverAdmittedCwd,
 } from '../services/projects/project-contribution-service.js';
+import type { TaskRoomInvocationAdmission } from '../services/projects/task-room-work-module.js';
 import {
   fetchRemoteStation,
   isRemoteStationTarget,
@@ -360,7 +360,7 @@ export interface DelegateTaskInput {
   target: ExecutionTarget;
   sessionId?: string;
   /** Task-owned authority checked inside provider start/turn effects; never public JSON. */
-  taskRoomInvocationAdmission?: ReceiverExecutionEffectAdmission;
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
@@ -5319,7 +5319,11 @@ export async function delegateTask(
           },
           resourceAdmissionIntent: 'delegated_background',
           ...(input.taskRoomInvocationAdmission
-            ? { receiverExecutionAdmission: input.taskRoomInvocationAdmission }
+            ? {
+                receiverExecutionAdmission: input.taskRoomInvocationAdmission,
+                roomExecutionBinding:
+                  input.taskRoomInvocationAdmission.roomBinding,
+              }
             : {}),
           // #484 phase A: the service rechecks this inside the start-effect
           // path, adjacent to the adapter invocation, AND verifies the

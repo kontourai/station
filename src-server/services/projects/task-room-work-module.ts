@@ -8,6 +8,7 @@ import {
   type TaskRoomWorkRecord,
 } from '@kontourai/station-contracts/task-room-work';
 import { mutateJsonFile } from '../../domain/file-storage-helpers.js';
+import type { ReceiverExecutionEffectAdmission } from '../orchestration/session-command-module.js';
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_REQUESTS = 256;
@@ -21,8 +22,12 @@ type Store = {
 export type TaskRoomWorkScope = {
   projectId: string;
   projectSlug: string;
+  roomProjectId: string;
   taskCreatedAt: string;
   requesterId: string;
+};
+export type TaskRoomInvocationAdmission = ReceiverExecutionEffectAdmission & {
+  readonly roomBinding: { readonly projectId: string; readonly taskId: string };
 };
 type Scope = TaskRoomWorkScope;
 export class TaskRoomWorkUnavailableError extends Error {}
@@ -128,6 +133,7 @@ export class TaskRoomWorkModule {
     if (
       !current ||
       current.projectId !== scope.projectId ||
+      current.roomProjectId !== scope.roomProjectId ||
       current.projectSlug !== scope.projectSlug ||
       current.taskCreatedAt !== scope.taskCreatedAt ||
       current.requesterId !== scope.requesterId
@@ -225,6 +231,7 @@ export class TaskRoomWorkModule {
     if (
       !current ||
       current.projectId !== scope.projectId ||
+      current.roomProjectId !== scope.roomProjectId ||
       current.projectSlug !== scope.projectSlug ||
       current.taskCreatedAt !== scope.taskCreatedAt ||
       current.requesterId !== scope.requesterId
@@ -242,6 +249,7 @@ export class TaskRoomWorkModule {
         if (
           !effectScope ||
           effectScope.projectId !== scope.projectId ||
+          effectScope.roomProjectId !== scope.roomProjectId ||
           effectScope.projectSlug !== scope.projectSlug ||
           effectScope.taskCreatedAt !== scope.taskCreatedAt ||
           effectScope.requesterId !== scope.requesterId
@@ -259,6 +267,7 @@ export class TaskRoomWorkModule {
     if (
       !delivery ||
       delivery.projectId !== scope.projectId ||
+      delivery.roomProjectId !== scope.roomProjectId ||
       delivery.projectSlug !== scope.projectSlug ||
       delivery.taskCreatedAt !== scope.taskCreatedAt ||
       delivery.requesterId !== scope.requesterId

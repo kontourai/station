@@ -1214,6 +1214,7 @@ export function configureRuntimeRoutes(
       ? {
           projectId: project.id,
           projectSlug: project.slug,
+          roomProjectId: room.scope.projectId,
           taskCreatedAt: task.createdAt,
           requesterId: principal.id,
         }

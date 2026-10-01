@@ -49,18 +49,16 @@ test('an older Station never receives a delegation before version negotiation su
   );
 });
 
-test('a room request preserves exact intent and incarnation across an explicit replay', async () => {
-  const fetcher = vi
-    .fn<typeof fetch>()
-    .mockImplementation(async (url) =>
-      String(url).endsWith('/agent-requests')
-        ? response({
-            version: TASK_ROOM_WORK_VERSION,
-            kind: 'available',
-            records: [],
-          })
-        : response({ kind: 'recorded', record, replayed: true }),
-    );
+test('a room request sends exact intent and incarnation and adopts a replay acknowledgement', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+    String(url).endsWith('/agent-requests')
+      ? response({
+          version: TASK_ROOM_WORK_VERSION,
+          kind: 'available',
+          records: [],
+        })
+      : response({ kind: 'recorded', record, replayed: true }),
+  );
   vi.stubGlobal('fetch', fetcher);
   await expect(
     submitTaskRoomAgentRequest(
@@ -89,15 +87,13 @@ test('a room request preserves exact intent and incarnation across an explicit r
 });
 
 test('cross-Task history and mismatched acknowledgements are rejected rather than adopted', async () => {
-  const fetcher = vi
-    .fn<typeof fetch>()
-    .mockResolvedValue(
-      response({
-        version: TASK_ROOM_WORK_VERSION,
-        kind: 'available',
-        records: [{ ...record, taskId: 'other-task' }],
-      }),
-    );
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    response({
+      version: TASK_ROOM_WORK_VERSION,
+      kind: 'available',
+      records: [{ ...record, taskId: 'other-task' }],
+    }),
+  );
   vi.stubGlobal('fetch', fetcher);
   await expect(
     fetchTaskRoomAgentRequests('http://station.test', 'task-1'),

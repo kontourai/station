@@ -164,6 +164,7 @@ interface IssuedGrant {
   readonly material?: true;
   readonly receiptId: string;
   readonly currentSharedRead?: () => Promise<boolean>;
+  readonly expectedTaskCreatedAt?: string;
 }
 interface IssuedEditPlan {
   readonly batch: SharedWorkingStateEditBatch;
@@ -904,11 +905,14 @@ export class ProjectTaskRoomRuntime {
     proposalId: string;
     text: string;
     occurredAt?: string;
+    expectedTaskCreatedAt?: string;
   }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
     const grant = await this.#issue(
       input.taskId,
       input.request,
       'message-write',
+      undefined,
+      input.expectedTaskCreatedAt,
     );
     if (!grant) return { kind: 'not-found' };
     const result = await this.#history.append({
@@ -2271,6 +2275,7 @@ export class ProjectTaskRoomRuntime {
     request: Request,
     capability: K,
     currentSharedRead?: () => Promise<boolean>,
+    expectedTaskCreatedAt?: string,
   ): Promise<ProjectTaskRoomGrant<K> | undefined> {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
@@ -2290,6 +2295,7 @@ export class ProjectTaskRoomRuntime {
       request,
       receiptId: requestReceiptId(scope, principal, capability),
       ...(currentSharedRead ? { currentSharedRead } : {}),
+      ...(expectedTaskCreatedAt ? { expectedTaskCreatedAt } : {}),
     });
     return Object.freeze({
       schemaVersion: 'station.project-task-room-grant/v1',
@@ -3069,6 +3075,12 @@ export class ProjectTaskRoomRuntime {
       grant.capability !== required
     )
       return { kind: 'denied' };
+    if (
+      issued.expectedTaskCreatedAt &&
+      this.#deps.taskGraph.readTaskView(issued.scope.taskId)?.createdAt !==
+        issued.expectedTaskCreatedAt
+    )
+      return { kind: 'revoked' };
     const currentScope = this.#scope(issued.scope.taskId);
     if (issued.principal.kind === 'agent') {
       const task = this.#deps.taskGraph.readTaskView(issued.scope.taskId);

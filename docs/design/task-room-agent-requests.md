@@ -53,7 +53,10 @@ Scope and requesting identity are rechecked after reservation and before result
 delivery, and through a server-only admission beside the actual provider start
 and initial-turn effect inside OrchestrationService. Task and Project incarnation
 are included so a replacement cannot inherit a
-prior request. Lists distinguish refused access from an empty authorized history.
+prior request. The private admission also supplies the existing durable room
+execution binding using the Task room's exact stored Project identity. This
+preserves source-seal provider refusal and pending-execution joins without
+changing the Task's current-session association. Lists distinguish refused access from an empty authorized history.
 Corruption, excessive bytes, duplicate identities and capacity pressure fail
 closed. The Station-wide `task-room-work.json` store retains at most 256 requests / 4 MiB and never silently
 evicts them. Production retention/window protocols remain unfinished. This is
@@ -83,7 +86,11 @@ Send refreshes readiness and negotiates the versioned journal route before
 creating work. The composer binds draft ownership to connection authority and
 Task incarnation. A changed connection cannot receive the old draft. A failed
 preflight retains an editable draft; a lost create acknowledgement freezes the
-intent and reuses its operation for an explicit retry. Unsaved navigation and
+intent and reuses its operation for an explicit retry. A later retry preflight
+failure preserves the original uncertainty and operation. Ordinary message
+writes use captured request authority and send the expected Task creation time;
+the history grant rechecks that incarnation before committing. A late response
+cannot clear the draft after its captured authority expires. Unsaved navigation and
 close guards protect local drafts. Draft/operation recovery across a tab reload
 is not implemented yet. The cards display acknowledged request state and link
 to existing execution inspection; they do not invent live progress or results.
@@ -111,7 +118,12 @@ the real turn boundary remain active and failed the regression; restoring it
 passed. The composer/client/route and existing Task view suite passed 58 cases
 while the UI slice was in progress; SDK and UI typechecks passed after adding
 the contract's real package export. These are controlled diagnostic receipts,
-not final browser or release proof.
+not final browser or release proof. Direct query-hook/HTTP tests and the real
+room-runtime/history-worker suite passed 62 cases after covering readiness,
+credential rotation, late acknowledgements and stale Task messages. The real
+delegation test now verifies the persisted room-execution binding, pending-work
+join and provider refusal after a real source seal. These remain controlled
+principal/provider fixtures, not hosted or live-model acceptance.
 
 Still required: final mutation controls and independent UI/SDK review;
 runtime-composition authorization and browser proof; durable draft recovery;

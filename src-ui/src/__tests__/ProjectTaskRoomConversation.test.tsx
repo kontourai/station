@@ -98,7 +98,7 @@ describe('ProjectTaskRoomConversation capability states', () => {
     },
   );
 
-  test('retains readable history while disabling messages after revocation', () => {
+  test('presents read-only capabilities and disables messages for a terminal room', () => {
     mocks.discovery.data = {
       kind: 'existing',
       capabilities: {

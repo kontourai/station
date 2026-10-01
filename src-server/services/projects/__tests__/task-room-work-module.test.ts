@@ -16,6 +16,7 @@ afterEach(async () => {
 const scope: TaskRoomWorkScope = {
   projectId: 'project',
   projectSlug: 'demo',
+  roomProjectId: 'room-project',
   taskCreatedAt: '2026-09-30T12:00:00.000Z',
   requesterId: 'alice',
 };

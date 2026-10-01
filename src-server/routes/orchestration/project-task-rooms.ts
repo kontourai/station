@@ -178,6 +178,7 @@ const messageSchema = z
       .min(1)
       .max(16 * 1024),
     occurredAt: z.string().datetime().optional(),
+    expectedTaskCreatedAt: z.string().min(1).max(40).optional(),
   })
   .strict();
 const liveSchema = z.discriminatedUnion('command', [
@@ -473,6 +474,9 @@ export function createProjectTaskRoomRoutes(
         proposalId: body.proposalId,
         text: body.text,
         ...(body.occurredAt ? { occurredAt: body.occurredAt } : {}),
+        ...(body.expectedTaskCreatedAt
+          ? { expectedTaskCreatedAt: body.expectedTaskCreatedAt }
+          : {}),
       }),
     );
   });

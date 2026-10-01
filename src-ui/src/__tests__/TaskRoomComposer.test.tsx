@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import type { TaskRoomWorkInput } from '@kontourai/station-contracts/task-room-work';
+import { TaskRoomWorkNotSentError } from '@kontourai/station-sdk/project-task-rooms';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
@@ -122,7 +123,11 @@ test('Escape and composing input keep literal mentions as human discussion', asy
 });
 
 test('lost acknowledgement freezes intent and an explicit retry reuses the operation', async () => {
-  mocks.agent.mockRejectedValueOnce(new Error('lost acknowledgement'));
+  mocks.agent
+    .mockRejectedValueOnce(new Error('lost acknowledgement'))
+    .mockRejectedValueOnce(
+      new TaskRoomWorkNotSentError('Retry preflight unavailable'),
+    );
   render(<TaskRoomComposer {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
   fireEvent.click(
@@ -139,7 +144,14 @@ test('lost acknowledgement freezes intent and an explicit retry reuses the opera
     screen.getByRole('button', { name: 'Retry same agent request' }),
   );
   await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
+  await screen.findByText(/Retry preflight unavailable/);
+  expect(textbox.matches(':disabled')).toBe(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same agent request' }),
+  );
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(3));
   expect(mocks.agent.mock.calls[1][0]).toEqual(mocks.agent.mock.calls[0][0]);
+  expect(mocks.agent.mock.calls[2][0]).toEqual(mocks.agent.mock.calls[0][0]);
 });
 
 test('changing the connection cannot send the existing draft to the new Station', () => {
