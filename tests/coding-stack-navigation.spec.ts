@@ -695,7 +695,8 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     const create = bar(page).getByRole('button', { name: 'New chat' });
     await expect(open).toBeVisible();
     await expect(create).toBeVisible();
-    await expect(open).toHaveText('');
+    // No words: the Open icon may carry its session-count badge, nothing else.
+    await expect(open).toHaveText(/^\d*$/);
     await expect(create).toHaveText('');
     await expect(
       bar(page).getByRole('button', { name: 'More dock actions' }),
@@ -795,5 +796,93 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     // Back leaves the layout; it does not step through the panel.
     await page.goBack();
     await expect(page).not.toHaveURL(/layouts\/code/);
+  });
+});
+
+/**
+ * #3046 round 3: the folded inbox's edge strip, and the fold judged again
+ * when the window is resized.
+ */
+test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const edge = (page: Page) =>
+    page.getByRole('button', { name: /^Show inbox/ });
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('a folded inbox leaves a strip that widens on hover and focus, and a click brings the inbox back as the reader’s choice', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(edge(page)).toHaveCount(0);
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toHaveCount(0);
+    await expect(edge(page)).toBeVisible();
+    const rest = (await edge(page).boundingBox())!;
+    expect(rest.width).toBeLessThanOrEqual(8);
+    expect(rest.height).toBeGreaterThanOrEqual(44);
+    const chat = (await chatPage(page).boundingBox())!;
+    expect(Math.abs(rest.x - chat.x)).toBeLessThan(2);
+    // Settle the pointer in the transcript first, then come to the edge.
+    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
+    await edge(page).hover();
+    await expect
+      .poll(async () => {
+        const box = (await edge(page).boundingBox())!;
+        const hovered = await page.evaluate(
+          () =>
+            document.querySelector('.coding-workbench__inbox-edge:hover') !==
+            null,
+        );
+        return `${Math.round(box.width)} hover=${hovered}`;
+      })
+      .toMatch(/^(2\d|3\d) hover=true$/);
+    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
+    // Keyboard focus — a key before the focus is what makes it visible
+    // (`:focus-visible`), as a Tab would.
+    await page.keyboard.press('Shift');
+    await edge(page).focus();
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            `${document.activeElement?.getAttribute('aria-label') ?? ''} visible=${
+              document.querySelector(
+                '.coding-workbench__inbox-edge:focus-visible',
+              ) !== null
+            }`,
+        ),
+      )
+      .toMatch(/^Show inbox.* visible=true$/);
+    await expect
+      .poll(async () => (await edge(page).boundingBox())!.width)
+      .toBeGreaterThanOrEqual(20);
+    await page.keyboard.press('Enter');
+    await expect(inbox(page)).toBeVisible();
+    await expect(edge(page)).toHaveCount(0);
+    // The reader's choice: the tool closing and reopening leaves it.
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeHidden();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+  });
+
+  test('a window dragged narrower folds the inbox once it rests, and wider unfolds it', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 2000, height: 900 });
+    await landOnChat(page);
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(inbox(page)).toHaveCount(0);
+    await expect(edge(page)).toBeVisible();
+    await page.setViewportSize({ width: 2000, height: 900 });
+    await expect(inbox(page)).toBeVisible();
   });
 });

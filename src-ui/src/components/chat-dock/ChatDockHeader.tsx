@@ -292,6 +292,11 @@ export function ChatDockHeader({
           componentProps={{
             ...workspaceControls,
             iconOnly: Boolean(slots?.namesPane),
+            // Under a naming bar the session count rides the Open icon
+            // (its badge and tooltip) rather than sitting as loose text.
+            sessionCount: slots?.namesPane
+              ? (chatControls?.sessions.length ?? 0)
+              : 0,
           }}
         />
       ) : null}
@@ -341,6 +346,7 @@ export function ChatDockHeader({
         </div>
       )}
       {chatControls &&
+        !slots?.namesPane &&
         (!chatIdentity || chatControls.sessions.length > 0) &&
         (chatControls.sessions.length === 0 ? (
           !isDockOpen ? (

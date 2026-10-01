@@ -1684,11 +1684,38 @@ per conversation.** Below the fold nothing above changes.
   of the room (`CODING_LOWER_DEFAULT_FRACTION`), between 160px and Chat's
   240px floor, and is remembered and resizable as before.
 
+- **The folded inbox's edge.** While the inbox is folded past the fold (by
+  the layout or by hand) on a fine pointer, the Chat column's left edge
+  carries a slim strip — 6px with a faint rule at rest, 24px with its glyph
+  on hover or keyboard focus, full height, a real button named "Show inbox"
+  with a tooltip — whose activation opens the inbox as the reader's own
+  choice (the session remembers it). It wears the inbox's "Needs you" count,
+  published by Chat from the same partition the inbox panel renders
+  (`needsYouCount`, `onInboxNeedsYouChange`), so a fold never hides that
+  something is waiting. A coarse pointer has no hover to widen it and gets
+  none; below the fold the inbox is not folded by the layout. Hover-peek (the
+  inbox as an overlay while hovering) was not built: the inbox panel takes
+  the dock's whole handler set and lazy chunk, so a second mount for a peek
+  is not cheap, and the strip's click is one move away.
+- **The fold is judged again when the room changes.** The measured room
+  settles for 150ms before the fold is re-evaluated, so a window being
+  dragged is judged at rest: narrower folds the inbox, and wider brings back
+  an inbox the layout folded once the transcript would clear its floor by
+  24px (hysteresis, so a width on the line does not flap). A fold or unfold
+  the reader made is never revisited by a resize.
+- **Session count on the Open icon.** Under the naming bar the "N sessions"
+  text is gone: more than one open conversation badges the Open-conversation
+  icon and joins its tooltip and accessible name. The Terminal's head "+"
+  appears once a terminal exists (the empty state's own "New Terminal" says
+  it first), and a file row truncates with an ellipsis and a full-name title
+  rather than widening its panel.
+
 Limits: the lower panel is the Terminal's alone (no other pane docks below);
 the fold ignores whether the Project sidebar is collapsed; a shared link that
 names both a pane and a preview intent opens the pane and leaves the intent
-to the Files pane's row; and the inbox fold is decided when a tool opens or is
-resized, not on every viewport change.
+to the Files pane's row; the inbox fold is judged when a tool opens, is
+resized or restored and when the room rests after a resize, with the inbox's
+measured width at fold time deciding the unfold.
 
 ## Failure shapes this design is meant to prevent
 

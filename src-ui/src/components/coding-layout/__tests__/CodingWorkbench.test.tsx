@@ -42,6 +42,8 @@ const harness = vi.hoisted(() => ({
     trailing: HTMLElement | null;
     namesPane?: boolean;
   },
+  /** What the inbox's "Needs you" lane holds, as Chat would publish it. */
+  needsYou: 0,
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
@@ -49,14 +51,18 @@ const harness = vi.hoisted(() => ({
 vi.mock('../../chat-dock/ChatDock', () => ({
   ChatWorkspacePane: (props: {
     onPresentationTitleChange?: (title: string) => void;
+    onInboxNeedsYouChange?: (count: number) => void;
   }) => {
-    const { onPresentationTitleChange } = props;
+    const { onPresentationTitleChange, onInboxNeedsYouChange } = props;
     harness.chatProps = props;
     const slots = useRegionChromeSlots();
     harness.chatSlots = slots;
     useEffect(() => {
       harness.chatMounts += 1;
     }, []);
+    useEffect(() => {
+      onInboxNeedsYouChange?.(harness.needsYou);
+    }, [onInboxNeedsYouChange]);
     useEffect(() => {
       onPresentationTitleChange?.(harness.chatTitle);
     }, [onPresentationTitleChange]);
@@ -211,6 +217,7 @@ beforeEach(() => {
   harness.isMobile = false;
   harness.chatMounts = 0;
   harness.chatSlots = null;
+  harness.needsYou = 0;
   harness.shortcuts.clear();
   harness.showSurface.mockReset();
   deviceSettingsStore.reset('codingPanels');
@@ -1126,5 +1133,105 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
     expect(tip('Files')).toBe('src/app/files.ts');
     expect(railItem('Files').getAttribute('aria-label')).toBe('Files');
     expect(tip('Diff, 2 changed files')).toBe('Diff, 2 changed files');
+  });
+});
+
+describe('CodingWorkbench — the folded inbox’s edge, and the fold judged again on resize', () => {
+  const edge = () => screen.queryByRole('button', { name: /^Show inbox/ });
+  const withViewportWidth = (width: number) =>
+    Object.defineProperty(window, 'innerWidth', {
+      value: width,
+      configurable: true,
+      writable: true,
+    });
+
+  test('a folded inbox leaves a strip on the Chat column’s edge, named, badged with the Needs-you count, and absent while the inbox is open', async () => {
+    harness.needsYou = 2;
+    renderStack({ wide: true });
+    expect(edge()).toBeNull();
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    const strip = edge()!;
+    expect(strip.getAttribute('aria-label')).toBe('Show inbox, 2 need you');
+    expect(chatPage().contains(strip)).toBe(true);
+    expect(
+      strip.querySelector('.coding-workbench__inbox-edge-count')?.textContent,
+    ).toBe('2');
+    expect(
+      strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
+    ).toBe('Show inbox, 2 need you');
+  });
+
+  test('the edge is a keyboard-reachable button whose activation is the reader’s own choice', async () => {
+    navigationStore.navigate(ROUTE, { chat: 'conv-edge' });
+    renderStack({ wide: true });
+    await drillInto('Diff');
+    const strip = edge()!;
+    expect(strip.tagName).toBe('BUTTON');
+    expect(strip.tabIndex).toBe(0);
+    strip.focus();
+    expect(window.document.activeElement).toBe(strip);
+    // A key's activation (detail 0) opens the inbox and is remembered as
+    // the reader's choice: closing the tool does not fold it back.
+    fireEvent.click(strip, { detail: 0 });
+    await act(async () => undefined);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    expect(edge()).toBeNull();
+    expect(remembered('conv-edge')?.inbox).toBe(true);
+    await drillInto('Files');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+  });
+
+  test('below the fold, and on a coarse pointer, there is no edge', async () => {
+    deviceSettingsStore.set('inboxOpen', false);
+    renderStack({ wide: false });
+    expect(edge()).toBeNull();
+  });
+
+  test('a window dragged narrower folds the inbox once it rests; widened again, it comes back; the reader’s choice is never fought', async () => {
+    vi.useFakeTimers();
+    const width = window.innerWidth;
+    try {
+      withViewportWidth(2200);
+      renderStack({ wide: true });
+      await drillInto('Diff');
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+
+      withViewportWidth(1024);
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      // Not yet: the room has to rest first.
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+
+      withViewportWidth(2200);
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+      expect(remembered('~')?.inbox).toBeNull();
+
+      // The reader folds it by hand: a wider window does not unfold it.
+      act(() => deviceSettingsStore.set('inboxOpen', false));
+      expect(remembered('~')?.inbox).toBe(false);
+      withViewportWidth(2600);
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    } finally {
+      withViewportWidth(width);
+      vi.useRealTimers();
+    }
   });
 });

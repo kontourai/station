@@ -100,3 +100,35 @@ test('in a host that draws its head, the tab strip joins the head row and the pa
     leading.remove();
   }
 });
+
+test('in a host’s head with no terminal yet, the strip offers no "+": the empty state’s own button says it', () => {
+  const leading = document.createElement('div');
+  document.body.append(leading);
+  try {
+    render(
+      <PaneHeadSlotsContext.Provider value={{ leading, trailing: null }}>
+        <CodingTerminalPanel
+          presentation="pane"
+          terminalOpen
+          tabs={[]}
+          activeTabId=""
+          editingTabId={null}
+          onSelectTab={vi.fn()}
+          onStartRename={vi.fn()}
+          onFinishRename={vi.fn()}
+          onCancelRename={vi.fn()}
+          onCloseTab={vi.fn()}
+          onToggleTabMode={vi.fn()}
+          canTogglePTY={() => false}
+          onOpenNewTerminal={vi.fn()}
+          projectSlug="demo"
+          workingDir="/workspace"
+        />
+      </PaneHeadSlotsContext.Provider>,
+    );
+    expect(within(leading).queryByTitle('New terminal')).toBeNull();
+    expect(screen.getByRole('button', { name: '+ New Terminal' })).toBeTruthy();
+  } finally {
+    leading.remove();
+  }
+});

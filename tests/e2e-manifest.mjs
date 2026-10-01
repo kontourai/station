@@ -1691,7 +1691,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock. Past the wide fold (#3040, #3051): a rail pick opens the tool beside Chat without a history entry, the Terminal in a lower panel under both, keyboard resizing that survives a reload, per-conversation panels, the fold crossed with a draft kept, one bar with Chat’s verbs as named icons (#3046), the inbox folding for a tool and keeping the reader’s own choice, and a file opened from Files landing beside Chat by replace.',
+      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock. Past the wide fold (#3040, #3051): a rail pick opens the tool beside Chat without a history entry, the Terminal in a lower panel under both, keyboard resizing that survives a reload, per-conversation panels, the fold crossed with a draft kept, one bar with Chat’s verbs as named icons (#3046), the inbox folding for a tool and keeping the reader’s own choice, a file opened from Files landing beside Chat by replace, the folded inbox’s edge strip (hover, keyboard, the reader’s choice) and the fold judged again on resize.',
     exceptions: [],
   },
   {

@@ -60,7 +60,10 @@ describe('ChatDockHeader in a bar that names the pane', () => {
             chatIdentity={<span>Dev Agent Chat</span>}
             projectContext={<span>Dev</span>}
             chatControls={{
-              sessions: [],
+              sessions: [
+                { id: 'a', title: 'One', status: 'idle' },
+                { id: 'b', title: 'Two', status: 'idle' },
+              ],
               unreadCount: 0,
               focusSession: vi.fn(),
               onNewChat: vi.fn(),
@@ -72,19 +75,24 @@ describe('ChatDockHeader in a bar that names the pane', () => {
         </RegionChromeSlotsContext.Provider>,
       );
       expect(container.querySelector('.chat-dock__header')).toBeNull();
+      // The session count is not loose text in the bar: it rides the Open
+      // icon as its badge and tooltip.
+      expect(trailing.textContent).not.toContain('sessions');
       // The title is the bar's: the identity is not repeated.
       expect(leading.textContent).not.toContain('Dev Agent Chat');
       expect(leading.textContent).toContain('Dev');
 
       const open = await within(trailing).findByRole('button', {
-        name: 'Open conversation',
+        name: 'Open conversation, 2 sessions',
       });
       const create = within(trailing).getByRole('button', { name: 'New chat' });
-      expect(open.textContent).toBe('');
+      expect(open.querySelector('.chat-dock__new-count')?.textContent).toBe(
+        '2',
+      );
       expect(create.textContent).toBe('');
       const tip = (button: HTMLElement) =>
         button.parentElement?.querySelector('[role="tooltip"]')?.textContent;
-      expect(tip(open)).toBe('Open conversation (⌘O)');
+      expect(tip(open)).toBe('Open conversation — 2 sessions (⌘O)');
       expect(tip(create)).toBe('New chat (⌘N)');
       // The dock's own menu still rides the bar.
       expect(

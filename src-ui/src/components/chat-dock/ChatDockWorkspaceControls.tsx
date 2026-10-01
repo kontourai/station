@@ -87,6 +87,7 @@ export function ChatDockWorkspaceActions({
   onOpenConversation,
   onNewChat,
   iconOnly = false,
+  sessionCount = 0,
 }: Pick<Controls, 'onOpenConversation' | 'onNewChat'> & {
   /**
    * Icon-only, named and tipped (#3046): in a bar that names the pane, the
@@ -94,12 +95,18 @@ export function ChatDockWorkspaceActions({
    * within the button cap and the title keeps the width.
    */
   iconOnly?: boolean;
+  /**
+   * How many conversations are open, when icon-only: more than one is a
+   * count worth a badge on the Open icon and a line in its tooltip.
+   */
+  sessionCount?: number;
 }) {
   const openShortcut = useShortcutDisplay('dock.openConversation');
   const newShortcut = useShortcutDisplay('dock.newChat');
   if (iconOnly) {
+    const counted = sessionCount > 1 ? `${sessionCount} sessions` : null;
     const openHint = withShortcutHint(
-      'Open conversation',
+      counted ? `Open conversation — ${counted}` : 'Open conversation',
       'dock.openConversation',
       () => openShortcut,
     );
@@ -114,10 +121,17 @@ export function ChatDockWorkspaceActions({
           <button
             type="button"
             className="chat-dock__new chat-dock__open chat-dock__new--icon"
-            aria-label="Open conversation"
+            aria-label={
+              counted ? `Open conversation, ${counted}` : 'Open conversation'
+            }
             onClick={onOpenConversation}
           >
             <MessageGlyph />
+            {counted ? (
+              <span className="chat-dock__new-count" aria-hidden="true">
+                {sessionCount > 99 ? '99+' : sessionCount}
+              </span>
+            ) : null}
           </button>
         </Tooltip>
         <Tooltip label={newHint} placement="bottom">

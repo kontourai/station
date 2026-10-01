@@ -134,6 +134,7 @@ import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import { MobileSheetPending } from './MobileSheetPending';
+import { needsYouCount } from './mobile-activity-groups';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
 import { NewChatUnavailableError } from './newChatErrors';
 import {
@@ -369,6 +370,7 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
         shellChrome: DockShellChrome;
         ownsDockShortcuts?: never;
         onPresentationTitleChange?: never;
+        onInboxNeedsYouChange?: never;
         conversationScope?: never;
         onScreen?: never;
       }
@@ -384,6 +386,12 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
         ownsDockShortcuts?: boolean;
         /** The title a host's breadcrumb shows for the conversation on screen. */
         onPresentationTitleChange?: (title: string) => void;
+        /**
+         * How many conversations need the reader (the inbox's own "Needs
+         * you" lane), published to a host that folds the inbox and must
+         * still show that something is waiting (#3046 round).
+         */
+        onInboxNeedsYouChange?: (count: number) => void;
         /**
          * `project` (the default): the Chat layout's pane belongs to its
          * Project — its inbox lists that Project's conversations and a chat of
@@ -1062,6 +1070,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     onPresentationTitleChange?.(presentationTitle);
   }, [onPresentationTitleChange, presentationTitle]);
+  // The inbox's "Needs you" count, from the same partition the inbox panel
+  // renders, for a host that folds the inbox. Read with the item list, as
+  // the panel's own grouping is.
+  const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
+  const inboxNeedsYou = useMemo(
+    () => (onInboxNeedsYouChange ? needsYouCount(taskItems, Date.now()) : 0),
+    [onInboxNeedsYouChange, taskItems],
+  );
+  useEffect(() => {
+    onInboxNeedsYouChange?.(inboxNeedsYou);
+  }, [inboxNeedsYou, onInboxNeedsYouChange]);
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,

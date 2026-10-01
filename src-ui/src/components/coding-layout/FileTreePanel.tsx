@@ -94,7 +94,9 @@ function FileTreeNode({
           {...rowProps}
         >
           <span className="file-tree-row__chevron">{isOpen ? '▾' : '▸'}</span>
-          <span className="file-tree-row__name">{entry.name}</span>
+          <span className="file-tree-row__name" title={entry.name}>
+            {entry.name}
+          </span>
         </button>
         {isOpen &&
           entry.children?.map((child) => (
@@ -131,7 +133,9 @@ function FileTreeNode({
       {...rowProps}
     >
       <span className="file-tree-row__bullet">·</span>
-      <span className="file-tree-row__name">{entry.name}</span>
+      <span className="file-tree-row__name" title={entry.name}>
+        {entry.name}
+      </span>
       {attached && (
         <span
           className="file-tree-row__attached"

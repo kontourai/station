@@ -42,7 +42,7 @@ import {
 } from '../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import { useDockSlotDevice, useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -62,6 +62,7 @@ import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspac
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import {
+  ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
   CodeGlyph,
@@ -118,6 +119,10 @@ function focusInKeyOwningEditor(): boolean {
 
 const STACK_CHORD_WHEN: ShortcutWhen = { not: 'terminalFocused' };
 const USER_MOVE_WINDOW_MS = 1000;
+/** How long a resized room rests before the inbox fold is judged again. */
+const FOLD_SETTLE_MS = 150;
+/** Room beyond the floor an unfold waits for, so a width on the line is still. */
+const FOLD_HYSTERESIS = 24;
 
 type StackTransition = 'push' | 'pop' | null;
 
@@ -731,10 +736,14 @@ export function CodingWorkbench({
     if (!element) return;
     const read = () => {
       const rect = element.getBoundingClientRect();
+      // The viewport stands in for a box that has no size yet, so a resize
+      // is a change here too.
+      const width = rect.width || window.innerWidth;
+      const height = rect.height || window.innerHeight;
       setRoom((current) =>
-        current.width === rect.width && current.height === rect.height
+        current.width === width && current.height === height
           ? current
-          : { width: rect.width, height: rect.height },
+          : { width, height },
       );
     };
     read();
@@ -786,6 +795,18 @@ export function CodingWorkbench({
     [setDeviceSetting],
   );
   const committedSideWidth = panels.sideWidth;
+  // The room the fold is judged by follows the measured room after a short
+  // settle, so a window being dragged is judged once it rests, not per frame.
+  const [foldRoomWidth, setFoldRoomWidth] = useState(roomWidth);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setFoldRoomWidth(roomWidth),
+      FOLD_SETTLE_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [roomWidth]);
+  /** The inbox's width when the layout folded it, for judging the unfold. */
+  const foldedInboxWidth = useRef(0);
   useEffect(() => {
     if (!wide) return;
     if (!sideOpen) {
@@ -795,26 +816,40 @@ export function CodingWorkbench({
       }
       return;
     }
-    if (!inboxOpen || panels.inbox !== null || autoFolded.current) return;
-    const inbox =
-      chatPageRef.current?.querySelector<HTMLElement>('.chat-dock-inbox');
-    const measured = inbox?.getBoundingClientRect().width || null;
+    // The reader's own choice for this session stands, whatever the room.
+    if (panels.inbox !== null) return;
     const width = clampCodingSideWidth(
       committedSideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
-      roomWidth,
+      foldRoomWidth,
     );
-    if (
-      codingTranscriptWidth(roomWidth, width, measured) <
-      CODING_TRANSCRIPT_MIN_WIDTH
-    ) {
-      autoFolded.current = true;
-      writeInbox(false);
+    if (inboxOpen && !autoFolded.current) {
+      const inbox =
+        chatPageRef.current?.querySelector<HTMLElement>('.chat-dock-inbox');
+      const measured = inbox?.getBoundingClientRect().width || null;
+      const transcript = codingTranscriptWidth(foldRoomWidth, width, measured);
+      if (transcript < CODING_TRANSCRIPT_MIN_WIDTH) {
+        foldedInboxWidth.current =
+          measured ??
+          codingTranscriptWidth(foldRoomWidth, width, 0) - transcript;
+        autoFolded.current = true;
+        writeInbox(false);
+      }
+    } else if (!inboxOpen && autoFolded.current) {
+      // Widened again: the inbox the layout folded comes back once it fits
+      // with room to spare, so a width on the line does not flap.
+      if (
+        codingTranscriptWidth(foldRoomWidth, width, foldedInboxWidth.current) >=
+        CODING_TRANSCRIPT_MIN_WIDTH + FOLD_HYSTERESIS
+      ) {
+        autoFolded.current = false;
+        writeInbox(true);
+      }
     }
   }, [
     committedSideWidth,
+    foldRoomWidth,
     inboxOpen,
     panels.inbox,
-    roomWidth,
     sideOpen,
     wide,
     writeInbox,
@@ -837,6 +872,17 @@ export function CodingWorkbench({
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the
   // bar's two slots beside it (#3046) rather than as a second row.
+  // The folded inbox's edge: a slim strip on the Chat column's left edge
+  // that reopens the inbox (the reader's own choice) and carries the inbox's
+  // "Needs you" count so a fold never hides that something is waiting. Fine
+  // pointers past the fold only — a coarse pointer has no hover to widen it.
+  const [inboxNeedsYou, setInboxNeedsYou] = useState(0);
+  const coarsePointer = useDockSlotDevice().coarsePointer;
+  const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
+  const inboxEdgeName =
+    inboxNeedsYou > 0
+      ? `Show inbox, ${inboxNeedsYou} need${inboxNeedsYou === 1 ? 's' : ''} you`
+      : 'Show inbox';
   const chatBar = centerChat && page === 'chat';
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
@@ -1042,11 +1088,43 @@ export function CodingWorkbench({
                     onScreen={page === 'chat'}
                     ownsDockShortcuts={false}
                     onPresentationTitleChange={setChatTitle}
+                    onInboxNeedsYouChange={setInboxNeedsYou}
                   />
                 </RegionChromeSlotsContext.Provider>
               ) : (
                 <DockChatNotice />
               )}
+              {inboxEdge ? (
+                <Tooltip
+                  label={inboxEdgeName}
+                  placement="right"
+                  className="coding-workbench__inbox-edge-slot"
+                >
+                  <button
+                    type="button"
+                    className="coding-workbench__inbox-edge"
+                    aria-label={inboxEdgeName}
+                    // Not `writeInbox`: this is the reader's own move, and
+                    // the session remembers it as such.
+                    onClick={() => setDeviceSetting('inboxOpen', true)}
+                  >
+                    <span
+                      className="coding-workbench__inbox-edge-glyph"
+                      aria-hidden="true"
+                    >
+                      <ArrowRightGlyph />
+                    </span>
+                    {inboxNeedsYou > 0 ? (
+                      <span
+                        className="coding-workbench__inbox-edge-count"
+                        aria-hidden="true"
+                      >
+                        {inboxNeedsYou > 99 ? '99+' : inboxNeedsYou}
+                      </span>
+                    ) : null}
+                  </button>
+                </Tooltip>
+              ) : null}
             </section>
             {wide && sideOpen ? (
               <PanelSeparator

@@ -358,6 +358,36 @@ describe('FileTreePanel in a host that draws its head (#3046 round)', () => {
     }
   });
 
+  test('a row’s name carries the full name as its title, for the ellipsis', () => {
+    filesState.data = [
+      {
+        name: 'src',
+        path: 'src',
+        type: 'directory',
+        children: [
+          {
+            name: 'a-very-long-component-file-name-that-will-not-fit.tsx',
+            path: 'src/a-very-long-component-file-name-that-will-not-fit.tsx',
+            type: 'file',
+          },
+        ],
+      },
+    ];
+    render(
+      <FileTreePanel
+        projectSlug="demo"
+        workingDir="/workspace"
+        onFileSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByTitle(
+        'a-very-long-component-file-name-that-will-not-fit.tsx',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTitle('src')).toBeTruthy();
+  });
+
   test('on its own it keeps its title row', () => {
     const { container } = render(
       <FileTreePanel

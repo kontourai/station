@@ -177,14 +177,18 @@ export function CodingTerminalPanel({
             </div>
           );
         })}
-        <button
-          type="button"
-          className="coding-layout__terminal-tab-add"
-          onClick={onOpenNewTerminal}
-          title="New terminal"
-        >
-          +
-        </button>
+        {headSlots && tabs.length === 0 ? null : (
+          // In a host's head with no terminal yet, the empty state's own
+          // "New Terminal" says it; a second "+" would say it twice.
+          <button
+            type="button"
+            className="coding-layout__terminal-tab-add"
+            onClick={onOpenNewTerminal}
+            title="New terminal"
+          >
+            +
+          </button>
+        )}
       </div>
       {presentation === 'layout' && (
         <button
