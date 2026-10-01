@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
-    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"src-ui/src/index.css","digest":"c35ffac51f2f6977e3c9cf49e0dfb5446c4e7d562a90e49156fe08dea39a9806","revision":"8427f3fd9868b0f9943f0b85389d18f2cc63240e"},
 
     {"path":"src-ui/src/lib/starter-work-operation-store.ts","digest":"d3c5ace0dae590debb023c5954ae91564e94d343fc08a19da311522f340daf68","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

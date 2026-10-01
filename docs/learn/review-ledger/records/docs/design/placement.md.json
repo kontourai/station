@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5ec5ec9d227abcbe9e1530e9900f7dcb345b8da2250df3e38ea74f0b11bac6eb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"0a2f73b587b340cfdfd80984eb4370342a33dfd3c7dfd6b6e95d8defe048f1a7","revision":"81391dc3397ac47c3e25d3e4d1581e2a93cb8499"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"src-ui/src/index.css","digest":"c35ffac51f2f6977e3c9cf49e0dfb5446c4e7d562a90e49156fe08dea39a9806","revision":"8427f3fd9868b0f9943f0b85389d18f2cc63240e"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
