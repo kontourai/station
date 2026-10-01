@@ -1,5 +1,10 @@
 /** @vitest-environment jsdom */
 
+import { defaultStorage } from '@kontourai/station-connect';
+import {
+  emptyStationProfileStore,
+  type StationProfileStore,
+} from '@kontourai/station-contracts';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -9,10 +14,12 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { NativeStationProfileRepository } from '../../../platform/native/stationProfileStorage';
 
 const mocks = vi.hoisted(() => ({
   isDesktop: true,
   profiles: [] as readonly Record<string, unknown>[],
+  repository: null as NativeStationProfileRepository | null,
   listeners: new Set<() => void>(),
   remove: vi.fn(),
   save: vi.fn(),
@@ -29,15 +36,16 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isTauri: true, isDesktop: mocks.isDesktop }),
-  nativeProfileRepository: () => ({
-    getRelayRouteProfiles: () => mocks.profiles,
-    subscribeRelayRouteProfiles: (listener: () => void) => {
-      mocks.listeners.add(listener);
-      return () => mocks.listeners.delete(listener);
+  nativeProfileRepository: () =>
+    mocks.repository ?? {
+      getRelayRouteProfiles: () => mocks.profiles,
+      subscribeRelayRouteProfiles: (listener: () => void) => {
+        mocks.listeners.add(listener);
+        return () => mocks.listeners.delete(listener);
+      },
+      removeRelayRouteProfile: mocks.remove,
+      saveRelayRouteProfile: mocks.save,
     },
-    removeRelayRouteProfile: mocks.remove,
-    saveRelayRouteProfile: mocks.save,
-  }),
 }));
 
 vi.mock(
@@ -66,6 +74,7 @@ vi.mock('../../../platform/native/relayKeyApproval', () => ({
   },
 }));
 
+import { NativeStationProfileStorage } from '../../../platform/native/stationProfileStorage';
 import { RelayRouteProfiles } from '../RelayRouteProfiles';
 
 const stationId = '11111111-1111-4111-8111-111111111111';
@@ -86,6 +95,7 @@ function renderRoutes() {
 describe('RelayRouteProfiles', () => {
   beforeEach(() => {
     mocks.isDesktop = true;
+    mocks.repository = null;
     mocks.listeners.clear();
     mocks.remove.mockReset();
     mocks.save.mockReset();
@@ -169,7 +179,97 @@ describe('RelayRouteProfiles', () => {
         2,
       ),
     );
-    expect(screen.queryByText('Saved broker routes')).toBeNull();
+    expect(
+      screen.getByText(
+        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Add broker route' }),
+    ).toBeTruthy();
+  });
+
+  test('creates a route from the empty state and persists it through the native repository', async () => {
+    window.localStorage.clear();
+    const persisted = { store: emptyStationProfileStore() };
+    const bridge = {
+      invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+        if (command === 'station_profile_store_read')
+          return structuredClone(persisted.store) as T;
+        if (command === 'station_profile_store_write') {
+          if (args?.expectedRevision !== persisted.store.revision)
+            throw new Error('profile store revision conflict');
+          persisted.store = JSON.parse(
+            String(args.contents),
+          ) as StationProfileStore;
+          return undefined as T;
+        }
+        throw new Error(`Unexpected native profile command: ${command}`);
+      },
+    };
+    const repository = new NativeStationProfileStorage(
+      bridge,
+      defaultStorage,
+      true,
+    );
+    await repository.hydrate();
+    mocks.repository = repository;
+
+    renderRoutes();
+    expect(
+      screen.getByText(
+        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add broker route' }));
+
+    fireEvent.change(screen.getByLabelText(/Station application address/), {
+      target: { value: 'https://station.example' },
+    });
+    fireEvent.change(screen.getByLabelText(/Broker address/), {
+      target: { value: 'https://broker.example' },
+    });
+    fireEvent.change(screen.getByLabelText('Station ID'), {
+      target: { value: stationId },
+    });
+    fireEvent.change(screen.getByLabelText('Enrollment ID'), {
+      target: { value: enrollmentId },
+    });
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: 'Zach Station' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save route' }));
+
+    await screen.findByText('Zach Station');
+    expect(screen.getByText('Not connected')).toBeTruthy();
+    expect(repository.getRelayRouteProfiles()).toHaveLength(1);
+    expect(persisted.store.profiles[0]).toMatchObject({
+      name: 'Zach Station',
+      endpoint: 'https://station.example',
+      relayRoute: {
+        brokerOrigin: 'https://broker.example',
+        stationId,
+        enrollmentId,
+      },
+    });
+    expect(persisted.store.profiles[0]).not.toHaveProperty('credentialRef');
+
+    const restoredRepository = new NativeStationProfileStorage(
+      bridge,
+      defaultStorage,
+      true,
+    );
+    await restoredRepository.hydrate();
+    expect(restoredRepository.getRelayRouteProfiles()).toMatchObject([
+      {
+        name: 'Zach Station',
+        relayRoute: {
+          brokerOrigin: 'https://broker.example',
+          stationId,
+          enrollmentId,
+        },
+      },
+    ]);
   });
 
   test('explains when the saved-route limit pauses automatic renewal', () => {

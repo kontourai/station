@@ -29,10 +29,11 @@ export function RelayRouteProfiles() {
   );
   const profiles = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [editing, setEditing] = useState<StationProfile | undefined>();
+  const [creating, setCreating] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<StationProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isTauri || profiles.length === 0) return null;
+  if (!isTauri) return null;
 
   async function removeRoute() {
     if (!removeTarget || !repository) return;
@@ -64,6 +65,13 @@ export function RelayRouteProfiles() {
           </>
         )}
       </p>
+      <Button onClick={() => setCreating(true)}>Add broker route</Button>
+      {profiles.length === 0 && (
+        <p className="connections-computers__note">
+          No broker routes are saved on this device yet. Save the Station and
+          broker details provided by the Station operator to begin setup.
+        </p>
+      )}
       {isDesktop && profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
         <p className="connections-computers__alert" role="alert">
           Automatic grant renewal is paused for all saved routes because there
@@ -86,7 +94,13 @@ export function RelayRouteProfiles() {
             <span className="connections-computers__state">Not connected</span>
           }
           control={
-            <Button size="sm" onClick={() => setEditing(profile)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setCreating(false);
+                setEditing(profile);
+              }}
+            >
               Edit
             </Button>
           }
@@ -112,10 +126,13 @@ export function RelayRouteProfiles() {
           {error}
         </p>
       )}
-      {editing && (
+      {(creating || editing) && (
         <RelayRouteProfileDialog
           profile={editing}
-          onClose={() => setEditing(undefined)}
+          onClose={() => {
+            setCreating(false);
+            setEditing(undefined);
+          }}
         />
       )}
       <ConfirmModal
