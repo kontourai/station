@@ -36,7 +36,7 @@
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"19d16440f2e8c69b7f26394a9f6d4c7033fb8ae6c86ad1e02102e007cad98f2d","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"07a9efd5b6dcaf76252ad859e1d903b513056f439f26ed021b04830f1bc00266","revision":"c780533aa14fbce199898ac95f9c168e73d466a2"},
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"37f1a1129a250d2f19779c75d07d7a4beeeb0e22fbe17a53c890156c8e4f4d7f","revision":"e949589811d0f726ec20b26d6549e4e0dcdb86ce"},
 
     {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"b2342efc85c9cae8d42bd588669176b09e589b34fdeaf28bcfe04a6f2bbdf67a","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
