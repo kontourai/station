@@ -38,7 +38,7 @@
 
     {"path":"src-ui/src/regions/region-surface-panes.ts","digest":"a559c6608daedcd0df853fa06ef402008d704e99770182cb57ae025d805753a3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/views/task-experiences.ts","digest":"cdc6a0d8558b9167702d8b1f38b4be903e0035e1b41858329347e437c80195a3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

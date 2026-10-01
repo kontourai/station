@@ -461,6 +461,142 @@ describe('Chat Routes', () => {
     expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
   });
 
+  describe('an error thrown while preparing the turn is returned as outward text', () => {
+    const secret = 'sk-live-SECRET-6d5c4b';
+    async function providerError(
+      statusCode?: number,
+      message = `model gone ${secret}`,
+    ) {
+      const { APICallError } = await import('@ai-sdk/provider');
+      return new APICallError({
+        message,
+        url: `https://provider.example.test/v1/models?key=${secret}`,
+        requestBodyValues: { secret },
+        ...(statusCode === undefined ? {} : { statusCode }),
+        responseBody: secret,
+      });
+    }
+    const cases: Array<[string, () => Promise<unknown>, number, string]> = [
+      [
+        'a model provider error',
+        () => providerError(404),
+        500,
+        'The model provider could not find the model (HTTP 404).',
+      ],
+      [
+        'a RetryError whose last attempt was a provider error',
+        async () => {
+          const { RetryError } = await import('ai');
+          return new RetryError({
+            message: `Failed after 3 attempts. Last error: model gone ${secret}`,
+            reason: 'maxRetriesExceeded',
+            errors: [await providerError(429), await providerError(429)],
+          });
+        },
+        500,
+        'The model provider rate-limited the request (HTTP 429).',
+      ],
+      [
+        'an error whose cause is a provider error',
+        async () =>
+          new Error(`launch failed: model gone ${secret}`, {
+            cause: new Error('inner', { cause: await providerError(503) }),
+          }),
+        500,
+        'The model provider returned an error (HTTP 503).',
+      ],
+      [
+        'a statusless provider error naming credentials',
+        () => providerError(undefined, `invalid credential ${secret}`),
+        401,
+        'The model provider rejected the credentials.',
+      ],
+      [
+        'an AggregateError holding a provider error',
+        async () =>
+          new AggregateError(
+            [new Error('other'), await providerError(429)],
+            `all attempts failed: ${secret}`,
+          ),
+        500,
+        'The model provider rate-limited the request (HTTP 429).',
+      ],
+      [
+        'a wrapper chain deeper than the search bound',
+        async () => {
+          let wrapped: unknown = await providerError(404);
+          for (let level = 0; level < 5; level++) {
+            wrapped = new Error(`level ${level}: ${secret}`, {
+              cause: wrapped,
+            });
+          }
+          return wrapped;
+        },
+        500,
+        'The request could not be completed.',
+      ],
+      [
+        'a cyclic cause chain',
+        async () => {
+          const outer = new Error(`outer ${secret}`);
+          const inner = new Error(`inner ${secret}`, { cause: outer });
+          (outer as { cause?: unknown }).cause = inner;
+          return outer;
+        },
+        500,
+        'The request could not be completed.',
+      ],
+      [
+        'a Station-authored error',
+        async () => new Error('Prompt template is missing'),
+        500,
+        'Prompt template is missing',
+      ],
+      [
+        'a Station-authored credential error',
+        async () => new Error('No credential configured for this connection'),
+        401,
+        'No credential configured for this connection',
+      ],
+    ];
+
+    test.each(cases)('%s', async (_label, makeError, status, expected) => {
+      const thrown = await makeError();
+      vi.mocked(prepareChatRequest).mockImplementationOnce(async () => {
+        throw thrown;
+      });
+      const app = createChatRoutes({
+        configLoader: { getLaunchabilityRevision: () => 0 },
+        providerService: {
+          getLaunchabilityRevision: () => 0,
+          listProviderConnections: () => [],
+        },
+        getAgentConfigurationRevision: () => 0,
+        activeAgents: new Map([['default', { id: 'agent' }]]),
+        agentSpecs: new Map([['default', {}]]),
+        agentTools: new Map([['default', []]]),
+        memoryAdapters: new Map(),
+        logger: {
+          error: vi.fn(),
+          warn: vi.fn(),
+          info: vi.fn(),
+          debug: vi.fn(),
+        },
+      } as any);
+
+      const response = await app.request('/default/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'ping' }),
+      });
+      const text = await response.text();
+
+      expect(response.status).toBe(status);
+      expect(JSON.parse(text).error).toBe(expected);
+      expect(text).not.toContain(secret);
+    });
+  });
+
   test('launches a persisted-but-unregistered agent when a valid model override is provided', async () => {
     const createModel = vi.fn(async () => ({ id: 'resolved-model' }));
     const createTempAgent = vi.fn(async () => ({ id: 'override-agent' }));

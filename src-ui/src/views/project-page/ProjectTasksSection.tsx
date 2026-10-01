@@ -21,11 +21,13 @@ import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
+import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
 import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
+import '../ProjectPage.css';
 
 /** Human-readable label for a claim actor (roadmap archive#584, part of epic
  * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
@@ -103,12 +105,14 @@ export function ProjectTasksSection({
   projectWorkingDirectory,
   gitStatus,
   agents,
+  presentation = 'list',
 }: {
   slug: string;
   projectId?: string;
   projectWorkingDirectory?: string;
   gitStatus?: GitStatusResult | null;
   agents?: string[];
+  presentation?: 'list' | 'board';
 }) {
   const { navigate } = useNavigation();
   const starterId =
@@ -370,7 +374,16 @@ export function ProjectTasksSection({
     <section className="project-page__tasks">
       <div className="project-page__section-header">
         <span className="project-page__section-label">Tasks</span>
+        <Button size="sm" onClick={() => void refetchTasks()}>
+          Refresh tasks
+        </Button>
       </div>
+      {presentation === 'board' ? (
+        <p>
+          Follow the work by its recorded status. Open a task to discuss it,
+          inspect contributions, and keep results.
+        </p>
+      ) : null}
 
       <form className="project-page__task-form" onSubmit={createTask}>
         {starterId === 'start-task' && (
@@ -452,7 +465,9 @@ export function ProjectTasksSection({
           </p>
         )}
 
-      <div className="project-page__task-grid">
+      <div
+        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ''}`}
+      >
         <div className="project-page__task-list">
           {tasksError ? (
             <ErrorState
@@ -470,25 +485,33 @@ export function ProjectTasksSection({
             <Empty variant="compact" label="No tasks yet." />
           ) : (
             <>
-              {sortedTasks.map((task) => (
-                <button
-                  className={`project-page__task-row ${
-                    task.id === selectedTaskId
-                      ? 'project-page__task-row--active'
-                      : ''
-                  }`}
-                  key={task.id}
-                  type="button"
-                  onClick={() => selectLocalTask(task.id)}
-                >
-                  <span className="project-page__task-row-title">
-                    {task.title}
-                  </span>
-                  <span className="project-page__task-row-meta">
-                    {task.status} · {task.priority}
-                  </span>
-                </button>
-              ))}
+              {presentation === 'board' ? (
+                <ProjectTaskBoard
+                  tasks={sortedTasks}
+                  selectedTaskId={selectedTaskId}
+                  onSelect={selectLocalTask}
+                />
+              ) : (
+                sortedTasks.map((task) => (
+                  <button
+                    className={`project-page__task-row ${
+                      task.id === selectedTaskId
+                        ? 'project-page__task-row--active'
+                        : ''
+                    }`}
+                    key={task.id}
+                    type="button"
+                    onClick={() => selectLocalTask(task.id)}
+                  >
+                    <span className="project-page__task-row-title">
+                      {task.title}
+                    </span>
+                    <span className="project-page__task-row-meta">
+                      {task.status} · {task.priority}
+                    </span>
+                  </button>
+                ))
+              )}
               {providerItems.map((item) => (
                 <button
                   className={`project-page__task-row ${

@@ -272,7 +272,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"28ae9ecb204f2a9653577f674a5faae2076a1f7c93038e94cdc143d99d03b8f1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"816a95380f960a7d06c9ffd37744d8d9f2d710aebb75a14cdc5f5e6e5149be17","revision":"11d74764719f6778a58dc7b4fa83a32af49c7c25"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
