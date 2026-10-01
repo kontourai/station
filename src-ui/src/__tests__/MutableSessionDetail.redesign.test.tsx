@@ -214,6 +214,38 @@ describe('composer', () => {
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
   });
+
+  test('a delegated task asks for a follow-up, not a reply to the agent', () => {
+    renderDetail(
+      baseSession({
+        lifecycleState: 'idle',
+        hasActiveTurn: false,
+        delegation: { taskId: 'task:parent-42', mode: 'isolated-child' },
+      }),
+    );
+    expect(
+      screen
+        .getByLabelText('Continue delegated task')
+        .getAttribute('placeholder'),
+    ).toBe('Add a follow-up for this task…');
+  });
+});
+
+describe('header meta line', () => {
+  test('names the model the session runs, preferring the one the runtime reported', () => {
+    const metaText = () =>
+      (
+        screen
+          .getByTestId('session-detail')
+          .querySelector('.sessions-detail__meta-line') as HTMLElement
+      ).textContent;
+    const configured = renderDetail(baseSession());
+    expect(metaText()).toContain('fixture-model');
+    configured.unmount();
+    renderDetail(baseSession({ reportedModel: 'reported-model' }));
+    expect(metaText()).toContain('reported-model');
+    expect(metaText()).not.toContain('fixture-model');
+  });
 });
 
 describe('header', () => {
