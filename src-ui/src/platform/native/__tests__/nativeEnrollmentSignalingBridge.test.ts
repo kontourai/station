@@ -1,6 +1,6 @@
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   openPeer: vi.fn(),
@@ -31,7 +31,7 @@ import type { NativeVerifiedPeerSignaling } from '@kontourai/station-connect/nat
 import { createNativeEnrollmentSignalingBridge } from '../nativeEnrollmentSignalingBridge';
 import type { NativeRelayBindingDto } from '../nativeRelaySignalingBridge';
 
-const now = 1_800_000_000_000;
+let now = 1_800_000_000_000;
 const stationId = '11111111-1111-4111-8111-111111111111';
 const enrollmentId = '22222222-2222-4222-8222-222222222222';
 const scope = { stationId, enrollmentId, routingGeneration: 4 } as const;
@@ -104,7 +104,7 @@ function iceConfiguration() {
 
 function createBridge(
   overrides: {
-    prepared?: unknown;
+    prepared?: unknown | (() => unknown);
     close?: () => unknown | Promise<unknown>;
   } = {},
 ) {
@@ -117,7 +117,9 @@ function createBridge(
       if (command === 'station_native_relay_ice_configuration')
         return iceConfiguration();
       if (command === 'station_native_enrollment_peer_prepare')
-        return overrides.prepared ?? prepared();
+        return typeof overrides.prepared === 'function'
+          ? overrides.prepared()
+          : (overrides.prepared ?? prepared());
       if (command === 'station_native_enrollment_peer_open')
         return { expiresAt: now + 100_000 };
       if (command === 'station_native_enrollment_peer_read')
@@ -186,6 +188,10 @@ function createBridge(
       }),
   };
 }
+
+beforeEach(() => {
+  now = 1_800_000_000_000;
+});
 
 describe('native enrollment signaling bridge', () => {
   test('uses the enrollment peer version, bound ICE config, fixed commands and awaited host close', async () => {
@@ -318,6 +324,46 @@ describe('native enrollment signaling bridge', () => {
         { peerHandle },
       ),
     );
+  });
+
+  test('retains failed-close handles through host expiry, then reclaims capacity', async () => {
+    const startTime = now;
+    const handles = ['A', 'B', 'C', 'D', 'E'].map((letter) =>
+      letter.repeat(43),
+    );
+    let nextPeer = 0;
+    let allowClose = false;
+    const fixture = createBridge({
+      prepared: () => {
+        const handle = handles[nextPeer++];
+        return prepared({
+          peerHandle: handle,
+          nonce: `${handle.slice(0, 42)}N`,
+          expiresAt: now + 120_000,
+        });
+      },
+      close: () => {
+        if (!allowClose) throw new Error('host close unavailable');
+      },
+    });
+    const signal = new AbortController().signal;
+    const bridge = fixture.create(signal);
+    const peers = [await bridge.open(signal)];
+
+    await expect(peers[0].close()).rejects.toThrow();
+    for (let index = 0; index < 3; index += 1)
+      peers.push(await bridge.open(signal));
+
+    await expect(bridge.open(signal)).rejects.toThrow(
+      'native_enrollment_peer_capacity_reached',
+    );
+    expect(nextPeer).toBe(4);
+
+    now = startTime + 120_001;
+    const recovered = await bridge.open(signal);
+    expect(recovered.peer.peerHandle).toBe(handles[4]);
+    allowClose = true;
+    await Promise.all([...peers, recovered].map((peer) => peer.close()));
   });
 });
 

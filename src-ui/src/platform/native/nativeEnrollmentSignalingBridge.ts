@@ -1,6 +1,5 @@
 import {
   createNativeVerifiedPeerTransport,
-  type NativeApplicationPeerAnswer,
   type NativeVerifiedPeer,
   type NativeVerifiedPeerSignaling,
 } from '@kontourai/station-connect/native-application';
@@ -29,8 +28,9 @@ const READ_COMMAND = 'station_native_enrollment_peer_read';
 const CLOSE_COMMAND = 'station_native_enrollment_peer_close';
 
 let pendingPeerPreparations = 0;
-const ownedPeerHandles = new Set<string>();
+const ownedPeerHandles = new Map<string, number>();
 const peerCloseTasks = new Map<string, Promise<void>>();
+const pendingPeerCleanups = new Set<string>();
 
 export interface NativeEnrollmentSignalingBridgeInput {
   readonly profileName: string;
@@ -139,6 +139,31 @@ function extractPeerHandle(value: unknown): string | null {
   return typeof handle === 'string' && PEER_HANDLE.test(handle) ? handle : null;
 }
 
+function boundedPeerExpiry(value: unknown, now: number): number {
+  if (isDict(value) && Number.isSafeInteger(value.expiresAt)) {
+    const expiresAt = value.expiresAt as number;
+    if (expiresAt > 0 && expiresAt <= now + MAX_HOST_PEER_LIFETIME_MS)
+      return expiresAt;
+  }
+  return now + MAX_HOST_PEER_LIFETIME_MS;
+}
+
+function pruneExpiredPeerHandles(now: number): void {
+  for (const [peerHandle, expiresAt] of ownedPeerHandles) {
+    if (expiresAt <= now) {
+      ownedPeerHandles.delete(peerHandle);
+      pendingPeerCleanups.delete(peerHandle);
+    }
+  }
+}
+
+function ownPeerHandle(value: unknown, peerHandle: string, now: number): void {
+  pruneExpiredPeerHandles(now);
+  if (ownedPeerHandles.has(peerHandle))
+    throw new Error('native_enrollment_peer_duplicate');
+  ownedPeerHandles.set(peerHandle, boundedPeerExpiry(value, now));
+}
+
 function comparePreparedPeer(
   value: unknown,
   binding: NativeRelayBindingDto,
@@ -225,14 +250,18 @@ function raceWithSignal<T>(
 async function closeOwnedPeer(
   invoke: TauriInvoker,
   peerHandle: string,
+  now: () => number,
 ): Promise<void> {
+  pruneExpiredPeerHandles(now());
   if (!ownedPeerHandles.has(peerHandle)) return;
   const existing = peerCloseTasks.get(peerHandle);
   if (existing) return existing;
+  pendingPeerCleanups.add(peerHandle);
   const task = Promise.resolve()
     .then(() => invoke.invoke(CLOSE_COMMAND, { peerHandle }))
     .then(() => {
       ownedPeerHandles.delete(peerHandle);
+      pendingPeerCleanups.delete(peerHandle);
     });
   peerCloseTasks.set(peerHandle, task);
   try {
@@ -242,7 +271,24 @@ async function closeOwnedPeer(
   }
 }
 
-function reservePeerPreparation(): () => void {
+async function retryPendingPeerCleanups(
+  invoke: TauriInvoker,
+  now: () => number,
+  signal: AbortSignal,
+): Promise<void> {
+  pruneExpiredPeerHandles(now());
+  for (const peerHandle of [...pendingPeerCleanups]) {
+    signal.throwIfAborted();
+    try {
+      await raceWithSignal(closeOwnedPeer(invoke, peerHandle, now), signal);
+    } catch {
+      signal.throwIfAborted();
+    }
+  }
+}
+
+function reservePeerPreparation(now: () => number): () => void {
+  pruneExpiredPeerHandles(now());
   if (
     ownedPeerHandles.size + pendingPeerPreparations >=
     MAX_OWNED_ENROLLMENT_PEERS
@@ -333,7 +379,8 @@ export function createNativeEnrollmentSignalingBridge(
         async prepare(prepareSignal) {
           prepareSignal.throwIfAborted();
           await assertBindingCurrent(prepareSignal);
-          const releaseSlot = reservePeerPreparation();
+          await retryPendingPeerCleanups(invoke, now, prepareSignal);
+          const releaseSlot = reservePeerPreparation(now);
           let deferRelease = false;
           let rawPromise: Promise<unknown>;
           try {
@@ -349,9 +396,7 @@ export function createNativeEnrollmentSignalingBridge(
             const raw = await raceWithSignal(rawPromise, prepareSignal);
             const peerHandle = extractPeerHandle(raw);
             if (peerHandle) {
-              if (ownedPeerHandles.has(peerHandle))
-                throw new Error('native_enrollment_peer_duplicate');
-              ownedPeerHandles.add(peerHandle);
+              ownPeerHandle(raw, peerHandle, now());
             }
             try {
               prepareSignal.throwIfAborted();
@@ -365,12 +410,13 @@ export function createNativeEnrollmentSignalingBridge(
                 ice.expiresAt,
                 now(),
               );
+              ownedPeerHandles.set(peerHandle, decoded.peer.expiresAt);
               await assertBindingCurrent(prepareSignal);
               prepareSignal.throwIfAborted();
               preparedPeer.value = decoded;
               return decoded.peer;
             } catch (error) {
-              if (peerHandle) await closeOwnedPeer(invoke, peerHandle);
+              if (peerHandle) await closeOwnedPeer(invoke, peerHandle, now);
               throw error;
             }
           } catch (error) {
@@ -379,9 +425,13 @@ export function createNativeEnrollmentSignalingBridge(
               void rawPromise
                 .then(async (raw) => {
                   const peerHandle = extractPeerHandle(raw);
-                  if (!peerHandle || ownedPeerHandles.has(peerHandle)) return;
-                  ownedPeerHandles.add(peerHandle);
-                  await closeOwnedPeer(invoke, peerHandle);
+                  if (!peerHandle) return;
+                  try {
+                    ownPeerHandle(raw, peerHandle, now());
+                  } catch {
+                    return;
+                  }
+                  await closeOwnedPeer(invoke, peerHandle, now);
                 })
                 .catch(() => {})
                 .finally(releaseSlot);
@@ -430,9 +480,9 @@ export function createNativeEnrollmentSignalingBridge(
           );
           readSignal.throwIfAborted();
           await assertBindingCurrent(readSignal);
-          return answer as NativeApplicationPeerAnswer;
+          return answer;
         },
-        close: (peerHandle) => closeOwnedPeer(invoke, peerHandle),
+        close: (peerHandle) => closeOwnedPeer(invoke, peerHandle, now),
       };
       const signaling = Object.freeze(signalingOwner);
 
@@ -471,11 +521,15 @@ export function createNativeEnrollmentSignalingBridge(
         let closeTask: Promise<void> | null = null;
         const close = () => {
           if (!closeTask) {
-            closeTask = (async () => {
+            const task = (async () => {
               await active.close();
               if (ownedPeerHandles.has(peer.peerHandle))
-                await closeOwnedPeer(invoke, peer.peerHandle);
+                await closeOwnedPeer(invoke, peer.peerHandle, now);
             })();
+            closeTask = task;
+            void task.catch(() => {
+              if (closeTask === task) closeTask = null;
+            });
           }
           return closeTask;
         };
@@ -491,7 +545,7 @@ export function createNativeEnrollmentSignalingBridge(
         const peerHandle =
           opened?.peer.peerHandle ?? preparedPeer.value?.peer.peerHandle;
         if (peerHandle)
-          await closeOwnedPeer(invoke, peerHandle).catch(() => {});
+          await closeOwnedPeer(invoke, peerHandle, now).catch(() => {});
         throw error;
       }
     },
