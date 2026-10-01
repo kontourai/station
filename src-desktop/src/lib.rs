@@ -6507,7 +6507,6 @@ async fn station_profile_store_write(
     .await
 }
 
-#[cfg(not(mobile))]
 fn now_millis_f64() -> Result<f64, String> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
