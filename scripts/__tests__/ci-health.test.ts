@@ -90,30 +90,33 @@ describe('CI health metrics', () => {
     expect(concurrencyTimeline([]).shareAtLeast18).toBeNull();
   });
   it('measures executed/skipped jobs, runner and wait hours, strict wait thresholds and each OS', () => {
-    const metrics = capacityMetrics([
-      job(),
-      job(2, {
-        labels: ['windows-latest'],
-        started_at: at(20),
-        completed_at: at(30),
-      }),
-      job(3, {
-        labels: ['macos-14'],
-        started_at: at(21),
-        completed_at: at(31),
-      }),
-      job(4, { conclusion: 'skipped' }),
-      job(5, { conclusion: null, completed_at: null }),
-    ]);
+    const metrics = capacityMetrics(
+      [
+        job(),
+        job(2, {
+          labels: ['windows-latest'],
+          started_at: at(20),
+          completed_at: at(30),
+        }),
+        job(3, {
+          labels: ['macos-14'],
+          started_at: at(21),
+          completed_at: at(31),
+        }),
+        job(4, { conclusion: 'skipped' }),
+        job(5, { conclusion: null, completed_at: null }),
+      ],
+      at(60),
+    );
     expect(metrics.executed).toBe(3);
     expect(metrics.skipped).toBe(1);
     expect(metrics.unfinished).toBe(1);
     expect(metrics.runnerHours).toBe(0.5);
-    expect(metrics.waitingHours).toBe(47 / 60);
+    expect(metrics.waitingHours).toBe(53 / 60);
     expect(metrics.waitOver5Share).toBe(1);
-    expect(metrics.waitOver20Share).toBe(1 / 3);
+    expect(metrics.waitOver20Share).toBe(1 / 4);
     expect(metrics.platformWaitMinutes).toEqual({
-      linux: { count: 1, median: 6, p90: 6 },
+      linux: { count: 2, median: 6, p90: 6 },
       windows: { count: 1, median: 20, p90: 20 },
       macos: { count: 1, median: 21, p90: 21 },
     });
@@ -208,6 +211,121 @@ describe('CI health metrics', () => {
       botRemovals: 1,
       reentries: { passedUnchanged: 1, neededNewCommits: 0 },
       regressionMinutes: { count: 1, median: 32, p90: 32 },
+    });
+  });
+  it('uses force-push and commit event times before re-entry, falling back only when absent', () => {
+    for (const event of ['committed', 'head_ref_force_pushed']) {
+      const change = { event, created_at: at(15), committer: { date: at(5) } };
+      expect(classifyReentry([removal, change, entry, merge], removal)).toBe(
+        'neededNewCommits',
+      );
+      expect(
+        classifyReentry(
+          [
+            removal,
+            { ...change, created_at: at(25), committer: { date: at(15) } },
+            entry,
+            merge,
+          ],
+          removal,
+        ),
+      ).toBe('passedUnchanged');
+    }
+  });
+  it('counts only the merge-queue bot login as a bot removal', () => {
+    const metrics = mergeMetrics(
+      [run(1, { event: 'merge_group', conclusion: 'failure' })],
+      [],
+      {
+        3102: [
+          { ...removal, actor: { type: 'Bot', login: 'future-landing[bot]' } },
+          entry,
+          merge,
+        ],
+      },
+      at(0),
+      at(60),
+    );
+    expect(metrics.botRemovals).toBe(0);
+    expect(metrics.reentries.passedUnchanged).toBe(0);
+  });
+  it('reports unfinished wait so far and concurrency through the window end as incomplete', () => {
+    const data = {
+      ...emptyData(),
+      jobs: [
+        job(1, {
+          conclusion: null,
+          started_at: null,
+          completed_at: null,
+          status: 'queued',
+        }),
+        job(2, {
+          conclusion: null,
+          started_at: at(10),
+          completed_at: null,
+          status: 'in_progress',
+        }),
+      ],
+    };
+    const snapshot = buildSnapshot(data, options);
+    expect(snapshot).toMatchObject({
+      incomplete: true,
+      reasons: ['window includes 2 unfinished jobs'],
+    });
+    expect(snapshot.capacity).toMatchObject({
+      unfinished: 2,
+      unfinishedWaitMinutes: { count: 2, median: 60, p90: 60 },
+      waitingHours: 70 / 60,
+      waitOver5Share: 1,
+      waitOver20Share: 0.5,
+      concurrency: { histogramMinutes: { 0: 10, 1: 50 } },
+    });
+    expect(renderSnapshot(snapshot)).toContain('Unfinished wait so far');
+  });
+  it('floors inverted job intervals without negative concurrency', () => {
+    const metrics = concurrencyTimeline(
+      [
+        job(1, { started_at: at(10), completed_at: at(5) }),
+        job(2, { started_at: at(0), completed_at: at(20) }),
+      ],
+      at(60),
+    );
+    expect(metrics.histogramMinutes).toEqual({ 1: 20 });
+  });
+  it('excludes unfinished groups from completed wall-time distributions', () => {
+    const data = {
+      ...emptyData(),
+      runs: [run(1, { event: 'merge_group', conclusion: null })],
+      jobs: Array.from({ length: 5 }, (_, i) => job(i)),
+    };
+    expect(buildSnapshot(data, options).perMergeGroup.wallMinutes.count).toBe(
+      0,
+    );
+    expect(
+      summarizeGroups(
+        [[run()]],
+        [...data.jobs, job(6, { conclusion: null, completed_at: null })],
+      ).wallMinutes.count,
+    ).toBe(0);
+  });
+  it('separates cancellation and timeout groups from failure rate and excludes cancelled regression durations', () => {
+    const runs = ['success', 'failure', 'cancelled', 'timed_out'].map(
+      (conclusion, i) =>
+        run(i, {
+          event: 'merge_group',
+          head_branch: `q${i}`,
+          name: 'Merge-queue regression',
+          conclusion,
+          run_started_at: at(0),
+          updated_at: at(i + 1),
+        }),
+    );
+    expect(mergeMetrics(runs, [], {}, at(0), at(60))).toMatchObject({
+      groupsFailed: 1,
+      failureRate: 0.25,
+      groupsCancelled: 1,
+      groupsTimedOut: 1,
+      regressionMinutes: { count: 3, median: 2, p90: 4 },
     });
   });
   it('separates setup overhead from named test steps for sampled shard families', () => {
@@ -349,6 +467,20 @@ describe('CI health collection bounds and command interface', () => {
     );
     expect(data.reasons[0]).toContain('Pagination cap');
   });
+  it.each([
+    'git@github.com:otherkontourai/station.git',
+    'https://github.com/otherkontourai/station',
+    'https://github.com/x/kontourai/station.git',
+  ])('rejects an origin with a suffix-only repo match: %s', async (origin) => {
+    const data = await collectHealth(
+      options,
+      async () => ({ total_count: 0, workflow_runs: [] }),
+      async () => origin,
+    );
+    expect(data.reasons).toEqual([
+      'origin does not match --repo=kontourai/station; local ledger unavailable',
+    ]);
+  });
   it('validates time windows and explicit recording/history destinations', () => {
     expect(
       parseOptions(['--hours=6', '--json'], new Date(at(360))),
@@ -398,7 +530,7 @@ describe('CI health collection bounds and command interface', () => {
       { body: snapshotComment(later) },
       { body: 'unrelated ```json\n{}\n```' },
       { body: 'CI health bad\n```json\ninvalid\n```' },
-      { body: snapshotComment(snapshot) },
+      { body: snapshotComment(snapshot).replaceAll('\n', '\r\n') },
     ]);
     expect(history).toEqual([snapshot, later]);
     expect(renderHistory(history)).toContain(

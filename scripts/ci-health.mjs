@@ -20,14 +20,7 @@ const duration = (job) =>
   Math.max(0, time(job.completed_at) - time(job.started_at)) / minute;
 const wait = (job) =>
   Math.max(0, time(job.started_at) - time(job.created_at)) / minute;
-const failed = (run) =>
-  [
-    'failure',
-    'timed_out',
-    'cancelled',
-    'action_required',
-    'startup_failure',
-  ].includes(run.conclusion);
+const failed = (run) => run.conclusion === 'failure';
 
 // Upper-rank quantiles match the capacity baseline, including even-sized medians.
 export function percentile(values, p) {
@@ -43,13 +36,31 @@ export function distribution(values) {
     p90: percentile(values, 0.9),
   };
 }
-export function concurrencyTimeline(jobs) {
+export function concurrencyTimeline(jobs, until) {
   const events = jobs
-    .filter(executed)
-    .flatMap((job) => [
-      [time(job.started_at), 1],
-      [time(job.completed_at), -1],
-    ])
+    .flatMap((job) => {
+      if (job.conclusion == null) {
+        const end = time(until);
+        if (job.started_at) {
+          const start = Math.min(time(job.started_at), end);
+          return [
+            [start, 1],
+            [end, -1],
+          ];
+        }
+        // Queued jobs consume no runner slots, but their wait remains observable.
+        return [
+          [Math.min(time(job.created_at), end), 0],
+          [end, 0],
+        ];
+      }
+      if (!executed(job)) return [];
+      const start = time(job.started_at);
+      return [
+        [start, 1],
+        [Math.max(start, time(job.completed_at)), -1],
+      ];
+    })
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const histogram = {};
   let current = 0;
@@ -92,6 +103,12 @@ export function summarizeGroups(groups, jobs) {
   const samples = groups
     .map((runs) => {
       const ids = new Set(runs.map((r) => `${r.id}:${r.run_attempt ?? 1}`));
+      const groupJobs = jobs.filter((j) => ids.has(j.health_run_key));
+      if (
+        runs.some((r) => r.conclusion == null) ||
+        groupJobs.some((j) => j.conclusion == null)
+      )
+        return null;
       const selected = jobs.filter(
         (j) => ids.has(j.health_run_key) && executed(j),
       );
@@ -137,7 +154,7 @@ export function classifyReentry(timeline, removal) {
   if (!nextEntry) return 'pending';
   const changed = after.some(
     (e) =>
-      e.event === 'committed' &&
+      ['committed', 'head_ref_force_pushed'].includes(e.event) &&
       eventTime(e) > eventTime(removal) &&
       eventTime(e) <= eventTime(nextEntry),
   );
@@ -174,7 +191,7 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
     for (const event of timeline) {
       if (
         event.event !== 'removed_from_merge_queue' ||
-        event.actor?.type !== 'Bot' ||
+        event.actor?.login !== 'github-merge-queue[bot]' ||
         eventTime(event) < time(since) ||
         eventTime(event) >= time(until)
       )
@@ -193,12 +210,19 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
       r.event === 'merge_group' &&
       r.name === 'Merge-queue regression' &&
       r.conclusion != null &&
+      r.conclusion !== 'cancelled' &&
       r.run_started_at &&
       r.updated_at,
   );
   return {
     groupsBuilt: groups.length,
     groupsFailed: failures.length,
+    groupsCancelled: groups.filter((g) =>
+      g.some((r) => r.conclusion === 'cancelled'),
+    ).length,
+    groupsTimedOut: groups.filter((g) =>
+      g.some((r) => r.conclusion === 'timed_out'),
+    ).length,
     failureRate: ratio(failures.length, groups.length),
     regressionFailedGroups: failures.filter((g) =>
       jobs.some(
@@ -219,9 +243,17 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
     ),
   };
 }
-export function capacityMetrics(jobs) {
+export function capacityMetrics(jobs, until) {
   const ran = jobs.filter(executed);
-  const waits = ran.map(wait);
+  const unfinished = jobs.filter((j) => j.conclusion == null);
+  const waiting = [...ran, ...unfinished];
+  const waitSoFar = (j) =>
+    Math.max(
+      0,
+      Math.min(time(j.started_at ?? until), time(until)) - time(j.created_at),
+    ) / minute;
+  const jobWait = (j) => (j.conclusion == null ? waitSoFar(j) : wait(j));
+  const waits = waiting.map(jobWait);
   const platform = (j) =>
     /macos/i.test(j.labels.join(' '))
       ? 'macos'
@@ -231,16 +263,17 @@ export function capacityMetrics(jobs) {
   return {
     executed: ran.length,
     skipped: jobs.filter((j) => j.conclusion === 'skipped').length,
-    unfinished: jobs.filter((j) => j.conclusion == null).length,
+    unfinished: unfinished.length,
+    unfinishedWaitMinutes: distribution(unfinished.map(waitSoFar)),
     runnerHours: ran.reduce((sum, j) => sum + duration(j), 0) / 60,
     waitingHours: waits.reduce((a, b) => a + b, 0) / 60,
-    concurrency: concurrencyTimeline(ran),
-    waitOver5Share: ratio(waits.filter((w) => w > 5).length, ran.length),
-    waitOver20Share: ratio(waits.filter((w) => w > 20).length, ran.length),
+    concurrency: concurrencyTimeline(jobs, until),
+    waitOver5Share: ratio(waits.filter((w) => w > 5).length, waiting.length),
+    waitOver20Share: ratio(waits.filter((w) => w > 20).length, waiting.length),
     platformWaitMinutes: Object.fromEntries(
       ['linux', 'windows', 'macos'].map((os) => [
         os,
-        distribution(ran.filter((j) => platform(j) === os).map(wait)),
+        distribution(waiting.filter((j) => platform(j) === os).map(jobWait)),
       ]),
     ),
   };
@@ -543,7 +576,10 @@ export async function collectHealth(
     const remote = (
       await runCommand('git', ['remote', 'get-url', 'origin'])
     ).trim();
-    if (!remote.endsWith(`${repo}.git`) && !remote.endsWith(repo))
+    const originRepo = remote.match(
+      /^(?:https?:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+\/[^/]+?)(?:\.git)?\/?$/,
+    )?.[1];
+    if (originRepo !== repo)
       throw new Error(
         `origin does not match --repo=${repo}; local ledger unavailable`,
       );
@@ -583,14 +619,18 @@ export async function collectHealth(
   };
 }
 export function buildSnapshot(data, options) {
+  const capacity = capacityMetrics(data.jobs, options.until);
+  const reasons = [...data.reasons];
+  if (capacity.unfinished)
+    reasons.push(`window includes ${capacity.unfinished} unfinished jobs`);
   return {
     schema: 'station-ci-health/v1',
     repo: options.repo,
     since: options.since,
     until: options.until,
     collectedAt: data.collectedAt ?? options.until,
-    incomplete: data.reasons.length > 0,
-    reasons: data.reasons,
+    incomplete: reasons.length > 0,
+    reasons,
     listingCapHits: data.capHits,
     mergeQueue: mergeMetrics(
       data.runs,
@@ -599,7 +639,7 @@ export function buildSnapshot(data, options) {
       options.since,
       options.until,
     ),
-    capacity: capacityMetrics(data.jobs),
+    capacity,
     perPRPush: summarizeGroups(groupRuns(data.runs, 'push'), data.jobs),
     perMergeGroup: summarizeGroups(
       groupRuns(data.runs, 'merge_group'),
@@ -664,6 +704,10 @@ export function renderSnapshot(s) {
   const rows = [
     ['Merge groups built', m.groupsBuilt],
     ['Groups failed / rate', `${m.groupsFailed} / ${percent(m.failureRate)}`],
+    [
+      'Groups cancelled / timed out',
+      `${m.groupsCancelled} / ${m.groupsTimedOut}`,
+    ],
     ['Failed groups with regression failure', m.regressionFailedGroups],
     [
       'PRs with failed group / bot removals',
@@ -685,6 +729,10 @@ export function renderSnapshot(s) {
     [
       'Runner-hours / waiting hours',
       `${number(c.runnerHours)} / ${number(c.waitingHours)}`,
+    ],
+    [
+      'Unfinished wait so far minutes median / p90',
+      stats(c.unfinishedWaitMinutes),
     ],
     ['Time with >=18 jobs running', percent(c.concurrency.shareAtLeast18)],
     [
@@ -724,7 +772,7 @@ export function readHistory(comments) {
   return comments
     .flatMap((comment) => {
       if (!comment.body?.startsWith('CI health ')) return [];
-      const block = comment.body.match(/^```json\n([\s\S]*?)\n```/m);
+      const block = comment.body.match(/^```json\r?\n([\s\S]*?)\r?\n```/m);
       if (!block) return [];
       try {
         const value = JSON.parse(block[1]);

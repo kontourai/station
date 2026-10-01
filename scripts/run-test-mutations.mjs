@@ -86,6 +86,22 @@ export const MUTATIONS = [
     ],
   },
   {
+    id: 'ci-health-bot-login',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure: 'counts only the merge-queue bot login as a bot removal',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "event.actor?.login !== 'github-merge-queue[bot]'",
+            "event.actor?.type !== 'Bot'",
+          ),
+      },
+    ],
+  },
+  {
     id: 'ci-health-listing-cap',
     test: 'scripts/__tests__/ci-health.test.ts',
     failure:
