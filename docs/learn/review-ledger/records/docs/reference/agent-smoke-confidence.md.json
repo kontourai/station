@@ -12,8 +12,6 @@
   "document": {"digest":"2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"5e54afc2870c678ee4b78efd17f1644aaeb1e686d5cb3b1cc0d6efb6b86afd77","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"},
-
     {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
     {"path":"scripts/station-agent-smoke.mjs","digest":"b3632d2947ae62ea4d1a14912a2de70e3935ee7d3acbca9c02d68ca49cbd01b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
@@ -48,7 +46,9 @@
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"}
   ],
 
   "checks": [

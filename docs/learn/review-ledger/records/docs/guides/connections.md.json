@@ -12,8 +12,6 @@
   "document": {"digest":"4987b54884ce5a56d41b2e842a44f4d12d7b9730536fbe3a6e3026ed68aa6cf4","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"5e54afc2870c678ee4b78efd17f1644aaeb1e686d5cb3b1cc0d6efb6b86afd77","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"},
-
     {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
     {"path":"docs/learn/media/connections-tour.webm","digest":"8630aae682bb9a47e2b2794ecbc44335c24afdef0967d5840d143fec75cf3bb2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -246,7 +244,11 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
+
+    {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
   ],
 
   "checks": [

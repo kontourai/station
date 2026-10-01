@@ -12,8 +12,6 @@
   "document": {"digest":"dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"5e54afc2870c678ee4b78efd17f1644aaeb1e686d5cb3b1cc0d6efb6b86afd77","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"},
-
     {"path":"docs/learn/media/shared-task-document.png","digest":"8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
@@ -44,7 +42,9 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"tests/project-task-room-collaboration.spec.ts","digest":"c4da422624b198fb8461865d538cd30356cf85183ecd469c20c34e05c3d01b29","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+    {"path":"tests/project-task-room-collaboration.spec.ts","digest":"c4da422624b198fb8461865d538cd30356cf85183ecd469c20c34e05c3d01b29","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media.json#/captures/1","digest":"fdeee7f06bef156ab77d5fcb5ab515098f5585e03e530aaca6a08fc828cd89ff","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"}
   ],
 
   "checks": [
