@@ -521,6 +521,23 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
+  it('marks a failed send as a send-failure notice, which the composer repeats', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new Error('temporarily unavailable'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'will fail');
+    });
+
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
+  });
+
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
