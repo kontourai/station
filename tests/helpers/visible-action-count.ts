@@ -11,7 +11,8 @@ import type { Page } from '@playwright/test';
  *
  * Counted: a `button` or `[role="button"]` with a non-empty box that is not
  * hidden, whose displayed text has two letters in a row. Not counted: an
- * icon-only button, a menu trigger (`aria-haspopup`), a choice (tab, menu
+ * icon-only button, a menu trigger (`aria-haspopup` of `true`, `menu` or
+ * `listbox` — not `dialog`, not `false`), a choice (tab, menu
  * item, option, radio, switch, or anything pressed/selected/checked), and
  * anything inside a `role="menu"`/`listbox`/`tablist` — the same exemptions
  * the static scan makes, decided here from the live DOM.
@@ -64,7 +65,16 @@ export async function visibleLabelledActions(
       return text.replaceAll(/\s+/g, ' ').trim();
     };
     const isAction = (button: Element) => {
-      if (button.hasAttribute('aria-haspopup')) return false;
+      // A MENU trigger only — the same values the static scan accepts. A
+      // button that opens a dialog is an ordinary action, and
+      // `aria-haspopup="false"` opens nothing.
+      if (
+        ['', 'true', 'menu', 'listbox'].includes(
+          button.getAttribute('aria-haspopup') ?? 'false',
+        )
+      ) {
+        return false;
+      }
       if (CHOICE_ROLES.has(button.getAttribute('role') ?? '')) return false;
       if (
         ['aria-pressed', 'aria-selected', 'aria-checked'].some((name) =>

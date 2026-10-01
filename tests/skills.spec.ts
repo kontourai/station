@@ -439,14 +439,6 @@ test.describe('Command skills', () => {
     // browser is the variable resolution reaching the dispatch, above.
   });
 
-  // #1180: `SkillsView` (`guidance`) is one of the routes where
-  // `SplitPaneLayout`'s mobile detail sheet marks `PageFrame`'s route frame
-  // `inert` (PageFrame.tsx:155) while it is open. `SkillRunModal` and
-  // `ImportSkillsModal` render as plain siblings of `SplitPaneLayout`, so
-  // either dialog fell inside that `inert` subtree: visible, but `.focus()` a
-  // no-op and every button unclickable. A visibility assertion alone cannot
-  // tell the two states apart — this proves focus and a real click instead,
-  // the same shape #1131's `plugin-update.spec.ts` coverage uses.
   // #3045: the rendered half of the two-action cap, on a real screen. The
   // static scan reads JSX; this counts the labelled buttons the skill detail
   // header actually shows, at a desktop and a phone width, and then finds the
@@ -485,6 +477,14 @@ test.describe('Command skills', () => {
     });
   }
 
+  // #1180: `SkillsView` (`guidance`) is one of the routes where
+  // `SplitPaneLayout`'s mobile detail sheet marks `PageFrame`'s route frame
+  // `inert` (PageFrame.tsx:155) while it is open. `SkillRunModal` and
+  // `ImportSkillsModal` render as plain siblings of `SplitPaneLayout`, so
+  // either dialog fell inside that `inert` subtree: visible, but `.focus()` a
+  // no-op and every button unclickable. A visibility assertion alone cannot
+  // tell the two states apart — this proves focus and a real click instead,
+  // the same shape #1131's `plugin-update.spec.ts` coverage uses.
   test('skill dialogs stay reachable around a phone mobile detail sheet', async ({
     page,
   }) => {

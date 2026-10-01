@@ -104,6 +104,27 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
+    test('only a menu-opening aria-haspopup exempts a labelled button', async () => {
+      const { tab, close } = await open(
+        page(`<div role="toolbar">
+          <button aria-haspopup="menu">More</button>
+          <button aria-haspopup="true">Options</button>
+          <button aria-haspopup="listbox">Choose</button>
+          <button aria-haspopup="dialog">Settings</button>
+          <button aria-haspopup="false">Plain</button>
+          <button>Save</button>
+        </div>`),
+        1280,
+      );
+      try {
+        expect(await actionRowsOverCap(tab)).toEqual([
+          { container: 'div', labels: ['Settings', 'Plain', 'Save'] },
+        ]);
+      } finally {
+        await close();
+      }
+    });
+
     test('counts what the cascade shows: the same markup fails wide and conforms narrow', async () => {
       const html = page(`<header class="pane-header">
         <button>Open</button><button>Share</button><button class="wide-only">Export</button>

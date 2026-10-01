@@ -131,9 +131,9 @@ and its menu. An overflow item marked `tone: 'danger'` is painted as
 destructive and moved last, behind a separator. A disabled item can carry a
 `disabledReason`, shown under its label; such a row is `aria-disabled` rather
 than `disabled`, so the keyboard can reach it and hear the reason, and it
-refuses activation. A row with neither `primary` nor `secondary` shows a word
-(`aloneText`, "Manage" by default) beside the `⋯`, and `overflowLabel` should
-contain that word. The row's buttons and the trigger have an always-on 44px
+refuses activation. A row with neither `primary` nor `secondary` shows the
+first word of `overflowLabel` beside the `⋯` ("Manage ⋯" for "Manage Kiro
+CLI"), which is then the row's one labelled action. The row's buttons and the trigger have an always-on 44px
 hit area, and the trigger takes the height of the buttons beside it, so a row
 needs no page-local responsive rule for its touch targets.
 
@@ -142,9 +142,14 @@ The menu is
 which the dock header's More menu also uses. It is placed from measured
 geometry: below its trigger when it fits, otherwise on the side with more
 room, capped to that room with internal scroll, kept inside the viewport
-gutters, and re-placed on scroll and resize. Opened from inside a dialog it
-takes a layer above the dialog; elsewhere it stays on the navigation layer,
-below dialogs.
+gutters, and re-placed once per frame on scroll and resize; it closes when its
+trigger scrolls out of the viewport. Its layer is the one just above whatever
+hosts its trigger: the highest z-index among the trigger's ancestors and among
+the overlays it was opened from, which
+[`ResponsiveDialogSurface`](../../src-ui/src/components/ResponsiveDialogSurface.tsx)
+provides through [an overlay context](../../src-ui/src/components/overlay-layer.ts)
+because a portal hides them from the DOM. With no such host it stays on the
+navigation layer, below dialogs.
 
 The [button-cap ratchet](../../scripts/button-cap-ratchet.mjs)
 (`npm run button-cap:ratchet`) holds the same line for rows written without
@@ -160,13 +165,16 @@ with a `reason` is one the scan misreads; one without is a row still to fold.
 The scan reads source structure, not layout. It does not see actions assembled
 from an array or split across components, anchors styled as buttons, whether
 siblings render in one line, or how a header collapses as width shrinks.
-It counts only `Button` and `button`, plus an `ActionRow`'s filled slots and
-an overflow menu that inlines a single command; other components that render
+It counts only `Button` and `button`, plus an `ActionRow`'s filled slots (one
+when neither is filled) and an overflow menu that shows a word; other components that render
 a button, and labels passed as props or spreads, are not seen. Tabs, menu
 items, toggles carrying `aria-pressed`, `aria-selected` or `aria-checked`,
 menu triggers (`aria-haspopup` bare, `true`, `"menu"` or `"listbox"`) and
-title-and-description cards are not counted. An element with content between
-two buttons ends a run. `&&` branches all count unless the syntax tree proves
+title-and-description cards are not counted. A `role` or `className`
+exempts only when it is a static string; a conditional or computed value
+exempts nothing. An element with content between two buttons ends a run. A
+ternary's arms are alternatives: the row is counted once per arm and the
+largest count stands. `&&` branches all count unless the syntax tree proves
 their guards exclusive: a name or dotted chain against its own `!`, or one
 chain compared with literals. A guard containing `||`, `??` or a call is
 never proved exclusive, so such branches are summed. A file that does not
