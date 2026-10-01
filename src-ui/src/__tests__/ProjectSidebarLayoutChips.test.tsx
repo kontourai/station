@@ -20,6 +20,7 @@ import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 /**
  * A SPY model rather than the `null` this returned before #2158: a chip's

@@ -776,17 +776,17 @@
 
     {"path":"src-ui/src/app-shell/AppViewContent.tsx","digest":"36ca49c74ca989ccf2359f1f815bdc317a0bfc6506f7e2b3bac243ad3b79af4c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"721cba920da20e4f1cfd31b595e4bcb0c024f45a7763284c26bc3bb1c1dfb7f8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"5f014ce497321c0bbbad91fd9463c9a5a8eb2613822929c30a5187d289ae9543","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
 
     {"path":"src-ui/src/components/home/StarterWorkCard.tsx","digest":"e111892b72c350c7a95919ded04a229d5512a586259d6ff5d04d620b3b78b9a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"b209995c3840045199fff2df124b822840ea1eff3107274b82d7c42e3c9e78fa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"cb7ea49a5ac22cd6427fff76b105b4a5ff71cc6ff385abc84a65e82023fdef89","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
 
     {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

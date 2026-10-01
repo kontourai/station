@@ -30,6 +30,7 @@ import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
 const showSurface = vi.hoisted(() => vi.fn());
+const showSurfacePage = vi.hoisted(() => vi.fn());
 // Mutable so the authority-switching test can move the mounted Home between
 // two same-origin authorities (and to none).
 const authorityRef = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
+  useShowSurfacePage: () => showSurfacePage,
 }));
 
 import { HomeView } from '../views/HomeView';
@@ -336,6 +338,7 @@ describe('HomeView', () => {
 
   beforeEach(() => {
     showSurface.mockClear();
+    showSurfacePage.mockClear();
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -949,7 +952,7 @@ describe('HomeView', () => {
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -978,7 +981,7 @@ describe('HomeView', () => {
       screen.getAllByText(/Agent unavailable · Model unavailable/).length,
     ).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
     fireEvent.click(
