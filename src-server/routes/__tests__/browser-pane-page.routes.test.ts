@@ -9,10 +9,8 @@
  * same route the canvas uses) and browser routes, over a fake browser host
  * whose CDP events each test emits in the shapes Chromium sends.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { isAgentOriginatedRequest } from '../../runtime/mcp/station-control-caller.js';
 import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
 import { BROWSER_CONSOLE_LIMIT } from '../../services/browser/browser-console-log.js';
@@ -85,11 +83,7 @@ function fakeHost() {
   };
 }
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 type Role = 'operator' | 'nobody';
 const roleOf = (request: Request) =>
@@ -106,8 +100,7 @@ function harness(
     lease?: { now: () => number; humanHoldMs?: number };
   } = {},
 ) {
-  const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-page-'));
-  homes.push(stationHome);
+  const stationHome = makeTempDir('station-browser-page-');
   const fake = fakeHost();
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
