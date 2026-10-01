@@ -22,9 +22,9 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"4954d7323d2f5a24705cb9d5823a69a084bf4bddff1e08f5884f3c5ea112df53","revision":"5a3d5b4e592514aec78c8ed1596cd83512940e42"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-ref-store.ts","digest":"beec11fff4110c29a45b77202e29b8012eafddeac7667baea13ddd5be74d4e8f","revision":"908121376b648ddfd8c27e89744b98c12fc57990"},
+    {"path":"src-server/services/checkpoints/checkpoint-ref-store.ts","digest":"34b5c13a3f0094a2c4467aafdba0f7ce799aac9e7ab58c958e8b9f8a15d85937","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"5e6204b5c16d3441882a8f59af83a59b4fdddea36a35cc14b857ccd13a2af5de","revision":"908121376b648ddfd8c27e89744b98c12fc57990"},
+    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"252a314587f773a6215329b59c6044a9d34c3bd49cbbae33cef1ed02d5655d88","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
 
     {"path":"src-server/services/checkpoints/turn-checkpoint-capture.ts","digest":"160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
