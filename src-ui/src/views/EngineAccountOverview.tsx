@@ -96,7 +96,8 @@ function AccountPage({
     canManage || canLogin,
   );
   const ref =
-    selected === undefined
+    selected === undefined ||
+    !accounts.data?.accounts.some((account) => account.ref === selected)
       ? (accounts.data?.activeProfileRef ?? null)
       : selected;
   const account = accounts.data?.accounts.find((a) => a.ref === ref);

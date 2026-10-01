@@ -41,7 +41,8 @@ test.each([
     const calls: Array<{ path: string; method: string; body?: string }> = [];
     let started = false,
       done = false,
-      refused = true;
+      refused = true,
+      workExists = true;
     const reply = (data: unknown) =>
       new Response(JSON.stringify(data), {
         headers: { 'Content-Type': 'application/json' },
@@ -89,7 +90,7 @@ test.each([
                   authState: done ? 'authenticated' : 'unauthenticated',
                   login: engine === 'claude' ? 'browser-code' : 'device-code',
                 },
-              ],
+              ].filter((account) => workExists || account.ref !== 'work'),
             },
           });
         if (u.pathname.endsWith('/account-usage'))
@@ -249,6 +250,11 @@ test.each([
     ).toBeTruthy();
     if (management)
       expect(screen.getByText('Some activity is missing.')).toBeTruthy();
+    if (management) {
+      workExists = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await screen.findByText('80% left');
+    }
     mounted.unmount();
     client.clear();
   },
