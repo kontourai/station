@@ -12,6 +12,28 @@
   "document": {"digest":"202df09f6d5170449a1eac71ce2050060e0452b9a8e9695c2b145400ab03d3dc","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
   "sources": [
+    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
+
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"package.json#/scripts/connection:key","digest":"a3fbd9cffb8957a0881d98eb06e31778d81430cc7b1422bd93e1d756f50e86ba","revision":"96290b2a6be25d5b4b62d3fbd3f671888148e90a"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/install:playwright","digest":"72ceae4ea454289696c3237a8fe3f23a56d801056d131f320665cdb067f6c5a0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/lab:browser-transport","digest":"9188d44aa698cb2541f4a30d03b180e267a2db639ea0cac7556400e79f1c8ba4","revision":"ba739a696f65bbdd81bff2cb740dbc93cceced78"},
+
+    {"path":"package.json#/scripts/lab:collaboration","digest":"a70e4d5bbdecd622f4862f89f90a0a4f8facb38a1bd98b4ed0f1825cd29c6ead","revision":"6aee00836436ae60acad00c377534baac8ade9b5"},
+
+    {"path":"package.json#/scripts/lab:native-relay-diagnostic-echo","digest":"1b8d98d8b5e584c58f571f0f0aedf6b75506411fc6f541cc326030f5c64d0a71","revision":"1482667a35ab9e3edefc95b81185589ca2aa813b"},
+
+    {"path":"package.json#/scripts/lab:remote-relay","digest":"b8f56e50c34b3455edb1d9b87110f070074b6b109fa21e8660d400a8bcc7cb32","revision":"60a7e0cc312d3dd061f5f30babcf966131b6129e"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:mutation:smoke","digest":"c4400854fe7e13d8dc8d69af73aef1313a2bbdc3d5a959120934bd001c4daa32","revision":"86a943268c5517bfe0dce14638adc784e29c84fc"},
+
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
     {"path":"packages/connect/src/core/applicationChannelFrames.ts","digest":"0bc272a93b799b8c7a26f4642d9a5be78fb50cea0bdce8d57367ea5af9dad3f6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -34,6 +56,8 @@
 
     {"path":"packages/shared/src/connection-proof.ts","digest":"921ea3f05e5e87aa308552c46b7dc567a340ca6c02989b710306ecfc6dd3c6b4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
     {"path":"scripts/browser-transport-lab.ts","digest":"bcb681ee30437f1c49cdb64a99d6a3e19807829fd26df32f44eb33f30d2ff197","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/connection-key.ts","digest":"d21d2c52fa8fb316669f3dacf21bc89140cf6d09691c8b5d3cb168de66b97b33","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -43,6 +67,18 @@
     {"path":"scripts/lib/browser-transport-pion.ts","digest":"c0f05718573c012cf4b969de25ae1c3bd5b474024f6531c2003ae7bd0dafe1ac","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/lib/local-collaboration-accounts.ts","digest":"dedf9f37cd906a8963066641acefe66e3382d9c1fb5ccb6b180f37d103ff2275","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/local-collaboration-process.mjs","digest":"0fc1aaf62f721e3a44cae207c198946066a17fea2e484ac7dd5343123e952b71","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"scripts/lib/local-collaboration-relay.mjs","digest":"cb07996d48a3a4afa8c43b7a0f7871e4cca342ad8f538495d9e3c466edde3ed8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"scripts/lib/local-collaboration-station.ts","digest":"94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"scripts/lib/local-collaboration-udp-relay.mjs","digest":"3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/lib/remote-relay-ssh.ts","digest":"a95d597bc421438e552a4940161c014440a2ec326f931c980917435f26371df8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -78,7 +114,7 @@
 
     {"path":"src-server/runtime/bootstrap/account-bound-device-gate.ts","digest":"d646b2bcba9f2f84c4c64246612e4a8899a7e11258c9834d53b1d3f52e502561","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"49951201fe9590b5fbf6b33873d2ae6c48a68dbef028f4ed57169d67f01cdf83","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -86,7 +122,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"b5d0cfdd54890ea9a0dc179a56a501bcb64f99350b5bd7111bccc40b5a16cf17","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"faf0d35e7f113a6453393a2a4494e79724025499e1d902ee66832c071c721f77","revision":"870fc1303b91c738a6849de24d801db1d3e08a18"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -138,65 +174,29 @@
 
     {"path":"src-ui/src/platform/native/nativeDiagnosticEchoBridge.ts","digest":"1707339c3fe03e51ae2ce88a6f2133528ed20af0a987887bad204c1bbb8ba535","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
+    {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
     {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/BrowserRelayRoutes.test.tsx","digest":"535f103f058eded562dd92ff5178fe7abf736dbfd5568c0a3234b07f9422031b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"531ad6208755dc723e632d2405099689ff32b94fc99beb2e5fcd918957d8f7ef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/BrowserRelayRoutes.test.tsx","digest":"535f103f058eded562dd92ff5178fe7abf736dbfd5568c0a3234b07f9422031b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
-
-    {"path":"scripts/lib/local-collaboration-process.mjs","digest":"0fc1aaf62f721e3a44cae207c198946066a17fea2e484ac7dd5343123e952b71","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/local-collaboration-relay.mjs","digest":"cb07996d48a3a4afa8c43b7a0f7871e4cca342ad8f538495d9e3c466edde3ed8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/local-collaboration-udp-relay.mjs","digest":"3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/connection:key","digest":"a3fbd9cffb8957a0881d98eb06e31778d81430cc7b1422bd93e1d756f50e86ba","revision":"96290b2a6be25d5b4b62d3fbd3f671888148e90a"},
-
-    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/install:playwright","digest":"72ceae4ea454289696c3237a8fe3f23a56d801056d131f320665cdb067f6c5a0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/lab:browser-transport","digest":"9188d44aa698cb2541f4a30d03b180e267a2db639ea0cac7556400e79f1c8ba4","revision":"ba739a696f65bbdd81bff2cb740dbc93cceced78"},
-
-    {"path":"package.json#/scripts/lab:collaboration","digest":"a70e4d5bbdecd622f4862f89f90a0a4f8facb38a1bd98b4ed0f1825cd29c6ead","revision":"6aee00836436ae60acad00c377534baac8ade9b5"},
-
-    {"path":"package.json#/scripts/lab:native-relay-diagnostic-echo","digest":"1b8d98d8b5e584c58f571f0f0aedf6b75506411fc6f541cc326030f5c64d0a71","revision":"1482667a35ab9e3edefc95b81185589ca2aa813b"},
-
-    {"path":"package.json#/scripts/lab:remote-relay","digest":"b8f56e50c34b3455edb1d9b87110f070074b6b109fa21e8660d400a8bcc7cb32","revision":"60a7e0cc312d3dd061f5f30babcf966131b6129e"},
-
-    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/test:mutation:smoke","digest":"c4400854fe7e13d8dc8d69af73aef1313a2bbdc3d5a959120934bd001c4daa32","revision":"86a943268c5517bfe0dce14638adc784e29c84fc"},
-
-    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
-
-    {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"e2c8f9a8ecebcb49e15313becabc4070e1d0a65ff89db0670a7af1839fd3f914","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
-
-    {"path":"tests/tauri-shell/native-project-runtime-fixture.ts","digest":"9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
     {"path":"tests/tauri-shell/native-project-acceptance.e2e.ts","digest":"3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"tests/tauri-shell/native-project-runtime-fixture.ts","digest":"9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"scripts/lib/local-collaboration-station.ts","digest":"94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
-
-    {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
-
-    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
-
-    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"}
+    {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

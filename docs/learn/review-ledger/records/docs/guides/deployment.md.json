@@ -14,8 +14,6 @@
   "sources": [
     {"path":".dockerignore","digest":"cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
-
     {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"deploy/public-ingress/Caddyfile","digest":"8836c4eb1f900dbda0aed6f5365f0c3ffb309046224c9470024a6caae31f0598","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -25,6 +23,8 @@
     {"path":"deploy/public-ingress/smoke.mjs","digest":"5703b039d109226835106c01493893b2340b423d3d574574e571aa53a0d93a74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"monitoring/docker-compose.yml","digest":"d095a34bf788ab3ec13c1cc3d65edf8c485d4e5de00005219802ba402683963e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"faf0d35e7f113a6453393a2a4494e79724025499e1d902ee66832c071c721f77","revision":"870fc1303b91c738a6849de24d801db1d3e08a18"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
