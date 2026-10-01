@@ -6052,11 +6052,16 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* The chat pane's floating status pill (components/status) sits over the
-   transcript's top-right corner. A constant top inset keeps it off the first
-   message when the transcript is scrolled to the top; it never changes when
-   the pill comes and goes, so nothing shifts. */
-.chat-dock__content-area .chat-messages {
-  padding-top: calc(var(--chat-message-gutter) + 36px);
+   transcript's top-right corner. A constant 36px of clear space keeps it off
+   the first message when the transcript is scrolled to the top; it never
+   changes when the pill comes and goes, so nothing shifts. It is a spacer in
+   the scrolled content (20px plus the column's 16px gap), not padding on the
+   scroller: padding cannot shrink, and in a short dock it pushed the composer
+   out of view. */
+.chat-dock__content-area .chat-messages::before {
+  content: "";
+  flex: none;
+  height: 20px;
 }
 
 .conversation-history {
