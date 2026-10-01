@@ -186,8 +186,11 @@ export function createNativeEnrollmentExchange(
     } finally {
       clearTimeout(timer);
       lifetime.abort();
-      opened.channel.close();
-      await opened.close();
+      try {
+        opened.channel.close();
+      } finally {
+        await opened.close();
+      }
     }
   };
 }

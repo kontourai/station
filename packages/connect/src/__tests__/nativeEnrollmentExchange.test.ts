@@ -78,6 +78,7 @@ function fixture(
     close,
     isClosed: () => closed,
     signal: lifetime,
+    channel: channels[0]!,
   };
 }
 
@@ -179,6 +180,21 @@ describe('native enrollment one-request exchange', () => {
     release?.(prepared());
     expect(f.dispatched).not.toHaveBeenCalled();
     expect(accept).not.toHaveBeenCalled();
+    expect(f.close).toHaveBeenCalledOnce();
+  });
+
+  test('releases the owned host peer even when synchronous channel cleanup throws', async () => {
+    const f = fixture();
+    f.close.mockResolvedValueOnce();
+    f.channel.close = () => {
+      throw new Error('channel_cleanup_failed');
+    };
+    await expect(
+      f.exchange(
+        async () => ({ ...prepared(), peerHandle: 'x'.repeat(43) }),
+        vi.fn(),
+      ),
+    ).rejects.toThrow('channel_cleanup_failed');
     expect(f.close).toHaveBeenCalledOnce();
   });
 });
