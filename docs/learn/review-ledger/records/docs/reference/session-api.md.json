@@ -68,7 +68,9 @@
 
     {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"}
+    {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"b7561d3b1d39b4cd9ae541ef6048f7e9648a86ad"}
   ],
 
   "checks": [
