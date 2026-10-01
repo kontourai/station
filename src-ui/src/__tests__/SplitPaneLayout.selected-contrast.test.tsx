@@ -19,11 +19,11 @@
  * Row content, and why each is here:
  * - Agents: the real `buildAgentsViewItems` rows (engine chip + readiness
  *   pill badges, tone-coloured).
- * - Activity: a delegated-run member row in the shape `SessionsView` renders
- *   today — `.session-member-status` with the real `StatusGlyph`, spans that
- *   read `--text-muted`, and `.session-origin-history` — plus the real
- *   `SessionProjectPill` trailing control. SessionsView's own row builder is
- *   not exported, so this is a fixture of its markup, not a call into it.
+ * - Activity: a row in the shape `SessionsView` renders today —
+ *   `.activity-row-meta` with the real `StatusGlyph`, its state word, a
+ *   failure detail and the agent/project/origin segments — plus the trailing
+ *   time and the row-actions trigger. SessionsView's own row builder is not
+ *   exported, so this is a fixture of its markup, not a call into it.
  * - A plain name + subtitle row, the shape the other consumers use.
  *
  * Anti-inert guards: each page asserts the selected rows exist and that axe
@@ -68,7 +68,6 @@ vi.mock('../hooks/useIsMobile', () => ({
 }));
 
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
-import { SessionProjectPill } from '../components/session/SessionProjectPill';
 import { StatusGlyph } from '../components/status/StatusGlyph';
 import type { AgentData } from '../contexts/AgentsContext';
 import { buildAgentsViewItems } from '../views/agent-editor/agentsViewHelpers';
@@ -84,7 +83,7 @@ const CSS_PATHS = [
   resolve(HERE, '../components/AgentReadinessCell.css'),
   resolve(HERE, '../components/badges/EngineChip.css'),
   resolve(HERE, '../components/status/StatusGlyph.css'),
-  resolve(HERE, '../components/session/SessionProjectPill.css'),
+  resolve(HERE, '../views/activity/ActivityRowMenu.css'),
   resolve(HERE, '../views/SessionsView.css'),
 ];
 
@@ -154,29 +153,33 @@ function fixtureRails(): string[] {
     name: `SLOW refactor the chart module (${state})`,
     icon: <span>RP</span>,
     subtitle: (
-      <>
-        <span className="session-member-status">
-          <span className="session-member-status__identity">
-            <StatusGlyph state={state} />
-            <span>Code Reviewer · fixture-model</span>
-          </span>
-          <span>Last progress 1m ago</span>
-          <span style={{ color: 'var(--text-muted)' }}>
-            Provider returned HTTP 500
-          </span>
+      <span className="activity-row-meta">
+        <span className="activity-row-meta__state">
+          <StatusGlyph state={state} /> <span>{state}</span>
         </span>
-        <span className="session-origin-history">
-          Also driven from another origin
-        </span>
-      </>
+        {' · '}
+        <span className="activity-row-meta__detail">Stopped by request.</span>
+        {' · '}
+        <span data-segment="agent">Code Reviewer</span>
+        {' · '}
+        <span data-segment="project">demo</span>
+        {' · '}
+        <span data-segment="origin">CLI</span>
+      </span>
     ),
     trailing: (
-      <SessionProjectPill
-        label="demo"
-        filterKey="demo"
-        active={false}
-        onToggle={() => {}}
-      />
+      <div className="activity-row__actions responsive-surface-actions">
+        <time className="activity-row__time" aria-hidden="true">
+          1m ago
+        </time>
+        <button
+          type="button"
+          className="activity-row-menu__trigger"
+          aria-label="More actions"
+        >
+          <span aria-hidden="true">⋯</span>
+        </button>
+      </div>
     ),
     group: { id: 'run', label: 'Run · 3 delegated sessions' },
   });

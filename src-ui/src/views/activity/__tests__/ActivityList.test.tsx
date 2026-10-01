@@ -282,7 +282,7 @@ describe('Activity list', () => {
 
     expect(sectionHeadings(container)).toEqual([
       `${label('needsYou')} · 1`,
-      `${label('activeNow')} · 1`,
+      `${label('running')} · 1`,
       `${label('recentlyFinished')} · 1`,
       'Earlier today · 1',
       'Yesterday · 1',

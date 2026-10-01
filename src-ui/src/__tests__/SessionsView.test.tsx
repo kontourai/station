@@ -869,7 +869,7 @@ describe('SessionsView', () => {
     // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
       name: 'An independent session',
-      description: /^\s*Needs attention Waiting on you · Claude Code · demo, \d+d ago$/,
+      description: /^\s*! Waiting on you · Claude Code · demo, \d+d ago$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
@@ -3317,7 +3317,7 @@ describe('SessionsView', () => {
     // lane must not re-emit the lane heading. Members carry the lane section
     // now; a member with an undefined section reset the layout's neighbor
     // comparison and the following flat row duplicated 'Running · N'
-    // (then labelled 'Active now · N').
+    // (then labelled 'Active now · N'; the lane is 'Running' today).
     test('emits the lane heading exactly once when a run group and a flat session share the lane', () => {
       const parent = {
         ...sessions[0],
@@ -3354,8 +3354,8 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Running'),
       );
-      expect(headings).toEqual(['Active now · 3']);
-      expect(sectionHeadings(container)).toEqual(['Active now · 3']);
+      expect(headings).toEqual(['Running · 3']);
+      expect(sectionHeadings(container)).toEqual(['Running · 3']);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {
@@ -3550,7 +3550,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      // "Active now" has no members here and therefore emits nothing at all.
+      // The live lanes have no members here and therefore emit nothing at all.
       // The six-hour-old row reads under the dated history stream, whose
       // sub-section depends on the local hour the suite runs at.
       const headings = sectionHeadings(container);
@@ -3589,7 +3589,8 @@ describe('SessionsView', () => {
           'Review pending',
           'Blocked',
         ],
-        'Active now': ['Running', 'Ready', 'Queued', "Can't answer here"],
+        Running: ['Running'],
+        Idle: ['Ready', 'Queued', "Can't answer here"],
         'Recently finished': FINISHED,
         // The history lane's dated sub-sections.
         'Earlier today': FINISHED,
@@ -3608,6 +3609,16 @@ describe('SessionsView', () => {
           lifecycleState: 'running',
           hasActiveTurn: false,
           updatedAt: new Date(Date.now() - 30_000).toISOString(),
+        }),
+        // A turn genuinely in flight: the Running lane's own row.
+        attachedSession({
+          threadId: 'in-flight',
+          displayTitle: 'Turn in flight',
+          controlMode: 'station-owned',
+          answerability: { answerable: true },
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+          updatedAt: new Date(Date.now() - 20_000).toISOString(),
         }),
         // A1 shape 2: a review is pending while a turn is in flight.
         attachedSession({
@@ -3684,16 +3695,17 @@ describe('SessionsView', () => {
         });
       }
 
-      // Every session reached a lane, and the fixture spans all four — a walk
-      // over a short or single-lane render would pass while checking nothing.
-      expect(rendered).toHaveLength(6);
+      // Every session reached a lane, and the fixture spans every live lane
+      // plus history — a walk over a short or single-lane render would pass
+      // while checking nothing.
+      expect(rendered).toHaveLength(7);
       const headings = new Set(rendered.map((entry) => entry.heading));
       expect(
         [...headings].filter(
           (heading) => heading !== 'Earlier today' && heading !== 'Yesterday',
         ),
-      ).toEqual(['Needs you', 'Active now', 'Recently finished']);
-      expect(headings.size).toBe(4);
+      ).toEqual(['Needs you', 'Running', 'Idle', 'Recently finished']);
+      expect(headings.size).toBe(5);
 
       for (const entry of rendered) {
         const permitted = LANE_VOCABULARY[entry.heading];
