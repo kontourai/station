@@ -88,6 +88,9 @@ export interface MessageBubbleSession {
   isThinking?: boolean;
   /** `activeSession.pendingApprovals.length`; the row renders only the count. */
   pendingApprovalCount?: number;
+  /** The host's status pill presents activity and approvals; see
+   * `ChatMessageList.statusShownElsewhere`. */
+  activityShownElsewhere?: boolean;
 }
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -740,16 +743,22 @@ function MessageBubbleComponent({
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (
           <>
-            {activeSession.isThinking && textContent && (
-              <div className="message__thinking">
-                <span className="loading-dots">
-                  <span style={{ animationDelay: '0s' }}>●</span>
-                  <span style={{ animationDelay: '0.2s' }}>●</span>
-                  <span style={{ animationDelay: '0.4s' }}>●</span>
-                </span>
-              </div>
-            )}
-            {activeSession.pendingApprovalCount !== undefined &&
+            {/* Paused on a decision is not working: the typing dots beside
+                "Awaiting tool approval" told two stories at once. */}
+            {activeSession.isThinking &&
+              textContent &&
+              !activeSession.activityShownElsewhere &&
+              (activeSession.pendingApprovalCount ?? 0) === 0 && (
+                <div className="message__thinking">
+                  <span className="loading-dots">
+                    <span style={{ animationDelay: '0s' }}>●</span>
+                    <span style={{ animationDelay: '0.2s' }}>●</span>
+                    <span style={{ animationDelay: '0.4s' }}>●</span>
+                  </span>
+                </div>
+              )}
+            {!activeSession.activityShownElsewhere &&
+              activeSession.pendingApprovalCount !== undefined &&
               activeSession.pendingApprovalCount > 0 && (
                 <div className="message__pending-approval">
                   <span>

@@ -53,6 +53,7 @@ import {
 } from '../../utils/elidedHistory';
 import {
   isSessionExecutionActive,
+  isTurnStreamLive,
   sessionAdapterSupportsSteering,
 } from '../../utils/execution';
 import type {
@@ -86,6 +87,7 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { useChatStatusPill } from './useChatStatusPill';
 
 const loadChatMessageList = () =>
   import('../chat/ChatMessageList').then(({ ChatMessageList }) => ({
@@ -335,6 +337,14 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
+  // Live chats present approval, connection and turn activity in one floating
+  // pill; a replay keeps the inline rows it was recorded against.
+  const { pill: statusPill, statusInPill } = useChatStatusPill({
+    activeSession,
+    streamStatus,
+    turnLive: isTurnStreamLive(activeSession),
+    enabled: !activeSession.replay,
+  });
   /*
    * One transitional state for the whole conversation, from the two things
    * that are actually still in flight after a reload: the conversation-open
@@ -902,6 +912,7 @@ export function ChatDockBody({
 
   return (
     <>
+      {statusPill}
       {showStatsPanel && (
         <ConversationStats
           agentSlug={activeSession.agentSlug}
@@ -1016,7 +1027,9 @@ export function ChatDockBody({
             approvalEvents: transcript.enabled ? transcript.events : undefined,
             approvalEventsSettled: transcript.settled,
             historyLoading: transcript.loading,
-            suppressActivity: Boolean(streamStatus),
+            // The status pill owns turn activity for a live chat.
+            suppressActivity: statusInPill || Boolean(streamStatus),
+            statusShownElsewhere: statusInPill,
             // #2309: the stall notice below presents the silence (with its
             // Stop action); the streaming row does not repeat it.
             progressSilenceShownElsewhere: Boolean(
@@ -1042,7 +1055,7 @@ export function ChatDockBody({
           }}
         />
       )}
-      {streamStatus && (
+      {streamStatus && !statusInPill && streamStatus.kind !== 'restored' && (
         <div
           className="chat-stream-status"
           role="status"

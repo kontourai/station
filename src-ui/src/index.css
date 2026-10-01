@@ -4017,12 +4017,32 @@ button:hover {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.35;
 }
 .streaming-activity .elapsed-wait {
   font-variant-numeric: tabular-nums;
+}
+/* The progress row names a tool, and a tool's name can be a whole command
+   line ("Last: npm run gate:for … 2>&1 | tail"). The name alone shrinks to
+   an ellipsis inside the column, so the outcome after it ("· done") and the
+   elapsed time stay on screen; the full text stays in the row's title. */
+.turn-activity-progress__tool {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.turn-activity-progress__fixed {
+  flex-shrink: 0;
+  white-space: pre;
+}
+.turn-activity-progress__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Streaming-aliveness motion primitives (archive#2651) ──────────────────
@@ -4509,8 +4529,12 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+/* Right-aligned whatever the label's length: a short label ("Ran npm test")
+   used to leave the chevron trailing its text, out of line with the
+   full-width labels and batch summaries above and below it. */
 .tool-call__chevron {
   flex-shrink: 0;
+  margin-inline-start: auto;
   opacity: 0.5;
   font-size: 0.9em;
 }
@@ -4606,6 +4630,10 @@ button.tool-call__line:hover {
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
 .tool-call__status-badge {
+  /* A one- or two-word outcome ("Cancelled", "Output truncated") never
+     breaks mid-word in a narrow row; the label beside it ellipsizes instead. */
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.7em;
   padding: 2px 6px;
   background: var(--bg-tertiary);
@@ -4815,7 +4843,9 @@ button.tool-call__line:hover {
 .tool-call-batch__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* The single row's gap: a run that grows from one call to two keeps its
+     glyph and label where they were. */
+  gap: 6px;
   width: 100%;
   padding: 2px 4px;
   border: 0;
@@ -5807,6 +5837,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* The chat pane's floating status pill (components/status) sits over the
+   transcript's top-right corner. A constant 36px of clear space keeps it off
+   the first message when the transcript is scrolled to the top; it never
+   changes when the pill comes and goes, so nothing shifts. It is a spacer in
+   the scrolled content (20px plus the column's 16px gap), not padding on the
+   scroller: padding cannot shrink, and in a short dock it pushed the composer
+   out of view. */
+.chat-dock__content-area .chat-messages::before {
+  content: "";
+  flex: none;
+  height: 20px;
 }
 
 .conversation-history {

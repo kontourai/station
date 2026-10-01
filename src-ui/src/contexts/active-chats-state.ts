@@ -95,6 +95,8 @@ export type ChatContentPart = {
   sourceEventId?: string;
   // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
   toolName?: string;
+  /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+  toolKind?: string;
   purpose?: string;
   server?: string;
   originalName?: string;
@@ -112,6 +114,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalToolName`. */
+  approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
@@ -527,6 +531,14 @@ export type ChatUIState = {
    * `request.resolved`, the next snapshot, or the server refusing its answer.
    */
   pendingApprovalTurnIds?: Record<string, string>;
+  /**
+   * Requests the user has answered from the approval queue whose
+   * `request.resolved` has not arrived yet. They are still open on the
+   * server (so they stay in `pendingApprovals`), but they no longer wait on
+   * the user: status surfaces count `pendingApprovals` minus these. A
+   * decision that fails to deliver takes its request back off this list.
+   */
+  answeredApprovals?: string[];
   /**
    * #2880: recorded decisions the engine has reported NOT acknowledged
    * (`request.delivery` `unacknowledged`). A later `acknowledged` for the

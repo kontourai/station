@@ -102,11 +102,20 @@ reconnecting, catch-up, revoked credentials, multiple turns, incomplete history,
 virtualized long history, and reduced motion in both themes. This is browser
 evidence; native lifecycle and device delivery require separate verification.
 
-Chat activity uses one aligned phrase, `Working for m:ss`, before content;
-reported reasoning uses `Thinking for m:ss`. Active tool rows supply their own
-animation, and streamed answer text has a caret. Approval and transport
+Chat activity uses one aligned phrase, `Working for m:ss`: the clock is the
+open turn's, so the timed phrase names the turn, never its current phase.
+Without a clock the row names the phase instead (`Thinking…`, `Working…`), and
+the progress row beneath names a running or last tool. Active tool rows supply
+their own animation, and streamed answer text has a caret. Approval and transport
 recovery have explicit states. A timer measures observed waiting, never an
 estimate of completion.
+
+A replay renders these as inline rows, because that is what its scenarios pin.
+A live chat pane presents the same facts in one floating status pill
+([`ChatStatusPill`](../../src-ui/src/components/status/ChatStatusPill.tsx)):
+approval first, then the live-update connection, then what the turn is doing,
+with the same turn clock. A live-update outage is shown only after it outlasts
+one reconnect cycle (2.5s), so a phone blip does not flash a status.
 
 The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
 uses a compact summary row. Expanding it shows the text beneath an indented

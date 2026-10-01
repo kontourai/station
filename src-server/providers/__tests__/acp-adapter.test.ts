@@ -19,6 +19,11 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  toolRequestFromPayload,
+  toolRequestGrantLabel,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
@@ -543,6 +548,136 @@ describe('AcpAdapter', () => {
     expect(await nextEvent(iterator, 'request.opened')).toMatchObject({
       payload: { toolCallId: 'tool-2' },
     });
+    await adapter.stopAll();
+  });
+
+  test.each([
+    ['completes', 'turn.completed'],
+    ['fails', 'runtime.error'],
+  ] as const)(
+    'a permission request still open when the prompt %s is settled cancelled before the turn terminal',
+    async (_how, terminal) => {
+      const { adapter, processes } = createAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = `thread-prompt-end-${terminal}`;
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const proc = processes[0];
+      await adapter.sendTurn({ threadId, input: 'Run it' });
+      await nextEvent(iterator, 'turn.started');
+      const requestPromise = requestPermission(proc.client, 'tool-orphan');
+      const opened = await nextEvent(iterator, 'request.opened');
+
+      // The engine ends the prompt without ever reading the answer.
+      if (terminal === 'turn.completed') proc.resolvePrompt('end_turn');
+      else proc.rejectPrompt(new Error('agent crashed'));
+
+      await expect(requestPromise).resolves.toEqual({
+        outcome: { outcome: 'cancelled' },
+      });
+      // Every consumer that folds request.opened/resolved (inbox, header
+      // count, toast queue, banner) clears on this, before the turn ends.
+      expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+        requestId: opened.requestId,
+        status: 'cancelled',
+      });
+      expect((await nextEvent(iterator, terminal)).method).toBe(terminal);
+      await expect(
+        adapter.respondToRequest(threadId, String(opened.requestId), 'accept'),
+      ).rejects.toThrow('Unknown ACP permission request');
+      await adapter.stopAll();
+    },
+  );
+
+  test("request.opened carries the engine's ACP kind, and refuses one outside the vocabulary", async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-request-kind',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({ threadId: 'thread-request-kind', input: 'Go' });
+    await nextEvent(iterator, 'turn.started');
+    // OpenCode's permission request: the title is the command line and
+    // there is no programmatic name.
+    const command = 'cd /tmp && gh api repos/o/r/contents/x.mjs > x.mjs';
+    void proc.client.requestPermission({
+      sessionId: 'ignored-by-adapter',
+      toolCall: {
+        toolCallId: 'call_exec',
+        title: command,
+        kind: 'execute',
+        rawInput: { command, description: 'Fetch the file', cwd: '/repo' },
+      },
+      options: PERMISSION_OPTIONS,
+    });
+    const opened = await nextEvent(iterator, 'request.opened');
+    expect((opened as any).payload).toMatchObject({ toolKind: 'execute' });
+    expect((opened as any).payload.toolName).toBeUndefined();
+
+    void proc.client.requestPermission({
+      sessionId: 'ignored-by-adapter',
+      toolCall: {
+        toolCallId: 'call_odd',
+        title: 'odd',
+        kind: 'teleport' as never,
+        rawInput: {},
+      },
+      options: PERMISSION_OPTIONS,
+    });
+    const odd = await nextEvent(iterator, 'request.opened');
+    expect((odd as any).payload).not.toHaveProperty('toolKind');
+    await adapter.stopAll();
+  });
+
+  test('request.opened names the tool a session grant would cover', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-request-name',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({ threadId: 'thread-request-name', input: 'Go' });
+    await nextEvent(iterator, 'turn.started');
+    void requestPermission(proc.client, 'tool-named', 'write');
+    const opened = await nextEvent(iterator, 'request.opened');
+    expect((opened as any).payload).toMatchObject({ toolName: 'write' });
+    // The shared label names it: the same words on the card and the toast.
+    const grant = toolRequestSessionGrantFromPayload((opened as any).payload);
+    expect(grant).toBe('tool');
+    expect(
+      toolRequestGrantLabel(
+        toolRequestFromPayload((opened as any).payload).toolName,
+        grant,
+      ),
+    ).toBe('Allow write for this session');
+    // …and that is exactly what the grant covers: the next `write` is
+    // allowed without a second request.
+    await adapter.respondToRequest(
+      'thread-request-name',
+      String(opened.requestId),
+      'acceptForSession',
+    );
+    await nextEvent(iterator, 'request.resolved');
+    await expect(
+      requestPermission(proc.client, 'tool-named-2', 'write'),
+    ).resolves.toMatchObject({ outcome: { outcome: 'selected' } });
     await adapter.stopAll();
   });
 
