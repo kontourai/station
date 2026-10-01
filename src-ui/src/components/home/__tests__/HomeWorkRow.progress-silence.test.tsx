@@ -127,7 +127,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
     });
 
     expect(screen.getByTestId('inbox-row-status').textContent).toBe(
-      'Running · no progress for 4m',
+      'No progress for 4m',
     );
   });
 
@@ -138,7 +138,7 @@ describe('HomeWorkRow status line from the server projections (station#4054)', (
     renderSession({ turnProgress: { lastProgressEventAt: LAST_PROGRESS_AT } });
 
     expect(screen.getByTestId('inbox-row-status').textContent).toBe('Running');
-    expect(screen.queryByText(/no progress/)).toBeNull();
+    expect(screen.queryByText(/no progress/i)).toBeNull();
   });
 
   test.each([

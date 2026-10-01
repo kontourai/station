@@ -156,6 +156,39 @@ describe('the row says exactly what the ladder says', () => {
     }
   });
 
+  it('a silent run is not rendered with the healthy-running tone or icon', () => {
+    const glyphPath = () =>
+      screen
+        .getByTestId('inbox-row-status')
+        .querySelector('svg.inbox-row__status-glyph path')
+        ?.getAttribute('d');
+    const healthy = renderRow(itemFor());
+    const healthyTone = screen.getByTestId('inbox-row-status').dataset.tone;
+    const healthyGlyph = glyphPath();
+    expect(healthyTone).toBe('active');
+    healthy.unmount();
+
+    renderRow(
+      itemFor({
+        turnProgress: {
+          lastProgressEventAt: '2026-09-30T09:55:15.000Z',
+          progressSilence: {
+            detectedAt: '2026-09-30T10:00:15.000Z',
+            windowMs: 300_000,
+            silentSinceEventAt: '2026-09-30T09:55:15.000Z',
+            provider: 'claude',
+          },
+        },
+      }),
+    );
+    expect(statusText()).toBe('No progress for 6m · Bash · 1m 12s');
+    expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
+    expect(glyphPath()).toBeTruthy();
+    expect(glyphPath()).not.toBe(healthyGlyph);
+    // The turn is open and nothing is owed: it stays in the Running lane.
+    expect(screen.getByTestId('inbox-row').dataset.lane).toBe('running');
+  });
+
   it('offers the status line as the description of the open control', () => {
     renderRow(itemFor());
     const open = screen.getByRole('button', {

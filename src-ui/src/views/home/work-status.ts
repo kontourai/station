@@ -21,10 +21,11 @@ import type { HomeWorkItem, WorkAttentionKind } from './home-view-model';
  *  6. failed, stopped           (finished)
  *  7. can't answer here         (Idle)
  *  8. sub-agents running        (Running)
- *  9. running                   (Running)
- * 10. draft                     (Drafts)
- * 11. done                      (finished)
- * 12. idle                      (Idle)
+ *  9. no progress (watchdog)    (Running)
+ * 10. running                   (Running)
+ * 11. draft                     (Drafts)
+ * 12. done                      (finished)
+ * 13. idle                      (Idle)
  *
  * An owed decision always outranks running: rungs 1-5 are tested before any
  * `activity` is read.
@@ -54,6 +55,7 @@ export type WorkStatusRung =
   | 'stopped'
   | 'unanswerable'
   | 'childWork'
+  | 'quiet'
   | 'running'
   | 'draft'
   | 'done'
@@ -63,9 +65,15 @@ export type WorkStatusRung =
  * The colour discipline for Home/inbox surfaces (archive#1099): colour is
  * reserved for exactly three meanings — act-now, in-motion and broken.
  * Every other state is `neutral`, an unlabelled resting state and not a
- * fourth colour meaning.
+ * fourth colour meaning. `caution` is the act-now hue without its urgency:
+ * something worth a look that is not owed to the user, so it never pulses.
  */
-export type WorkStatusTone = 'attention' | 'active' | 'broken' | 'neutral';
+export type WorkStatusTone =
+  | 'attention'
+  | 'caution'
+  | 'active'
+  | 'broken'
+  | 'neutral';
 
 export interface WorkStatus {
   rung: WorkStatusRung;
@@ -207,9 +215,26 @@ function rungFor(item: HomeWorkItem, now: number): Rung {
     }
     // The watchdog's own silence marker, never a comparison of `updatedAt`
     // with the clock (see `HomeWorkItem.turnProgress`).
+    //
+    // Its own rung, in the caution tone, so a silent run is never drawn like
+    // a healthy one. The word is the observation itself, not "Stalled": the
+    // contract says a quiet run can be expected (a long tool call), so a
+    // verdict would claim more than the watchdog computed. The turn is still
+    // open and nothing is owed to the user, so the lane stays Running; the
+    // tool still running is kept as the detail because it is usually why.
     const silentSince = epochMs(
       item.turnProgress?.progressSilence?.silentSinceEventAt,
     );
+    if (silentSince !== undefined) {
+      return {
+        rung: 'quiet',
+        lane: 'running',
+        tone: 'caution',
+        word: `No progress for ${relativeTime(silentSince, now)}`,
+        detail: item.activity?.toolName,
+        since,
+      };
+    }
     return {
       rung: 'running',
       lane: 'running',
@@ -218,10 +243,7 @@ function rungFor(item: HomeWorkItem, now: number): Rung {
         item.activeReason === 'background'
           ? 'Background work running'
           : 'Running',
-      detail:
-        silentSince !== undefined
-          ? `no progress for ${relativeTime(silentSince, now)}`
-          : item.activity?.toolName,
+      detail: item.activity?.toolName,
       since,
     };
   }

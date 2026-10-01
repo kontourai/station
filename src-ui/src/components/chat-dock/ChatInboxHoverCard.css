@@ -69,7 +69,8 @@
   font-weight: 650;
 }
 
-.chat-dock-inbox-hover-card__status-word[data-tone="attention"] {
+.chat-dock-inbox-hover-card__status-word[data-tone="attention"],
+.chat-dock-inbox-hover-card__status-word[data-tone="caution"] {
   color: var(--warning-text);
 }
 

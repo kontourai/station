@@ -231,21 +231,31 @@ describe('the status ladder, from real server summaries', () => {
     });
   });
 
-  it('reports the watchdog silence marker instead of the tool', () => {
-    expect(
-      statusOf({
-        ...RUNNING_TOOL,
-        turnProgress: {
-          lastProgressEventAt: '2026-09-30T09:55:15.000Z',
-          progressSilence: {
-            detectedAt: '2026-09-30T10:00:15.000Z',
-            windowMs: 300_000,
-            silentSinceEventAt: '2026-09-30T09:55:15.000Z',
-            provider: 'claude',
-          },
+  it('a run the watchdog marks silent is its own cautionary rung, still in Running', () => {
+    const silent = rowFor({
+      ...RUNNING_TOOL,
+      turnProgress: {
+        lastProgressEventAt: '2026-09-30T09:55:15.000Z',
+        progressSilence: {
+          detectedAt: '2026-09-30T10:00:15.000Z',
+          windowMs: 300_000,
+          silentSinceEventAt: '2026-09-30T09:55:15.000Z',
+          provider: 'claude',
         },
-      }).line,
-    ).toBe('Running · no progress for 6m · 1m 12s');
+      },
+    });
+    const status = workStatus(silent, NOW);
+    expect(status).toMatchObject({
+      rung: 'quiet',
+      lane: 'running',
+      tone: 'caution',
+      line: 'No progress for 6m · Bash · 1m 12s',
+    });
+    // Never drawn as the healthy run it sits beside.
+    const healthy = workStatus(rowFor(RUNNING_TOOL), NOW);
+    expect(healthy).toMatchObject({ rung: 'running', tone: 'active' });
+    expect(status.tone).not.toBe(healthy.tone);
+    expect(status.rung).not.toBe(healthy.rung);
   });
 
   it('an interrupted turn waits on you and says so', () => {
@@ -445,6 +455,25 @@ const TABLE: ReadonlyArray<
     'running a tool',
     { lifecycleLabel: 'Running', activeReason: 'turn', activity: ACTIVITY },
     'Running · Bash · 1m 12s',
+    'running',
+  ],
+  [
+    'running, but the watchdog reports no progress',
+    {
+      lifecycleLabel: 'Running',
+      activeReason: 'turn',
+      activity: ACTIVITY,
+      turnProgress: {
+        lastProgressEventAt: '2026-09-30T09:55:15.000Z',
+        progressSilence: {
+          detectedAt: '2026-09-30T10:00:15.000Z',
+          windowMs: 300_000,
+          silentSinceEventAt: '2026-09-30T09:55:15.000Z',
+          provider: 'claude',
+        },
+      },
+    },
+    'No progress for 6m · Bash · 1m 12s',
     'running',
   ],
   [

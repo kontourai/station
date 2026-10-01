@@ -146,6 +146,12 @@
   color: var(--warning-text);
 }
 
+.inbox-row__status[data-tone="caution"] .inbox-row__word,
+.inbox-row__status[data-tone="caution"] .inbox-row__status-glyph,
+.inbox-row__slim-status[data-tone="caution"] {
+  color: var(--warning-text);
+}
+
 .inbox-row__status[data-tone="active"] .inbox-row__word,
 .inbox-row__status[data-tone="active"] .inbox-row__status-glyph,
 .inbox-row__slim-status[data-tone="active"] {
@@ -159,7 +165,7 @@
 }
 
 /* The only motion on a row: a waiting-on-you icon pulses. Running is a
- * static icon, a word and a ticking number. The global reduced-motion reset
+ * static icon, a word and a ticking number, and so is a `caution` row. The global reduced-motion reset
  * in tokens.css limits this to one near-instant iteration. */
 .inbox-row__status[data-tone="attention"] .inbox-row__status-glyph {
   animation: inbox-row-attention-pulse var(--motion-status-pulse)
