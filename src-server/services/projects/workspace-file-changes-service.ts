@@ -1,14 +1,16 @@
-import { realpath } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import {
   WORKSPACE_FILE_CHANGES_MAX_BYTES,
   type WorkspaceFileChanges,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { execGit } from '../../utils/git-exec.js';
-import { gitDirectoryInsideProject } from './git-directory-confinement.js';
-import { checkRepositoryConfig } from './git-repository-config.js';
+import {
+  type ReadRepository,
+  readProjectRepository,
+} from './git-read-repository.js';
 import type { WorkspaceFilePreviewService } from './workspace-file-preview-service.js';
 
+/** Discovery and the ref check; `git diff` reads the whole file. */
 const GIT_QUICK_TIMEOUT_MS = 10_000;
 const GIT_DIFF_TIMEOUT_MS = 30_000;
 /**
@@ -19,34 +21,23 @@ const GIT_DIFF_TIMEOUT_MS = 30_000;
  */
 export const WORKSPACE_FILE_CHANGES_CONCURRENCY = 2;
 
-type GitRunner = (
-  args: string[],
-  cwd: string,
-  maxBuffer?: number,
-) => Promise<string>;
+/**
+ * What one read answers: a result the pane renders, or `busy`, which is not
+ * a result. The repository was being changed each time Station read it (a
+ * commit landing, or a `.git` swapped under the read), and a read is only
+ * answered from a repository that held still; the route says so with a
+ * retryable status, never as a refusal.
+ */
+export type WorkspaceFileChangesRead = WorkspaceFileChanges | { state: 'busy' };
 
-const defaultRunner: GitRunner = async (args, cwd, maxBuffer) =>
-  (
-    await execGit(args, {
-      cwd,
-      encoding: 'utf-8',
-      timeout: args.includes('diff')
-        ? GIT_DIFF_TIMEOUT_MS
-        : GIT_QUICK_TIMEOUT_MS,
-      ...(maxBuffer ? { maxBuffer } : {}),
-    })
-  ).stdout;
+/** The read of a Project repository the shared resolver performs. */
+type ReadRepositoryFn = typeof readProjectRepository;
 
 function exceededBuffer(error: unknown): boolean {
   return (
     error instanceof Error &&
     /maxBuffer/i.test(`${error.message} ${(error as { code?: unknown }).code}`)
   );
-}
-
-function stderrOf(error: unknown): string {
-  const stderr = (error as { stderr?: unknown })?.stderr;
-  return typeof stderr === 'string' ? stderr : '';
 }
 
 /** `execFile`-style deadline kill, as the coding routes classify it. */
@@ -93,24 +84,19 @@ interface ChangesLocation {
  * view.
  *
  * The file's folder is member-writable, so the repository git would
- * discover from it is not trusted (#2363): a `.git` FILE can name another
- * repository's git directory, a `.git` can be a symbolic link, and a git
- * directory's `objects/info/alternates` can borrow another repository's
- * objects. Only discovery runs before the check. A repository found inside
- * the preview's root must have its git directory and common directory
- * inside that root too (or be a genuine linked worktree of it), with no
- * redirected entries: the verdict Commit and Push require
- * (`gitDirectoryInsideProject`). A repository that CONTAINS the root from
- * above, which the coding diff route also reads, is outside the
- * member-written area. Every later call names the resolved git directory
- * explicitly, so git does not discover again. The repository-config read
- * refusal then applies before `git diff` runs, with `--no-ext-diff` and
- * `--no-textconv`.
+ * discover from it is not trusted (#2363). Which repository may be read for
+ * it, and what git runs with, is the shared resolver's decision
+ * (`git-read-repository.ts`, as the coding status, log and diff routes use
+ * it): one discovery from the file's folder, checked against the Project's
+ * root; git run on a Station-owned git directory built from a judged copy of
+ * the repository's configuration; the output discarded, and the read
+ * repeated, when the repository changed under it. This service only names
+ * the file and reads its diff with the arguments it is handed.
  */
 export class WorkspaceFileChangesService {
   private readonly inFlight = new Map<
     string,
-    Promise<WorkspaceFileChanges | null>
+    Promise<WorkspaceFileChangesRead | null>
   >();
   private readonly limiter = new KeyedLimiter(
     WORKSPACE_FILE_CHANGES_CONCURRENCY,
@@ -121,19 +107,18 @@ export class WorkspaceFileChangesService {
       WorkspaceFilePreviewService,
       'changesTarget'
     >,
-    private readonly git: GitRunner = defaultRunner,
-    private readonly checkConfig: typeof checkRepositoryConfig = checkRepositoryConfig,
-    private readonly confine: typeof gitDirectoryInsideProject = gitDirectoryInsideProject,
+    private readonly readRepository: ReadRepositoryFn = readProjectRepository,
   ) {}
 
   /**
    * Throws on a path the preview would refuse (the route answers 400) and
-   * on a git failure it cannot classify, including a deadline (504).
+   * on a git failure the resolver does not classify, including a deadline
+   * (504).
    */
   changes(
     workingDirectory: string,
     path: string,
-  ): Promise<WorkspaceFileChanges | null> {
+  ): Promise<WorkspaceFileChangesRead | null> {
     // Path validation runs per request, before any sharing, so a refused
     // path is refused for every caller that sends it.
     const located = this.preview.changesTarget(workingDirectory, path);
@@ -154,155 +139,88 @@ export class WorkspaceFileChangesService {
     root,
     target,
     existingAncestor,
-  }: ChangesLocation): Promise<WorkspaceFileChanges> {
-    let top: string;
-    let discoveredGitDir: string;
-    try {
-      // Discovery only: where the work tree starts, and which git directory
-      // claimed it.
-      const [rawTop, rawGitDir] = (
-        await this.git(
-          [
-            'rev-parse',
-            '--path-format=absolute',
-            '--show-toplevel',
-            '--git-dir',
-          ],
-          existingAncestor,
-        )
-      )
-        .trim()
-        .split('\n');
-      top = await realpath(rawTop ?? '');
-      discoveredGitDir = await realpath(rawGitDir ?? '');
-    } catch (error) {
-      if (gitTimedOut(error)) throw error;
-      const stderr = stderrOf(error);
-      if (/dubious ownership/i.test(stderr))
-        return {
-          state: 'refused',
-          reason:
-            'git refused this repository because another user owns it (safe.directory), so Station does not read it.',
-        };
-      if (/not a git repository/i.test(stderr))
+  }: ChangesLocation): Promise<WorkspaceFileChangesRead> {
+    const outcome = await this.readRepository(
+      root,
+      existingAncestor,
+      { timeoutMs: GIT_QUICK_TIMEOUT_MS },
+      (repository) => diffAgainstHead(repository, target),
+    );
+    if (outcome.ok) return outcome.value;
+    switch (outcome.state) {
+      case 'not-a-repository':
         return { state: 'not-a-repository' };
-      throw error;
-    }
-    const insideRoot = top === root || top.startsWith(root + sep);
-    const aboveRoot = root.startsWith(top + sep);
-    if (!insideRoot && !aboveRoot) return { state: 'not-a-repository' };
-    if (aboveRoot) {
-      // "Above" is only trusted when the folder above says so itself. A
-      // member-written git directory inside the root can set `core.worktree`
-      // to a folder above it, which would steer discovery here past the
-      // confinement check and pair the operator's repository with the wrong
-      // work tree.
-      const gitDirInsideRoot =
-        discoveredGitDir === root || discoveredGitDir.startsWith(root + sep);
-      let confirmedTop: string | null = null;
-      if (!gitDirInsideRoot) {
-        try {
-          confirmedTop = await realpath(
-            (await this.git(['rev-parse', '--show-toplevel'], top)).trim(),
-          );
-        } catch (error) {
-          if (gitTimedOut(error)) throw error;
-        }
-      }
-      if (confirmedTop !== top)
+      case 'refused':
         return {
           state: 'refused',
-          reason:
-            "This file's git directory claims a work tree outside the Project, so Station does not read it.",
+          reason: `This file's git directory is not the Project's own (${outcome.reason}), so Station does not read it.`,
         };
-    }
-    let gitDir: string;
-    try {
-      if (insideRoot) {
-        const verdict = await this.confine(top, root);
-        if (verdict.verdict === 'outside')
-          return {
-            state: 'refused',
-            reason: `This file's git directory is not the Project's own (${verdict.reason}), so Station does not read it.`,
-          };
-      }
-      gitDir = await realpath(
-        (
-          await this.git(
-            ['rev-parse', '--path-format=absolute', '--git-dir'],
-            top,
-          )
-        ).trim(),
-      );
-    } catch (error) {
-      if (gitTimedOut(error)) throw error;
-      return {
-        state: 'refused',
-        reason:
-          'git could not locate this repository, so Station does not read it.',
-      };
-    }
-    const repo = [`--git-dir=${gitDir}`, `--work-tree=${top}`];
-    const fromTop = relative(top, target);
-    if (!fromTop || fromTop.startsWith(`..${sep}`) || fromTop === '..')
-      return { state: 'not-a-repository' };
-    const verdict = await this.checkConfig(top, 'read', repo);
-    if (!verdict.ok)
-      return {
-        state: 'refused',
-        reason:
-          verdict.code === 'repository-config-refused'
-            ? `This repository's own configuration defines programs git diff would run (${verdict.keys.join(', ')}), so Station does not diff it.`
-            : "git could not read this repository's configuration.",
-      };
-    try {
-      await this.git(
-        [...repo, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}'],
-        top,
-      );
-    } catch (error) {
-      if (gitTimedOut(error)) throw error;
-      return { state: 'no-commits' };
-    }
-    // `top` and `literal`: the path is the file's own name from the
-    // repository root, never a glob a file name could smuggle in.
-    const pathspec = `:(top,literal)${fromTop.split(sep).join('/')}`;
-    let patch: string;
-    try {
-      patch = await this.git(
-        [
-          ...repo,
-          'diff',
-          '--no-color',
-          '--no-ext-diff',
-          '--no-textconv',
-          'HEAD',
-          '--',
-          pathspec,
-        ],
-        top,
-        WORKSPACE_FILE_CHANGES_MAX_BYTES + 1,
-      );
-    } catch (error) {
-      if (exceededBuffer(error))
+      case 'config-refused':
         return {
-          state: 'oversized',
-          limitBytes: WORKSPACE_FILE_CHANGES_MAX_BYTES,
+          state: 'refused',
+          reason: `This repository's own configuration sets ${outcome.keys.join(', ')}, which Station does not run git with, so it does not diff this file.`,
         };
-      throw error;
+      case 'config-unreadable':
+        return {
+          state: 'refused',
+          reason: "git could not read this repository's configuration.",
+        };
+      default:
+        return { state: 'busy' };
     }
-    if (Buffer.byteLength(patch, 'utf8') > WORKSPACE_FILE_CHANGES_MAX_BYTES)
+  }
+}
+
+/**
+ * The file's patch against HEAD, every call carrying the resolver's
+ * `repoArgs` so git discovers nothing itself. `target` is inside `top`: the
+ * resolver admits a folder only as part of the work tree it reports.
+ */
+async function diffAgainstHead(
+  { top, repoArgs }: ReadRepository,
+  target: string,
+): Promise<WorkspaceFileChanges> {
+  const git = async (args: string[], maxBuffer?: number) =>
+    (
+      await execGit([...repoArgs, ...args], {
+        cwd: top,
+        encoding: 'utf-8',
+        timeout:
+          args[0] === 'diff' ? GIT_DIFF_TIMEOUT_MS : GIT_QUICK_TIMEOUT_MS,
+        ...(maxBuffer ? { maxBuffer } : {}),
+      })
+    ).stdout;
+  try {
+    await git(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+  } catch (error) {
+    if (gitTimedOut(error)) throw error;
+    return { state: 'no-commits' };
+  }
+  // `top` and `literal`: the path is the file's own name from the
+  // repository root, never a glob a file name could smuggle in.
+  const pathspec = `:(top,literal)${relative(top, target).split(sep).join('/')}`;
+  let patch: string;
+  try {
+    patch = await git(
+      ['diff', '--no-color', 'HEAD', '--', pathspec],
+      WORKSPACE_FILE_CHANGES_MAX_BYTES + 1,
+    );
+  } catch (error) {
+    if (exceededBuffer(error))
       return {
         state: 'oversized',
         limitBytes: WORKSPACE_FILE_CHANGES_MAX_BYTES,
       };
-    if (patch.trim()) return { state: 'changed', base: 'HEAD', patch };
-    const untracked = await this.git(
-      [...repo, 'ls-files', '--others', '--', pathspec],
-      top,
-    );
-    return untracked.trim()
-      ? { state: 'untracked' }
-      : { state: 'unchanged', base: 'HEAD' };
+    throw error;
   }
+  if (Buffer.byteLength(patch, 'utf8') > WORKSPACE_FILE_CHANGES_MAX_BYTES)
+    return {
+      state: 'oversized',
+      limitBytes: WORKSPACE_FILE_CHANGES_MAX_BYTES,
+    };
+  if (patch.trim()) return { state: 'changed', base: 'HEAD', patch };
+  const untracked = await git(['ls-files', '--others', '--', pathspec]);
+  return untracked.trim()
+    ? { state: 'untracked' }
+    : { state: 'unchanged', base: 'HEAD' };
 }

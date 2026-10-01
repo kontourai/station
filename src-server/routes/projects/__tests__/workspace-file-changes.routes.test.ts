@@ -2,16 +2,21 @@
  * The File Preview's Changes read over the real route and real git.
  *
  * Every state is produced by an actual repository shaped the way a user's
- * would be, and read back through `POST /:slug/file-preview/changes` -- the
- * seam the pane calls. The #2363 refusal is proven live first: the planted
- * diff driver runs under plain git, so a refusal here is Station declining
- * a program that would otherwise have executed.
+ * would be, and read back through `POST /:slug/file-preview/changes`, the
+ * seam the pane calls. Each plant below is proven live first: plain git in
+ * the planted folder reads the outside repository or runs the planted
+ * program, so a refusal, or a discarded read, is Station declining what
+ * would otherwise have happened. The read itself goes through the shared
+ * resolver (`git-read-repository.ts`), which the coding git reads use too;
+ * this file proves it through THIS route.
  */
 import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -19,9 +24,34 @@ import {
 import { join } from 'node:path';
 import { WORKSPACE_FILE_CHANGES_MAX_BYTES } from '@kontourai/station-contracts/workspace-file-preview';
 import { Hono } from 'hono';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
+/**
+ * A hook on every git call Station makes, so a test can change the
+ * repository at a chosen moment (after Station judged its config, before
+ * `git diff` starts) and see what git printed before Station judged it.
+ * Otherwise the real runner.
+ */
+const hooks = vi.hoisted(() => ({
+  beforeGit: undefined as ((args: string[]) => void) | undefined,
+  afterGit: undefined as ((args: string[], stdout: string) => void) | undefined,
+}));
+
+vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../../../utils/git-exec.js')>();
+  return {
+    ...original,
+    execGit: (async (args, options) => {
+      hooks.beforeGit?.(args);
+      const result = await original.execGit(args, options);
+      hooks.afterGit?.(args, result.stdout);
+      return result;
+    }) as typeof original.execGit,
+  };
+});
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   fileTreeOps: { add: vi.fn() },
@@ -31,26 +61,43 @@ const { createWorkspacePanePreviewRoutes } = await import(
   '../workspace-pane-previews.js'
 );
 
-const makeTempDir = trackTempDirs();
+const SECRET = 'operator-only secret';
 
+const makeTempDir = trackTempDirs();
+/** This test's own folder, outside every repository it makes. */
+let scratch: string;
+
+beforeEach(() => {
+  hooks.beforeGit = undefined;
+  hooks.afterGit = undefined;
+  scratch = realpathSync(makeTempDir('station-file-changes-scratch-'));
+  // Station's runner reads the operator's own global configuration by
+  // design; here it is this test's, so a planted program is the only one.
+  const global = join(scratch, 'global.gitconfig');
+  writeFileSync(global, '[user]\n\tname = T\n\temail = t@example.test\n');
+  writeFileSync(join(scratch, 'system.gitconfig'), '');
+  vi.stubEnv('GIT_CONFIG_GLOBAL', global);
+  vi.stubEnv('GIT_CONFIG_SYSTEM', join(scratch, 'system.gitconfig'));
+  return () => vi.unstubAllEnvs();
+});
+
+/** Plain git, NOT Station's runner. Throws when git fails. */
 function git(cwd: string, args: string[]) {
   return execFileSync('git', args, {
     cwd,
     encoding: 'utf8',
     windowsHide: true,
-    env: {
-      ...process.env,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_AUTHOR_NAME: 'T',
-      GIT_AUTHOR_EMAIL: 't@example.test',
-      GIT_COMMITTER_NAME: 'T',
-      GIT_COMMITTER_EMAIL: 't@example.test',
-    },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
 
-function repo(files: Record<string, string>, commit = true) {
-  const root = makeTempDir('station-file-changes-');
+/** A repository at `dir` (a fresh temp folder by default) holding `files`. */
+function repo(
+  files: Record<string, string>,
+  { commit = true, dir }: { commit?: boolean; dir?: string } = {},
+) {
+  const root = dir ?? makeTempDir('station-file-changes-');
+  mkdirSync(root, { recursive: true });
   git(root, ['init', '-q', '-b', 'main']);
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(join(root, path, '..'), { recursive: true });
@@ -61,6 +108,27 @@ function repo(files: Record<string, string>, commit = true) {
     git(root, ['commit', '-q', '-m', 'base']);
   }
   return root;
+}
+
+/** The operator's other repository, outside every Project, with a secret. */
+function outsideRepository() {
+  return repo({ 'secret.txt': `${SECRET}\n` });
+}
+
+/** A program that records each run, and `ran()` to count them. */
+function plantedProgram() {
+  const marker = join(scratch, 'ran.log');
+  const program = join(scratch, 'program.sh');
+  writeFileSync(program, `#!/bin/sh\necho ran >> '${marker}'\ncat\n`, {
+    mode: 0o755,
+  });
+  return {
+    program,
+    ran: () =>
+      existsSync(marker)
+        ? readFileSync(marker, 'utf-8').split('\n').filter(Boolean).length
+        : 0,
+  };
 }
 
 async function changes(workingDirectory: string, body: unknown) {
@@ -79,7 +147,11 @@ async function changes(workingDirectory: string, body: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return { status: response.status, body: await json(response) };
+  return {
+    status: response.status,
+    body: await json(response),
+    retryAfter: response.headers.get('Retry-After'),
+  };
 }
 
 describe('POST /:slug/file-preview/changes', () => {
@@ -103,11 +175,16 @@ describe('POST /:slug/file-preview/changes', () => {
     // Exactly this file: the other changed file is not in its patch.
     expect(patch).not.toContain('src/b.ts');
     expect(JSON.stringify(body)).not.toContain(root);
+    // A read never touches the member's index: staging is as it was.
+    expect(git(root, ['diff', '--cached', '--name-only']).trim()).toBe(
+      'src/a.ts',
+    );
   });
 
-  test('distinguishes unchanged, untracked, no commits and no repository', async () => {
-    const root = repo({ 'a.txt': 'a\n' });
+  test('distinguishes unchanged, untracked, a deleted file, no commits and no repository', async () => {
+    const root = repo({ 'a.txt': 'a\n', 'gone.txt': 'gone\n' });
     writeFileSync(join(root, 'new.txt'), 'new\n');
+    rmSync(join(root, 'gone.txt'));
     expect((await changes(root, { path: 'a.txt' })).body.data).toEqual({
       state: 'unchanged',
       base: 'HEAD',
@@ -115,8 +192,11 @@ describe('POST /:slug/file-preview/changes', () => {
     expect((await changes(root, { path: 'new.txt' })).body.data).toEqual({
       state: 'untracked',
     });
+    const deleted = (await changes(root, { path: 'gone.txt' })).body.data;
+    expect(deleted.state).toBe('changed');
+    expect(deleted.patch).toContain('-gone');
 
-    const unborn = repo({ 'a.txt': 'a\n' }, false);
+    const unborn = repo({ 'a.txt': 'a\n' }, { commit: false });
     expect((await changes(unborn, { path: 'a.txt' })).body.data).toEqual({
       state: 'no-commits',
     });
@@ -128,14 +208,14 @@ describe('POST /:slug/file-preview/changes', () => {
     });
   });
 
-  test('reads the file in a nested repository of a multi-repository Project', async () => {
+  test("reads a file in a nested repository of a multi-repository Project, as that repository's", async () => {
     const umbrella = makeTempDir('station-file-changes-umbrella-');
-    const inner = join(umbrella, 'service');
-    mkdirSync(inner);
-    git(inner, ['init', '-q', '-b', 'main']);
-    writeFileSync(join(inner, 'main.go'), 'package main\n');
-    git(inner, ['add', '-A']);
-    git(inner, ['commit', '-q', '-m', 'base']);
+    const inner = repo(
+      { 'main.go': 'package main\n' },
+      {
+        dir: join(umbrella, 'service'),
+      },
+    );
     writeFileSync(join(inner, 'main.go'), 'package main\n\nfunc main() {}\n');
 
     const { body } = await changes(umbrella, { path: 'service/main.go' });
@@ -153,29 +233,6 @@ describe('POST /:slug/file-preview/changes', () => {
 
     // A glob would have matched x.ts and returned its change.
     expect(body.data).toEqual({ state: 'unchanged', base: 'HEAD' });
-  });
-
-  test('refuses a repository whose own config runs a diff driver, which plain git runs', async () => {
-    const root = repo({ 'a.txt': 'a\n' });
-    const marker = join(root, '..', `ran-${Date.now()}`);
-    writeFileSync(join(root, '.gitattributes'), 'a.txt diff=planted\n');
-    git(root, [
-      'config',
-      'diff.planted.textconv',
-      `sh -c 'touch "${marker}"; cat "$1"' --`,
-    ]);
-    writeFileSync(join(root, 'a.txt'), 'b\n');
-    // Live plant: plain git executes the driver.
-    git(root, ['diff', 'HEAD', '--', 'a.txt']);
-    expect(existsSync(marker)).toBe(true);
-    rmSync(marker);
-
-    const { status, body } = await changes(root, { path: 'a.txt' });
-
-    expect(status).toBe(200);
-    expect(body.data.state).toBe('refused');
-    expect(body.data.reason).toContain('diff.planted.textconv');
-    expect(existsSync(marker)).toBe(false);
   });
 
   test('refuses an oversized patch rather than truncating it', async () => {
@@ -206,12 +263,143 @@ describe('POST /:slug/file-preview/changes', () => {
     expect(status).toBe(400);
   });
 
+  test('refuses a path through a regular file as a bad request', async () => {
+    const root = repo({ 'a.txt': 'a\n' });
+    const { status } = await changes(root, { path: 'a.txt/b' });
+    expect(status).toBe(400);
+  });
+
+  describe('a repository whose own configuration names a program `git diff` would run', () => {
+    /**
+     * Each key, with the attributes that select it for `a.txt`. Plain git
+     * runs the program on `git diff HEAD -- a.txt`; that is asserted first.
+     */
+    const PROGRAMS: Array<[key: string, attributes: string]> = [
+      ['diff.external', ''],
+      ['diff.planted.textconv', 'a.txt diff=planted\n'],
+      ['diff.planted.command', 'a.txt diff=planted\n'],
+      ['filter.planted.clean', 'a.txt filter=planted\n'],
+    ];
+
+    test.each(PROGRAMS)(
+      '%s: refused by that name, and the program does not run',
+      async (key, attributes) => {
+        const root = repo({ 'a.txt': 'a\n', '.gitattributes': attributes });
+        const { program, ran } = plantedProgram();
+        git(root, ['config', key, program]);
+        writeFileSync(join(root, 'a.txt'), 'b\n');
+        // Live plant: plain git executes the program.
+        git(root, ['diff', 'HEAD', '--', 'a.txt']);
+        expect(ran(), 'control: plain git runs it').toBeGreaterThan(0);
+        const before = ran();
+
+        const { status, body } = await changes(root, { path: 'a.txt' });
+
+        expect(status).toBe(200);
+        expect(body.data.state).toBe('refused');
+        expect(body.data.reason).toContain(key);
+        expect(JSON.stringify(body)).not.toContain(scratch);
+        expect(ran(), 'the planted program ran under Station').toBe(before);
+      },
+    );
+
+    test("a nested repository's own program: the read of its file is refused, and it does not run", async () => {
+      const project = repo({ 'README.md': '# project\n' });
+      const sub = repo({ 'f.txt': 'one\n' }, { dir: join(project, 'sub') });
+      const { program, ran } = plantedProgram();
+      git(sub, ['config', 'diff.external', program]);
+      writeFileSync(join(sub, 'f.txt'), 'two\n');
+      git(sub, ['diff', 'HEAD', '--', 'f.txt']);
+      expect(ran(), 'control: plain git runs it').toBeGreaterThan(0);
+      const before = ran();
+
+      const { body } = await changes(project, { path: 'sub/f.txt' });
+
+      expect(body.data.state).toBe('refused');
+      expect(body.data.reason).toContain('diff.external');
+      expect(ran()).toBe(before);
+    });
+
+    /**
+     * Written AFTER Station judged the configuration and BEFORE `git diff`
+     * starts, as a member racing the read would; taken away again at the
+     * next git call, so every attempt judges a clean configuration and
+     * meets the planted one only while git runs.
+     */
+    test.each([
+      [
+        'config.worktree created under extensions.worktreeConfig',
+        (root: string) => {
+          git(root, ['config', 'extensions.worktreeConfig', 'true']);
+          const file = join(root, '.git', 'config.worktree');
+          return {
+            plant: (filter: string) => writeFileSync(file, filter),
+            unplant: () => rmSync(file, { force: true }),
+          };
+        },
+      ],
+      [
+        '.git/config rewritten in place',
+        (root: string) => {
+          const file = join(root, '.git', 'config');
+          const clean = readFileSync(file, 'utf-8');
+          return {
+            plant: (filter: string) => writeFileSync(file, clean + filter),
+            unplant: () => writeFileSync(file, clean),
+          };
+        },
+      ],
+    ])(
+      '%s during the read: the filter does not run, and the read is answered busy, not from the planted state',
+      async (_name, prepare) => {
+        const root = repo({
+          'a.txt': 'one\n',
+          '.gitattributes': 'a.txt filter=planted\n',
+        });
+        const { program, ran } = plantedProgram();
+        const filter = `[filter "planted"]\n\tclean = ${program}\n`;
+        const { plant, unplant } = prepare(root);
+        writeFileSync(join(root, 'a.txt'), 'two\n');
+        let planted = false;
+        let diffs = 0;
+        hooks.beforeGit = (args) => {
+          if (args.includes('diff')) {
+            diffs += 1;
+            plant(filter);
+            planted = true;
+          } else if (planted) {
+            unplant();
+            planted = false;
+          }
+        };
+
+        const { status, body, retryAfter } = await changes(root, {
+          path: 'a.txt',
+        });
+        hooks.beforeGit = undefined;
+
+        expect(diffs, 'git diff ran against the planted state').toBeGreaterThan(
+          0,
+        );
+        expect(ran(), 'the planted filter ran under Station').toBe(0);
+        expect(status).toBe(503);
+        expect(body).toMatchObject({
+          success: false,
+          code: 'repository-busy',
+          retryable: true,
+        });
+        expect(retryAfter).toBe('1');
+        expect(body.data).toBeUndefined();
+
+        // Control, last: plain git reading that configuration runs it.
+        plant(filter);
+        git(root, ['diff', 'HEAD', '--', 'a.txt']);
+        expect(ran(), 'control: plain git runs the filter').toBeGreaterThan(0);
+      },
+    );
+  });
+
   describe('a git directory the Project does not own', () => {
-    /** An operator repository outside the Project with a committed secret. */
-    function outsideRepository() {
-      const outside = repo({ 'secret.txt': 'operator-only secret\n' });
-      return outside;
-    }
     const plainDiff = (cwd: string) =>
       git(cwd, ['diff', 'HEAD', '--', 'secret.txt']);
 
@@ -224,7 +412,7 @@ describe('POST /:slug/file-preview/changes', () => {
         `gitdir: ${join(outside, '.git')}\n`,
       );
       // Live plant: plain git in that folder reads the outside repository.
-      expect(plainDiff(join(project, 'sub'))).toContain('operator-only secret');
+      expect(plainDiff(join(project, 'sub'))).toContain(SECRET);
 
       const { status, body } = await changes(project, {
         path: 'sub/secret.txt',
@@ -233,7 +421,9 @@ describe('POST /:slug/file-preview/changes', () => {
       expect(status).toBe(200);
       expect(body.data.state).toBe('refused');
       expect(body.data.reason).toContain("not the Project's own");
-      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+      expect(body.data.reason).toContain('outside this Project');
+      expect(JSON.stringify(body)).not.toContain(SECRET);
+      expect(JSON.stringify(body)).not.toContain(outside);
     });
 
     test('refuses a symbolic-link .git, which plain git follows', async () => {
@@ -241,13 +431,13 @@ describe('POST /:slug/file-preview/changes', () => {
       const project = makeTempDir('station-file-changes-project-');
       mkdirSync(join(project, 'sub'));
       symlinkSync(join(outside, '.git'), join(project, 'sub', '.git'));
-      expect(plainDiff(join(project, 'sub'))).toContain('operator-only secret');
+      expect(plainDiff(join(project, 'sub'))).toContain(SECRET);
 
       const { body } = await changes(project, { path: 'sub/secret.txt' });
 
       expect(body.data.state).toBe('refused');
       expect(body.data.reason).toContain('.git is a symbolic link');
-      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+      expect(JSON.stringify(body)).not.toContain(SECRET);
     });
 
     test('refuses alternates that borrow another repository, which plain git reads', async () => {
@@ -263,13 +453,13 @@ describe('POST /:slug/file-preview/changes', () => {
         join(project, '.git', 'refs', 'heads', 'main'),
         `${outsideHead}\n`,
       );
-      expect(plainDiff(project)).toContain('operator-only secret');
+      expect(plainDiff(project)).toContain(SECRET);
 
       const { body } = await changes(project, { path: 'secret.txt' });
 
       expect(body.data.state).toBe('refused');
       expect(body.data.reason).toContain('alternates');
-      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+      expect(JSON.stringify(body)).not.toContain(SECRET);
     });
 
     test("still reads a genuine linked worktree, a session's own checkout", async () => {
@@ -297,7 +487,7 @@ describe('POST /:slug/file-preview/changes', () => {
     test('refuses a planted repository whose core.worktree steers discovery above the Project', async () => {
       // The operator's repository holds a file at the path the Project's
       // own file would have if the work tree started one folder too high.
-      const higher = repo({ 'proj/sub/secret.txt': 'operator-only secret\n' });
+      const higher = repo({ 'proj/sub/secret.txt': `${SECRET}\n` });
       const above = join(higher, 'a');
       const project = join(above, 'proj');
       const sub = join(project, 'sub');
@@ -313,13 +503,76 @@ describe('POST /:slug/file-preview/changes', () => {
       const { body } = await changes(project, { path: 'sub/secret.txt' });
 
       expect(body.data.state).toBe('refused');
-      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+      expect(JSON.stringify(body)).not.toContain(SECRET);
     });
-  });
 
-  test('refuses a path through a regular file as a bad request', async () => {
-    const root = repo({ 'a.txt': 'a\n' });
-    const { status } = await changes(root, { path: 'a.txt/b' });
-    expect(status).toBe(400);
+    test('a .git swapped for a link to another repository during the read, and put back: the output is discarded and the read answered busy', async () => {
+      const outside = outsideRepository();
+      const project = makeTempDir('station-file-changes-project-');
+      // The member's own repository inside the Project, on the same branch
+      // name as the outside one, so the HEAD Station copied resolves there.
+      const folder = repo(
+        { 'own.txt': 'own\n' },
+        {
+          dir: join(project, 'sub'),
+        },
+      );
+      symlinkSync(join(outside, '.git'), join(folder, '.git-link'));
+      const swapIn = () => {
+        renameSync(join(folder, '.git'), join(folder, '.git-real'));
+        renameSync(join(folder, '.git-link'), join(folder, '.git'));
+      };
+      const swapOut = () => {
+        renameSync(join(folder, '.git'), join(folder, '.git-link'));
+        renameSync(join(folder, '.git-real'), join(folder, '.git'));
+      };
+      // Live: in the swapped state, plain git by that path reads the
+      // outside repository's file as deleted here, content and all.
+      swapIn();
+      expect(plainDiff(folder)).toContain(`-${SECRET}`);
+      swapOut();
+      let swapped = false;
+      const printed: string[] = [];
+      hooks.beforeGit = (args) => {
+        // After Station checked `.git` and judged the config, before the
+        // diff starts; back again at the next git call.
+        if (args.includes('diff')) {
+          swapIn();
+          swapped = true;
+        } else if (swapped) {
+          swapOut();
+          swapped = false;
+        }
+      };
+      hooks.afterGit = (args, stdout) => {
+        if (args.includes('diff')) printed.push(stdout);
+      };
+
+      const { status, body, retryAfter } = await changes(project, {
+        path: 'sub/secret.txt',
+      });
+      hooks.beforeGit = undefined;
+      hooks.afterGit = undefined;
+      if (swapped) swapOut();
+
+      // git, run by Station, printed the outside repository's content on
+      // every attempt; none of it was answered.
+      expect(printed.length).toBeGreaterThan(1);
+      for (const output of printed) expect(output).toContain(`-${SECRET}`);
+      expect(status).toBe(503);
+      expect(body).toMatchObject({
+        success: false,
+        code: 'repository-busy',
+        retryable: true,
+      });
+      expect(retryAfter).toBe('1');
+      expect(JSON.stringify(body)).not.toContain(SECRET);
+      expect(JSON.stringify(body)).not.toContain(outside);
+      // The member's repository is as it was.
+      expect(readFileSync(join(folder, '.git', 'HEAD'), 'utf-8')).toContain(
+        'refs/heads/main',
+      );
+      expect(git(folder, ['log', '-1', '--format=%s']).trim()).toBe('base');
+    });
   });
 });

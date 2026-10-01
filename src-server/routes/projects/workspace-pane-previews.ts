@@ -216,6 +216,23 @@ export function createWorkspacePanePreviewRoutes(
           404,
         );
       }
+      if (changes.state === 'busy') {
+        // Not a refusal, and not a result: the repository was being written
+        // (a commit landing, a `.git` swapped under the read) each time
+        // Station read it, and a read is only answered from one that held
+        // still. The same answer as the coding git reads.
+        c.header('Retry-After', '1');
+        return c.json(
+          {
+            success: false,
+            error:
+              'The repository was being changed while Station read it. Nothing is wrong with it; try again in a moment',
+            code: 'repository-busy',
+            retryable: true,
+          },
+          503,
+        );
+      }
       return c.json({ success: true, data: changes });
     },
   );
