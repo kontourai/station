@@ -13,6 +13,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
+import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openExternalLink } from '../platform/openExternalLink';
@@ -152,7 +153,7 @@ function AccountPage({
             ))}
           </select>
         </label>
-        <div className="engine-account-overview__actions">
+        <ResponsiveSurfaceActions className="engine-account-overview__actions">
           <Button
             onClick={refresh}
             disabled={accounts.isFetching || usage.isFetching}
@@ -164,7 +165,7 @@ function AccountPage({
               {adding ? 'Cancel' : 'Add account'}
             </Button>
           )}
-        </div>
+        </ResponsiveSurfaceActions>
       </div>
       {adding && (
         <form
