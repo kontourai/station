@@ -177,6 +177,62 @@ The runner requires a clean linked worktree, takes an exclusive lock, owns the t
 
 The mutation suite is deliberately focused and opt-in. Its runner safety and policy catch tests run in ordinary focused verification; the application mutations themselves are not injected during general CI or while another process owns the worktree.
 
+## CI health history
+
+[`scripts/ci-health.mjs`](../../scripts/ci-health.mjs) recomputes the capacity
+and merge-queue baseline for [epic #3101](https://github.com/kontourai/station/issues/3101).
+It requires authenticated `gh` and local, non-shallow `origin/main` history.
+Fetch `origin/main` before measuring recent ledger changes; the command reads
+that ref without checking out or advancing local `main`.
+
+```bash
+npm run ci:health -- --hours=6
+npm run ci:health -- --since=2026-10-01T00:00:00Z --until=2026-10-02T00:00:00Z --json
+npm run ci:health -- --hours=6 --record --issue=3101
+npm run ci:health -- --history --issue=3101
+```
+
+The default window is the last 24 hours; `--since` and `--hours` are alternatives.
+`--repo=owner/name` selects another repository, but its ledger measurement
+requires a matching local origin. Default output is Markdown; `--json` emits
+one snapshot object. Recording is explicit: `--record --issue=<n>` appends a
+human summary and fenced JSON snapshot to that issue through REST. There is no
+default issue and no scheduled workflow. `--history --issue=<n>` reads these
+comments into a trend table; `--json` also works for history.
+
+| Measure | Definition |
+| --- | --- |
+| Merge groups built, failed, failure rate | Distinct queue branches across workflows; a group fails if any run attempt concludes failure, timed out, cancelled, action required, or startup failure. Rate divides failed groups by all built groups, including unfinished groups. |
+| Regression failures and duration | Failed groups containing a failed `Merge-queue regression` job; median/p90 duration of executed regression jobs on merge-group runs. |
+| PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; queue-removal events by bots for those PRs inside the window. Removals within one minute of a merge are excluded. |
+| Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit in between, versus no intervening commit followed by merge without another failed removal. Committer date is preferred to author date. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
+| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs are reported separately and excluded from timing. |
+| Time with >=18 jobs running | Sweep-line share between the first executed job start and last completion, including idle gaps; simultaneous completions precede starts. |
+| Jobs waiting >5 / >20 minutes; OS wait | Shares among executed jobs, using strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
+| Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. Queue branches group merge workflows. Groups with fewer than five executed jobs are excluded. |
+| Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
+| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. |
+
+Runs are selected by creation time in the half-open window; all job durations
+and available attempts for those runs are counted, even when completion lies
+outside the window. Percentiles use the baseline's sorted upper-rank definition
+(index `floor(n * p)`, capped at `n - 1`); empty populations are `null`/`n/a`.
+Collection is not an atomic GitHub snapshot. Re-running a window can change
+pending conclusions or reveal additional attempts.
+
+Actions listing queries split recursively at the 1,000-result cap and deduplicate
+boundary runs. Unsplittable caps, exhausted pagination, rate limits and other
+collection errors set `incomplete: true`, retain reasons and exit nonzero.
+Partial numbers must not be read as a complete baseline. Successfully split
+caps remain visible as `listingCapHits`. History errors also exit nonzero;
+incomplete recorded snapshots are flagged in the trend table. Recording writes
+only an issue comment; no snapshot file or workflow is added to `main`.
+
+Fixture coverage lives in
+[`scripts/__tests__/ci-health.test.ts`](../../scripts/__tests__/ci-health.test.ts).
+The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits`
+and `ci-health-listing-cap` use `npm run test:mutation:smoke -- --case=<id>`.
+
 ## Philosophy
 
 - **Unit tests** for business logic (services, utilities, pure functions)

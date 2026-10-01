@@ -56,6 +56,49 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'ci-health-concurrency-threshold',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'counts exactly 18 running jobs and idle gaps without double-counting boundaries',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(source, 'Number(n) >= 18', 'Number(n) > 18'),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-reentry-commits',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'classifies re-entry with a new commit versus an unchanged successful re-entry',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (changed) return 'neededNewCommits';",
+            "if (changed) return 'passedUnchanged';",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'ci-health-listing-cap',
+    test: 'scripts/__tests__/ci-health.test.ts',
+    failure:
+      'detects the 1000 listing cap, splits windows, and rejects an unsplittable cap',
+    files: [
+      {
+        path: 'scripts/ci-health.mjs',
+        change: (source) =>
+          exactReplace(source, 'if (total < 1000)', 'if (total <= 1000)'),
+      },
+    ],
+  },
+  {
     id: 'device-trust-before-peer-acceptance',
     test: 'scripts/__tests__/device-connection-trust.test.ts',
     failure:
