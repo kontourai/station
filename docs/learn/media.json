@@ -19,12 +19,12 @@
     {
       "path": "docs/learn/media/shared-task-document.png",
       "kind": "image",
-      "digest": "7f6b0ad776d4c9488f991df92236cb2e8b209e3dc3b58d3335fc434e158baadc",
+      "digest": "8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393",
       "alt": "A Task with its shared document, live room and saved revision history.",
       "caption": "A saved Task document and its room history.",
       "scenario": "Save a shared revision",
-      "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
-      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
+      "evidence": "Actual isolated production Station at 1440x1400. Created Project and Task through UI, saved a multi-paragraph shared document, sent a human room message and reopened the Task. Document and room history persisted. Editor also measured 310x256 and composer 310x96 at 390px without page overflow. One human identity only; no external Agent/provider, public publication, native device or full #2844 closure proof.",
+      "capturedRevision": "fbb464a6f50ad701f4c11b95cd8badaf73d3b391",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -34,12 +34,12 @@
     {
       "path": "docs/learn/media/connections-models.png",
       "kind": "image",
-      "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9",
+      "digest": "c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
-      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
         "docs/learn/walkthroughs.md",

@@ -27,13 +27,12 @@
  * sub-marker is filtered.
  */
 import type { StorageAdapter } from '@voltagent/core';
-import type { UIMessage } from 'ai';
 import { currentNativeMemoryHistory } from '../../runtime/conversation/authorized-turn-correlation.js';
 
 /** Must match the literal prefix `chat-lifecycle.ts` persists. */
 const CHAT_ERROR_MARKER = '[SYSTEM_EVENT] [CHAT_ERROR]';
 
-function messageTextParts(message: UIMessage): string[] {
+function messageTextParts(message: unknown): string[] {
   const parts = (message as { parts?: unknown }).parts;
   if (!Array.isArray(parts)) {
     return [];
@@ -50,17 +49,25 @@ function messageTextParts(message: UIMessage): string[] {
 }
 
 /** True when a stored message carries the `[CHAT_ERROR]` failed-turn marker. */
-function isChatErrorMarkerMessage(message: UIMessage): boolean {
-  if ((message as { role?: string }).role !== 'user') {
+function isChatErrorMarkerMessage(message: unknown): boolean {
+  if (
+    !message ||
+    typeof message !== 'object' ||
+    (message as { role?: unknown }).role !== 'user'
+  ) {
     return false;
   }
-  return messageTextParts(message).some((text) =>
-    text.startsWith(CHAT_ERROR_MARKER),
+  // The same shapes the served-transcript scrubber reads: text parts, and a
+  // legacy `content` string.
+  const content = (message as { content?: unknown }).content;
+  return (
+    (typeof content === 'string' && content.startsWith(CHAT_ERROR_MARKER)) ||
+    messageTextParts(message).some((text) => text.startsWith(CHAT_ERROR_MARKER))
   );
 }
 
 /** Filters `[CHAT_ERROR]` marker messages out of a message list. */
-export function excludeChatErrorMarkers(messages: UIMessage[]): UIMessage[] {
+export function excludeChatErrorMarkers<T>(messages: T[]): T[] {
   return messages.filter((message) => !isChatErrorMarkerMessage(message));
 }
 
