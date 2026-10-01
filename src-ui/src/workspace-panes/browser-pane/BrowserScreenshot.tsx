@@ -21,7 +21,7 @@ function pad(value: number): string {
 }
 
 /** `browser-<host>-YYYYMMDD-HHMMSS.<ext>`, safe as a file name anywhere. */
-export function screenshotFileName(shot: BrowserScreenshotShot): string {
+function screenshotFileName(shot: BrowserScreenshotShot): string {
   const t = shot.takenAt;
   const stamp = `${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}-${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}`;
   const host =

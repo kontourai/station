@@ -29,7 +29,7 @@ import {
  */
 
 /** Matches the server's bound: the drawer never holds more than it keeps. */
-export const BROWSER_CONSOLE_CLIENT_LIMIT = 500;
+const BROWSER_CONSOLE_CLIENT_LIMIT = 500;
 const POLL_MS = 1_000;
 
 type LevelFilter = 'all' | BrowserConsoleLevelView;

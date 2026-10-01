@@ -44,7 +44,7 @@ export interface BrowserConsoleSnapshot {
 }
 
 export const BROWSER_CONSOLE_LIMIT = 500;
-export const BROWSER_CONSOLE_TEXT_MAX = 2_000;
+const BROWSER_CONSOLE_TEXT_MAX = 2_000;
 const URL_MAX = 500;
 /** Arguments of one console call rendered into its text. */
 const ARGS_MAX = 20;

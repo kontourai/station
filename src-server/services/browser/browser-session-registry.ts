@@ -310,7 +310,7 @@ const SCREENSHOT_DEADLINE_MS = 10_000;
  * high device scale can exceed it as PNG; it is then taken as JPEG, and
  * refused (`screenshot-too-large`) if that is still over, never cut.
  */
-export const BROWSER_SCREENSHOT_MAX_BYTES = 16 * 1024 * 1024;
+const BROWSER_SCREENSHOT_MAX_BYTES = 16 * 1024 * 1024;
 
 const STORE_VERSION = 2;
 const MAX_STORED_SESSIONS = 500;

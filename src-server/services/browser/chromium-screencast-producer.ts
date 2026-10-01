@@ -148,7 +148,7 @@ const DIALOG_MESSAGE_MAX = 300;
 /** Bound on a held dialog's text and default answer shown to a person. */
 export const PENDING_DIALOG_TEXT_MAX = 2_000;
 /** A held dialog nobody answers is answered automatically after this. */
-export const DEFAULT_DIALOG_HOLD_MS = 120_000;
+const DEFAULT_DIALOG_HOLD_MS = 120_000;
 const HELD_DIALOG_TYPES: ReadonlySet<string> = new Set([
   'alert',
   'confirm',
