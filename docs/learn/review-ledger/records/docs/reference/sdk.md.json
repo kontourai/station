@@ -424,7 +424,7 @@
 
     {"path":"src-ui/src/components/attention/NeedsInputReply.tsx","digest":"ab0b8da0cf2a028f663b3ec521d1e5888636123168b3c3b9cba5aad5c9a122cc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"52b8e4687983de722ce934df28b5d300d7312aa43ceaa8023fbb524d5c558e4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"b9d8d43057e6a311366de908504c8d9f806cc78828c72be2b3ac7805a2e5a157","revision":"74141966c510f72845b72b7b4c8d2a2128079034"},
 
     {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
