@@ -508,24 +508,6 @@ export function RelayRouteKeyApproval({
               <dd>Untrusted candidate</dd>
             </div>
             <div>
-              <dt>Saved route</dt>
-              <dd>
-                {candidate.profileName} · {candidate.brokerOrigin}
-              </dd>
-            </div>
-            <div>
-              <dt>Station ID</dt>
-              <dd>{candidate.stationId}</dd>
-            </div>
-            <div>
-              <dt>Enrollment ID</dt>
-              <dd>{candidate.enrollmentId}</dd>
-            </div>
-            <div>
-              <dt>Generation</dt>
-              <dd>{candidate.generation}</dd>
-            </div>
-            <div>
               <dt>Full key ID</dt>
               <dd className="relay-route-trust-approval__key-id">
                 {candidate.keyId}
@@ -541,10 +523,6 @@ export function RelayRouteKeyApproval({
                   )}
                 </code>
               </dd>
-            </div>
-            <div>
-              <dt>Expires</dt>
-              <dd>{new Date(candidate.expiresAt).toLocaleString()}</dd>
             </div>
           </dl>
           <p className="connections-computers__note">
@@ -618,6 +596,33 @@ export function RelayRouteKeyApproval({
           >
             Cancel candidate
           </Button>
+          <details>
+            <summary>Route and timing details</summary>
+            <dl>
+              <div>
+                <dt>Saved route</dt>
+                <dd>
+                  {candidate.profileName} · {candidate.brokerOrigin}
+                </dd>
+              </div>
+              <div>
+                <dt>Station ID</dt>
+                <dd>{candidate.stationId}</dd>
+              </div>
+              <div>
+                <dt>Enrollment ID</dt>
+                <dd>{candidate.enrollmentId}</dd>
+              </div>
+              <div>
+                <dt>Generation</dt>
+                <dd>{candidate.generation}</dd>
+              </div>
+              <div>
+                <dt>Expires</dt>
+                <dd>{new Date(candidate.expiresAt).toLocaleString()}</dd>
+              </div>
+            </dl>
+          </details>
         </section>
       )}
       {candidate && !candidateMatchesRoute && (
