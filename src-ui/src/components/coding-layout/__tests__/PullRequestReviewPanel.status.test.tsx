@@ -12,6 +12,7 @@
 import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pull-request-provider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -305,6 +306,89 @@ describe('pull request status', () => {
   });
 
   test.each([
+    ['requested_changes', 'Changes requested', 'failure'],
+    ['PENDING', 'Review pending', 'neutral'],
+    ['not_approved', 'Review required', 'pending'],
+    ['ci_must_pass', 'CI must pass', 'neutral'],
+    ['discussions_not_resolved', 'Discussions not resolved', 'neutral'],
+  ])(
+    'review status %s is the chip "%s" with %s tone',
+    async (reviewStatus, label, tone) => {
+      snapshot.current = base({
+        pullRequest: { ...base().pullRequest, reviewStatus },
+      });
+      mount();
+      const chip = await screen.findByText(label);
+      expect(chip.className).toContain('pull-request-review__chip');
+      expect(chip.getAttribute('data-tone')).toBe(tone);
+      expect(screen.queryByText(reviewStatus)).toBeNull();
+    },
+  );
+
+  test.each(['mergeable', 'checking', 'unchecked', 'NONE'])(
+    'review status %s shows no decision chip (the mergeability sentence covers it)',
+    async (reviewStatus) => {
+      snapshot.current = base({
+        pullRequest: { ...base().pullRequest, reviewStatus },
+      });
+      mount();
+      await screen.findByText('Open');
+      expect(
+        document.querySelectorAll('.pull-request-review__chip'),
+      ).toHaveLength(1);
+      expect(screen.queryByText(/mergeable|checking|unchecked/i)).toBeNull();
+    },
+  );
+
+  test('"observed" keeps up with the clock every 30 s and stops on unmount', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      const start = Date.parse('2026-10-01T12:00:00Z');
+      vi.setSystemTime(start);
+      snapshot.current = base({
+        observedAt: new Date(start - 5 * 60_000).toISOString(),
+      });
+      mount();
+      expect(await screen.findByText('observed 5m ago')).toBeTruthy();
+      vi.setSystemTime(start + 61_000);
+      // Nothing moves until the tick.
+      expect(screen.getByText('observed 5m ago')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(screen.getByText('observed 6m ago')).toBeTruthy();
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      cleanup();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the description gets its own heading, and none when the body is empty', async () => {
+    snapshot.current = base({
+      pullRequest: { ...base().pullRequest, body: 'Keeps the last error.' },
+    });
+    mount();
+    const heading = await screen.findByRole('heading', {
+      level: 3,
+      name: 'Description',
+    });
+    expect(heading.nextElementSibling?.textContent).toBe(
+      'Keeps the last error.',
+    );
+    cleanup();
+    snapshot.current = base({
+      pullRequest: { ...base().pullRequest, body: '  ' },
+    });
+    mount();
+    await screen.findByText('Open');
+    expect(
+      screen.queryByRole('heading', { level: 3, name: 'Description' }),
+    ).toBeNull();
+  });
+
+  test.each([
     [undefined, 'This Station did not report checks for this pull request.'],
     [
       { state: 'unavailable', reason: 'The provider did not report checks.' },
@@ -409,6 +493,85 @@ describe('pull request status', () => {
     expect(openExternalLink).toHaveBeenCalledWith(
       'https://github.com/kontourai/station/pull/2049#discussion_r13',
     );
+  });
+
+  test('three settled states read as a list: "passed, neutral or skipped"', async () => {
+    snapshot.current = base({
+      checks: {
+        state: 'available',
+        partial: false,
+        checks: [
+          { name: 'a', state: 'failure' },
+          { name: 'b', state: 'success' },
+          { name: 'c', state: 'neutral' },
+          { name: 'd', state: 'skipped' },
+        ],
+      },
+    });
+    mount();
+    expect(
+      await screen.findByText(
+        'Show the other 3 passed, neutral or skipped checks',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a CRLF patch keeps clean paths, and a "diff --git" line ends a hunk whose counts lied', async () => {
+    // The first hunk claims 5 new lines but shows 1; without the section
+    // boundary, b.ts's lines would be credited to a.ts.
+    const patch = [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1,1 +1,5 @@',
+      '+only one',
+      'diff --git a/src/b.ts b/src/b.ts',
+      '--- a/src/b.ts',
+      '+++ b/src/b.ts',
+      '@@ -1,1 +1,2 @@',
+      ' kept',
+      '+added',
+      '',
+    ].join('\r\n');
+    snapshot.current = base({
+      diff: { state: 'available', patch, completeness: 'provider-output' },
+      reviewComments: {
+        state: 'available',
+        partial: false,
+        comments: [
+          {
+            id: '41',
+            author: 'reviewer',
+            body: 'On b, line 2.',
+            createdAt: '2026-09-04T16:43:39Z',
+            path: 'src/b.ts',
+            side: 'additions',
+            subject: 'line',
+            line: 2,
+          },
+          {
+            id: '42',
+            author: 'reviewer',
+            body: 'On a, a line it never showed.',
+            createdAt: '2026-09-04T16:44:00Z',
+            path: 'src/a.ts',
+            side: 'additions',
+            subject: 'line',
+            line: 2,
+          },
+        ],
+      },
+    });
+    mount();
+    const unplaced = await screen.findByText(
+      '1 comment not on the current diff',
+    );
+    const list = unplaced.closest('details') as HTMLElement;
+    // b.ts line 2 is a real added line under a clean (no `\r`) path.
+    expect(list.textContent).not.toContain('On b, line 2.');
+    // a.ts line 2 was never shown: the lying hunk must not reach into b.ts.
+    expect(list.textContent).toContain('On a, a line it never showed.');
+    expect(list.textContent).toContain('line 2 of src/a.ts');
   });
 
   test('places a comment on a deleted file, and an added line starting with "++ " is not a file header', async () => {
@@ -564,6 +727,8 @@ diff --git a/src/inc.ts b/src/inc.ts
     expect(handoff.textContent).toBe('Add to chat');
     expect(handoff.getAttribute('title')).toBeTruthy();
     expect((handoff as HTMLButtonElement).disabled).toBe(true);
+    // Ghost, so it sits with the icon controls rather than shouting over them.
+    expect(handoff.className).toContain('button--ghost');
     for (const control of [controls[0], controls[2], controls[3]]) {
       // Icon-only, named and tooltipped: no visible words on the bar.
       expect(control.textContent).toBe('');

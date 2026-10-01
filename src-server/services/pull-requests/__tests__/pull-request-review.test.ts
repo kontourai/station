@@ -674,12 +674,15 @@ describe('checks and inline review comments', () => {
       name: `job ${i}`,
       status: 'COMPLETED',
     }));
+  // gh pages the rollup itself (162 contexts came back for one upstream PR),
+  // so an ordinary large rollup is complete; only one past the payload cap
+  // is cut and marked partial.
   test.each([
-    [99, false, 99],
-    [100, true, 100],
-    [101, true, 100],
+    [162, false, 162],
+    [1000, false, 1000],
+    [1001, true, 1000],
   ])(
-    'github: a rollup of %i contexts is partial=%s (gh serves one unpaged page of 100)',
+    'github: a rollup of %i contexts is partial=%s with %i kept (cap 1000, strict)',
     async (count, partial, kept) => {
       const result = await readPullRequestReview(
         'github',

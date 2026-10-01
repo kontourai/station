@@ -140,26 +140,49 @@ function reviewDecisionChip(
   status: string,
 ): { label: string; tone: Tone } | null {
   const key = status.trim().toUpperCase();
-  if (!key || key === 'NONE') return null;
+  // GitLab's `mergeable`/`checking`/`unchecked` say nothing about review;
+  // the mergeability sentence already covers them.
+  if (
+    !key ||
+    key === 'NONE' ||
+    key === 'MERGEABLE' ||
+    key === 'CHECKING' ||
+    key === 'UNCHECKED'
+  )
+    return null;
   if (key === 'APPROVED') return { label: 'Approved', tone: 'success' };
-  if (key === 'CHANGES_REQUESTED')
+  if (key === 'CHANGES_REQUESTED' || key === 'REQUESTED_CHANGES')
     return { label: 'Changes requested', tone: 'failure' };
-  if (key === 'REVIEW_REQUIRED' || key === 'PENDING' || key === 'NOT_APPROVED')
+  if (key === 'REVIEW_REQUIRED' || key === 'NOT_APPROVED')
     return { label: 'Review required', tone: 'pending' };
+  // GitHub `PENDING` is the viewer's own review, not yet submitted.
+  if (key === 'PENDING') return { label: 'Review pending', tone: 'neutral' };
   if (key === 'COMMENTED') return { label: 'Commented', tone: 'neutral' };
   if (key === 'DISMISSED')
     return { label: 'Review dismissed', tone: 'neutral' };
   return { label: humanise(status), tone: 'neutral' };
 }
 
-/** `CI_MUST_PASS` → "Ci must pass": words, with the first capitalised. */
+const ACRONYMS = new Set(['ci', 'api', 'url', 'id']);
+/** `ci_must_pass` → "CI must pass": words, the first capitalised, acronyms kept. */
 function humanise(value: string): string {
-  const words = value.trim().replace(/[_-]+/g, ' ').toLowerCase();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  const words = value
+    .trim()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase())
+    .map((word) => (ACRONYMS.has(word) ? word.toUpperCase() : word));
+  const [first = '', ...rest] = words;
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ');
 }
 
 const plural = (count: number, word: string) =>
   `${count} ${word}${count === 1 ? '' : 's'}`;
+/** "passed", "passed or skipped", "passed, neutral or skipped". */
+const listWords = (words: readonly string[]) =>
+  words.length <= 1
+    ? (words[0] ?? '')
+    : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
 
 /**
  * A native disclosure's summary with a visible caret: `display: flex` on a
@@ -293,7 +316,7 @@ function PullRequestChecks({
         <details className="pull-request-review__settled">
           <DisclosureSummary>
             {needsAttention.length === 0 ? 'Show' : 'Show the other'}{' '}
-            {settled.length} {settledStates.join(' or ')}{' '}
+            {settled.length} {listWords(settledStates)}{' '}
             {plural(settled.length, 'check').replace(/^\d+ /, '')}
           </DisclosureSummary>
           <CheckList checks={settled} />
@@ -434,7 +457,18 @@ function placedLines(patch: string): PlacedLines {
   let newLine = 0;
   let oldLeft = 0;
   let newLeft = 0;
-  for (const line of patch.split('\n')) {
+  for (const raw of patch.split('\n')) {
+    // CRLF patches: the `\r` would otherwise end up in every path.
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    // A new file section ends any open hunk, even one whose counts never
+    // ran out (a malformed patch must not lend one file's lines to the next).
+    if (line.startsWith('diff --git ')) {
+      oldLeft = 0;
+      newLeft = 0;
+      current = undefined;
+      oldPath = undefined;
+      continue;
+    }
     const inHunk = oldLeft > 0 || newLeft > 0;
     if (!inHunk) {
       const old = /^--- (?:a\/)?(.+)$/.exec(line);
@@ -482,6 +516,7 @@ function placedLines(patch: string): PlacedLines {
   return files;
 }
 
+const OBSERVED_TICK_MS = 30_000;
 /**
  * Two scannable lines under the title: the state and review decision as
  * chips, the branches in monospace, the author and commit count; then the
@@ -500,6 +535,12 @@ function ReviewHeader({
   const state = pullRequestStateChip(pullRequest.state);
   const decision = reviewDecisionChip(pullRequest.reviewStatus);
   const observed = Date.parse(observedAt);
+  // "observed 6m ago" must keep up with the clock while the pane stays open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), OBSERVED_TICK_MS);
+    return () => clearInterval(tick);
+  }, []);
   return (
     <div className="pull-request-review__head">
       <div className="pull-request-review__meta">
@@ -531,7 +572,7 @@ function ReviewHeader({
             dateTime={observedAt}
             title={new Date(observed).toLocaleString()}
           >
-            observed {relativeTimeAgo(observed, Date.now())}
+            observed {relativeTimeAgo(observed, now)}
           </time>
         )}
       </div>
@@ -743,6 +784,7 @@ function ReviewOwner({
             // The pane's one labelled action: it acts on the whole review.
             <Button
               size="sm"
+              variant="ghost"
               className="pull-request-review__handoff"
               title="Add this review's reference to the open chat's draft"
               onClick={addReviewContextToChat}
@@ -815,9 +857,14 @@ function ReviewOwner({
             <code>{data.pullRequest.targetBranch}</code>.
           </p>
           <PullRequestChecks checks={data.checks} />
-          <div className="pull-request-review__body">
-            {data.pullRequest.body}
-          </div>
+          {data.pullRequest.body?.trim() ? (
+            <>
+              <h3>Description</h3>
+              <div className="pull-request-review__body">
+                {data.pullRequest.body}
+              </div>
+            </>
+          ) : null}
           <h3>Changed files</h3>
           {data.diff.state === 'available' ? (
             <>

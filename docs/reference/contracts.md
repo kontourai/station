@@ -462,8 +462,9 @@ The snapshot's optional `checks` and `reviewComments` are observations too.
 `checks` lists the provider's CI for the observed head (GitHub's check runs and
 commit statuses, GitLab's head pipeline only when it ran on that head); an
 entry the reader cannot classify makes it `partial` rather than guessed, and
-so does a full first page from GitHub (100 contexts, which `gh pr view` does
-not page), since the rest cannot be seen. A GitLab merged-results pipeline runs
+so does a GitHub rollup beyond the reader's 1000-context payload cap (`gh pr
+view` pages the rollup itself; the cap bounds the snapshot, and only a rollup
+past it is cut). A GitLab merged-results pipeline runs
 on a merge commit the merge-request payload never names, so it is reported
 `unavailable` with that reason rather than tied to the observed head.
 `reviewComments` carries inline comments with their diff side and line, `line`

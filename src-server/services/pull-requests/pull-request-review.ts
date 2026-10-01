@@ -90,12 +90,15 @@ async function detail(
   );
 }
 /**
- * `gh pr view --json statusCheckRollup` returns the first page of contexts
- * (100) and nothing says whether more exist, so a full page is reported as
- * partial: a 150-job head whose failures sit past #100 must not read as
- * "100 passed". The same page bound applies to inline comments.
+ * The most check contexts one review carries to the client. `gh pr view
+ * --json statusCheckRollup` pages the rollup itself (gh 2.97.0 returned 162
+ * contexts for one upstream pull request), so everything it returns is kept
+ * up to this payload bound, and only a rollup beyond it is partial. 1000 is
+ * well past the largest CI matrices seen on a single head while keeping the
+ * snapshot a bounded message.
  */
-const GITHUB_CHECK_ROLLUP_PAGE = 100;
+const GITHUB_CHECK_ROLLUP_CAP = 1000;
+/** One page of inline comments; a full page may have more behind it. */
 const PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS = 100;
 const INLINE_COMMENT_BODY_MAX = 8192;
 const INLINE_COMMENT_TOTAL_MAX = 65_536;
@@ -201,8 +204,8 @@ function readChecks(
       reason: 'The provider did not report checks.',
     };
   const checks: PullRequestCheck[] = [];
-  let partial = rollup.length >= GITHUB_CHECK_ROLLUP_PAGE;
-  for (const entry of rollup.slice(0, GITHUB_CHECK_ROLLUP_PAGE)) {
+  let partial = rollup.length > GITHUB_CHECK_ROLLUP_CAP;
+  for (const entry of rollup.slice(0, GITHUB_CHECK_ROLLUP_CAP)) {
     try {
       const item = record(entry);
       if (item.__typename === 'CheckRun') {
@@ -502,8 +505,10 @@ export async function readPullRequestReview(
     run,
   );
   // The closing read asks for checks too. When it fails, the review still
-  // loads from a plain read (which still confirms the head) with its checks
-  // unavailable, and only gh's own refusal of the field blames gh's version.
+  // loads from a plain read with its checks unavailable, and only gh's own
+  // refusal of the field blames gh's version. The plain read is kept even
+  // after a timed-out (killed) read: it is the read that confirms the head
+  // the diff was taken against, and nothing earlier can stand in for it.
   let last: Json;
   let checksRefused: string | undefined;
   try {
