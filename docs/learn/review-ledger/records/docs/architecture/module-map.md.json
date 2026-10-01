@@ -24,7 +24,7 @@
 
     {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
