@@ -9,20 +9,20 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"3f79bc62cefcec06bb9305792c2cba2c8af3dfe34fac5b2f0fe5f2db212f1bc1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+  "document": {"digest":"9aa6591d840851c6489047d054405a3afeb538dbb4c9a1d025b0f138a6cd6a04","revision":"ef78c0d0980e7dbbf2cf8b633de002f5abf305da"},
 
   "sources": [
     {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/Cargo.toml","digest":"b3299922fcdd03fe79e55a560e9e87a196e8803c99422f578a4605c027e6ee37","revision":"2920904f68c6b010aefa0003d7a222594b85ac2c"},
 
     {"path":"src-desktop/capabilities/default.json","digest":"b6ce0ba74944574562d08ddd8f02698a222840af0581bf093c662a70f07c9ab1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-desktop/src/lib.rs","digest":"16d40e52ae708f44f1c9739164376dc6ffea24845e7a2a07843a35e1494ee8d7","revision":"c8f4f46d043674770b67cf26f41f541433a74de9"},
 
     {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"27104959cd867e90c3871113e84c6794a5a921f8b8e7143a28c73bc7481e53bf","revision":"c8f4f46d043674770b67cf26f41f541433a74de9"},
 
     {"path":"src-desktop/src/tray.rs","digest":"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"c702b8c3079399f04156eef2a27fee77e36930042ed8d2d7ebf18d65c0869318","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"be92e2c3c83bbfddfa0259210b0334f86dfad8bc249ad96456eef51b927dddb8","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -60,9 +60,9 @@
 
     {"path":"src-desktop/src/native_device_proof_key.rs","digest":"f209cb152047378666116d08bf220264b0a9ef569fbd0f5cde827e259ec0d5f6","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-desktop/src/native_proof_key_core.rs","digest":"d66f1b0037e2bd3ba564cf56fed94cae48b52647817dcbf72ae025a79eacd968","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-desktop/src/native_proof_key_core.rs","digest":"f66b190b738f1e3fe0623e5c8140797cd413fcb0701d6f3004e3c652c7b60a59","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"src-desktop/src/native_device_custody.rs","digest":"92f8609b6251e3223970bbc9096af3bdd67014a999c1771536b22110732a6495","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-desktop/src/native_device_custody.rs","digest":"d59c0981ce914c7550c73a57c95edc9991d2fd02e669589c0df5cfdab5c5a5cf","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
     {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
@@ -70,7 +70,9 @@
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+
+    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"}
   ],
 
   "checks": [
