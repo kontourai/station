@@ -382,6 +382,37 @@ the unit boundary. Dynamic native host/Pion consumption, a live Cloudflare
 journey through this endpoint, physical iOS Nightly and public NAT reachability
 remain **NOT_VERIFIED** by these checks.
 
+The per-offer server consumer at source `55606e049` uses the fixed connector
+ICE request before allocating a browser or native Pion peer. It preserves the
+current Station trust fence across that await, validates the returned route and
+relay policy, prefers a supplied TURN/TLS endpoint on TCP 443, and bounds peer
+lifetime to credential expiry with a five-second margin. The configured peer
+lifetime remains a ceiling; a 300-second browser ceiling can shorten to fit a
+cached receipt. No issuer credential is installed on Station. The normal
+private connector factory accepts `"turn": {"source": "broker"}`; the static
+manual tuple remains available below. Four focused owner files passed 81 tests
+through real factory/client callers with fake issuer/Pion boundaries. These
+checks do not execute a public native peer or a real Pion TURN allocation.
+
+Native source `1e99a85da` adds a fixed main-window RPC accepting only a saved
+profile name and expected revision. Its worker reconstructs an existing
+paired-Device-free routing owner, retains the installation proof key and grant
+bearer in native custody, and rechecks profile, trust and exact grant around the
+bounded request. It returns only the validated end-user ICE receipt. This source
+still requires IPC registration in the combined native shell; no Rust execution
+or installed-shell proof is claimed by this receipt.
+
+Root's recorded operator run at `2026-10-01T05:26:12.821173Z` used deployed source
+`9f7109de5a265cd7339a7498eac1a0562d3bf506`. Its metadata-only
+`public-ice-endpoint-receipt.json` records valid connector and receipt-reuse HTTP
+200, unauthenticated and foreign-scope HTTP 401, a 600-second TTL, no returned
+issuer credential, provider credential revocation HTTP 204 and deletion of the
+temporary response. This is the public HTTPS issuer endpoint proof owned by the
+operator, separate from the consumer tests above. Its
+`applicationOrNativePeerTested` field is false. It does not qualify encrypted
+application traffic, fresh native onboarding, physical iOS Nightly, or the
+community Docker bundle.
+
 ## Native routing grant foundation (v2)
 
 The broker database currently writes schema v6 and accepts the known v1–v5
@@ -639,6 +670,20 @@ Write `/absolute/private/connector.json` as a private `0600` file:
   "maxPeerLifetimeMs": 300000
 }
 ```
+
+For an explicitly configured short-lived broker issuer, replace only the
+`turn` tuple in the private connector file with:
+
+```json
+{"turn": {"source": "broker"}}
+```
+
+That mode obtains credentials through the authenticated connector-only broker
+endpoint for each offer. An unavailable, expired or mismatched receipt refuses
+peer startup; it does not fall back to static credentials or direct HTTP. The
+broker process owns the issuer token and issuance ledger. Keep the existing
+connector credential bundle, certificate and independently approved Station
+signing identity separate.
 
 `applicationOrigin` is the canonical application target used by the client and
 account proofs. It is not inferred from the broker or browser Origin. Existing

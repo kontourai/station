@@ -26,6 +26,7 @@ import {
   importJWK,
 } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import {
@@ -292,7 +293,9 @@ describe.runIf(process.platform !== 'win32')(
           iceTransportPolicy: 'relay',
           expiresAt: 601000,
         });
-        expect(Object.keys(receipt).sort()).toEqual([
+        expect(
+          Object.keys(z.record(z.string(), z.unknown()).parse(receipt)).sort(),
+        ).toEqual([
           'expiresAt',
           'iceServers',
           'iceTransportPolicy',
