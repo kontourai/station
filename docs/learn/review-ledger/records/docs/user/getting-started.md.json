@@ -66,7 +66,7 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"4cd9d4ae529abe21bf225e74dff79d88bc2a08620b66b4238b42d0cf0aa5aae1","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5549722cc113e026ff1bd7aebe7ef9f0926b1d7fbede4c283018b96be27ff848","revision":"d93991f52363d8d7d2a1fa12938ba5783158b27c"},
 
     {"path":"src-ui/src/components/modals/useNewChatSetupReturn.ts","digest":"cc2d69428c1b40135252806c9ac78f35ef536536f4f666cff63efbde60adbadc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/components/home/HomeChatStartForm.tsx","digest":"0cb35710135ce601992dcbe659e5bc96e0c5f2ec5de31399159314114c601c6c","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
 
-    {"path":"src-ui/src/components/modals/AutomaticEnginePreparation.tsx","digest":"122cf55568f1b03b96db68b5ce4b79eb510022030c7ac4fcfccaa24292c59849","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
+    {"path":"src-ui/src/components/modals/AutomaticEnginePreparation.tsx","digest":"05dad7302ef1ac516f913814eb4e3bc16f1f694ab65d2d6ad232dd1533fd4fa9","revision":"d93991f52363d8d7d2a1fa12938ba5783158b27c"},
 
     {"path":"src-ui/src/lib/newChatIntent.ts","digest":"a759731abdda8846bbfa382a714b397cfaeb913b7e407f46ebc92b956c304c5e","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
