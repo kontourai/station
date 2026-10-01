@@ -70,8 +70,8 @@ export function HomeSurface({
     <>
       <header className="home-view__intro">
         <p className="home-view__eyebrow">Your work</p>
-        <h1>What do you want to work on?</h1>
-        <p>Start something focused or continue exactly where you left off.</p>
+        <h1>What's next?</h1>
+        <p>Chat, explore agents, or open a project.</p>
       </header>
       <HomeActionSection
         continuation={continuation}

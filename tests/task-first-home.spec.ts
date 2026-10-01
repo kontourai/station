@@ -837,7 +837,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     await expect(page).toHaveURL(/\/$/);
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible();
     const continuation = page.getByRole('button', {
       name: /Continue most recent work/i,
@@ -1998,7 +1998,7 @@ test('profiles Home with substantial session history', async ({
       await page.goto('/');
       expect((await (await response).json()).data).toHaveLength(1000);
       await expect(
-        page.getByRole('heading', { name: 'What do you want to work on?' }),
+        page.getByRole('heading', { name: "What's next?" }),
       ).toBeVisible();
       await expect(
         page.getByText('History session 0', { exact: true }).first(),

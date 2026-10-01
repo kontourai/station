@@ -134,9 +134,7 @@ describe('HomeSurface composition', () => {
     renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
-    expect(
-      screen.getByRole('heading', { name: 'What do you want to work on?' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
   });
 

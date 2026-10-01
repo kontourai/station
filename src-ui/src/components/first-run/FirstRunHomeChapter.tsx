@@ -152,8 +152,7 @@ function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
         </Button>
       }
     >
-      Choose your AI apps and tell Station how you like your answers. Two
-      minutes, and you can change everything later.
+      Choose AI apps and answer preferences. You can return to this later.
     </PageCallout>
   );
 }
