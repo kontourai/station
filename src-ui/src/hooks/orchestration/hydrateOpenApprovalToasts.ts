@@ -39,10 +39,9 @@ export async function hydrateOpenApprovalToasts(
     if (!placeholderToastId || event.blocking === false) continue;
     if (readHarnessQuestionnaire(event.payload?.questionnaire)) continue;
     const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
-    if (
-      !chat?.pendingApprovals?.includes(event.requestId) ||
-      chat.approvalToasts?.get(event.requestId) !== placeholderToastId
-    )
+    // The placeholder is still this request's toast: an answer, a newer
+    // snapshot or a live `request.opened` since the read all replace it.
+    if (chat?.approvalToasts?.get(event.requestId) !== placeholderToastId)
       continue;
     toastStore.dismiss(placeholderToastId);
     const approvalToasts = new Map(chat.approvalToasts);
