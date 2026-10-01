@@ -487,8 +487,9 @@ export function InboxRow({
     details || onSnoozeWake || onSnoozeMenu || discardThreadId || closable,
   );
   // TOUCH CHROME shows Details and at most ONE direct action, so a phone
-  // row keeps its title: snooze where the row can be snoozed, otherwise the
-  // row's one other action. A slim row is one line and shows Details alone.
+  // row keeps its title: Discard on a Draft (it is what a Draft row is for),
+  // otherwise snooze where the row can be snoozed, otherwise close. A slim
+  // row is one line and shows Details alone.
   // Whatever is not beside the row is an ordinary button inside the Details
   // sheet. Hover chrome reveals every action over the time slot as before.
   const snoozable = Boolean(onSnoozeWake || onSnoozeMenu);
@@ -496,12 +497,12 @@ export function InboxRow({
     ? 'all'
     : size === 'slim'
       ? 'none'
-      : snoozable
-        ? 'snooze'
-        : closable
-          ? 'close'
-          : discardThreadId
-            ? 'discard'
+      : discardThreadId
+        ? 'discard'
+        : snoozable
+          ? 'snooze'
+          : closable
+            ? 'close'
             : 'none';
   const beside = (action: 'snooze' | 'close' | 'discard') =>
     direct === 'all' || direct === action;
@@ -772,7 +773,22 @@ export function InboxRow({
                     Close chat
                   </Button>
                 )}
-                {!beside('discard') && discardButton}
+                {/* The sheet's discard is a labelled button, and like every
+                    sheet action it closes the sheet and hands the host the
+                    row's own trigger, so the host can move focus to the
+                    next row before this one is removed. */}
+                {!beside('discard') && discardThreadId && onDraftDiscarded && (
+                  <DiscardDraftButton
+                    threadId={discardThreadId}
+                    title={item.title}
+                    label="Discard draft"
+                    className="button button--secondary button--small"
+                    closeSessionIds={draftSessionIds(item)}
+                    onDiscarded={() =>
+                      fromSheet((trigger) => onDraftDiscarded(item, trigger))
+                    }
+                  />
+                )}
               </>
             ),
           }}
@@ -854,6 +870,29 @@ export function InboxGroupList({
   // Owned here, by item id, so the sheet outlives the row's remount when
   // the item moves to another lane.
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  /** The rows a group actually renders: none while its section is
+   *  collapsed, and older drafts only once their disclosure is open. */
+  const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
+    const collapsed =
+      collapsible &&
+      (group.id === 'snoozed' || group.id === 'earlier') &&
+      !collapsible.sections[group.id];
+    if (collapsed) return [];
+    if (group.id !== 'drafts') return group.items;
+    const { recent, older } = splitDraftsByAge(group.items, now);
+    return olderDraftsOpen ? [...recent, ...older] : recent;
+  };
+  // A sheet belongs to a row that is on screen. Once its row is gone
+  // (collapsed, folded away, discarded, snoozed) the open state is cleared,
+  // so the sheet cannot reopen unprompted when the row comes back.
+  const detailsRowRendered =
+    detailsFor !== null &&
+    groups.some((group) =>
+      renderedItems(group).some((item) => item.id === detailsFor),
+    );
+  useEffect(() => {
+    if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
+  }, [detailsFor, detailsRowRendered]);
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
     <InboxRow
       key={item.id}

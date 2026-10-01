@@ -246,7 +246,7 @@ export function MobileTaskSwitcher({
             onClick={closeAndRestoreFocus}
           />
         </header>
-        <div className="mobile-task-switcher__list chat-dock-inbox--touch">
+        <div className="mobile-task-switcher__list">
           {loadError && visibleGroups.length === 0 ? (
             <ErrorState
               variant="compact"

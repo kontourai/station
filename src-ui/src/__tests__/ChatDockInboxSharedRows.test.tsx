@@ -125,8 +125,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         name: 'Shared row title, Shared project',
       }),
     ).not.toBeNull();
-    // The sheet's list opts into the ≥44px always-visible action chrome.
-    expect(dialog.querySelector('.chat-dock-inbox--touch')).not.toBeNull();
+    // The sheet's rows use the always-visible ≥44px action chrome.
+    expect(dialog.querySelector('.inbox-row--touch')).not.toBeNull();
+    expect(dialog.querySelector('.inbox-row--hover')).toBeNull();
     // Chrome stays host-owned: the pinned accessible names survive.
     expect(
       screen.getByRole('button', { name: 'Close task switcher' }),

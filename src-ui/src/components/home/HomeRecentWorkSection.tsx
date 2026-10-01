@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -100,6 +100,23 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // A sheet belongs to a row that is on screen. A row that leaves the
+  // rendered lanes (snoozed, discarded, paged out) clears it, so the sheet
+  // cannot reopen unprompted if the row returns.
+  const detailsRowRendered =
+    detailsFor !== null &&
+    [
+      ...lanes.needsYou,
+      ...lanes.running,
+      ...lanes.idle,
+      ...lanes.recentlyFinished,
+      ...(lanes.external ?? []),
+      ...(lanes.drafts ?? []),
+      ...lanes.settled.slice(0, settledVisibleCount),
+    ].some((item) => item.id === detailsFor);
+  useEffect(() => {
+    if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
+  }, [detailsFor, detailsRowRendered]);
   return {
     detailsFor,
     setDetailsFor,

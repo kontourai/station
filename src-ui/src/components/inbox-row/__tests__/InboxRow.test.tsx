@@ -4,9 +4,9 @@
  * #3043: the shared inbox row. Fixed line budget, one status line read from
  * the status ladder, chips only where a fact backs them, and two sizes.
  *
- * Rows are built from a real session summary shape through the real work
- * item builder, so a field the builder stops carrying fails here at the
- * render boundary. Hover geometry is measured in a real engine by
+ * Rows are built through the real work item builder from the fold-pinned
+ * running summary (see `session` below), with named fields overridden by
+ * hand per test. Hover geometry is measured in a real engine by
  * `InboxRow.geometry.test.tsx`; jsdom computes no layout.
  */
 
@@ -21,6 +21,10 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  FOLD_FIXTURES,
+  FOLD_SESSION_CREATED_AT,
+} from '../../../../../tests/helpers/session-summary-fold-fixtures';
 import { chatDraftsStore } from '../../../contexts/chat-drafts-store';
 import {
   buildOrchestrationItems,
@@ -41,9 +45,22 @@ vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => null,
 }));
 
-const NOW = Date.parse('2026-09-30T10:01:15.000Z');
-const TURN_STARTED = '2026-09-30T10:00:03.000Z';
+const discardCommand = vi.hoisted(() => vi.fn(async () => ({})));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  dispatchOrchestrationCommandWithReceipt: discardCommand,
+}));
 
+const NOW = Date.parse('2026-09-30T10:01:15.000Z');
+
+/**
+ * The summary every row here starts from: the fold-pinned running turn
+ * (`FOLD_FIXTURES.runningTool`, which the server test proves is what the
+ * server produces), plus a title and project for the row to show. Tests then
+ * override NAMED FIELDS by hand to reach other states; those overrides are
+ * written here, not folded, and the ladder's own fold-driven coverage lives
+ * in `work-status.test.ts`.
+ */
 function session(
   over: Partial<OrchestrationSessionSummary> = {},
 ): OrchestrationSessionSummary {
@@ -51,30 +68,18 @@ function session(
     provider: 'claude',
     threadId: 'T',
     status: 'running',
-    createdAt: '2026-09-30T10:00:01.000Z',
-    updatedAt: '2026-09-30T10:00:05.000Z',
+    createdAt: FOLD_SESSION_CREATED_AT,
     controlMode: 'station-owned',
     answerability: { answerable: true },
     isLoaded: true,
     isPersisted: true,
-    eventCount: 3,
+    eventCount: 2,
     displayTitle: 'Migrate sessions table',
     projectSlug: 'station',
-    lifecycleState: 'running',
-    transitionReason: 'turn_started',
-    transitionSource: 'runtime',
-    pendingReview: false,
-    hasActiveTurn: true,
-    conversationActivity: {
-      conversationId: 'T',
-      currentThreadId: 'T',
-      asOfSequence: 2,
-      openTurn: { turnId: 't1', threadId: 'T', startedAt: TURN_STARTED },
-      runningTools: [
-        { name: 'Bash', callId: 'c1', startedAt: '2026-09-30T10:00:04.000Z' },
-      ],
-      lastActivityAt: '2026-09-30T10:00:04.000Z',
-    },
+    ...(FOLD_FIXTURES.runningTool
+      .summary as Partial<OrchestrationSessionSummary>),
+    // One minute before NOW, so the row's time slot reads "1m".
+    updatedAt: '2026-09-30T10:00:15.000Z',
     ...over,
   };
 }
@@ -632,5 +637,133 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
         screen.getByRole('button', { name: /^Details for/ }),
       ),
     );
+  });
+});
+
+describe('a Draft row on touch chrome', () => {
+  const draftRow = (): Row => {
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    return {
+      facts: undefined,
+      item: { ...base.item, lifecycleLabel: 'Draft', turnProgress: undefined },
+    };
+  };
+  const rowElement = () => screen.getByTestId('inbox-row');
+
+  it('its one direct action is Discard, and the host is handed a button inside the row', async () => {
+    discardCommand.mockClear();
+    const onDraftDiscarded = vi.fn();
+    const row = draftRow();
+    renderRow(row, {
+      chrome: 'touch',
+      hoverCard: true,
+      snoozeMenuOnly: true,
+      onSnoozeWake: vi.fn(),
+      onDraftDiscarded,
+    });
+    expect(
+      [...document.querySelectorAll('.inbox-row__actions > button')].map(
+        (button) => button.getAttribute('aria-label'),
+      ),
+    ).toEqual([
+      'Details for Migrate sessions table',
+      'Discard draft Migrate sessions table',
+    ]);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Discard draft Migrate sessions table',
+      }),
+    );
+    await vi.waitFor(() => expect(onDraftDiscarded).toHaveBeenCalledTimes(1));
+    expect(discardCommand).toHaveBeenCalledWith({
+      type: 'discardDraft',
+      threadId: 'T',
+    });
+    const [item, action] = onDraftDiscarded.mock.calls[0];
+    expect(item).toBe(row.item);
+    expect(rowElement().contains(action)).toBe(true);
+  });
+
+  it('from the Details sheet, Discard is a labelled button that closes the sheet and hands the host the row’s trigger', async () => {
+    discardCommand.mockClear();
+    const onDraftDiscarded = vi.fn();
+    const row = draftRow();
+    // A slim row shows Details alone, so its discard lives in the sheet.
+    renderRow(row, {
+      chrome: 'touch',
+      size: 'slim',
+      hoverCard: true,
+      onDraftDiscarded,
+    });
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    const discard = within(actions).getByRole('button', {
+      name: 'Discard draft Migrate sessions table',
+    });
+    expect(discard.textContent).toBe('Discard draft');
+    fireEvent.click(discard);
+    await vi.waitFor(() => expect(onDraftDiscarded).toHaveBeenCalledTimes(1));
+    // Not the portaled sheet button: the row's own Details trigger, which
+    // the host can find its row from to move focus before the row goes.
+    expect(onDraftDiscarded).toHaveBeenCalledWith(row.item, details);
+    expect(rowElement().contains(details)).toBe(true);
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+  });
+});
+
+describe('a Details sheet whose row leaves the list', () => {
+  it('is closed, and does not reopen when the row comes back', async () => {
+    const earlier = rowFor({
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    }).item;
+    const list = (expanded: boolean) => (
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'earlier', label: 'Earlier', items: [earlier] }]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{
+            sections: { snoozed: false, earlier: expanded },
+            onToggle: vi.fn(),
+          }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(list(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+
+    // The section is collapsed: its rows, and the sheet, are gone.
+    view.rerender(list(false));
+    await vi.waitFor(() =>
+      expect(screen.queryByTestId('inbox-row-details')).toBeNull(),
+    );
+    expect(screen.queryByTestId('inbox-row')).toBeNull();
+
+    // Expanded again: the row is back and nothing reopens by itself.
+    view.rerender(list(true));
+    expect(screen.getByTestId('inbox-row')).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: /^Details for/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
   });
 });

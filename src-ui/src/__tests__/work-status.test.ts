@@ -165,13 +165,19 @@ describe('the status ladder, from real server summaries', () => {
       windowMs: 180_000,
       silentSinceEventAt: '2026-09-30T10:00:04.000Z',
     });
+    // Read at an instant the marker exists: it was written at 10:03:04,
+    // after 180s of nothing since the last progress event at 10:00:04.
+    expect(summary.turnProgress?.progressSilence?.detectedAt).toBe(
+      '2026-09-30T10:03:04.000Z',
+    );
+    const sixMinutesSilent = Date.parse('2026-09-30T10:06:04.000Z');
     const silent = rowFor(summary);
-    const status = workStatus(silent.item, NOW, silent.facts);
+    const status = workStatus(silent.item, sixMinutesSilent, silent.facts);
     expect(status).toMatchObject({
       rung: 'quiet',
       lane: 'running',
       tone: 'caution',
-      line: 'No progress for 1m · Bash · 1m 12s',
+      line: 'No progress for 6m · Bash · 6m 01s',
     });
     // Never drawn as the healthy run it sits beside.
     const healthy = rowFor(RUNNING_TOOL);
@@ -275,6 +281,23 @@ describe('the status ladder, from real server summaries', () => {
         conversationActivity: RUNNING_TOOL.conversationActivity,
       }),
     ).toEqual({ rung: 'running', lane: 'running', line: 'Running' });
+  });
+
+  it('a stuck earlier execution child does not borrow the current child’s sub-agents', () => {
+    // The conversation's record says three children are running under the
+    // CURRENT thread ('T'). An earlier child whose own fold still says a
+    // turn is open carries the same record; the count is not its own.
+    const current = folded('runningWithChildren');
+    expect(current.conversationActivity).toMatchObject({
+      currentThreadId: 'T',
+      runningChildWork: { count: 3 },
+    });
+    expect(statusOf(current).line).toBe('3 sub-agents running · 1m 12s');
+    expect(statusOf({ ...current, threadId: 'earlier-child' })).toEqual({
+      rung: 'running',
+      lane: 'running',
+      line: 'Running',
+    });
   });
 
   it('a remote row reads its own environment’s session, by the id it carries', () => {

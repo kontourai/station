@@ -98,8 +98,11 @@ type TurnActivity = NonNullable<
 /**
  * `threadId` names the execution the row stands for. The conversation's
  * record is shared by every child's summary, so the open turn's start and
- * tool are reported only when that turn is on THIS thread; a stuck earlier
- * child must not borrow the current child's turn.
+ * tool are reported only when that turn is on THIS thread, and the running
+ * child count only when this thread is the one the server would continue
+ * (the gate `orchestrationLifecycleLabel` applies before it says Running).
+ * A stuck earlier child must not borrow the current child's turn or its
+ * sub-agents.
  */
 function workActivityFrom(
   activity: TurnActivity | undefined,
@@ -112,7 +115,10 @@ function workActivityFrom(
       ? activity.openTurn
       : undefined;
   const toolName = openTurn ? activity.runningTools?.at(-1)?.name : undefined;
-  const childWorkCount = activity.runningChildWork?.count;
+  const childWorkCount =
+    threadId === undefined || activity.currentThreadId === threadId
+      ? activity.runningChildWork?.count
+      : undefined;
   if (!openTurn && !childWorkCount) return undefined;
   return {
     ...(openTurn ? { turnStartedAt: openTurn.startedAt } : {}),
