@@ -574,6 +574,7 @@ struct NativeProfileAuthorizationReceipt {
 struct NativeCredentialBinding {
     exact_origin: String,
     environment_id: String,
+    relay_route: Option<NativeStationRelayRoute>,
 }
 
 #[derive(Clone, Default)]
@@ -1094,6 +1095,7 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
                 "unconfigured" => profile.credential_ref.is_none(),
                 "requires-auth" | "configured" => {
                     profile.credential_ref.is_some()
+                        && profile.local_service.is_none()
                         && profile._environment_id.as_deref() == Some(route.station_id.as_str())
                         && profile
                             .client_instance_id
@@ -1110,9 +1112,6 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
                 || !safe_identifier(&route.enrollment_id)
             {
                 return Err("invalid Station relay profile".to_string());
-            }
-            if profile.configuration_state == "configured" {
-                selectable_names.insert(profile.name.to_lowercase());
             }
         } else {
             selectable_names.insert(profile.name.to_lowercase());
@@ -1189,6 +1188,7 @@ fn profile_credential_binding(
     profile: &CredentialProfile,
 ) -> Result<NativeCredentialBinding, String> {
     Ok(NativeCredentialBinding {
+        relay_route: profile.relay_route.clone(),
         exact_origin: exact_origin(&profile.endpoint)?,
         environment_id: profile
             ._environment_id
@@ -6479,14 +6479,14 @@ fn station_profile_store_write_with_host(
             let entry = entries
                 .get(handle)
                 .ok_or_else(|| "native pairing credential handle is missing".to_string())?;
-            if let NativePairingPhase::KeyringWritten { .. } = entry.phase {
+            if let NativePairingPhase::KeyringWritten { ref profile_name } = entry.phase {
                 let key = credential_reference_key(&entry.reference)?;
                 state.bindings.insert(
                     key.clone(),
-                    NativeCredentialBinding {
-                        exact_origin: entry.exact_origin.clone(),
-                        environment_id: entry.environment_id.clone(),
-                    },
+                    profile_credential_binding(selected_profile_from_store(
+                        &next_store,
+                        profile_name,
+                    )?)?,
                 );
                 state.transitioning.remove(&key);
                 entries.remove(handle);
@@ -17697,19 +17697,83 @@ mod tests {
         selected
             .project_profiles
             .insert("project".into(), "relay".into());
-        assert!(parse_station_profile_store(&serde_json::to_string(&selected).unwrap()).is_ok());
-        selected.profiles[0].relay_route = None;
-        assert_eq!(
-            authorized_direct_profile_for_origin_in_store(&state, &selected, "https://one.example")
-                .unwrap(),
-            reference
-        );
+        assert!(parse_station_profile_store(&serde_json::to_string(&selected).unwrap()).is_err());
+        drop(state);
+        let original = read_station_profile_store(&path).unwrap();
+        for remove in [true, false] {
+            let mut changed = configured.clone();
+            changed.revision += 1;
+            if remove {
+                changed.profiles[0].relay_route = None;
+            } else {
+                changed.profiles[0]
+                    .relay_route
+                    .as_mut()
+                    .unwrap()
+                    .broker_origin = "https://substitute.example".into();
+            }
+            assert!(station_profile_store_write_with_host(
+                &host,
+                &cold,
+                &pending,
+                serde_json::to_string(&changed).unwrap(),
+                3,
+                None,
+            )
+            .is_err());
+            assert_eq!(read_station_profile_store(&path).unwrap(), original);
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_enrollment_profile_fix_preserves_direct_pairing_http_authority() {
+        let (_directory, path, authority, pending, handle, contents, host) =
+            writer_pairing_fixture();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            contents,
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        credential_vault_commit_pairing_with_host(&host, &authority, &pending, &handle).unwrap();
+        let mut store =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        store.revision += 1;
+        store.profiles[0].configuration_state = "configured".into();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&store).unwrap(),
+            1,
+            Some(handle),
+        )
+        .unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &authority, "pending").unwrap();
+        let state = authority.0.lock().unwrap();
+        assert!(authorized_direct_profile_for_origin_in_store(
+            &state,
+            &store,
+            "https://one.example"
+        )
+        .is_ok());
+        assert!(scoped_profile_for_origin_in_store(
+            &state,
+            &store,
+            &receipt.binding_id,
+            "https://one.example"
+        )
+        .is_ok());
     }
 
     #[test]
     fn native_enrollment_profile_parser_rejects_incomplete_or_foreign_custody() {
         let valid = serde_json::json!({
-            "schemaVersion":1,"revision":3,"defaultProfile":"relay","projectProfiles":{},
+            "schemaVersion":1,"revision":3,"defaultProfile":null,"projectProfiles":{},
             "profiles":[{"schemaVersion":1,"name":"relay","endpoint":"https://one.example",
                 "relayRoute":{"brokerOrigin":"https://broker.example",
                     "stationId":"22222222-2222-4222-8222-222222222222",
@@ -17728,6 +17792,10 @@ mod tests {
                 serde_json::json!("44444444-4444-4444-8444-444444444444"),
             ),
             ("clientInstanceId", serde_json::json!("malformed")),
+            (
+                "localService",
+                serde_json::json!({"instanceId":"other","baseDir":"/private/other","serverPort":3210,"uiPort":5210}),
+            ),
         ] {
             let mut invalid = valid.clone();
             invalid["profiles"][0][field] = value;
