@@ -152,9 +152,9 @@ The sample values are placeholders, not credentials. Restrict ownership and
 permissions to the broker's runtime UID/GID 1000, and keep the database and
 configuration directories private. Set `TURN_EXTERNAL_IP` to the host's actual
 public IPv4 address. The compose network maps TURN's fixed container address
-172.31.250.10 to that public address; choose a different private subnet in
-`compose.yaml` if it conflicts with the host's Docker networks. Before serving,
-set the source build identity from the checkout and build the image:
+to that public address; choose a different bridge subnet in `compose.yaml` if
+it conflicts with the host's Docker networks. Before serving, set the source
+build identity from the checkout and build the image:
 
 ```sh
 chown -R 1000:1000 private state
