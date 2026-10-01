@@ -161,7 +161,7 @@ export function HomeView({
         builtinHome
       )}
       <PageCalloutStack>
-        <FirstRunHomeChapter />
+        <FirstRunHomeChapter intentFirst />
         {/* Starter Work is a post-onboarding offer.  It reads the same durable
             first-run decision as the chapter; a cached/default browser flag
             cannot make a real Task offer appear before setup is complete. */}

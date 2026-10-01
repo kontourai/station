@@ -1235,3 +1235,28 @@ describe('the engine-role screen is a counted step of the run', () => {
     expect(screen.getByText('Step 2 of 2')).toBeTruthy();
   });
 });
+
+describe('intent-first Home', () => {
+  test('does not open optional configuration before the user asks for it', () => {
+    render(<FirstRunHomeChapter intentFirst />);
+    expect(screen.queryByTestId('first-run-engines')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+  });
+  test('returns to the task after the usage decision without asking engine or profile questions', async () => {
+    disclosureState.outstanding = true;
+    render(<FirstRunHomeChapter intentFirst />);
+    expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
+    expect(screen.getByText('Step 1 of 1')).toBeTruthy();
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+      ),
+    );
+    expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
+    expect(screen.queryByTestId('first-run-engines')).toBeNull();
+    expect(recordFirstRunDecision).not.toHaveBeenCalledWith({
+      status: 'completed',
+    });
+  });
+});

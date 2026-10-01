@@ -157,7 +157,12 @@ function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-export function FirstRunHomeChapter() {
+export function FirstRunHomeChapter({
+  intentFirst = false,
+}: {
+  intentFirst?: boolean;
+}) {
+  const explicitSetup = useRef(false);
   const config = useConfig();
   const { updateConfig, recordFirstRunDecision } = useConfigActions();
   const configSettled = useConfigSettled();
@@ -299,12 +304,19 @@ export function FirstRunHomeChapter() {
     // wait is bounded by the query's own retry budget (~10s of 503s on a cold
     // boot, then an error, which answers as "nothing to disclose").
     if (!disclosureSettled) return;
+    if (intentFirst && !disclosureOutstanding) return;
     autoOpened.current = true;
-    openChapter();
+    if (intentFirst) {
+      setSteps(['disclosure']);
+      setStep('disclosure');
+      setOpen(true);
+    } else openChapter();
   }, [
     offer.autoOpen,
     launcherWouldShow,
     configSettled,
+    intentFirst,
+    disclosureOutstanding,
     systemStatusUnconfirmed,
     disclosureSettled,
     progress.deferred,
@@ -482,7 +494,12 @@ export function FirstRunHomeChapter() {
 
   return (
     <>
-      <FirstRunHomeCard onOpen={openChapter} />
+      <FirstRunHomeCard
+        onOpen={() => {
+          explicitSetup.current = true;
+          openChapter();
+        }}
+      />
       {open ? (
         <ResponsiveDialogSurface
           layer="dialog"
@@ -519,6 +536,10 @@ export function FirstRunHomeChapter() {
             {step === 'disclosure' ? (
               <UsageTelemetryDisclosureStep
                 onAdvance={() => {
+                  if (intentFirst && !explicitSetup.current) {
+                    defer();
+                    return;
+                  }
                   firstRunStore.enterChapter('engines');
                   setStep('engines');
                 }}
