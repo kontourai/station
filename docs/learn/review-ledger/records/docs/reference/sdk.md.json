@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"c22c10ac7fe222b7e54d0a4922410876d67a3c413c582019cddde6f10fac667e","revision":"b86d42394bb533067b2cc5026d21a531db62e2ba"},
+  "document": {"digest":"aa9f67c24c6bdf1ed1aa9176a49bc2c54e602f874cc678b2b76572255bbd03ae","revision":"ee4cdc0f4e402aaa27dd666e010bcecb39946d8e"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -426,7 +426,7 @@
 
     {"path":"src-ui/src/components/chat/QuoteSourceLink.tsx","digest":"14b2b534af47415c4b5a102dca20ee7bf42c800963d1ff01306e48a088c00106","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"721cba920da20e4f1cfd31b595e4bcb0c024f45a7763284c26bc3bb1c1dfb7f8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"0241fb9c1909662dace6b8054477c4340bde4838fe05b9f924253a5f075ca686","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
     {"path":"src-ui/src/components/EnvironmentPicker.tsx","digest":"3b9e4c1fb8f7763b5429b3f881af81679c666a982f4f486a48f20110a8680290","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -456,7 +456,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"14089e12abd8361ec48f5afdee827d5d5daba2a9116bc4c410fef8c8b3a90c29","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
