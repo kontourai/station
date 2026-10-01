@@ -14,8 +14,10 @@ import type { ChatMessage, ChatSession } from '../../types';
 import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
-import { extractUIBlocks } from '../../utils/uiBlocks';
-import { upsertToolResultBlocks } from './messageParts';
+import {
+  conversationPartToContentParts,
+  stitchWindowWithLiveEvents,
+} from './conversationTranscriptParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
 import {
@@ -251,25 +253,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   ]);
   const stitchedEvents = useMemo(() => {
     if (replay) return window.events;
-    const watermark =
-      windowWatermark ??
-      Math.max(0, ...window.events.map((item) => item.sequence));
-    const threadIds = new Set([
-      session.id,
-      session.currentSessionId,
-      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
-    ]);
-    const events = [...window.events];
-    const persistedIds = new Set(
-      window.events.map((item) => item.event.eventId).filter(Boolean),
-    );
-    for (const item of liveEvents) {
-      if (item.sequence <= watermark || !threadIds.has(item.event.threadId))
-        continue;
-      if (persistedIds.has(item.event.eventId)) continue;
-      events.push(item);
-    }
-    return events.sort((left, right) => left.sequence - right.sequence);
+    return stitchWindowWithLiveEvents({
+      windowEvents: window.events,
+      watermark: windowWatermark,
+      liveEvents,
+      threadIds: new Set([
+        session.id,
+        session.currentSessionId,
+        ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+      ]),
+    });
   }, [
     replay,
     window.events,
@@ -488,47 +481,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           .filter((part) => part.type === 'text')
           .map((part) => part.text ?? '')
           .join(''),
-        contentParts: message.parts.flatMap((part) => {
-          const mapped = {
-            type: part.type,
-            content: part.text,
-            url: part.url,
-            blobRef: part.blobRef,
-            mediaType: part.mediaType,
-            name: part.name,
-            toolCallId: part.toolCallId,
-            sourceEventId: part.sourceEventId,
-            toolName: part.toolName,
-            args: part.args,
-            result: part.result,
-            output: part.output,
-            error: part.error,
-            cancelled: part.cancelled,
-            state: part.state,
-            isError: part.isError,
-            progressMessage: part.progressMessage,
-            runtimeError: part.runtimeError,
-            runtimeErrorCode: part.runtimeErrorCode,
-            needsApproval: part.needsApproval,
-            approvalId: part.approvalId,
-            approvalThreadId: part.approvalThreadId,
-            approvalEventId: part.approvalEventId,
-            approvalSessionGrant: part.approvalSessionGrant,
-            approvalStatus: part.approvalStatus,
-          };
-          // Preserve the same tool-result identity and sanitized blocks as
-          // the live renderer when the completed turn enters durable replay.
-          return part.type === 'tool-invocation' &&
-            part.sourceEventId &&
-            part.toolCallId
-            ? upsertToolResultBlocks(
-                [mapped],
-                part.toolCallId,
-                part.sourceEventId,
-                extractUIBlocks(part.output),
-              )
-            : [mapped];
-        }),
+        contentParts: message.parts.flatMap(conversationPartToContentParts),
         timestamp: message.metadata?.timestamp,
         model: message.metadata?.model ?? undefined,
         modelOptions: message.metadata?.modelOptions,

@@ -12,7 +12,7 @@
   "document": {"digest":"2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"fb70b5b67c507e121e1c8a03cbbe74ac88532effc67aeb3e503569ee817d15b1","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"6d03366389fac284ff94b9d2d108dbd6836ee84aa117b06e90a7fad0be5ab66d","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -56,7 +56,7 @@
 
     {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

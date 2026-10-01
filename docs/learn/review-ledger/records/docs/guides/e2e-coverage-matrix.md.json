@@ -9,7 +9,7 @@
 
   "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
 
-  "document": {"digest":"ad42166c39b27d786097119a07a330a08fb3cfb495c964be6ba84bcfa5a71fb1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"2f4089d72858c659210572db4b796e4c4102af8fb05a6671c93a7711f8ff78f0","revision":"61f31f5bade67ee3c6eb6f8d6ed20bbaf0e8c015"},
 
   "sources": [
     {"path":".github/workflows/ci-extended.yml","digest":"6cd65c4dae77a42df037641d1175f753185ad04e23e031f0dd5e26b9aefa3fd2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -42,13 +42,13 @@
 
     {"path":"tests/agents-new-muse-echo-turn.spec.ts","digest":"2ce8fa9a4e4df0cb06eb0ddd05812ebbbbc728a9397895fd2c821810bfe50922","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/agents-pane.spec.ts","digest":"8fd2f45e57980348671a765d1f010f2624ebb63aeedc0fbec41cf438ebc6efe5","revision":"ec83b822f1a70d5c7e708a49d9c04aa88ea2c662"},
+    {"path":"tests/agents-pane.spec.ts","digest":"a73b7bc4881123e0f5e9d50b57aede3c352d285d99f48de900a2405da875d101","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/agents-readiness-board.spec.ts","digest":"3b2f83838f7efc9d8b7de06de6ba69e4869faefabdfc52329086e49e195a97b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/android/mobile-layout.spec.ts","digest":"9af44459879393c00dc6d39aaf6149c9f37b6f2846c236cede82049c9129aa4f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab","revision":"ec83b822f1a70d5c7e708a49d9c04aa88ea2c662"},
+    {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"47e9fa69bdd7a255fb11cac907781343146e7d5fab962ad5fb8e371db5e39668","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/connect-modal.spec.ts","digest":"6d63119b07073540c9dd1326af41d26d59e12da070bb0c3a2386ecd435db45b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -60,7 +60,7 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"2dca267ed3cfe8b8283ae38ff62436b2620d258491b7c3fff4993eb0151ccc7f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"d1ec068be558d8cc87f82151ec37a5e79732f4424f69ea72318ec3682aa82b60","revision":"ec83b822f1a70d5c7e708a49d9c04aa88ea2c662"},
+    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
     {"path":"tests/mobile-chat-composer.spec.ts","digest":"42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
 
@@ -84,9 +84,9 @@
 
     {"path":"tests/schedule.spec.ts","digest":"c2110b9f298e82425969171e3246061c76e3588a828274ad5235288c7e059a26","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/skills.spec.ts","digest":"d73507be0f45a2eb3d52bca94b9505641cc2004e6661e46c76c4650b1f074736","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"52bcc8bc3334aa280108f30b99c7106bead3f8ae09f707954695910777edbe2e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/task-first-home.spec.ts","digest":"1b2169b8e7a077f02f4668aacb7051929c50664e6bbb493601a45a619c264e21","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
 
     {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
