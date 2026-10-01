@@ -184,12 +184,13 @@ test.describe('Skills (via Registry + API)', () => {
 
     await page.goto('/skills');
     await page.waitForSelector('.split-pane', { timeout: 15_000 });
-    // The rail row's name is name + subtitle only — the source word moved to
-    // the detail pane (`views/skills/skill-view-utils.ts:156-168`;
-    // `SkillsView.tsx:351-355`), which the next line already asserts. `exact`
-    // keeps this off "Browse Registry Skills".
+    // The rail row is named by its name alone; its subtitle is the row's
+    // description (SplitPaneLayout). The source word lives in the detail pane
+    // (`views/skills/skill-view-utils.ts:156-168`; `SkillsView.tsx:351-355`),
+    // which the next line asserts. `exact` keeps this off "Browse Registry
+    // Skills".
     await page
-      .getByRole('button', { name: /^Registry Skill Registry$/ })
+      .getByRole('button', { name: 'Registry Skill', exact: true })
       .click();
     await expect(
       page.locator('.skill-detail').getByText('Registry', { exact: true }),
