@@ -312,7 +312,9 @@ describe('the page at / has a history entry of its own', () => {
     // The dialog's deferred cleanup must not travel Back over the new entry.
     expect(page()).toBe('activity');
     expect(mainPageOf(window.history.state)).toBe('activity');
-    expect(closed).toBe(false);
+    // The page open is a navigation, and a navigation closes the dialog
+    // whose entry it left, as any other does.
+    expect(closed).toBe(true);
 
     await travel(-1);
     await waitFor(() => expect(page()).toBe('home'));
@@ -335,6 +337,90 @@ describe('the page at / has a history entry of its own', () => {
     await waitFor(() => expect(page()).toBe('home'));
     await waitFor(() => expect(current().regions.bottom.maximized).toBe(true));
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+  });
+});
+
+describe('entries the traversal must not obey', () => {
+  test('a guarded jump across page entries leaves the page alone until it is admitted', async () => {
+    await mount();
+    await openActivityPage();
+    act(() => navigationStore.navigate('/settings'));
+    await waitFor(() => expect(window.location.pathname).toBe('/settings'));
+    // A dirty form on the route: its guard holds the decision.
+    let decide: { go: () => void } | null = null;
+    const release = navigationStore.registerNavigationGuard(
+      Symbol('dirty-form'),
+      (go) => {
+        decide = { go };
+      },
+    );
+
+    // Two entries back at once: past the Activity entry, onto Home's. The
+    // browser lands there before the store travels back to ask.
+    act(() => window.history.go(-2));
+    await waitFor(() => expect(decide).not.toBeNull());
+    expect(window.location.pathname).toBe('/settings');
+    // The reader was never admitted to Home's entry, so `main` did not move.
+    expect(page()).toBe('activity');
+
+    release();
+    await act(async () => {
+      decide?.go();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
+    await waitFor(() => expect(page()).toBe('home'));
+  });
+
+  test('closing a dialog does not undo a change made while it was open', async () => {
+    await mount();
+    act(() => current().showSurface('activity'));
+    await waitFor(() =>
+      expect(current().regions.right.occupant).toBe('activity'),
+    );
+    await openActivityPage();
+    // A dialog over the Activity page: its layer copies the entry's stamp.
+    let release: () => void = () => {};
+    act(() => {
+      release = registerDialogHistory('test-layout-picker', () => {});
+    });
+    expect(mainPageOf(window.history.state)).toBe('activity');
+    // From inside it, the page goes back to its dock: not a page open.
+    act(() => current().toggleSurface('activity'));
+    await waitFor(() => expect(page()).toBe('home'));
+
+    // An ordinary close folds the layer by travelling back onto the entry
+    // beneath, which still says Activity.
+    act(() => release());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(page()).toBe('home');
+    expect(current().regions.right.panes).toContain('activity');
+    await waitFor(() => expect(mainPageOf(window.history.state)).toBe('home'));
+  });
+
+  test('an entry reached by a plain link is stamped on arrival, so Back to it restores its page', async () => {
+    await mount();
+    await openActivityPage();
+    act(() => navigationStore.navigate('/settings'));
+    await waitFor(() => expect(window.location.pathname).toBe('/settings'));
+    // A plain navigation to `/` — a link, not a page open — while Activity
+    // is `main`'s occupant.
+    act(() => navigationStore.navigate('/'));
+    await waitFor(() =>
+      expect(mainPageOf(window.history.state)).toBe('activity'),
+    );
+    act(() => navigationStore.navigate('/settings'));
+    await waitFor(() => expect(window.location.pathname).toBe('/settings'));
+    // Home takes the page from the other route: one new entry at `/`.
+    act(() => current().showSurface('home'));
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
+    expect(page()).toBe('home');
+
+    await travel(-2);
+    expect(window.location.pathname).toBe('/');
+    expect(page()).toBe('activity');
   });
 });
 

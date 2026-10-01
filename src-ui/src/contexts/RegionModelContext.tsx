@@ -61,9 +61,9 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from './DeviceSettingsContext';
-import { mainPageOf, pushMainPage, stampMainPage } from './main-page-history';
+import { mainPageOf, stampMainPage } from './main-page-history';
 import { useNavigation } from './NavigationContext';
-import { navigationStore } from './navigation-store';
+import { navigationEntryIndex, navigationStore } from './navigation-store';
 import { clearSurfaceDeepLinkParams } from './surface-deep-link';
 
 export interface SurfaceIntent {
@@ -359,12 +359,17 @@ function mainPage(arrangement: RegionArrangement): string {
 
 /**
  * A page landed in `main`. From another route that is a navigation to `/`,
- * one entry as before. AT `/` a different page gets an entry of its own
- * (`main-page-history`), so Back returns to the page it replaced (#2986).
+ * one entry as before. AT `/` a different page gets an entry of its own, so
+ * Back returns to the page it replaced (#2986): the entry being left keeps
+ * the stamp of what it showed, and the store pushes a same-URL entry — a real
+ * navigation entry with its own index, so a guarded traversal across it
+ * restores to the right place — which is then stamped with the new page.
  */
 function enterMainOutlet(previous: string, next: string) {
   if (window.location.pathname === '/' && previous !== next) {
-    pushMainPage(previous, next);
+    stampMainPage(previous);
+    navigationStore.navigate('/');
+    stampMainPage(next);
     return;
   }
   navigateToMainOutlet();
@@ -696,16 +701,32 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (regionId === 'main') enterMainOutlet(previousPage, mainPage(next));
   }, []);
 
-  // Back and Forward over `/` entries (#2986): an entry stamped with the page
-  // `main` showed puts that page back. Only a real traversal carries the
-  // entry's state — the store's own notifications dispatch a bare `popstate`
-  // — and an unstamped entry leaves `main` as it is. No entry is written
-  // here: the traversal already chose one.
+  // Back and Forward over `/` entries (#2986): a traversal onto an entry
+  // stamped with the page `main` showed puts that page back. No entry is
+  // written here: the traversal already chose one.
+  //
+  // Three traversals are not that. The store's own notifications dispatch a
+  // bare `popstate` (no state). A guarded traversal lands first on an entry
+  // the reader has not been admitted to and is travelled straight back
+  // (`traversalAwaitsGuard`). And a same-URL layer — a dialog's Back marker —
+  // copies the state it was pushed on, stamp included, so closing it lands on
+  // the entry beneath: the same navigation entry, whose stamp may be older
+  // than a change made while the layer was open. That one is brought up to
+  // date instead of obeyed.
+  const liveEntryIndexRef = useRef(navigationEntryIndex(window.history.state));
   useEffect(() => {
     const restoreMainPage = (event: PopStateEvent) => {
+      const departed = liveEntryIndexRef.current;
+      const landed = navigationEntryIndex(window.history.state);
+      liveEntryIndexRef.current = landed;
+      if (event.state === null || navigationStore.traversalAwaitsGuard) return;
       const page = mainPageOf(event.state);
       if (!page || window.location.pathname !== '/') return;
       const current = regionsRef.current;
+      if (landed !== undefined && landed === departed) {
+        stampMainPage(mainPage(current));
+        return;
+      }
       if (mainPage(current) === page || !surfaceMayOccupy(page, 'main')) return;
       const next = placeSurfaceInArrangement(current, page, 'main');
       if (next === current) return;
@@ -719,9 +740,11 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
 
   // Keep the live `/` entry's stamp true. A change of occupant that is not a
   // page open (the chord returning Activity to its dock, a tab moved out of
-  // `main`) rewrites it; arriving at `/` on an entry that has none — the
-  // first load, a link — gives it one. An entry that already has a stamp is
-  // left to the traversal above, which may not have applied it yet.
+  // `main`) rewrites it — which includes the mount: after a reload the
+  // arrangement is what is on screen, and the entry says so. Arriving at `/`
+  // on an entry that has no stamp — the first load, a link — gives it one;
+  // an arrival on a stamped entry is the traversal's above, which may not
+  // have applied it yet.
   const currentMainPage = mainPage(regions);
   const atMainOutlet = pathname === '/';
   // biome-ignore lint/correctness/useExhaustiveDependencies: arriving at `/` stamps only an entry that has no stamp; the occupant effect below owns changes.

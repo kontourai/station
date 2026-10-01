@@ -66,6 +66,15 @@ export const LAST_PROJECT_LAYOUT_KEY = 'lastProjectLayout';
 const LAYOUT_TAB_MEMORY_KEY = 'station-layout-tabs';
 const NAVIGATION_INDEX_KEY = '__stationNavigationIndex';
 
+/**
+ * The navigation entry a history state belongs to. A same-URL layer pushed by
+ * copying the state it lands on (a dialog's Back marker) carries the index of
+ * the entry beneath it, so two states with one index are one entry.
+ */
+export function navigationEntryIndex(value: unknown): number | undefined {
+  return historyIndex(value);
+}
+
 function historyIndex(value: unknown): number | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
@@ -201,6 +210,15 @@ class NavigationStore {
   private restoringPop = false;
   private replayingPop = false;
   private pendingPopDelta: number | undefined;
+  /**
+   * True from the moment a guarded traversal is being travelled back
+   * (`history.go(-delta)`) until that bounce lands. The entry the browser is
+   * on meanwhile is one the user has not been admitted to: a `popstate`
+   * listener that acts on an entry's state must not act on this one.
+   */
+  get traversalAwaitsGuard(): boolean {
+    return this.restoringPop;
+  }
   private readonly navigationGuardOwners = new Map<symbol, string>();
   /** Whether any registered guard protects `owner`'s content (it is dirty). */
   hasNavigationGuard(owner: string): boolean {
@@ -419,6 +437,12 @@ class NavigationStore {
       return;
     }
 
+    // A same-URL traversal between two entries of this store's own (`main`'s
+    // page entries, #2986) is still a move along the stack: without this the
+    // index stays on the entry left, and the next guarded Back computes its
+    // restore delta from the wrong place. A dialog layer shares the index of
+    // the entry beneath it, so for that traversal this assigns what it had.
+    if (targetIndex !== undefined) this.historyIndex = targetIndex;
     this.commitState(newState);
   };
 
@@ -804,7 +828,7 @@ class NavigationStore {
     // out of the navigation (observed from New Chat's Connect repair).
     delete nextHistoryState[DIALOG_HISTORY_KEY];
     // Likewise `main`'s page stamp: it says what the entry being LEFT showed.
-    // The provider stamps the destination itself when it is `/`.
+    // The region model stamps the destination itself when it is `/`.
     delete nextHistoryState[MAIN_PAGE_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
