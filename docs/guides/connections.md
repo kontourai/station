@@ -134,8 +134,10 @@ replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer
 generation and different key before trust can be restored.
 
-In the browser, **Connections → Computers → Broker routes** first has a **Station
-signing key** step. A fresh browser with no Device cookie can reach the same
+In the browser, open **Connections → Computers → Broker routes → Advanced:
+broker setup** to start the **Station signing key** step. This disclosure stays
+closed for ordinary direct-address and pairing use; saved route actions remain
+outside it. A fresh browser with no Device cookie can reach the same
 setup from **Connect to a Station → Use a broker invitation**. The operator can run
 `npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
 send its public JSON report through a separate trusted channel. Compare the
