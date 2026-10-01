@@ -9,7 +9,7 @@
 
   "limits": "Browser captures with sample data and a substituted display name. No external Agent/provider execution, physical native-device result or approval decision is established. The images retain the actual Task editor limitations.",
 
-  "document": {"digest":"112e3c321cbd2db314f491f26c1d8239a08f86bd6302d4178b9517a679a07267","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
+  "document": {"digest":"434df58802043f1804b672f7afe80669b962ae8beab5d40cd57cc0734a92906a","revision":"d663d1be12c5e2fc585b2bcfcbaacbe56014795a"},
 
   "sources": [
     {"path":"docs/learn/media.json","digest":"5e54afc2870c678ee4b78efd17f1644aaeb1e686d5cb3b1cc0d6efb6b86afd77","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"},
