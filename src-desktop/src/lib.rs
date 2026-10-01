@@ -10213,7 +10213,6 @@ async fn commit_startup_readiness(
     result
 }
 
-#[cfg(not(mobile))]
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
