@@ -463,8 +463,11 @@ export function useProjectWorkspaceFilePreviewQuery(
 }
 
 /**
- * One previewed file's changes against HEAD. Enabled by the caller only
- * while its Changes view is open: the read runs `git diff` on the host.
+ * One previewed file's changes against HEAD. The read runs `git diff` on
+ * the host, so a caller enables it only for a text preview it shows (the
+ * File Preview reads it as the file opens, for its Changes count) and
+ * should give it a staleTime; the server shares identical in-flight reads
+ * and caps how many run at once per workspace.
  */
 export function useProjectWorkspaceFileChangesQuery(
   projectSlug: string,

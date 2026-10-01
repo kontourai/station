@@ -619,7 +619,11 @@ export class WorkspaceFilePreviewService {
     try {
       identity = this.fs.lstat(candidate);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      // A path through a regular file (`a.txt/b`) names nothing a preview
+      // could have shown: the same refusal as a directory.
+      if (code === 'ENOTDIR') throw new Error('Preview path must name a file');
+      if (code !== 'ENOENT') throw error;
     }
     if (identity?.isSymbolicLink())
       throw new Error('Preview symlinks are not allowed');

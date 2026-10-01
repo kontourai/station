@@ -61,9 +61,12 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 0;
 }
+/* Each row is as tall as its icon's 44px hit area, so the areas of
+   neighbouring rows' links do not overlap. */
 .pull-request-review__checks li {
+  min-height: 44px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -111,7 +114,8 @@
 .pull-request-review__bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 14px keeps neighbouring 44px hit areas apart: 30px icon + 14px = 44. */
+  gap: 14px;
   min-width: 0;
 }
 .pull-request-review__title {

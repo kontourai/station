@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -202,6 +203,123 @@ describe('POST /:slug/file-preview/changes', () => {
     symlinkSync(join(outside, 'secret.txt'), join(root, 'link.txt'));
     expect((await changes(root, { path: 'link.txt' })).status).toBe(400);
     const { status } = await changes(root, { path: 'a.txt', extra: 1 });
+    expect(status).toBe(400);
+  });
+
+  describe('a git directory the Project does not own', () => {
+    /** An operator repository outside the Project with a committed secret. */
+    function outsideRepository() {
+      const outside = repo({ 'secret.txt': 'operator-only secret\n' });
+      return outside;
+    }
+    const plainDiff = (cwd: string) =>
+      git(cwd, ['diff', 'HEAD', '--', 'secret.txt']);
+
+    test('refuses a .git file that names another repository, which plain git follows', async () => {
+      const outside = outsideRepository();
+      const project = makeTempDir('station-file-changes-project-');
+      mkdirSync(join(project, 'sub'));
+      writeFileSync(
+        join(project, 'sub', '.git'),
+        `gitdir: ${join(outside, '.git')}\n`,
+      );
+      // Live plant: plain git in that folder reads the outside repository.
+      expect(plainDiff(join(project, 'sub'))).toContain('operator-only secret');
+
+      const { status, body } = await changes(project, {
+        path: 'sub/secret.txt',
+      });
+
+      expect(status).toBe(200);
+      expect(body.data.state).toBe('refused');
+      expect(body.data.reason).toContain("not the Project's own");
+      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+    });
+
+    test('refuses a symbolic-link .git, which plain git follows', async () => {
+      const outside = outsideRepository();
+      const project = makeTempDir('station-file-changes-project-');
+      mkdirSync(join(project, 'sub'));
+      symlinkSync(join(outside, '.git'), join(project, 'sub', '.git'));
+      expect(plainDiff(join(project, 'sub'))).toContain('operator-only secret');
+
+      const { body } = await changes(project, { path: 'sub/secret.txt' });
+
+      expect(body.data.state).toBe('refused');
+      expect(body.data.reason).toContain('.git is a symbolic link');
+      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+    });
+
+    test('refuses alternates that borrow another repository, which plain git reads', async () => {
+      const outside = outsideRepository();
+      const outsideHead = git(outside, ['rev-parse', 'HEAD']).trim();
+      const project = makeTempDir('station-file-changes-project-');
+      git(project, ['init', '-q', '-b', 'main']);
+      writeFileSync(
+        join(project, '.git', 'objects', 'info', 'alternates'),
+        `${join(outside, '.git', 'objects')}\n`,
+      );
+      writeFileSync(
+        join(project, '.git', 'refs', 'heads', 'main'),
+        `${outsideHead}\n`,
+      );
+      expect(plainDiff(project)).toContain('operator-only secret');
+
+      const { body } = await changes(project, { path: 'secret.txt' });
+
+      expect(body.data.state).toBe('refused');
+      expect(body.data.reason).toContain('alternates');
+      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+    });
+
+    test("still reads a genuine linked worktree, a session's own checkout", async () => {
+      const main = repo({ 'a.txt': 'one\n' });
+      const worktree = join(makeTempDir('station-file-changes-wt-'), 'wt');
+      git(main, ['worktree', 'add', '-q', worktree]);
+      writeFileSync(join(worktree, 'a.txt'), 'two\n');
+
+      const { body } = await changes(worktree, { path: 'a.txt' });
+
+      expect(body.data.state).toBe('changed');
+      expect(body.data.patch).toContain('+two');
+    });
+
+    test('still reads the repository that contains the Project from above', async () => {
+      const outer = repo({ 'app/a.txt': 'one\n' });
+      writeFileSync(join(outer, 'app', 'a.txt'), 'two\n');
+
+      const { body } = await changes(join(outer, 'app'), { path: 'a.txt' });
+
+      expect(body.data.state).toBe('changed');
+      expect(body.data.patch).toContain('diff --git a/app/a.txt b/app/a.txt');
+    });
+
+    test('refuses a planted repository whose core.worktree steers discovery above the Project', async () => {
+      // The operator's repository holds a file at the path the Project's
+      // own file would have if the work tree started one folder too high.
+      const higher = repo({ 'proj/sub/secret.txt': 'operator-only secret\n' });
+      const above = join(higher, 'a');
+      const project = join(above, 'proj');
+      const sub = join(project, 'sub');
+      mkdirSync(sub, { recursive: true });
+      // A member-written repository inside the Project that claims a work
+      // tree above it, so discovery from `sub` lands outside the checked area.
+      git(sub, ['init', '-q', '-b', 'main']);
+      git(sub, ['config', 'core.worktree', above]);
+      expect(git(sub, ['rev-parse', '--show-toplevel']).trim()).toBe(
+        realpathSync(above),
+      );
+
+      const { body } = await changes(project, { path: 'sub/secret.txt' });
+
+      expect(body.data.state).toBe('refused');
+      expect(JSON.stringify(body)).not.toContain('operator-only secret');
+    });
+  });
+
+  test('refuses a path through a regular file as a bad request', async () => {
+    const root = repo({ 'a.txt': 'a\n' });
+    const { status } = await changes(root, { path: 'a.txt/b' });
     expect(status).toBe(400);
   });
 });

@@ -1346,6 +1346,8 @@ export function FilePreviewPane({
         if (
           (event.metaKey || event.ctrlKey) &&
           !event.altKey &&
+          // Shift+⌘G is the browser's "find previous"; leave it alone.
+          !event.shiftKey &&
           event.key.toLowerCase() === 'g' &&
           gotoAvailable &&
           view === 'file'

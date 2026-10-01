@@ -1440,6 +1440,13 @@ describe('FilePreviewPane', () => {
       // A successful jump closes the popover.
       expect(screen.queryByRole('form', { name: 'Go to line' })).toBeNull();
 
+      // Shift+⌘G / Shift+Ctrl+G is the browser's; it opens nothing.
+      fireEvent.keyDown(screen.getByRole('link', { name: 'Link to line 37' }), {
+        key: 'G',
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      expect(screen.queryByRole('form', { name: 'Go to line' })).toBeNull();
       // ⌘G / Ctrl+G from inside the pane opens it again; Escape closes it.
       fireEvent.keyDown(screen.getByRole('link', { name: 'Link to line 37' }), {
         key: 'g',
