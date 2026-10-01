@@ -9,7 +9,7 @@
 
   "limits": "Not a fresh exploit report, comparison of external products, every contribution authority, or live native/browser/provider isolation audit. Entire original body preserved.",
 
-  "document": {"digest":"2ebf5bb97a476d74ed01b297fd6f7bab8a81ce534e33f9c1913b8975fae7b2cc","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+  "document": {"digest":"c93950f30b3f48e8bb9030debab5ccc9838ab3d2ba3edb5257f58db6690543ac","revision":"5aa5a00ce0147c5344f5da916b2441329b3fae89"},
 
   "sources": [
     {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},

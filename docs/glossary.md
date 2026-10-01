@@ -322,6 +322,40 @@ retired names.
 > tab groups and splits; a pane or page may hold **panels**. The user's choices
 > across all of that are the **arrangement**.
 
+## Shell kernel and distribution manifests (designed, not built)
+
+These terms name accepted design in
+[design/shell-plugins-distributions.md](design/shell-plugins-distributions.md).
+Nothing computes them yet except where an entry says so. Use them only for
+that design until their slices ship.
+
+- **Distribution** — always qualify it. **Release distribution** is how Station
+  binaries reach users: trains and channels
+  ([ADR 0020](adr/0020-distribution-two-trains-channels-as-pointers.md)). A
+  **distribution profile** is the layout-catalog policy that exists today
+  (`DistributionProfile`; [guide](guides/distribution-profiles.md)). A
+  **distribution manifest** is a designed plugin package. It pins plugins and
+  keys, and sets defaults, setup, branding and policy for a Station. Its
+  catalog section produces a distribution profile.
+- **Kernel** — the fixed part of the shell: the plugin host and installer,
+  trust and grant records, sign-in, pairing and connection recovery, Settings
+  and the plugin manager, server-side authority over agent actions and
+  approvals, safe mode, and the required slots. Everything else a user works
+  in is a plugin contribution. Do not use "core" for this.
+- **Required slot** — a kernel position that always has a filler, such as
+  Home. A distribution manifest or the operator may override the default
+  filler but never remove it. A failed or removed override falls back to the
+  default filler. Today's Home-role grant is the existing partial case
+  ([`workspace-home-role.ts`](../packages/contracts/src/workspace-home-role.ts)).
+- **Safe mode** — a kernel boot state that loads no plugin browser code and
+  shows sign-in, Settings and the plugin manager. It is not built. It is
+  unrelated to the `--safe-mode` flag that `station triage` passes to the
+  Claude CLI.
+- **Layout subject** — the project a Layout is *about*, separate from its
+  owner (`LayoutOwner`). A project layout's subject is its project; a Board
+  has none; a personal project layout is principal-owned with a project
+  subject. No subject field exists yet.
+
 ## Browser pane, live surface, control lease
 
 The design began in
