@@ -6,6 +6,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-browser-pane';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Page } from '@playwright/test';
+import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
@@ -199,6 +200,17 @@ async function mockTaskFirstHome(
     }
     if (path === '/api/projects') {
       await route.fulfill(json([project]));
+      return;
+    }
+    if (
+      path === '/api/projects/station/plugin-publish' &&
+      route.request().method() === 'GET'
+    ) {
+      const inspection: PluginPublishInspection = {
+        plugin: null,
+        reason: 'not-a-plugin',
+      };
+      await route.fulfill(json(inspection));
       return;
     }
     if (path === '/api/projects/station') {
