@@ -1,0 +1,105 @@
+{
+  "path": "docs/guides/dependency-security.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete dependency-security guide against managed inert installation and exact hook admission, allowlist/artifact ownership, VoltAgent patch and real-framework regression, pnpm advisory normalization/reachability, exact exception/residual policy, event-based scope classification, scheduled issue lifecycle, legacy npm diagnostics, and protected-base CodeQL/dependency-review workflow. Clarified root workspace closure and structural SARIF validation versus producer provenance. Dated advisory matrices remain historical.",
+
+  "limits": "No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence.",
+
+  "document": {"digest":"a20eaba5f0f2d0701e85a50da690ff0f39167db2a9df95181b6c9c3e2eec77c7","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+  "sources": [
+    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/dependency-advisory.yml","digest":"e24f516a6b3344160eccacbe494bb0f975a31f225c63301924de5fa91440b851","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/main-health.yml","digest":"397e6b49220a66359241c76a4412c1d98de25f5087b0177673f26a7ae146679d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".npmrc","digest":"494a0451b5f0162e3935bd1c352fdafc8454ee42485693d23e9890ff24528403","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+
+    {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"c1addc6e597e61d26ea55291e670d7dd0f2c27ef04d635250fb74fc5529d8229","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/codeql-sarif-normalize.mjs","digest":"dae3215a2b7cea533257b8803bce83b065630d72c7b9cb4c53894f5b92586b66","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/dependency-advisory-exceptions.json","digest":"493e0b7dad9b3a6c9820e288aea2829d4289ad8be113ced5e7133d00796c88db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/generate-pnpm-sbom.mjs","digest":"fbe38893e96627ae38f4a6087cd31d2a4af124ef2134a573cd8eeaa9fe74175a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/dependency-audit-diagnostics.mjs","digest":"c81447d6f6746f19a8a75c5937359850d74935dd43ed53d991ee90929404993a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/dependency-install-retirement.mjs","digest":"ef2130ec72f2b095466ac2b115b20cdd5c076a8829c0327f4745efb8db3a93eb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/pnpm-advisory.mjs","digest":"d744934bbc925b7a8cf799b335864c0e8555d6b099de2acf6e6990ca5a580bc7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/pnpm-dependency-graph.mjs","digest":"4c60e90ac272295d63aa0f302b41d1b6c5aaebda7d828098da843a5335b6422e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/pnpm-lockfile.mjs","digest":"6a269e99d1324e63b0f26cc46aeaa7a92c25e14567f2581344444369f2910eeb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/release-sbom-generation.mjs","digest":"7c994c5cbc4832402ab7479b4c005395ba63fc7953231370e57db3ccf9c59f3e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/release-sboms.mjs","digest":"22a283e108c25da5ae116b2e6782520dec564a7263e7991673bdb3ed4f9ce5b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/test-reliability.mjs","digest":"98e4353f73733faa96bfdc45a5df0df763bd66abf0b3d3554c6a17f7f6a349ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-environment-preflight.mjs","digest":"b40ff2489b52784a30f9f0ab810741ab54aa5f9d04e4e82e5964e3cc65b37dbb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lockfile-sync-gate.mjs","digest":"86b9ec7ef8fb7c45eb44d6718b4e0ff9fc003bc2020a6681afbe0f3b11073aac","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/release-sbom-context.mjs","digest":"6d23b3d0993d5e9e91c75d851e45842bc30f17070b739befae42fa3f2871ae5a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/workspace-dependency-provenance.mjs","digest":"8e26b9bba267b682ba2f800bbb948dc46fad7071ff93ffcfe8060b60908c400b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts","digest":"8b5245ec85e9c85728be53067a9916953ab979880a3172a09d6cc4e89ded07fb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/components/chat/SanitizedHtml.tsx","digest":"801ed68ce1b7b8dc71b1f2e269d600f89b868ce1bcf00c7afac819c667bfab2f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"}
+  ],
+
+  "checks": [
+    "Source/caller review on 2026-09-27 completed for the whole document, separating implemented behavior, policy requirements and historical evidence. Current root document bytes at 45fcdd5230b0b5e5028e469864ab70693e6088b0 matched the lane before this prose correction; reviewed implementation remains the frozen 6fa523e4d5b5a265a9e545edcbba6f5602193bef integration.",
+
+    "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
+
+    "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
+
+    "Integration source review through e0314c727: package.json and pnpm-lock.yaml dropped the unused root @kontourai/bearing and @kontourai/forage dependencies; ci.yml fast-checks shards gained a zsh provisioning step (timeout 60 to 65) that actionlint-gate.mjs pins. The guide names neither package, and the advisory tables are dated history, so the managed-install, allowlist, advisory and workflow claims are unaffected and the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2914 reworks dependency-advisory-policy tests with no advisory-policy source change. The guide's policy claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

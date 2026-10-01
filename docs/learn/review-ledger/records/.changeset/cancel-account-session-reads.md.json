@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/cancel-account-session-reads.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"7631d756d7e28187d3fcd14eae2865def387e0e1d2ec6db02ac0fcaf648def4e","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

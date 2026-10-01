@@ -20,6 +20,12 @@ const item = (over: Partial<HomeWorkItem>): HomeWorkItem =>
     ...over,
   }) as HomeWorkItem;
 
+/** A group's members; a live group absent because it is empty reads `[]`. */
+const membersOf = (
+  groups: ReturnType<typeof groupMobileActivity>,
+  id: string,
+): HomeWorkItem[] => groups.find((g) => g.id === id)?.items ?? [];
+
 describe('groupMobileActivity snooze', () => {
   const NOW = 1_000_000;
   it('a live snooze wins over an otherwise-active item', () => {
@@ -29,7 +35,9 @@ describe('groupMobileActivity snooze', () => {
       { x: NOW + 1000 },
     );
     expect(groups.find((g) => g.id === 'snoozed')?.items).toHaveLength(1);
-    expect(groups.find((g) => g.id === 'active')?.items).toHaveLength(0);
+    expect(membersOf(groups, 'running')).toHaveLength(0);
+    // An empty live group is omitted, not printed as an empty header.
+    expect(groups.some((g) => g.id === 'running')).toBe(false);
   });
   it('a lapsed snooze returns the item to its natural group', () => {
     const groups = groupMobileActivity(
@@ -37,7 +45,7 @@ describe('groupMobileActivity snooze', () => {
       NOW,
       { x: NOW - 1 },
     );
-    expect(groups.find((g) => g.id === 'active')?.items).toHaveLength(1);
+    expect(membersOf(groups, 'running')).toHaveLength(1);
     expect(groups.find((g) => g.id === 'snoozed')?.items).toHaveLength(0);
   });
 
@@ -103,7 +111,7 @@ describe('groupMobileActivity snooze', () => {
     expect(secondGroups.find((g) => g.id === 'snoozed')?.items).toEqual([
       afterReopen,
     ]);
-    expect(secondGroups.find((g) => g.id === 'active')?.items).toHaveLength(0);
+    expect(membersOf(secondGroups, 'running')).toHaveLength(0);
   });
 
   // A stale snooze keyed by an id the item no longer carries at all must not
@@ -117,7 +125,7 @@ describe('groupMobileActivity snooze', () => {
     const groups = groupMobileActivity([chatItem], NOW, {
       'unrelated-key': NOW + 1000,
     });
-    expect(groups.find((g) => g.id === 'active')?.items).toEqual([chatItem]);
+    expect(membersOf(groups, 'running')).toEqual([chatItem]);
     expect(groups.find((g) => g.id === 'snoozed')?.items).toHaveLength(0);
   });
 });
@@ -148,27 +156,23 @@ describe('snoozeWakeAt', () => {
  * surface without a second derivation.
  *
  * archive#3227 A6 changed WHERE such an item files: the groups now come from
- * the shared lane partition (`partitionHomeWorkItems`), whose Active lane
- * means "not finished" — and archive#1783's own desktop adjudication was that an
+ * the shared lane partition (`partitionHomeWorkItems`), whose live lanes
+ * mean "not finished" — and archive#1783's own desktop adjudication was that an
  * unanswerable session did not finish, it stopped being reachable. So it
- * stays in "Active now" on mobile exactly as it does on desktop, carrying
- * its basis (`unanswerableNotice` + the translated "Can't answer here"
- * status), rather than sitting under a group that claims the work ended.
- * The pre-A6 behavior (dropping it out of Active) was one half of the
- * two-derivations defect: the same session was "Active now" on Home and
- * not-active in the switcher.
+ * stays live on mobile exactly as it does on desktop — under Idle, since
+ * nothing is running and nothing here can answer it — carrying its basis
+ * (`unanswerableNotice` + the translated "Can't answer here" status),
+ * rather than sitting under a group that claims the work ended.
  */
 describe('groupMobileActivity answerability (station#1783, re-adjudicated by #3227 A6)', () => {
   const NOW = 1_000_000;
 
-  it('an Unanswerable item is Active — it has not finished, matching the desktop lane', () => {
+  it('an Unanswerable item is Idle — it has not finished, and nothing is running or answerable', () => {
     const groups = groupMobileActivity(
       [item({ id: 'dead', lifecycleLabel: 'Unanswerable', updatedAt: NOW })],
       NOW,
     );
-    expect(
-      groups.find((g) => g.id === 'active')?.items.map((i) => i.id),
-    ).toEqual(['dead']);
+    expect(membersOf(groups, 'idle').map((i) => i.id)).toEqual(['dead']);
   });
 
   it('...and it is not dropped or double-filed — it lands in exactly one real group', () => {
@@ -181,12 +185,12 @@ describe('groupMobileActivity answerability (station#1783, re-adjudicated by #32
     expect(groups.flatMap((g) => g.items).map((i) => i.id)).toEqual(['dead']);
   });
 
-  it('control: a Needs attention item is still Active', () => {
+  it('control: a Needs attention item is Needs you', () => {
     const groups = groupMobileActivity(
       [item({ id: 'live', lifecycleLabel: 'Needs attention' })],
       NOW,
     );
-    expect(groups.find((g) => g.id === 'active')?.items).toHaveLength(1);
+    expect(membersOf(groups, 'needsYou')).toHaveLength(1);
   });
 
   it('next-9am stays calendar-correct across a DST boundary', () => {

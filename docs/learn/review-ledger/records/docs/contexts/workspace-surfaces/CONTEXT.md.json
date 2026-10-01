@@ -1,0 +1,77 @@
+{
+  "path": "docs/contexts/workspace-surfaces/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full context vocabulary and relationships; added actual composition routing, ambient/mode/region semantics, Task declaration vs real owner view, UI availability merge and persistence/rollback boundaries, authorized Session-directory previews and separately composed coding panes.",
+
+  "limits": "No device or cross-tab storage proof; file-preview multiwriter remains explicitly unverified. External product experience contract implementation is not claimed.",
+
+  "document": {"digest":"0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"packages/contracts/src/workspace-file-preview.ts","digest":"c7826aaebe56f64bb927a4abb5c79293522bbacd69cf7bbd9df03d3dc0b0cd0e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/workspace-pane-host.ts","digest":"ea09483694bc388fd11f4c87c51799d9af7429dea5de838235f52c3819bd18ee","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/workspace-pane.ts","digest":"30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/projects/workspace-pane-previews.ts","digest":"e7dd34602b3b94ac6dcbf5438da4d973146c31b8e0c816f4f073fbf1b344fd5f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/projects/proposed-change-service.ts","digest":"3893b0bcd521c13e114508f95b65f40998f380129c0e16434b269a728982f9bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/projects/session-workspace-directory.ts","digest":"33ec9a0b7b1c31f711cb8d5dfcf0a9cec7d8517ed7ec4a67ecada01eec2b360e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/projects/workspace-file-preview-service.ts","digest":"5436a41781fa63b3fdaa57f78a1446fd1a3318393ca554cb743ba47fa3fb6b22","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/projects/workspace-pane-availability-resolver.ts","digest":"2c40a6a46425aaae41c7b785062f4cf7ea31bb9e926e4098800d51314783f733","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/projects/workspace-pane-catalog.ts","digest":"d46e8e6c91c8e1e5ae10ca584759a673bdc90a8d932352348150d140b2275222","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/regions/region-arrangement-record.ts","digest":"25978c0bf3ba1e054d216ec6f2af73b5bc16cb282049c5577f2557f36adeb37f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/regions/region-model.ts","digest":"b951fc3827a50994cac8111c8136768d61f67cc42225f79bcf6ce4401f51d65f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/regions/region-surface-panes.ts","digest":"a559c6608daedcd0df853fa06ef402008d704e99770182cb57ae025d805753a3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/task-experiences.ts","digest":"cdc6a0d8558b9167702d8b1f38b4be903e0035e1b41858329347e437c80195a3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/CodingChatPane.tsx","digest":"3d24fdee7f037afaba080df8862c32d69b22fab49acf901cea8bb22305ca5872","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/FilePreviewPane.tsx","digest":"af191706a2c37ffafaafbe5324731553046573a8685e1d7aad67aba93cd86849","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/InertRenderedMarkdown.tsx","digest":"28d702eb860f567e6b006aededad7801f315a462e07ca755d8cff20e6fc87fc6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"7aeaffe0ca0c199563ebe34302646533558871d69914b365810ced54e74f4ed4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/compactWorkspacePaneProjection.ts","digest":"f1caaa76a2d68d12b3773b94ca66461f7e069aa209da93105b9f856ad042cb90","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/filePreviewPaneStateStorage.ts","digest":"73a7ed1992c1999df40005fa445b266449a8e95685945169e9431560362e2aa4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/workspacePaneAvailabilityAdapters.ts","digest":"6211acedb96f9522d03d491d00b6f70c4d9c05e7359bc0770545b09a3b4876c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostNavigation.ts","digest":"3f065ca6b44c4da536fcafef8f9ee13d439203f386651674ab8f11fced0d23f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostRuntime.ts","digest":"e088a1054788ec44fca4ecc3610e75f033fbe5224ec2664557abfa04ce1e3b12","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostStorage.ts","digest":"7e4eff4612599876fd997d9e1f7ce33e644ace58c11b8bf9c8306801695f2d26","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostTransactions.ts","digest":"eb25259eca0f197e3304efb4a49139f3c6e4344a35478c63937546b6296d7351","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "775 focused tests across 44 files passed; local source/caller and controlled UI/runtime evidence.",
+
+    "Integration source review through e0314c727: the document's own delta repoints the module-map link from #collaborativeeditorpane to #projecttaskroom and records that the unmounted editor controller was deleted. The anchor resolves to '## ProjectTaskRoom' and src-shared/collaborative-editor-pane.ts is gone, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) made FilePreviewPane helpers module-private and made AMBIENT_CHAT_DOCK_DOCUMENT_ID private. It also removed createAmbientChatDockPaneDocument and dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry. There is no behavior change, the linked files still exist, and the doc names none of the removed exports. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

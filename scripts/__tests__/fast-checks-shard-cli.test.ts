@@ -1002,7 +1002,20 @@ describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 
   }, () => {
     // A disposable worktree with one changed script, so the selection has
     // a related path and reaches discovery; the only way the refusal can
-    // happen is the CLI reading STATION_TEST_CHANGED_DEADLINE_AT.
+    // happen is the CLI reading STATION_TEST_CHANGED_DEADLINE_AT. The script
+    // must select no deferred lane: a deferred lane drops related paths from
+    // execution, so discovery would never run. A module many spawned scripts
+    // import defers to test-full (#2922), which is why this is not
+    // module-entry.mjs; the premise is checked here so drift names itself.
+    const changedScript = 'scripts/lib/icns.mjs';
+    const premise = selectChangedVerification(
+      [changedScript],
+      buildTestImpactManifest({ root }) as Parameters<
+        typeof selectChangedVerification
+      >[1],
+    );
+    expect(premise.lanes, 'the changed script must defer no lane').toEqual([]);
+    expect(premise.relatedPaths).toEqual([changedScript]);
     const worktree = join(makeTempDir('station-changed-deadline-'), 'wt');
     const git = (cwd: string, ...args: string[]) =>
       execFileSync('git', args, {
@@ -1041,7 +1054,7 @@ describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 
           );
         }
       }
-      const changed = join(worktree, 'scripts/lib/module-entry.mjs');
+      const changed = join(worktree, changedScript);
       writeFileSync(changed, `${readFileSync(changed, 'utf8')}\n`);
 
       const env: Record<string, string | undefined> = {

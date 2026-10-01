@@ -1,0 +1,15 @@
+{
+  "revision": "e0c70d5b3780c9cee81ddb897bad6d66571a7558",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Re-reviewed after the documentation guide changed: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change touches only the fold-a-branch paragraph about media.json conflicts, so every linked claim still holds."},
+
+    {"path":"docs/README.md","note":"Re-reviewed after the documentation guide changed: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change touches only the fold-a-branch paragraph about media.json conflicts, so every linked claim still holds."},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed after the documentation guide changed: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change touches only the fold-a-branch paragraph about media.json conflicts, so every linked claim still holds."},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-reviewed after the documentation guide changed: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change touches only the fold-a-branch paragraph about media.json conflicts, so every linked claim still holds."},
+
+    {"path":"docs/guides/development.md","note":"Re-reviewed after the documentation guide changed: this page links the guide (and its keep-reviews-fresh / findings anchors, which still exist) by role; the change touches only the fold-a-branch paragraph about media.json conflicts, so every linked claim still holds."}
+  ]
+}

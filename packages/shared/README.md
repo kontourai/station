@@ -43,7 +43,7 @@ shell build commands are refused.
 
 The [build implementation](./src/build.ts) owns input/output containment,
 dependency preparation and the exact shared-module allowlist. Root SDK,
-SDK `/client` and `/voice`, React and React Query are among the externalized
+SDK `/agent`, `/client` and `/voice`, React and React Query are among the externalized
 modules; other SDK leaves are not automatically external. Bundles register with
 Station's host runtime. Successful bundling does not install a plugin, approve
 permissions or activate its server contributions.

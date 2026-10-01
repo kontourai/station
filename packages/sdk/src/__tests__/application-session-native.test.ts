@@ -15,6 +15,7 @@ import {
   applicationSessionKeyThumbprint,
   createNativeApplicationSessionProof,
   NativeApplicationSessionClient,
+  type NativeApplicationSessionProofProvider,
   type NativeApplicationSessionTrustSnapshotV1,
   serializedCredentialsHash,
 } from '../client/application-session-native';
@@ -43,7 +44,12 @@ function decodeClaims(proof: string): NativeApplicationSessionProofClaimsV1 {
   );
 }
 
-async function fixture() {
+async function fixture(
+  proofProvider?: (
+    key: Awaited<ReturnType<typeof createApplicationSessionKey>>,
+    trust: () => NativeApplicationSessionTrustSnapshotV1,
+  ) => NativeApplicationSessionProofProvider,
+) {
   const key = await createApplicationSessionKey();
   let trust: NativeApplicationSessionTrustSnapshotV1 = {
     kind: 'station-native',
@@ -124,7 +130,7 @@ async function fixture() {
   const client = new NativeApplicationSessionClient(
     transport,
     () => trust,
-    key,
+    proofProvider ? proofProvider(key, () => trust) : key,
   );
   return {
     client,
@@ -149,6 +155,177 @@ async function fixture() {
       afterChallenge = action;
     },
   };
+}
+
+function hostProvider(
+  key: Awaited<ReturnType<typeof createApplicationSessionKey>>,
+  trust: () => NativeApplicationSessionTrustSnapshotV1,
+): NativeApplicationSessionProofProvider {
+  return {
+    kind: 'station-native-host-proof-provider/v1',
+    publicKey: key.publicKey,
+    async prepareExchange({ challenge, credentials }) {
+      const ordered = {
+        username: credentials.username,
+        password: credentials.password,
+      };
+      const proof = await createNativeApplicationSessionProof(key, trust(), {
+        purpose: 'exchange',
+        deviceId: trust().deviceId,
+        nonce: challenge.nonce,
+        method: 'POST',
+        path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+        expiresAtMs: challenge.expiresAtMs,
+        challengeIdHash: createHash('sha256')
+          .update(challenge.challengeId)
+          .digest('base64url'),
+        credentialsHash: createHash('sha256')
+          .update(JSON.stringify(ordered))
+          .digest('base64url'),
+      });
+      return {
+        body: {
+          version: APPLICATION_SESSION_NATIVE_VERSION,
+          challengeId: challenge.challengeId,
+          credentials: ordered,
+          proof,
+        },
+        headers: { [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof },
+      };
+    },
+    async requestHeaders({ continuation, request }) {
+      const proof = await createNativeApplicationSessionProof(key, trust(), {
+        purpose: 'request',
+        deviceId: trust().deviceId,
+        nonce: continuation.nonce,
+        method: request.method,
+        path: request.path,
+        expiresAtMs: continuation.expiresAtMs,
+        credentialHash: createHash('sha256')
+          .update(continuation.credential)
+          .digest('base64url'),
+      });
+      return {
+        [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+        [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,
+      };
+    },
+  };
+}
+
+describe('structured native account proof provider', () => {
+  test('validates and sends the ordered host exchange body before transport framing', async () => {
+    const h = await fixture(hostProvider);
+    const result = await h.client.exchange({
+      password: '🔒 café\u2028λ',
+      username: 'operator',
+    });
+    const sent = h.posts[1]!;
+    const body = zBody(sent.body);
+    expect(Object.keys(body.credentials)).toEqual(['username', 'password']);
+    expect(decodeClaims(body.proof).credentialsHash).toBe(
+      createHash('sha256')
+        .update(JSON.stringify(body.credentials))
+        .digest('base64url'),
+    );
+    expect(sent.headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER]).toBe(
+      body.proof,
+    );
+    const headers = await h.client.headers(result, {
+      method: 'GET',
+      path: '/api/projects?include=exact%2Bquery',
+    });
+    expect(
+      decodeClaims(headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER]!).path,
+    ).toBe('/api/projects?include=exact%2Bquery');
+    expect(headers[APPLICATION_SESSION_NATIVE_HEADER]).toBe(result.credential);
+    h.fetchSpy.mockRestore();
+  });
+
+  test.each(['body', 'headers', 'signature'] as const)(
+    'refuses mismatched host %s before exchange dispatch',
+    async (change) => {
+      const h = await fixture((key, trust) => {
+        const provider = hostProvider(key, trust);
+        return {
+          ...provider,
+          async prepareExchange(input) {
+            const prepared = await provider.prepareExchange(input);
+            if (change === 'body')
+              return {
+                ...prepared,
+                body: {
+                  ...prepared.body,
+                  credentials: {
+                    username: 'attacker',
+                    password: input.credentials.password,
+                  },
+                },
+              };
+            if (change === 'headers')
+              return {
+                ...prepared,
+                headers: {
+                  [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: 'different-proof',
+                },
+              };
+            const parts = prepared.body.proof.split('.');
+            parts[2] = 'A'.repeat(86);
+            const proof = parts.join('.');
+            return {
+              body: { ...prepared.body, proof },
+              headers: { [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof },
+            };
+          },
+        };
+      });
+      await expect(h.client.exchange(credentials)).rejects.toThrow();
+      expect(h.posts).toHaveLength(1);
+      h.fetchSpy.mockRestore();
+    },
+  );
+
+  test('refuses unsupported provider credentials and non-read Project targets without calling the provider', async () => {
+    const prepare = vi.fn();
+    const request = vi.fn();
+    const h = await fixture((key, trust) => {
+      const provider = hostProvider(key, trust);
+      prepare.mockImplementation(provider.prepareExchange);
+      request.mockImplementation(provider.requestHeaders);
+      return { ...provider, prepareExchange: prepare, requestHeaders: request };
+    });
+    await expect(
+      h.client.exchange({
+        email: 'someone@example.test',
+        password: 'password',
+      }),
+    ).rejects.toThrow();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(h.posts).toHaveLength(0);
+    const current = await h.client.exchange(credentials);
+    for (const target of [
+      { method: 'POST', path: '/api/projects' },
+      { method: 'GET', path: '/api/pairing/devices' },
+      { method: 'GET', path: '/api/projects/a/access' },
+    ])
+      await expect(h.client.headers(current, target)).rejects.toThrow(
+        'only Project reads',
+      );
+    expect(request).not.toHaveBeenCalled();
+    h.fetchSpy.mockRestore();
+  });
+});
+
+function zBody(value: Record<string, unknown>) {
+  const credentials = value.credentials;
+  if (
+    !credentials ||
+    typeof credentials !== 'object' ||
+    Array.isArray(credentials) ||
+    typeof value.proof !== 'string'
+  )
+    throw new Error('fixture exchange body missing');
+  return { credentials, proof: value.proof };
 }
 
 describe('native application session client', () => {

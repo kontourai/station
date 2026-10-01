@@ -123,6 +123,13 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/learning-atlas.browser.test.ts',
+  // Starts a nested Vitest run of its probe under a simulated merge-queue env.
+  'scripts/__tests__/ci-event-environment.test.ts',
+  // Builds disposable Git repositories to prove the real-ledger freshness
+  // check keeps the job's event mode through the worker env scrub.
+  'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
+  // Runs the token helper as a child against a loopback GitHub and a fake `security`.
+  'scripts/__tests__/gh-app-token.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.

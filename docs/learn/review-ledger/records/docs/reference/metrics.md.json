@@ -1,0 +1,39 @@
+{
+  "path": "docs/reference/metrics.md",
+
+  "kind": "generated",
+
+  "state": "classified",
+
+  "summary": "Generated catalog of 309 instrument declarations, literal metadata and source identity. Source is parsed without executing telemetry.",
+
+  "limits": "Declarations do not prove caller recording, SDK binding or collector receipt. Unsupported owner syntax refuses generation.",
+
+  "document": {"digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+  "sources": [
+    {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+    {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+    {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":"scripts/lib/learning-source-reader.mjs","digest":"3ed56b00565eb004ecd245ec7b21a3e7969378278332c05b6c9960106a6a036a","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+    {"path":"scripts/lib/metric-reference-output.mjs","digest":"1ab2f8c050105b4ddc265f4d16b5c4c5fad6bfe268f198884dfc6e1690259804","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"}
+  ],
+
+  "checks": [
+    "47 generator tests passed.",
+
+    "Independent actual CLI refused input/output symlinks, invalid UTF-8, API escapes and runtime re-exports; valid/restored checks passed. Literal metadata round-tripped through the reader DOM.",
+
+    "Reviewed source deltas: Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
+
+    "Reviewed source changes: Added admitted local capture rendering and image-link validation. Existing source-code and metric-table links keep their snapshot route; metadata/source review remains independent.",
+
+    "Regenerated309 metric declaration entries after upstream metric source movement; no emitted-value or dashboard completeness claim."
+  ]
+}
