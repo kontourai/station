@@ -18,6 +18,7 @@ mod login_shell;
 mod native_enrollment;
 mod native_enrollment_host;
 mod native_enrollment_peer;
+mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
 // Proof keys remain host-only; bounded account and Device operations are IPC.
@@ -11858,6 +11859,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_enrollment_peer::station_native_enrollment_peer_open,
         native_enrollment_peer::station_native_enrollment_peer_read,
         native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
         native_enrollment_host::station_native_enrollment_begin_prepare,
         native_enrollment_host::station_native_enrollment_challenge_accept,
         native_enrollment_host::station_native_enrollment_login_prepare,
@@ -11948,6 +11950,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_enrollment_peer::station_native_enrollment_peer_open,
         native_enrollment_peer::station_native_enrollment_peer_read,
         native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
         native_enrollment_host::station_native_enrollment_begin_prepare,
         native_enrollment_host::station_native_enrollment_challenge_accept,
         native_enrollment_host::station_native_enrollment_login_prepare,

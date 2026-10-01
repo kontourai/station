@@ -97,6 +97,7 @@ const sameTrust = (
 
 export interface NativeRelaySignalingBridgeOptions {
   readonly bindingCommand: string;
+  readonly bindingArguments?: 'request' | 'flat';
   readonly openCommand: string;
   readonly readCommand: string;
   readonly errorPrefix: string;
@@ -119,6 +120,7 @@ export async function createNativeRelayBindingOwner(
   options: Pick<
     NativeRelaySignalingBridgeOptions,
     | 'bindingCommand'
+    | 'bindingArguments'
     | 'errorPrefix'
     | 'profileName'
     | 'profileRevision'
@@ -132,9 +134,10 @@ export async function createNativeRelayBindingOwner(
   const request = { profileName, expectedProfileRevision: profileRevision };
   const fetchBinding = async () =>
     validateNativeRelayBinding(
-      (await invoke.invoke(bindingCommand, {
-        request,
-      })) as NativeRelayBindingDto,
+      (await invoke.invoke(
+        bindingCommand,
+        options.bindingArguments === 'flat' ? request : { request },
+      )) as NativeRelayBindingDto,
       profileName,
       profileRevision,
       errorPrefix,
