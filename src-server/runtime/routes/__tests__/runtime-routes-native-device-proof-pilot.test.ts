@@ -1723,8 +1723,14 @@ describe('native Device request-proof pilot over the production composition', ()
       'orchestration:read',
     );
     const peer = await h.startNativePeer(paired);
-    const reached = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
+    let resolveReached!: () => void;
+    let resolveRelease!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      resolveReached = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      resolveRelease = resolve;
+    });
     const original = h.localAccounts.service.revokeSessionReference.bind(
       h.localAccounts.service,
     );
@@ -1732,8 +1738,8 @@ describe('native Device request-proof pilot over the production composition', ()
       .spyOn(h.localAccounts.service, 'revokeSessionReference')
       .mockImplementationOnce(async (id, signal) => {
         await original(id, signal);
-        reached.resolve();
-        await release.promise;
+        resolveReached();
+        await release;
       });
     try {
       await peer.session.establish({
@@ -1752,7 +1758,12 @@ describe('native Device request-proof pilot over the production composition', ()
           body,
         }),
       );
-      await reached.promise;
+      await Promise.race([
+        reached,
+        pending.then(() => {
+          throw new Error('provider barrier not reached');
+        }),
+      ]);
       h.bindingService.revokeBinding({
         bindingId: paired.binding.bindingId,
         deviceId: paired.device.id,
@@ -1770,7 +1781,7 @@ describe('native Device request-proof pilot over the production composition', ()
           },
         }),
       });
-      release.resolve();
+      resolveRelease();
       const response = await pending;
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({
@@ -1780,7 +1791,7 @@ describe('native Device request-proof pilot over the production composition', ()
         h.security.devicePairing.identifyDevice(paired.credential)?.id,
       ).toBe(paired.device.id);
     } finally {
-      release.resolve();
+      resolveRelease();
       barrier.mockRestore();
       peer.dispose();
     }
