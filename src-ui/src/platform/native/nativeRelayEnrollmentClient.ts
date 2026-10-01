@@ -104,8 +104,10 @@ export function createNativeRelayEnrollmentClient(
   let profileRevision = input.expectedProfileRevision;
   let enrollmentHandle: string | undefined;
   let busy = false;
+  let completed = false;
 
   const abortOwned = async () => {
+    if (completed) return;
     if (enrollmentHandle)
       await invoke.invoke('station_native_enrollment_abort', {
         enrollmentHandle,
@@ -163,7 +165,7 @@ export function createNativeRelayEnrollmentClient(
           };
         },
       });
-      return await exchange(
+      const outcome = await exchange(
         async (peerHandle) => {
           const frame = prepared.parse(
             await invoke.invoke(prepareCommand, { ...args, peerHandle }),
@@ -201,6 +203,8 @@ export function createNativeRelayEnrollmentClient(
           return result;
         },
       );
+      if (publication) completed = true;
+      return outcome;
     } finally {
       busy = false;
     }
