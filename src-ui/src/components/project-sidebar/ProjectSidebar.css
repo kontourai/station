@@ -695,28 +695,14 @@
   color: var(--text-primary);
 }
 
+/* The current page reads the same on every place row: Home's current
+   treatment (`.sidebar__project-btn--active`) — accent-tinted fill and a
+   left accent bar — so Home and Activity, the panel's two places, cannot
+   look current in two different ways. */
 .sidebar__nav-btn--active {
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+  border-left: 2px solid var(--accent-primary);
   color: var(--text-primary);
-}
-
-/* #1582 D4: a region-surface row is a toggle, not a location. It wears a
-   trailing "showing" dot and the primary text colour instead of the
-   current-page fill, so the row that IS the current page stays the only one
-   reading as current. Paired with `aria-pressed` on the same derivation, so
-   the mark and the announced state cannot disagree. */
-.sidebar__nav-btn--shown {
-  color: var(--text-primary);
-}
-
-.sidebar__nav-btn--shown::after {
-  content: "";
-  flex: 0 0 auto;
-  margin-left: auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-primary);
 }
 
 .sidebar__nav-btn[aria-disabled="true"] {

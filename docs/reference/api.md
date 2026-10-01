@@ -26,12 +26,30 @@ not mean every deployment mounts or admits it.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Personal Task room agent requests
+
+`GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
+request projection. A client must verify `station.task-room-work/v1` before
+sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
+That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
+the normal prompt and execution target remain outside it. This initial path
+admits current-Station execution in the exact Task Project, with the existing
+read/operate, readiness and provider-effect authority gates. A request receipt
+does not establish Task completion or result quality.
+
+Ordinary `POST /api/tasks/:taskId/room/messages` can include
+`expectedTaskCreatedAt`; the room's history grant rechecks that incarnation
+before commit. See the [ownership and failure contract](../design/task-room-agent-requests.md)
+and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
+composition; this reference does not claim hosted, anonymous-public or invited
+participation acceptance.
+
 ## Table of Contents
 
 | Area | Route families |
 | --- | --- |
 | Work and layouts | [Starter Work](#starter-work), [Spatial Board](#spatial-board), [personal Boards](#personal-boards), [Layouts](#layout-management), [workflow files](#workflow-management), [independent review](#independent-review-evidence) |
-| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
+| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [Task room requests](#personal-task-room-agent-requests), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
 | Models and configuration | [App configuration](#configuration), [connections](#connections), [fleet inference](#fleet-inference), [Bedrock catalog](#bedrock-models), [model capabilities](#model-capabilities), [standalone model routes](#standalone-model-capability-routes) |
 | Activity and observations | [Analytics](#analytics), [monitoring](#monitoring), [insights](#insights), [events](#events-sse), [analytics reset](#additional-analytics) |
 | Extensions | [Plugins](#plugins), [Registry](#registry), [frontend clients](#frontend-usage-summary) |
@@ -2540,6 +2558,33 @@ admission does not replace authentication or scope. See
 
 ---
 
+
+## Engine accounts and usage
+
+`GET /api/connections/agent/:id/accounts` projects the default account plus saved
+profiles for Claude and Codex: opaque references, labels, CLI-verified auth state,
+observed login mechanism and the account in use. It requires `engine:login`,
+credential-management access or a verified operator. It returns no paths,
+commands, environment or CLI diagnostics.
+
+`GET /api/connections/agent/:id/account-usage?profileRef=<ref>` reads only the
+selected profile's provider quota. Omit the reference to inspect the connection's
+default account. This token-backed read requires `access:manage`; an engine-login
+grant alone does not admit it. The result is either normalized quota windows,
+plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+
+`GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
+an existing saved profile and `engine:login` or a verified operator. No default
+account login is admitted. POST `{}` starts the observed provider-owned login;
+POST `{code}` relays a Claude browser code to its CLI stdin. GET projects status;
+DELETE cancels. The server checks current authority before private work and
+publication. Credentials and private CLI output are never returned. Refused
+starts return a safe reason, with Codex outcomes when available.
+
+`GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
+for engine activity. Filtering precedes folding and pagination, while coverage
+remains explicit. This is Station engine history across accounts, not billing or
+per-profile attribution.
 
 ## Read engine sign-in profiles
 

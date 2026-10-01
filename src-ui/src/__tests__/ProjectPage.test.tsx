@@ -116,6 +116,7 @@ const navigationMocks = vi.hoisted(() => ({
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 
 // The host authority is mutable so the scope-switching test below can move

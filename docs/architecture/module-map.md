@@ -1766,6 +1766,24 @@ The [route](../../src-server/routes/orchestration/project-task-rooms.ts) emits
 closed browser DTOs; exact-order document events take priority over queued
 presence events without bypassing the final currentness check.
 
+Personal runtime composition also mounts the
+[TaskRoomWorkModule](../../src-server/services/projects/task-room-work-module.ts),
+a separate Station-wide JSON journal for explicit agent requests. It reserves
+an execution identity before existing delegation runs, rechecks Task/Project
+incarnation and requester authority, and never re-invokes a recorded operation.
+The delegation route supplies a private admission that OrchestrationService
+rechecks at provider start and initial-turn effects. The same private admission
+supplies the existing room-execution binding so source seals and pending-work
+joins cover independent room sessions. Known authority loss uses
+clean pre-effect refusal; unknown failures retain uncertainty. The
+[composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
+agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
+Ordinary composer messages also use captured transport authority and an expected
+Task incarnation that the history grant rechecks before commit. Request cards
+currently poll the journal read and link to existing execution
+inspection; they are not room-SSE lifecycle events. Invited/public result
+projection and actual-provider acceptance remain unfinished.
+
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
@@ -2833,7 +2851,7 @@ Without a tenant evidence composition, hosted reads can retain the authorized Th
 
 A Task remains a durable work record before and after an engine runs. The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) turns a dispatch intent into an execution attempt; [TaskGraph](../../src-server/services/projects/task-graph-service.ts) retains the Task, reservation, and resulting links. A dispatch receipt is not proof the Task succeeded.
 
-**Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the single execution Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface.
+**Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
 **Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 
@@ -3173,11 +3191,23 @@ already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
+`browser-live-surfaces.ts` also owns per-generation page tools: a JavaScript
+dialog opened while a person holds the lease is held in
+`ChromiumScreencastProducer` for that person (answered through
+`POST /api/browser/sessions/:id/dialog`, never by an Agent, which is refused
+`dialog-open` meanwhile); dialogs under an Agent or no holder are answered
+automatically, and a held dialog is dismissed when the person's control
+ends. `browser-console-log.ts` keeps a bounded in-memory console per browser
+generation (agent-capable requests read it only under `browserEvaluate`), and
+the registry's `captureScreenshot` serves the pane's screenshot, one capture
+in flight per session.
 
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
-`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`, and
-`BrowserPane.test.tsx`; real-host suites are separate `.real.test.ts` files.
+`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`,
+`browser-pane-page.routes.test.ts`, `BrowserPane.test.tsx` and
+`BrowserPane.pageTools.test.tsx`; real-host suites are separate
+`.real.test.ts` files.
 Synthetic PASS is not browser-version compatibility, hostile-page completeness,
 Windows process-tree cleanup, mobile viewing or release evidence. Keep
 `desktop-cef`/peer-host plans and the ADR's original research distinct from the
@@ -3202,11 +3232,18 @@ one pending frame per viewer, latest-frame replacement, acknowledgments and
 adaptive delivery. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
-an Agent cannot preempt a live human. Epoch identifies controller succession;
+an Agent cannot preempt a live human. A person's `keep-alive` lease request
+extends only their own current hold at the current epoch, never claims, and
+is capped by `maxHumanHoldMs` from their last real input. Epoch identifies
+controller succession;
 the separate fence changes on release/expiry as well, so reclaiming cannot
 resurrect old work. The registry serializes and fences input, cancels held
 buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
-It cannot cancel an arbitrary producer effect already in flight.
+A producer may refuse an event for a reason the viewer can act on
+(`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
+page dialog waits for its person), which reaches the viewer as that code
+rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
+already in flight.
 
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.

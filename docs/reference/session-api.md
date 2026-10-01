@@ -6,13 +6,18 @@ no UI in the loop. It is the API-parity contract for the composer: every action 
 takes in the chat dock has a documented, scriptable equivalent here
 (`docs/design/chat-composer.md` §4).
 
-There is one execution surface: `POST /api/orchestration/chat` accepts an
+For foreground chat, the canonical execution surface is
+`POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
 model, and workspace binding on the target Environment. A bound continuation
 uses `POST /api/orchestration/chat/:conversationId/continue`; it preserves the
 Environment, workspace and current Agent/engine binding. Supported per-turn model
 overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
+
+Independent [Task room agent requests](../design/task-room-agent-requests.md)
+use the existing delegation route with a separate durable request journal.
+They do not replace foreground chat or the Task's current-session association.
 
 ---
 
@@ -182,10 +187,27 @@ this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
 `ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
 ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
-call or `ExitPlanMode`), which mints no grant and selects the agent's
-allow-once option (#2933). So an agent's `allow_always` option for a plan
-exit, such as "yes, and auto-accept edits", is not reachable from a session
-answer, as with Claude's own plan exit (#2916).
+call or `ExitPlanMode`), which mints no Station session grant (#2933).
+The ACP response mapper prefers the agent's `allow_once` option. If the
+agent offers only `allow_always`, it falls back to that option; Station's
+one-call decision therefore does not guarantee one-call behavior in the
+agent. Claude's own plan exit uses its separate response mapping (#2916).
+
+A Claude Session also treats these as escalations that always prompt, even
+under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
+network-host ask (`SandboxNetworkAccess`), which offers no session option and
+names the host in its title, so every new host prompts; a call with
+`dangerouslyDisableSandbox: true`; a request whose `decisionReason` is
+exactly `dangerouslyDisableSandbox`, `requiresUserInteraction` or `Your
+organization requires approval for this tool`; and a request flagged
+`suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`. Agent
+SDK 0.3.278 forwards the first two; `requiresUserInteraction` applies once an
+SDK forwards it. `request.opened` carries the sanitised `decisionReason` and any
+of the flags that are set. Not covered yet: a Bash safety check and a plain
+`permissions.ask` rule reach Station with no signal the SDK forwards, so a
+Bash tool grant or pattern can still answer them. A session answer never
+writes the engine's settings files: every forwarded suggestion is sent with
+`destination: 'session'`.
 
 The command records the decision: the adapter publishes `request.resolved`
 when Station records it, on every engine. Whether the engine then received it
@@ -215,6 +237,43 @@ An open request in the attention inbox closes on `request.resolved`, so an
 answered request leaves the inbox when the decision is recorded; an
 unacknowledged decision surfaces as a `runtime.warning` on its session, not
 as a reopened request.
+
+A request also closes, with no decision, when the turn it belonged to is
+aborted. Two aborts count, and they settle different sets
+([`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts)):
+
+- **Station restarted mid-turn.**
+  [Interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+  records `request.resolved` with status `expired` and `response.reason:
+  'turn-interrupted'` for every request still open that was opened since the
+  dead turn started and before any other turn started, then aborts the turn
+  (`turn.aborted` with `recoveryTerminal`). The session reads `needs_input` with transition reason
+  `runtime_exit`, not `review_pending`. A log written before recovery recorded
+  those resolutions holds the abort with the request still open; every server
+  read treats that request as settled all the same.
+- **A live turn was stopped**: `turn.aborted`, or the
+  `turn.completed` with `finishReason: 'cancelled'` an engine publishes to
+  confirm a stop. This settles only a request whose `request.opened` names
+  that turn in `turnId`. Claude Code stamps it on the main thread's requests,
+  and Muse and Station's own engine on their turn's; a request with no
+  `turnId` (Codex and ACP today, and a subagent's on Claude Code or Muse) is
+  left open by this rule, because work that outlives the turn may still be
+  waiting on it. Separately, the adapters read for this change (Claude Code,
+  Codex, ACP) resolve the requests they hold `cancelled` when they stop a
+  turn or session, a subagent's included on Claude Code; that publication,
+  not this rule, is what normally closes them.
+
+A turn that fails without being aborted (`runtime.error` or `session.exited`
+alone) settles nothing, and neither does an ordinary `turn.completed` or a
+request opened before the turn started.
+
+A settled request is refused by Station itself: `respondToRequest` returns
+`409` with code `request_event_changed`, with or without
+`expectedRequestEventId`, and no adapter is called.
+[Request inspection](#inspect-an-exact-attention-request) reports it `resolved`. The session summary
+(`pendingReview`, `openRequestIds`), the attention inbox, the request's
+replayed outcome, and the CLI's `approvals list` and `operate` leave it out.
+A client that folds raw events without the shared rule still sees it open.
 
 ### Other command types
 

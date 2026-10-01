@@ -66,6 +66,13 @@ export interface CheckoutRemoteReadOptions {
    * is a parameter rather than a constant buried in `execGit`.
    */
   timeoutMs?: number;
+  /**
+   * `--git-dir`/`--work-tree` naming the repository, for a caller that has
+   * already decided which repository `absolutePath` belongs to and must not
+   * let git discover another one (the coding routes, in a member-writable
+   * folder). Absent, git discovers it from `absolutePath`.
+   */
+  gitArgs?: readonly string[];
 }
 
 export type CheckoutRemoteReader = (
@@ -151,7 +158,7 @@ export const readCheckoutRemotes: CheckoutRemoteReader = async (
   const timeoutMs = options?.timeoutMs ?? DEFAULT_CHECKOUT_REMOTE_TIMEOUT_MS;
   let stdout: string;
   try {
-    ({ stdout } = await execGit(['remote', '-v'], {
+    ({ stdout } = await execGit([...(options?.gitArgs ?? []), 'remote', '-v'], {
       cwd: absolutePath,
       timeout: timeoutMs,
     }));
