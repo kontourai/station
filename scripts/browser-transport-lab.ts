@@ -149,7 +149,7 @@ let accountStationGroup:
   | Awaited<ReturnType<typeof startRelayAccountStationGroup>>
   | undefined;
 let secondAccountStation:
-  | Awaited<ReturnType<typeof startRelayAccountStation>>
+  | Awaited<ReturnType<NonNullable<typeof accountStationGroup>['startStation']>>
   | undefined;
 let brokerLab:
   | Awaited<ReturnType<typeof startSelfHostedBrokerProcess>>
@@ -1690,7 +1690,7 @@ async function runTwoStationIsolation(input: {
     );
     if (input.sharedBroker) {
       phase = 'second Station withdrawal leaves first application route live';
-      await input.secondStation.stop();
+      await input.secondStation.stopStation();
       await assert.rejects(
         input.secondBroker.readLease(),
         /broker_request_refused_401/,
