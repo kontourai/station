@@ -93,9 +93,11 @@ export interface WorkspacePaneHostTreeProps {
   /**
    * Whether the host's selection is a navigation fact (`?pane=`, a history
    * entry). Default true; a region host passes false — its selection
-   * authority is the region model (see the controller's option).
+   * authority is the region model (see the controller's option); the Coding
+   * navigation stack passes `'explicit'`, whose URL names a pane only when a
+   * user or an open named one.
    */
-  navigationSelection?: boolean;
+  navigationSelection?: boolean | 'explicit';
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */
@@ -114,6 +116,13 @@ export interface WorkspacePaneHostTreeProps {
   ): void;
   popOut?: WorkspacePaneHostPopOut;
   onDocumentChange?(document: WorkspacePaneHostDocumentV1): void;
+  /**
+   * The host's persistence standing, for a caller that draws the host
+   * chromeless and so owns where a read-only or contended state is said.
+   */
+  onPersistenceStatusChange?(
+    status: 'owned' | 'contended' | 'unavailable',
+  ): void;
   operationalEventSink?: WorkspacePaneOperationalEventSink;
   operationalEventContext?(
     instance: WorkspacePaneInstance,
@@ -184,6 +193,7 @@ export function WorkspacePaneHostTree({
   onDockSlotActionChange,
   popOut,
   onDocumentChange,
+  onPersistenceStatusChange,
   operationalEventSink,
   operationalEventContext,
   operationalAvailability,
@@ -243,6 +253,11 @@ export function WorkspacePaneHostTree({
     onDockSlotActionChange?.(controller.replace);
     return () => onDockSlotActionChange?.(null);
   }, [controller.replace, onDockSlotActionChange]);
+  const persistenceStatusSink = useRef(onPersistenceStatusChange);
+  persistenceStatusSink.current = onPersistenceStatusChange;
+  useEffect(() => {
+    persistenceStatusSink.current?.(controller.persistenceStatus);
+  }, [controller.persistenceStatus]);
   const { state, closeConfirmation } = controller;
   const persistenceNotice =
     controller.persistenceStatus === 'owned'

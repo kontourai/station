@@ -780,7 +780,7 @@
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"5f014ce497321c0bbbad91fd9463c9a5a8eb2613822929c30a5187d289ae9543","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"f63a554477e86361ac8977b153449a5be400cda1b0d53d3bb78067289041c196","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
 
     {"path":"src-ui/src/components/home/StarterWorkCard.tsx","digest":"e111892b72c350c7a95919ded04a229d5512a586259d6ff5d04d620b3b78b9a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -798,7 +798,7 @@
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7","revision":"20b0e59a495d45b5166b811d2d9e37a701bd26e9"},
 
     {"path":"src-ui/src/contexts/MonitoringContext.tsx","digest":"65fc125213795d0077de6bc5fa6c68a665c71d3527cd7baf519313c97bb93b3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

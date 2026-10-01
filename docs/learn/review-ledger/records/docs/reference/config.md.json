@@ -110,7 +110,7 @@
 
     {"path":"src-server/services/orchestration/attachment-blob-store.ts","digest":"d059c34e6fb37d33e1d83f5d90530483db408d04a8b27fe54825c485dc5db6dd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"2882894c3033e2d22c21a884511c53c705c3f723e1db54bf5611ea088ca25bba","revision":"6b6f1e040d11023dfca2afb14e6ffcfc9b673df0"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
@@ -130,9 +130,9 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"01fc6c85608b0c256edbdb93f007f406fbe08aedc79069a0e6171c98ae3f40d9","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"3c424a624a485b680e8bdb76bbed9c3c3dfb6f39b237556fb6e32fa772b92ee3","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"a68cfa4d64ade88588dfcfac7a2a8a750954b7076c37cc52df0481a8fc339ab4","revision":"5c2ebc17a083213472d1209db8f7811dac6f81c8"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"1b5cc5dffc75ad25fc60c09e7b8e29a45c8e192e31d3c9d6767a930e51540a78","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

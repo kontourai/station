@@ -30,6 +30,7 @@ import {
   authenticatedE2EFetch,
   createAuthenticatedE2ERequest,
 } from './helpers/authenticated-request';
+import { selectCodingPane } from './helpers/coding-stack';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { installPluginWithConsent } from './helpers/install-plugin';
 
@@ -366,7 +367,7 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     join(recoveryEvidenceRoot, 'host-style-diagnostic.json'),
     JSON.stringify({ ...hostStyles, cssResponses }, null, 2),
   );
-  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await selectCodingPane(page, 'Files');
   await expect(
     page.getByText('HOST-ACTION-README.md', { exact: true }).first(),
   ).toBeVisible();

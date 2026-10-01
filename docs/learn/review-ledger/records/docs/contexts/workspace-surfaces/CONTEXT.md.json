@@ -9,7 +9,7 @@
 
   "limits": "No device or cross-tab storage proof; file-preview multiwriter remains explicitly unverified. External product experience contract implementation is not claimed.",
 
-  "document": {"digest":"0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
   "sources": [
     {"path":"packages/contracts/src/workspace-file-preview.ts","digest":"c7826aaebe56f64bb927a4abb5c79293522bbacd69cf7bbd9df03d3dc0b0cd0e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -30,11 +30,11 @@
 
     {"path":"src-server/services/projects/workspace-pane-catalog.ts","digest":"d46e8e6c91c8e1e5ae10ca584759a673bdc90a8d932352348150d140b2275222","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
     {"path":"src-ui/src/regions/region-arrangement-record.ts","digest":"25978c0bf3ba1e054d216ec6f2af73b5bc16cb282049c5577f2557f36adeb37f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/regions/region-model.ts","digest":"b951fc3827a50994cac8111c8136768d61f67cc42225f79bcf6ce4401f51d65f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/regions/region-model.ts","digest":"7bd8d2ccb721d74c18887d2fc67ba40f2531ff21752c874fde8a29b81bd3516e","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
     {"path":"src-ui/src/regions/region-surface-panes.ts","digest":"a559c6608daedcd0df853fa06ef402008d704e99770182cb57ae025d805753a3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-ui/src/views/task-experiences.ts","digest":"cdc6a0d8558b9167702d8b1f38b4be903e0035e1b41858329347e437c80195a3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/CodingChatPane.tsx","digest":"3d24fdee7f037afaba080df8862c32d69b22fab49acf901cea8bb22305ca5872","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/CodingChatPane.tsx","digest":"c257163f58fc88a9b1e882cc1a9f6b6a7457a1d12002aa507e532d141ac8a6c6","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
     {"path":"src-ui/src/workspace-panes/FilePreviewPane.tsx","digest":"af191706a2c37ffafaafbe5324731553046573a8685e1d7aad67aba93cd86849","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -58,7 +58,7 @@
 
     {"path":"src-ui/src/workspace-panes/workspacePaneAvailabilityAdapters.ts","digest":"6211acedb96f9522d03d491d00b6f70c4d9c05e7359bc0770545b09a3b4876c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/workspacePaneHostNavigation.ts","digest":"3f065ca6b44c4da536fcafef8f9ee13d439203f386651674ab8f11fced0d23f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostNavigation.ts","digest":"a0ac283e6893aaab5e382e1910f498fb7bd98585379f3920ed5fbca75bf4094b","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
     {"path":"src-ui/src/workspace-panes/workspacePaneHostRuntime.ts","digest":"e088a1054788ec44fca4ecc3610e75f033fbe5224ec2664557abfa04ce1e3b12","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
