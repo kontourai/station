@@ -7,8 +7,6 @@
  * themselves (the CLI's `approvals` and `operate`). A fold that only looks
  * for `request.resolved` keeps offering a request nothing can answer.
  */
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-
 /**
  * #3071: the requests a turn's abort has settled.
  *
@@ -56,43 +54,61 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * Station's bounded session projection, which carries exactly those rows
  * for every unresolved request (`EventStore.listRequestSettlementFacts`).
  */
+/**
+ * The fields the rule reads, and nothing else, so a client holding untyped
+ * JSON events can pass them without asserting they are canonical. A field of
+ * the wrong type is treated as absent.
+ */
+export interface RequestSettlementEvent {
+  method?: unknown;
+  turnId?: unknown;
+  requestId?: unknown;
+  recoveryTerminal?: unknown;
+  finishReason?: unknown;
+}
+
 export function requestIdsSettledByTurnAbort(
-  events: readonly CanonicalRuntimeEvent[],
+  events: readonly RequestSettlementEvent[],
 ): Set<string> {
   const settled = new Set<string>();
   const open = new Map<string, { position: number; turnId?: string }>();
   const startPositionByTurnId = new Map<string, number>();
   events.forEach((event, position) => {
+    const turnId = typeof event.turnId === 'string' ? event.turnId : undefined;
+    const requestId =
+      typeof event.requestId === 'string' ? event.requestId : undefined;
     if (event.method === 'turn.started') {
-      if (event.turnId) startPositionByTurnId.set(event.turnId, position);
+      if (turnId) startPositionByTurnId.set(turnId, position);
     } else if (event.method === 'request.opened') {
+      if (!requestId) return;
       // A re-opened request is a new ask; its earlier settlement is history.
-      settled.delete(event.requestId);
-      open.set(event.requestId, {
-        position,
-        ...(event.turnId ? { turnId: event.turnId } : {}),
-      });
+      settled.delete(requestId);
+      open.set(requestId, { position, ...(turnId ? { turnId } : {}) });
     } else if (event.method === 'request.resolved') {
-      open.delete(event.requestId);
-      settled.delete(event.requestId);
-    } else if (event.method === 'turn.aborted' && event.recoveryTerminal) {
-      const startedAt = startPositionByTurnId.get(event.turnId);
+      if (!requestId) return;
+      open.delete(requestId);
+      settled.delete(requestId);
+    } else if (
+      event.method === 'turn.aborted' &&
+      event.recoveryTerminal === true
+    ) {
+      const startedAt = turnId ? startPositionByTurnId.get(turnId) : undefined;
       if (startedAt === undefined) return;
-      for (const [requestId, request] of open) {
+      for (const [openRequestId, request] of open) {
         if (request.position < startedAt) continue;
-        open.delete(requestId);
-        settled.add(requestId);
+        open.delete(openRequestId);
+        settled.add(openRequestId);
       }
     } else if (
-      event.turnId &&
+      turnId &&
       (event.method === 'turn.aborted' ||
         (event.method === 'turn.completed' &&
           event.finishReason === 'cancelled'))
     ) {
-      for (const [requestId, request] of open) {
-        if (request.turnId !== event.turnId) continue;
-        open.delete(requestId);
-        settled.add(requestId);
+      for (const [openRequestId, request] of open) {
+        if (request.turnId !== turnId) continue;
+        open.delete(openRequestId);
+        settled.add(openRequestId);
       }
     }
   });

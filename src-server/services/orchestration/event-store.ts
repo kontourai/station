@@ -5658,17 +5658,16 @@ export class EventStore {
     const earliest = Math.min(
       ...unresolvedRequests.map((event) => event.sequence),
     );
-    const recoveryAborts = (
-      this.db
-        .prepare(
-          `SELECT ${columns}
+    const recoveryAborts = this.db
+      .prepare(
+        `SELECT ${columns}
            FROM orchestration_events
            WHERE thread_id = ? AND method = 'turn.aborted' AND sequence > ?
              AND json_extract(payload, '$.recoveryTerminal') = 1
            ORDER BY sequence ASC`,
-        )
-        .all(threadId, earliest) as any[]
-    ).map((row: any) => this.mapEventRow(row));
+      )
+      .all(threadId, earliest)
+      .map((row) => this.mapEventRow(row));
     const startOfTurn = this.db.prepare(
       `SELECT ${columns}
        FROM orchestration_events
@@ -5696,7 +5695,7 @@ export class EventStore {
         threadId,
         request.turnId,
         request.sequence,
-      ) as any[]) {
+      )) {
         facts.push(this.mapEventRow(row));
       }
     }

@@ -6,7 +6,6 @@
  * performs I/O or imports `readline`/`node:tty`/`node:http`/`fetch`.
  */
 import { normalizeRequestAnswerability } from '@kontourai/station-contracts/orchestration';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type {
   FlowRunSnapshotInput,
@@ -58,9 +57,7 @@ export function derivePendingApprovalsForSession(
   // #3071: a request its turn's abort settled is not pending either. The
   // shared fold the server applies, so this pane and the server's own view
   // cannot disagree about a log they both hold.
-  const settledRequestIds = requestIdsSettledByTurnAbort(
-    events as unknown as CanonicalRuntimeEvent[],
-  );
+  const settledRequestIds = requestIdsSettledByTurnAbort(events);
 
   const pending: OperateApproval[] = [];
   for (const event of events) {

@@ -31,7 +31,6 @@ import {
   unanswerableRequestNotice,
   unknownAnswerabilityNotice,
 } from '@kontourai/station-contracts/orchestration';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalDecision,
   authenticatedFetch,
@@ -173,9 +172,7 @@ function derivePendingApprovals(
       .filter((id): id is string => typeof id === 'string'),
   );
 
-  const settledRequestIds = requestIdsSettledByTurnAbort(
-    events as unknown as CanonicalRuntimeEvent[],
-  );
+  const settledRequestIds = requestIdsSettledByTurnAbort(events);
   const serverOpenRequestIds = Array.isArray(session?.openRequestIds)
     ? new Set(
         session.openRequestIds.filter(
