@@ -9,36 +9,34 @@
 
   "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
 
-  "document": {"digest":"ff74bf1de7043ac6706c6e252e7e5cac78469dfecd92a760e2f44826212d62bd","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
-
   "sources": [
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    "package.json",
 
-    {"path":"schemas/verification-receipt.schema.json","digest":"e55f778235daf8e47bee50ee85e5b81bb652037fe3710fcbf8db4cdbd71f4cb8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "schemas/verification-receipt.schema.json",
 
-    {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/classify-ci-change.mjs",
 
-    {"path":"scripts/lib/test-reliability.mjs","digest":"98e4353f73733faa96bfdc45a5df0df763bd66abf0b3d3554c6a17f7f6a349ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/test-reliability.mjs",
 
-    {"path":"scripts/lib/verification-coordinator.mjs","digest":"e720935b978eb3e8aad4f3dc4c8391af36b01ed0583a3954b8cf0b5554a4e414","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-coordinator.mjs",
 
-    {"path":"scripts/lib/verification-receipt.mjs","digest":"c401880576b2d43560572ab2c02a7388eaa925926f5e358babfe9fc5985d49a6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-receipt.mjs",
 
-    {"path":"scripts/lib/verification-redaction.mjs","digest":"f7214a9928f8d2dd90950efa8ab72f57df9915316851113a4a28cccebb1e3726","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-redaction.mjs",
 
-    {"path":"scripts/lib/verification-reporter.mjs","digest":"4b37b2cac52ce0d2dc2f55f2bf382f980d9addae087702c4ea1fa07d0cc16070","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "scripts/lib/verification-reporter.mjs",
 
-    {"path":"scripts/lib/verification-retention-inventory.mjs","digest":"e54cb647b5a480255133a204369accd8a419ecc06d9a4a1183deb4fd998b016a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-retention-inventory.mjs",
 
-    {"path":"scripts/lib/verification-submission.mjs","digest":"ee6dbec0f6260801f7910e35b194c8fb9eb97ecd24f48e43b4d9231c988fa582","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-submission.mjs",
 
-    {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-terminal-receipt.mjs",
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
+    "scripts/run-changed-verification.mjs",
 
-    {"path":"scripts/run-verification.mjs","digest":"dbbf9cf12e8b59b8d87feab8c6e1510bb92b9d8b4f6241803c897ff6f929a60a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/run-verification.mjs",
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    "scripts/verification-lanes.mjs"
   ],
 
   "checks": [

@@ -9,32 +9,30 @@
 
   "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
 
-  "document": {"digest":"24971c9b5209e24964294485c81246212eabdf96bfb85165fc96b6c032d8a66b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    ".github/workflows/interactive-workspace-performance.yml",
 
-    {"path":"scripts/fixtures/interactive-workspace/performance-contract.json","digest":"538704018d4108761bb6f07be471c353db4db0cb5e6cfe67b969125e75e942bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/fixtures/interactive-workspace/performance-contract.json",
 
-    {"path":"scripts/interactive-workspace-performance.mjs","digest":"30c4c91836bf513b464636e01b411b55b573e1ae5d9b78f21065f7c278a463ea","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/interactive-workspace-performance.mjs",
 
-    {"path":"scripts/interactive-workspace-playwright-adapter.mjs","digest":"4f188710acb68c609ec1a5ed75982c433b5b7da62c855b8d6c019d48003bf262","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/interactive-workspace-playwright-adapter.mjs",
 
-    {"path":"scripts/lib/interactive-workspace-production-bridge.mjs","digest":"76f71c48957ec045802d8fdd419b3d124fbd69916428ea6ff317c43410dc5562","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/lib/interactive-workspace-production-bridge.mjs",
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/services/orchestration/project-task-room-runtime.ts",
 
-    {"path":"src-ui/src/performance/interactive-workspace-performance-bridge.ts","digest":"4bd78d38eda3c83b97f83c43aa781df4da008b4efd5b3e9e6b5169275005f921","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/performance/interactive-workspace-performance-bridge.ts",
 
-    {"path":"src-ui/src/performance/interactive-workspace-performance-entry.ts","digest":"36bea20926a52bbac6c376c5166d6ec76dbfe62c747884d11ccd7f1b61a489a7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/performance/interactive-workspace-performance-entry.ts",
 
-    {"path":"src-ui/src/performance/work-board-performance-driver.ts","digest":"6760894d152fb27d1ec0efed064863507adfccb798fce62dc0f05d8ec83e789f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/performance/work-board-performance-driver.ts",
 
-    {"path":"tests/helpers/reference-browser-lifecycle.ts","digest":"df3f2955b82bc87f678a43109213c1ca7924e5fcededc29fc253bbda9c0cd25b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/helpers/reference-browser-lifecycle.ts",
 
-    {"path":"tests/interactive-workspace-performance-bridge.spec.ts","digest":"ad5eb09a1bbae33d0eb88b7927b93040b22db843ec2d4be4cffd343fce88d17c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "tests/interactive-workspace-performance-bridge.spec.ts"
   ],
 
   "checks": [

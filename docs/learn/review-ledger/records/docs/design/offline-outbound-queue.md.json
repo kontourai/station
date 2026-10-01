@@ -9,18 +9,16 @@
 
   "limits": "Current queue/send ownership and dedicated log-level route/client were checked. The broad historical reconnect language does not authorize replay of possible effects; not a review of every configuration mutation or queue durability case.",
 
-  "document": {"digest":"f8f6a1469892804fdb6c546d5c1554601734f2eaff93883e4adb3deee049e106","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
-
   "sources": [
-    {"path":"packages/sdk/src/app-config.ts","digest":"f6210399f52444c8b414ce40fdfba0e29a20091b0068a97e21af53088db12c48","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/app-config.ts",
 
-    {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/routes/system/config.ts",
 
-    {"path":"src-server/services/config/log-level-edit-service.ts","digest":"c1e9e5480814c05a959a885280798ee17d2718eb560c9dd14739a2f9295eae26","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/services/config/log-level-edit-service.ts",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    {"path":"src-ui/src/lib/outboundQueue.ts","digest":"f5d6b23d36ce463a6f819530e4a4d5bc7c64efb376750829d8a24fb82f427d6c","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+    "src-ui/src/lib/outboundQueue.ts"
   ],
 
   "checks": [

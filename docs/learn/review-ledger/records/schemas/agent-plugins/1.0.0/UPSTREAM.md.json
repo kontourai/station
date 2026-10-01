@@ -9,16 +9,14 @@
 
   "limits": "The claim about website serving on 2026-09-03 is retained as historical provenance, not independently reconstructed from a website archive. No future schema compatibility is implied.",
 
-  "document": {"digest":"64be6f495e93a648248caf1d95149560291dcf3d5036d0c2919ab786818757c6","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
-
   "sources": [
-    {"path":"schemas/agent-plugins/1.0.0/mcp.schema.json","digest":"6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "schemas/agent-plugins/1.0.0/mcp.schema.json",
 
-    {"path":"schemas/agent-plugins/1.0.0/plugin.schema.json","digest":"0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "schemas/agent-plugins/1.0.0/plugin.schema.json",
 
-    {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"2bd3f7bc3213181f05f97d5e9f727d2d19499c0f6ba2514d318bc816f16c3330","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/generate-agent-plugin-validators.mjs",
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+    "src-server/services/plugins/agent-plugin-loader.ts"
   ],
 
   "checks": [

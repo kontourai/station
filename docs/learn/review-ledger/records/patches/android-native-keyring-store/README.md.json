@@ -9,26 +9,24 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Retained upstream historical/setup material remains upstream context and is not re-certified as current upstream release guidance.",
 
-  "document": {"digest":"6a72dea4bb422e468c0fc2873b2647b64439c879b42d3afe7ddc56143da0df51","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"patches/android-native-keyring-store/Cargo.toml","digest":"c739f1a4bbbcba1ba9dada5b7b2c0d6d39b9ccc10a7174c9d61285450909a414","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "patches/android-native-keyring-store/Cargo.toml",
 
-    {"path":"patches/android-native-keyring-store/src/by_service/cred.rs","digest":"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "patches/android-native-keyring-store/src/by_service/cred.rs",
 
-    {"path":"patches/android-native-keyring-store/src/by_store/cred.rs","digest":"41738684ee143f81095c32cad36099b47552e15c62857de7f16c7a1875871d5c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "patches/android-native-keyring-store/src/by_store/cred.rs",
 
-    {"path":"patches/android-native-keyring-store/src/by_store/vault.rs","digest":"0dacbf7046023cf63235ad389c09e4124203f67eb24cb0dfe5b2c3e08022d7ca","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "patches/android-native-keyring-store/src/by_store/vault.rs",
 
-    {"path":"patches/android-native-keyring-store/src/error.rs","digest":"1650ecb5d09003ba19eed28f0491210d96d3541c83848e4ccafc8f878459aac2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "patches/android-native-keyring-store/src/error.rs",
 
-    {"path":"patches/android-native-keyring-store/src/shared_preferences.rs","digest":"5ed949a0dcfc366029e21c890716031cd1b9cc05465419d51e33eae2c5011f88","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "patches/android-native-keyring-store/src/shared_preferences.rs",
 
-    {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-desktop/Cargo.lock",
 
-    {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-desktop/Cargo.toml",
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+    "src-desktop/src/lib.rs"
   ],
 
   "checks": [

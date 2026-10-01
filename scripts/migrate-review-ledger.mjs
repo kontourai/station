@@ -20,7 +20,7 @@ import { execFileSync } from 'node:child_process';
 // if neither does, the record stays stale for the freshness check. A conflicted
 // media.json is merged field by field, the old-layout side keeping its review
 // fields; a field both sides changed differently stops the command.
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -29,6 +29,7 @@ import {
   captureReviewFile,
   LEARNING_MEDIA_MANIFEST,
   LEGACY_REVIEW_LEDGER,
+  listReviewLedgerFiles,
   notesFileName,
   REVIEW_LEDGER_INDEX,
   readGitObjects,
@@ -516,9 +517,131 @@ function migrateReviewLedger({
   };
 }
 
+/** Drop derived bindings deterministically, including old-layout merge stages. */
+function migratePathOnly(root) {
+  const files = listReviewLedgerFiles(root);
+  const index = JSON.parse(
+    readFileSync(path.join(root, REVIEW_LEDGER_INDEX), 'utf8'),
+  );
+  const baseline =
+    index.version === 3
+      ? index.coverageBaseline
+      : git(root, ['rev-parse', 'HEAD']).trim();
+  const planned = new Map();
+  const decisions = new Map();
+  const normalize = (data) => {
+    const { document: _document, ...human } = data;
+    return {
+      ...human,
+      sources: data.sources.map((source) =>
+        typeof source === 'string' ? source : source.path,
+      ),
+    };
+  };
+  for (const file of files.filter((file) =>
+    /\/(records|captures)\//.test(file),
+  )) {
+    const stages = unmergedStages(root, file);
+    let data;
+    if (stages.size) {
+      const [base, ours, theirs] = readGitObjects(
+        root,
+        ['1', '2', '3'].map((stage) => `:${stage}:${file}`),
+      ).map((bytes) =>
+        bytes === undefined
+          ? undefined
+          : normalize(JSON.parse(bytes.toString('utf8'))),
+      );
+      if (!base || !ours || !theirs)
+        throw new Error(
+          `${file}: record added/deleted on one side; resolve the human decision before migrating`,
+        );
+      data = {};
+      for (const key of Object.keys(ours)) {
+        if (key === 'sources') {
+          data.sources = [
+            ...new Set([
+              ...ours.sources.filter(
+                (source) =>
+                  !base.sources.includes(source) ||
+                  theirs.sources.includes(source),
+              ),
+              ...theirs.sources.filter(
+                (source) => !base.sources.includes(source),
+              ),
+            ]),
+          ];
+        } else {
+          const value = mergeValue(base[key], ours[key], theirs[key]);
+          if (value === CONFLICT)
+            throw new Error(
+              `${file}: both sides changed human field ${key}; resolve it before migrating`,
+            );
+          data[key] = value;
+        }
+      }
+    } else
+      data = normalize(JSON.parse(readFileSync(path.join(root, file), 'utf8')));
+    const text = file.includes('/records/')
+      ? serializeRecordFile(data)
+      : serializeCaptureReviewFile(data);
+    planned.set(file, text);
+    decisions.set(data.path, data);
+  }
+  const [mergeHead] = readGitObjects(root, ['MERGE_HEAD^{commit}']);
+  if (index.version === 3 && mergeHead !== undefined) {
+    const base = git(root, ['merge-base', 'HEAD', 'MERGE_HEAD']).trim();
+    for (const file of files.filter((file) => file.includes('/notes/'))) {
+      const run = JSON.parse(readFileSync(path.join(root, file), 'utf8'));
+      if (
+        run.notes.every((note) => note.inputs !== undefined) ||
+        readGitObjects(root, [`${base}:${file}`])[0] !== undefined
+      )
+        continue;
+      const covered = run.notes.map((note) => ({
+        ...note,
+        inputs: [note.path, ...(decisions.get(note.path)?.sources ?? [])],
+      }));
+      const text = serializeNotesFile({
+        revision: run.revision,
+        notes: covered,
+      });
+      const time = file.split('/').at(-1).slice(0, 20);
+      const date = new Date(
+        `${time.slice(0, 4)}-${time.slice(4, 6)}-${time.slice(6, 8)}T${time.slice(9, 11)}:${time.slice(11, 13)}:${time.slice(13)}`,
+      );
+      planned.set(notesFileName(text, date), text);
+    }
+  }
+  planned.set(
+    REVIEW_LEDGER_INDEX,
+    serializeLedgerIndex({ version: 3, coverageBaseline: baseline }),
+  );
+  for (const [file, text] of planned) {
+    const target = path.join(root, file);
+    if (
+      !createLearningSourceReader(root).exists(file) ||
+      readFileSync(target, 'utf8') !== text
+    ) {
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, text);
+    }
+  }
+  return {
+    records: files.filter((file) => file.includes('/records/')).length,
+    captures: files.filter((file) => file.includes('/captures/')).length,
+    baseline,
+  };
+}
+
 export function main(argv = process.argv.slice(2)) {
   let base;
+  let pathOnly = false;
   for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--path-only') {
+      pathOnly = true;
+      continue;
+    }
     if (
       argv[index] === '--base' &&
       argv[index + 1] &&
@@ -528,6 +651,18 @@ export function main(argv = process.argv.slice(2)) {
     else throw new Error(USAGE);
   }
   const root = git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
+  if (
+    pathOnly ||
+    (!createLearningSourceReader(root).exists(LEGACY_REVIEW_LEDGER) &&
+      createLearningSourceReader(root).exists(REVIEW_LEDGER_INDEX) &&
+      !unmergedStages(root, LEARNING_MEDIA_MANIFEST).size)
+  ) {
+    const result = migratePathOnly(root);
+    console.log(
+      `Path-only ledger: ${result.records} records, ${result.captures} captures; coverage baseline ${result.baseline}.`,
+    );
+    return;
+  }
   const result = migrateReviewLedger({ root, base });
   console.log(
     `Migrated ${LEGACY_REVIEW_LEDGER}: wrote ${result.written.length} file(s), removed ${result.removed.length}, ${result.notes} note(s) from appended checks.`,

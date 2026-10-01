@@ -9,26 +9,24 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
 
-  "document": {"digest":"edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":"examples/mcp-ui-demo/server.mjs","digest":"bcf0690795e3b8e915f132135d6c957f607ab59eb2fabfeaf923cb6ccff7d1d9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "examples/mcp-ui-demo/server.mjs",
 
-    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/mcp-ui-csp.ts",
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "pnpm-lock.yaml",
 
-    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/agents/tools.ts",
 
-    {"path":"src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts","digest":"4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/mcp-ui-frame-server.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/mcp-ui-resolver.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
   ],
 
   "checks": [

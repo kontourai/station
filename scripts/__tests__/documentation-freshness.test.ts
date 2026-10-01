@@ -1697,3 +1697,273 @@ describe('Nightly freshness sweep (#2923)', () => {
     );
   });
 });
+
+describe('append-only review notes and Git history (#3101)', () => {
+  function pathOnlyFixture() {
+    const f = fixture();
+    // Two documents depend on the same source, as broad hubs do in Station.
+    editRecord(f.root, 'docs/c.md', (data) => {
+      data.sources.push({
+        path: 'src/c.ts',
+        digest: hash(SHARED_C),
+        revision: f.content,
+      });
+    });
+    commit(f.root, 'add a shared dependency');
+    const migrated = run(f.root, 'migrate-review-ledger.mjs', ['--path-only']);
+    expect(migrated.status, migrated.stderr).toBe(0);
+    commit(f.root, 'migrate path-only decisions');
+    return f;
+  }
+
+  function reviewShared(f: ReturnType<typeof fixture>, message: string) {
+    for (const path of ['docs/map.md', 'docs/c.md']) {
+      const result = record_(f.root, [path, '--note', message]);
+      expect(result.status, JSON.stringify(result.error)).toBe(0);
+    }
+  }
+
+  it('blocks and names documents when a PR touches a source without a note; recording writes only notes', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'change shared source');
+    const missing = check(f.root, scoped);
+    expect(missing.status).toBe(1);
+    expect(entryPaths(missing.blocking)).toEqual(['docs/c.md', 'docs/map.md']);
+    const before = ledgerTexts(f.root);
+    reviewShared(f, 'Inspected both callers.');
+    expect(check(f.root, scoped).status).toBe(0);
+    for (const [file, text] of Object.entries(before))
+      expect(f.read(file)).toBe(text);
+    expect(notesFiles(f.root)).toHaveLength(2);
+    commit(f.root, 'record reviews');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('does not accept a landed commit without a covering note, even if bytes are restored', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'landed change without review');
+    f.write('src/c.ts', SHARED_C);
+    commit(f.root, 'restore source without review');
+    const result = check(f.root, strict);
+    expect(result.status).toBe(1);
+    expect(entryPaths(result.blocking)).toEqual(['docs/c.md', 'docs/map.md']);
+    reviewShared(f, 'Reviewed change and restoration.');
+    commit(f.root, 'catch up deliberately');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('merges two branches changing the same source with no ledger conflict and both documents fresh', () => {
+    const f = pathOnlyFixture();
+    const base = git(f.root, ['rev-parse', 'HEAD']);
+    for (const [branch, from, to] of [
+      ['one', 'c1 = 1', 'c1 = 2'],
+      ['two', 'c2 = 1', 'c2 = 2'],
+    ]) {
+      git(f.root, ['switch', '-qc', branch, base]);
+      f.write('src/c.ts', SHARED_C.replace(from, to));
+      commit(f.root, `${branch} changes shared source`);
+      reviewShared(f, `${branch} checked the changed caller.`);
+      commit(f.root, `${branch} adds review notes`);
+      expect(check(f.root, scoped).status).toBe(0);
+    }
+    const result = merge(f.root, 'one');
+    expect(result.status, result.stderr).toBe(0);
+    expect(conflicted(f.root)).toEqual([]);
+    expect(
+      git(f.root, [
+        'diff',
+        '--name-only',
+        base,
+        'HEAD',
+        '--',
+        `${REVIEW_LEDGER_DIR}/records`,
+      ]),
+    ).toBe('');
+    expect(check(f.root, strict).status).toBe(0);
+    expect(compiled(f.root, 'docs/map.md').state).toBe('source-reviewed');
+    expect(compiled(f.root, 'docs/c.md').historyChanges).toEqual([]);
+  });
+
+  it('keeps branch review valid when another PR lands on main, including another edit of the shared source', () => {
+    const f = pathOnlyFixture();
+    const base = git(f.root, ['rev-parse', 'HEAD']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'PR source');
+    reviewShared(f, 'PR caller review.');
+    commit(f.root, 'PR notes');
+    git(f.root, ['switch', '-q', 'main']);
+    f.write('unrelated.txt', 'another PR');
+    f.write('src/c.ts', SHARED_C.replace('c2 = 1', 'c2 = 2'));
+    commit(f.root, 'other PR source');
+    reviewShared(f, 'Other PR caller review.');
+    commit(f.root, 'other PR notes');
+    git(f.root, ['switch', '-q', 'pr']);
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(merge(f.root, 'main').status).toBe(0);
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+    expect(git(f.root, ['merge-base', base, 'HEAD'])).toBe(base);
+  });
+
+  it('judges squash commits by the note landed with the source, without requiring the original revision', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'PR source');
+    reviewShared(f, 'Squash review.');
+    commit(f.root, 'PR notes');
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash PR');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('requires review when a modified source is removed from a record, then accepts the explicit drop', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'source change');
+    editRecord(f.root, 'docs/map.md', (data) => {
+      data.sources = ['src/d.ts'];
+    });
+    expect(check(f.root, scoped).status).toBe(1);
+    git(f.root, ['restore', '--', recordFile('docs/map.md')]);
+    expect(
+      record_(f.root, [
+        'docs/map.md',
+        '--note',
+        'This source no longer supports the map.',
+        '--drop-source',
+        'src/c.ts',
+      ]).status,
+    ).toBe(0);
+    expect(record_(f.root, ['docs/c.md', '--note', 'Checked C.']).status).toBe(
+      0,
+    );
+    commit(f.root, 'review and drop dependency');
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+    expect(compiled(f.root, 'docs/map.md').sources).toEqual([
+      { path: 'src/d.ts' },
+    ]);
+  });
+
+  it('folds old binding conflicts and carries the branch note with one deterministic migration command', () => {
+    const f = fixture();
+    const base = git(f.root, ['rev-parse', 'HEAD']);
+    git(f.root, ['switch', '-qc', 'old-pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'old PR source');
+    expect(
+      record_(f.root, ['docs/map.md', '--note', 'Reviewed on the old branch.'])
+        .status,
+    ).toBe(0);
+    commit(f.root, 'old PR bindings and note');
+    git(f.root, ['switch', '-q', 'main']);
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    commit(f.root, 'main migrates');
+    git(f.root, ['switch', '-q', 'old-pr']);
+    expect(merge(f.root, 'main').status).toBe(1);
+    const migrated = run(f.root, 'migrate-review-ledger.mjs', ['--path-only']);
+    expect(migrated.status, migrated.stderr).toBe(0);
+    const once = ledgerTexts(f.root);
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    expect(ledgerTexts(f.root)).toEqual(once);
+    commit(f.root, 'finish merge');
+    expect(conflicted(f.root)).toEqual([]);
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+    expect(compiled(f.root, 'docs/map.md').sources).toEqual([
+      { path: 'src/c.ts' },
+      { path: 'src/d.ts' },
+    ]);
+    expect(git(f.root, ['merge-base', base, 'HEAD'])).toBe(base);
+  });
+
+  it('reports unavailable history in a shallow checkout rather than blocking', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'unreviewed source');
+    const shallow = makeTempDir('station-doc-shallow-');
+    git(shallow, ['clone', '-q', '--depth=1', `file://${f.root}`, '.']);
+    const result = check(shallow, scoped);
+    expect(result.status).toBe(0);
+    expect(result.mode).toBe('advisory');
+    expect(readReviewState(shallow).ledger.historyUnavailable).toContain(
+      'shallow checkout',
+    );
+  });
+
+  it('uses notes for capture source review while preserving image identity and metadata', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/ui.ts', 'export const ui = 2;\n');
+    commit(f.root, 'change capture source');
+    expect(check(f.root, scoped).blocking).toEqual([
+      stale('capture', 'docs/learn/media/task.png', ['src/ui.ts']),
+    ]);
+    const before = ledgerTexts(f.root);
+    const metadata = f.read(MEDIA);
+    expect(
+      record_(f.root, [
+        'docs/learn/media/task.png',
+        '--note',
+        'Pixels still describe the UI.',
+      ]).status,
+    ).toBe(0);
+    for (const [file, text] of Object.entries(before))
+      expect(f.read(file)).toBe(text);
+    expect(f.read(MEDIA)).toBe(metadata);
+    expect(check(f.root, scoped).status).toBe(0);
+    commit(f.root, 'capture note');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('preserves JSON value precision before and after recording a note', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write(
+      'package.json',
+      JSON.stringify({
+        scripts: { docs: 'node docs.mjs --all', other: 'node other.mjs' },
+      }),
+    );
+    commit(f.root, 'change cited value');
+    expect(check(f.root, scoped).status).toBe(1);
+    expect(
+      record_(f.root, ['docs/pkg.md', '--note', 'Reviewed the new command.'])
+        .status,
+    ).toBe(0);
+    commit(f.root, 'review cited value');
+    f.write(
+      'package.json',
+      JSON.stringify({
+        scripts: { docs: 'node docs.mjs --all', other: 'unrelated command' },
+      }),
+    );
+    commit(f.root, 'change unrelated value after review');
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('does not let a note cover a later edit on the same PR', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'first change');
+    reviewShared(f, 'Reviewed first change.');
+    commit(f.root, 'first notes');
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 3'));
+    commit(f.root, 'later unreviewed change');
+    expect(check(f.root, scoped).status).toBe(1);
+    expect(check(f.root, strict).status).toBe(1);
+  });
+});

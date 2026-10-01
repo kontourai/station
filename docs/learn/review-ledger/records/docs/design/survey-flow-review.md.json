@@ -9,24 +9,22 @@
 
   "limits": "Executed local service/route composition fixtures. Missing session files are empty state; per-Project errors and cross-Project unavailability remain distinct. No live review provider, real domain adapter or successful continuation between independent harnesses established. Public sibling contracts remain their own authority.",
 
-  "document": {"digest":"85cc721ee00fca17ff7a5a6b19e83155f59ac5f256cf95123adcd30b638002aa","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
-
   "sources": [
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    "package.json",
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "pnpm-lock.yaml",
 
-    {"path":"src-server/routes/evidence/__tests__/flow-runs.routes.test.ts","digest":"d2f3333ad7943728535581e04e9561eddc5a0dd3ff146852878af0b7acd1b070","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/evidence/__tests__/flow-runs.routes.test.ts",
 
-    {"path":"src-server/routes/evidence/flow-runs.ts","digest":"2bf992db2df5a2b0b84c8964baf0784419c72ee9abe1ab0aadec55ce51985527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/evidence/flow-runs.ts",
 
-    {"path":"src-server/routes/schemas/schema-definitions/flow.ts","digest":"6bfab1cae3f409b2c093343f8aefd4c51a926ac4532f3327be167441c253b851","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/schemas/schema-definitions/flow.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/services/flow/__tests__/survey-flow-review-service.test.ts","digest":"0e2c42caf25f1068aca1f1f40d0be205ab67ed4822668cf36e4bc4a60300d52d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/flow/__tests__/survey-flow-review-service.test.ts",
 
-    {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
+    "src-server/services/flow/survey-flow-review-service.ts"
   ],
 
   "checks": [

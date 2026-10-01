@@ -9,16 +9,14 @@
 
   "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
 
-  "document": {"digest":"ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "docs/architecture/module-map.md",
 
-    {"path":"docs/guides/agents.md","digest":"1ebaf5821d7fe94bf50fae7d2ddbd516ff3993eee61939d2a959f91b65b82fef","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
+    "docs/guides/agents.md",
 
-    {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/agent-identity.ts",
 
-    {"path":"scripts/agent-identity-supported-surface-inventory.mjs","digest":"7733c9d3ed67777db8bcd6415bc058f25f03d4319cfb66f8f32739ecdec731e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "scripts/agent-identity-supported-surface-inventory.mjs"
   ],
 
   "checks": [

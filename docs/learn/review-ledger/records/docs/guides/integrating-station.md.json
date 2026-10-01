@@ -9,40 +9,38 @@
 
   "limits": "No cloud sizing, current price quote, AWS/GCP deployment, Marketplace approval/API acceptance, service availability, commercial/legal qualification, two-tenant isolation or complete provider audit. Local persistence checks do not establish tenant-safe PostgreSQL repositories. Historical costs and normative integration acceptance criteria were not converted to shipped behavior.",
 
-  "document": {"digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
-
   "sources": [
-    {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "deploy/gcp-dev/bootstrap.sh",
 
-    {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "deploy/gcp-dev/README.md",
 
-    {"path":"docs/guides/deployment-authentication.md","digest":"cd5a91770198de74499dd8e87bb4a27ba0a0769108bfd51d7f900bf571026fbf","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
+    "docs/guides/deployment-authentication.md",
 
-    {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "docs/guides/deployment.md",
 
-    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+    "docs/guides/documentation.md",
 
-    {"path":"docs/guides/plugins.md","digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
+    "docs/guides/plugins.md",
 
-    {"path":"docs/guides/workspace-packages.md","digest":"01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "docs/guides/workspace-packages.md",
 
-    {"path":"docs/reference/api.md","digest":"ed05e33d2688331c4ae675e82ce97079043cb0d3f886de04c0d2fc6f1d0ca01b","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    "docs/reference/api.md",
 
-    {"path":"docs/reference/cli.md","digest":"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "docs/reference/cli.md",
 
-    {"path":"docs/reference/contracts.md","digest":"02c541bee46622d0a91c8c34003a6dae93863bd9dfa556d2b9c635e66408b64c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    "docs/reference/contracts.md",
 
-    {"path":"docs/reference/sdk.md","digest":"690b8587ab798617108cf1b62e2f9b0a102b3bd52df148da5be3f12027a2892c","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    "docs/reference/sdk.md",
 
-    {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "packages/contracts/src/deployment-authentication.ts",
 
-    {"path":"src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts","digest":"a67abcae97b3b45a0a58b235eae5384682c4c921f32f118bade7ef5b51977c0b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "src-server/runtime/bootstrap/__tests__/hosted-persistence-boundary.test.ts",
 
-    {"path":"src-server/runtime/bootstrap/hosted-persistence-boundary.ts","digest":"458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    "src-server/runtime/bootstrap/runtime-tenant-context.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"}
+    "src-server/runtime/bootstrap/station-runtime.ts"
   ],
 
   "checks": [

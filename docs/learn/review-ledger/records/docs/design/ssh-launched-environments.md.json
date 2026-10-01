@@ -9,30 +9,28 @@
 
   "limits": "No native build, live SSH/remote Git/install/pairing/reconnect or dispatch qualification. Source absence search cannot prove all future dynamic callers; historical end-to-end acceptance is not currently mounted.",
 
-  "document": {"digest":"2590a6e3c1723f7c66b04ce9333756755f25750762b271480dcffe17d1d04b69","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"packages/connect/src/core/types.ts","digest":"1e4b1904628f0f00a704c81c4f7cd8c4f26c8988b99aa7aabb833e4d9f89dc81","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "packages/connect/src/core/types.ts",
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-desktop/src/ssh_launcher.rs",
 
-    {"path":"src-ui/src/__tests__/AddMachineModal.test.tsx","digest":"ce72c9c626e7e1bc8508ed9dc5b35b14c5d912b3af687667d0ab09f699179a50","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/__tests__/AddMachineModal.test.tsx",
 
-    {"path":"src-ui/src/__tests__/SshComputerCreatorDialog.test.tsx","digest":"d4ad08541356768779013b50906117eaaab1936b54d12d5718fb8d87afc7bfcc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/__tests__/SshComputerCreatorDialog.test.tsx",
 
-    {"path":"src-ui/src/platform/native/sshLauncher.ts","digest":"ca38ef73e8a330f4ea802b9d3547163c94d00837a90d2e68f2f8593f5528ef51","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/platform/native/sshLauncher.ts",
 
-    {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"f5df4b3706df44a90bf6babbb73952515bb1d84fb313aab97f13de7952b42b56","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/ComputersSection.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx","digest":"afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/sshForwardState.test.ts","digest":"19a09921d450d96c5b1ae97621e334ee0796ea97841e3393904d78a60346c478","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/__tests__/sshForwardState.test.ts",
 
-    {"path":"src-ui/src/views/connections-hub/sshForwardState.ts","digest":"e4b85d01c33e9059a5a618d179145872e862e538fe54df6105e875f12bf4441b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    "src-ui/src/views/connections-hub/sshForwardState.ts"
   ],
 
   "checks": [

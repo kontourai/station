@@ -9,16 +9,14 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"1d7616d80d23c79a00e2be3e4dd103ea6b36443ec24363362cb366e1cea433dc","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
   "sources": [
-    {"path":"examples/station-sessions-mcp/__tests__/render.test.mjs","digest":"ac76e87a6491276619e11f19c772f535afa8dcb6244b52b566ee8238a080626e","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "examples/station-sessions-mcp/__tests__/render.test.mjs",
 
-    {"path":"examples/station-sessions-mcp/panel.mjs","digest":"0a573f986f83ab7240b5ee0b173958e71235bb3b93c77f74b60aaae052ebe35f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "examples/station-sessions-mcp/panel.mjs",
 
-    {"path":"examples/station-sessions-mcp/server.mjs","digest":"d4fb9811db1250a44018041f40fb80b8e07c809d41a16b6a5e14137be403e079","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "examples/station-sessions-mcp/server.mjs",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"}
+    "src-server/runtime/routes/runtime-routes.ts"
   ],
 
   "checks": [

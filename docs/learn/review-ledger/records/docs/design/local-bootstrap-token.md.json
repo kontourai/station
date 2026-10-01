@@ -9,16 +9,14 @@
 
   "limits": "No live CLI/browser launch, exhaustive origin/rate-limit/refusal/recovery audit, historical issue verification or complete threat-model review. Original body is retained, including its historical browser/referrer rationale.",
 
-  "document": {"digest":"1c09c0d1e43235c8ece3a068708be362214989ac73465926360dbf38d74dfb67","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
   "sources": [
-    {"path":"packages/cli/src/commands/lazy-start.ts","digest":"c371b8449a0b6f0f646db4c40c1f29b6a7eed31f6c9396a6b2bed9f5f12e06df","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/cli/src/commands/lazy-start.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    "src-server/runtime/bootstrap/runtime-http.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-ui/src/lib/local-ui-bootstrap.ts","digest":"4b838e0573edcd1b2ba55e7cd9a158e369ea2127a2bf2f0ab8ce898d6a4e901c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+    "src-ui/src/lib/local-ui-bootstrap.ts"
   ],
 
   "checks": [

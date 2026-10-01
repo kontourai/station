@@ -9,16 +9,14 @@
 
   "limits": "No full membership/security audit, complete shared-resource coverage, live second-person/device acceptance or production enablement proof. Dated decisions and original body remain intact.",
 
-  "document": {"digest":"ba10abd70c86465d6c1b46ee26a5b5b2d6889d7c2d8b21f7d9edbc349f58b6c8","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
-
   "sources": [
-    {"path":"src-server/routes/projects/project-membership-routes.ts","digest":"f36f3f868773bba2ee5604e2bb4a4725cf33cf39f6af90fe06b72aab806aca21","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "src-server/routes/projects/project-membership-routes.ts",
 
-    {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
+    "src-server/runtime/bootstrap/orchestration-request-principal.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/services/projects/project-membership-service.ts","digest":"1d35bde19ff70f213d3b0db162489980c2f7fd957481156c3ac1b2907dc58af5","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    "src-server/services/projects/project-membership-service.ts"
   ],
 
   "checks": [

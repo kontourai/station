@@ -9,20 +9,18 @@
 
   "limits": "Derived navigation is not a call graph, test verdict, authenticated authorship or semantic search. Live historical snapshot receipts identify their own input revision, not this later export.",
 
-  "document": {"digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "docs/architecture/module-map.md",
 
-    {"path":"docs/learn/atlas.json","digest":"ed4395353d103a11f3de0d430e28fb4ab8c1447626284d3fb1633023ea86b966","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "docs/learn/atlas.json",
 
-    {"path":"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs","digest":"f88bfb8efa7de7ae220048c77313c64d5fcece1ea5c344cee0b2178d511db323","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    "examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs",
 
-    {"path":"examples/repository-knowledge-graph/export.mjs","digest":"673352f56722a0dc417e435230e2ca0d23ee1a5e0437a5b1ca94d6538445c1da","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "examples/repository-knowledge-graph/export.mjs",
 
-    {"path":"examples/repository-knowledge-graph/graph.mjs","digest":"de40997e8d65d348d1a1212d7e8a472a2e631f292c5f36266ea0431190280c4f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "examples/repository-knowledge-graph/graph.mjs",
 
-    {"path":"examples/repository-knowledge-graph/ingest.mjs","digest":"ecc5cf0ae31dc269b62525c2e6a99bbc996c1329c634ec77c94ca1823a2966a9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "examples/repository-knowledge-graph/ingest.mjs"
   ],
 
   "checks": [

@@ -9,26 +9,24 @@
 
   "limits": "Actual retained snapshot import/readback: 1149 records, 2089 links; repeat zero creates/links. Source-built Flow Agents candidate 6a24b4ee3fb528ee2abbdba2c861e4b5925a6161 installed through public CLI matched all 123 Kit files and all canonical fields/bytes; full provider projection retained 1149 provenance objects and 2089 labels. Published 6.4.0 failures and local fixes are not a release claim. No live embedding/model/Neo4j/native proof. Later 6.5.0 registry/tag integrity and public installed consumer/update checks were inspected: 30 tests passed, canonical test-store bytes/provenance/link labels preserved and recorded/observed Kit artifact hashes matched. macOS/Node24 only; registry metadata matching is not independent npm attestation verification.",
 
-  "document": {"digest":"795329bc7eebf970ee23c935aefb39752a33158c02683407368ed36ddcc47f8e","revision":"e48e25d6c7787782bb5168862ca17b800ce799e2"},
-
   "sources": [
-    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
 
-    {"path":"examples/repository-knowledge-graph/README.md","digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "examples/repository-knowledge-graph/README.md",
 
-    {"path":"examples/repository-knowledge-graph/graph.mjs","digest":"de40997e8d65d348d1a1212d7e8a472a2e631f292c5f36266ea0431190280c4f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "examples/repository-knowledge-graph/graph.mjs",
 
-    {"path":"examples/repository-knowledge-graph/ingest.mjs","digest":"ecc5cf0ae31dc269b62525c2e6a99bbc996c1329c634ec77c94ca1823a2966a9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "examples/repository-knowledge-graph/ingest.mjs",
 
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    "package.json",
 
-    {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "packages/contracts/src/knowledge-store.ts",
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/knowledge.ts",
 
-    {"path":"src-server/knowledge-store/adapters/default-store.ts","digest":"003db4b89b4f5fb5238cfececcffdb33c36953e8922fc12ba941c1619d619cc6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-server/knowledge-store/adapters/default-store.ts",
 
-    {"path":"src-server/knowledge-store/adapters/shared/frontmatter.ts","digest":"cfc92a9832ac1c4adc42b94a1fa669f26e45fbe3cb5ddc89eb90ecb72d6c6152","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    "src-server/knowledge-store/adapters/shared/frontmatter.ts"
   ],
 
   "checks": [

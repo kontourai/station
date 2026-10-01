@@ -9,18 +9,16 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"3b34622d4f847acde9d3b445ea71af7bd84804d582f1589a3f69544b8d892557","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"packages/cli/src/__tests__/station-instance-reconciler.test.ts","digest":"33fc3b3212dcabd967b67312f55852d96f0cd9551606380b2d9e3ef4161a5f57","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/station-instance-reconciler.test.ts",
 
-    {"path":"packages/cli/src/commands/service-scheduling.ts","digest":"a84a2225c76e79500d9ed9ddfe87d863f6d01679c18696fa92a37d7760c1795b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service-scheduling.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/cli/src/commands/station-instance-reconciler.ts","digest":"845e7d0147d219e66d4b79e6a6846765ccf55c56ab8f776572888d8222fd6954","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/station-instance-reconciler.ts",
 
-    {"path":"packages/shared/src/lifecycle-events.ts","digest":"9a8c0591fccc9fb2a5d206d60fbe759ebf75d9c1bc783368aa28d8161039f767","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "packages/shared/src/lifecycle-events.ts"
   ],
 
   "checks": [

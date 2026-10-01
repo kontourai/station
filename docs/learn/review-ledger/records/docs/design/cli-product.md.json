@@ -9,18 +9,16 @@
 
   "limits": "Original counts, release state, sizes, performance and proposed acceptance remain historical; no fresh pack/install or registry publication.",
 
-  "document": {"digest":"863524dc50fe1177cacdd1e2e414b380828d0d5a08d2339fe404c67bc143a04f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":".changeset/config.json","digest":"f9e8c5a4c74425adbff4891af4de563d68bee61b94032c209f7112d9ec1f8cee","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    ".changeset/config.json",
 
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "install.sh",
 
-    {"path":"packages/cli/esbuild.config.mjs","digest":"0ee18a839feae649b12165bf7d6d6f77dec93545e52fd59b4e5916e739ac0813","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/esbuild.config.mjs",
 
-    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    "packages/cli/package.json",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"}
+    "packages/cli/src/commands/lifecycle.ts"
   ],
 
   "checks": [

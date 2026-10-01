@@ -9,36 +9,34 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
 
-  "document": {"digest":"d8551d4b9cfca89a35f9827dffff6b9c80bcff5af8f02e45e733b07a8b8b7efa","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"examples/survey-review-workbench/layout.json","digest":"6230565ffbf9028a391eec016d75b9dc21f5db5e58267db1df0f69f76b362d53","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/survey-review-workbench/layout.json",
 
-    {"path":"examples/survey-review-workbench/package.json","digest":"9b99e36e35fe4d118746c5b52da95b586c3db2eec82dc8c0c7583ea50bc53c35","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/survey-review-workbench/package.json",
 
-    {"path":"examples/survey-review-workbench/plugin.json","digest":"604aa57fbeb23aa018b0ea7738728fb08b4eeabfa7c09691e4ba68d4c57f24f9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/survey-review-workbench/plugin.json",
 
-    {"path":"examples/survey-review-workbench/server/__tests__/plugin-server.test.ts","digest":"89380f6a7785f991d4622cd924ee8161883b50fb738b0412bd5a5cbc4d6ce658","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/survey-review-workbench/server/__tests__/plugin-server.test.ts",
 
-    {"path":"examples/survey-review-workbench/server/plugin.mjs","digest":"ce6fa4b48960641622ad1fd4fd6b69316cedac1095cc1aaa737c186cfde5d48b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/survey-review-workbench/server/plugin.mjs",
 
-    {"path":"examples/survey-review-workbench/src/index.tsx","digest":"e422447f45a5a2e73cbac32873368c3a3e14d79493248f9e99d680a05f64f7a5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/survey-review-workbench/src/index.tsx",
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "pnpm-lock.yaml",
 
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/routes/plugins/plugin-lifecycle-routes.ts",
 
-    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/routes/plugins/plugin-public-routes.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/__tests__/plugin-public-server.test.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/plugin-install-transaction.ts",
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/plugin-permissions.ts",
 
-    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
+    "src-server/services/plugins/plugin-public-server.ts"
   ],
 
   "checks": [

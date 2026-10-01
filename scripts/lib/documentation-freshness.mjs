@@ -8,6 +8,10 @@ import {
 import { captureInputs, compileLearningMedia } from './learning-media.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
 import { bindingFile } from './review-binding.mjs';
+import {
+  reviewDecisionChanged,
+  touchedReviewInputs,
+} from './review-history.mjs';
 import { readReviewState, readReviewStateAt } from './review-ledger-store.mjs';
 
 /**
@@ -172,6 +176,11 @@ export function resolveDocumentationFreshness({
 } = {}) {
   const { mode, reason } = documentationFreshnessMode(env);
   if (mode !== 'scoped') return { mode, reason };
+  if (git(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true')
+    return {
+      mode: 'advisory',
+      reason: 'shallow checkout: report review history, do not judge scope',
+    };
   const base =
     env[DOCS_FRESHNESS_BASE_ENV] || env[CI_FAST_BASE_ENV] || 'origin/main';
   if (base.startsWith('-'))
@@ -199,23 +208,136 @@ export function resolveDocumentationFreshness({
       byPath(current.media?.captures),
     ],
   };
+  const noteCoverage = [];
+  const historyEntries = new Set();
+  const dirty = new Set(
+    git(root, ['diff', '--name-only', '-z', 'HEAD', '--'])
+      .split('\0')
+      .filter(Boolean),
+  );
+  const noteIntroductions = new Map();
+  const head = git(root, ['rev-parse', 'HEAD']).trim();
+  if (current.ledger?.layoutVersion === 3) {
+    const baseState = readReviewStateAt(root, base);
+    for (const [kind, [before, now]] of Object.entries(entries)) {
+      const landed = byPath(
+        kind === 'review'
+          ? baseState.ledger?.records
+          : baseState.media?.captures,
+      );
+      for (const [path, entry] of now) {
+        historyEntries.add(path);
+        const old = before.get(path);
+        const dependencies = [
+          ...new Set([...inputsFor(old), ...inputsFor(entry)]),
+        ];
+        const touched = touchedReviewInputs(
+          root,
+          dependencies,
+          changedPaths,
+          selection.mergeBase,
+          'HEAD',
+        );
+        // Working-tree edits are included even when HEAD still holds the old value.
+        if (reviewDecisionChanged(old, entry) && !touched.includes(path))
+          touched.push(path);
+        for (const input of dependencies)
+          if (dirty.has(bindingFile(input)) && !touched.includes(input))
+            touched.push(input);
+        const earlier = new Set(
+          [...(old?.notes ?? []), ...(landed.get(path)?.notes ?? [])].map(
+            (note) => note.file,
+          ),
+        );
+        const added = (entry.notes ?? []).filter(
+          (note) => !earlier.has(note.file),
+        );
+        const uncovered = touched.filter(
+          (input) =>
+            !added.some((note) => {
+              if (
+                !note.inputs?.includes(input) ||
+                dirty.has(bindingFile(input))
+              )
+                return false;
+              // Do not let an old note approve a later edit on this PR. Excluding
+              // the base branch keeps another landed PR from invalidating this note.
+              if (!noteIntroductions.has(note.file))
+                noteIntroductions.set(
+                  note.file,
+                  git(root, [
+                    'log',
+                    '--diff-merges=first-parent',
+                    '--no-patch',
+                    '--diff-filter=A',
+                    '--format=%H',
+                    '-1',
+                    'HEAD',
+                    '--',
+                    note.file,
+                  ]).trim(),
+                );
+              const introduced = noteIntroductions.get(note.file);
+              if (!introduced) return note.revision === head;
+              const later = git(root, [
+                'log',
+                '--no-merges',
+                '--format=%H',
+                `${introduced}..HEAD`,
+                `^${base}`,
+                '--',
+                bindingFile(input),
+              ])
+                .trim()
+                .split('\n')
+                .filter(Boolean);
+              return !later.some(
+                (commit) =>
+                  touchedReviewInputs(
+                    root,
+                    [input],
+                    new Set([bindingFile(input)]),
+                    `${commit}^`,
+                    commit,
+                  ).length,
+              );
+            }),
+        );
+        if (uncovered.length)
+          noteCoverage.push({
+            kind,
+            path,
+            inputs: dependencies,
+            changed: uncovered,
+            rule: 'stale',
+          });
+      }
+    }
+  }
   return {
     mode,
     reason: `${reason} (base ${base}, merge base ${selection.mergeBase})`,
     base,
     mergeBase: selection.mergeBase,
     changedPaths,
+    historyEntries,
     changedEntries: {
       review: changedEntries(...entries.review),
       capture: changedEntries(...entries.capture),
     },
-    sourceDrops: Object.entries(entries).flatMap(([kind, [before, now]]) =>
-      unreviewedSourceDrops(kind, before, now, changedPaths, (path) =>
-        reader.exists(path),
+    sourceDrops: [
+      ...noteCoverage,
+      ...Object.entries(entries).flatMap(([kind, [before, now]]) =>
+        unreviewedSourceDrops(kind, before, now, changedPaths, (path) =>
+          reader.exists(path),
+        ),
       ),
-    ),
+    ],
   };
 }
+
+const inputsFor = (entry) =>
+  entry ? [entry.path, ...entry.sources.map((source) => source.path)] : [];
 
 /**
  * The single decision: does this stale entry block under `policy`?
@@ -227,6 +349,7 @@ export function freshnessBlocks(policy, { kind, path, inputs }) {
   if (policy.mode === 'advisory') return false;
   if (policy.mode !== 'scoped')
     throw new Error(`Unknown documentation freshness mode: ${policy.mode}`);
+  if (policy.historyEntries?.has(path)) return false;
   return (
     Boolean(policy.changedEntries?.[kind]?.has(path)) ||
     policy.changedPaths.has(path) ||
@@ -334,7 +457,14 @@ export async function checkDocumentationFreshness({
     reviews,
     captures,
     blocking,
-    advisory: stale.filter((entry) => !blocking.includes(entry)),
+    historyUnavailable: ledger.historyUnavailable,
+    advisory: stale.filter(
+      (entry) =>
+        !blocking.some(
+          (problem) =>
+            problem.kind === entry.kind && problem.path === entry.path,
+        ),
+    ),
   };
 }
 

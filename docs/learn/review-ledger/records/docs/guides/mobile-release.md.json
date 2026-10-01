@@ -9,112 +9,110 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
   "sources": [
-    {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".github/workflows/build-ios.yml",
 
-    {"path":".github/workflows/internal-testflight.yml","digest":"b1d770e14eb25d9677b098ab1b08db09a3401f4a1aaf88fd1f908e16cdd9a4b4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".github/workflows/internal-testflight.yml",
 
-    {"path":".github/workflows/nightly-native-cohort.yml","digest":"316bd0d98f7370e8b795e28f5a202dcd3fa878f5685d19eda53e73f57b864aaf","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/nightly-native-cohort.yml",
 
-    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/nightly-native-stage.yml",
 
-    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".github/workflows/nightly.yml",
 
-    {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/publish-release.yml",
 
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    ".github/workflows/release.yml",
 
-    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/testflight-delivery.yml",
 
-    {"path":".gitignore","digest":"a14e84f5b88d0d6fcd61e57cb71335e8b4400d53a35ae84048458a669ac05ccc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".gitignore",
 
-    {"path":"config/channel-platform-matrix.json","digest":"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "config/channel-platform-matrix.json",
 
-    {"path":"config/release-platform-matrix.json","digest":"98c281ce785e766ee9d4b32f401e17ddffba02e5fdd2cdc9fc6d3ebedcf8e94b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "config/release-platform-matrix.json",
 
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "install.sh",
 
-    {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "ops/nightly/install-macos.zsh",
 
-    {"path":"patches/android-native-keyring-store/src/by_service/cred.rs","digest":"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "patches/android-native-keyring-store/src/by_service/cred.rs",
 
-    {"path":"patches/android-native-keyring-store/src/by_store/cred.rs","digest":"41738684ee143f81095c32cad36099b47552e15c62857de7f16c7a1875871d5c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "patches/android-native-keyring-store/src/by_store/cred.rs",
 
-    {"path":"patches/android-native-keyring-store/src/by_store/vault.rs","digest":"0dacbf7046023cf63235ad389c09e4124203f67eb24cb0dfe5b2c3e08022d7ca","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "patches/android-native-keyring-store/src/by_store/vault.rs",
 
-    {"path":"patches/android-native-keyring-store/src/error.rs","digest":"1650ecb5d09003ba19eed28f0491210d96d3541c83848e4ccafc8f878459aac2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "patches/android-native-keyring-store/src/error.rs",
 
-    {"path":"patches/android-native-keyring-store/src/shared_preferences.rs","digest":"5ed949a0dcfc366029e21c890716031cd1b9cc05465419d51e33eae2c5011f88","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "patches/android-native-keyring-store/src/shared_preferences.rs",
 
-    {"path":"schemas/release-artifact-manifest.schema.json","digest":"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "schemas/release-artifact-manifest.schema.json",
 
-    {"path":"scripts/__tests__/ensure-ios-agent-activity-extension.test.ts","digest":"866e000cc1d4b2e62d6124bc0a8bf74e4014564b471602603ab7cecdf18c143b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/ensure-ios-agent-activity-extension.test.ts",
 
-    {"path":"scripts/__tests__/ios-exported-entitlements.test.ts","digest":"c90c77bff126bd526c575dd6524553097e6f514e2f0929bd12f3e2657425e0fc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/ios-exported-entitlements.test.ts",
 
-    {"path":"scripts/__tests__/ios-store-signing-config.test.ts","digest":"ca2d9c0cd7aab6663e3ad0d38ace6563d3fb9c6bccfd2db8addb11407bbac50d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/ios-store-signing-config.test.ts",
 
-    {"path":"scripts/__tests__/native-update-feed.test.ts","digest":"11e779e2c9940210a8f94dfa9cfddfda4bf8f2bdf58d0118f5c64547bd1aa0b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/native-update-feed.test.ts",
 
-    {"path":"scripts/__tests__/publish-mobile-feed-transaction.test.ts","digest":"6fe34e378cf37fa4fe2a6a3736706a59d62785a9b8cafc1c3c459d61cc32c60c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/publish-mobile-feed-transaction.test.ts",
 
-    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/release-artifacts.test.ts",
 
-    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"bae8939a7bc0134f682c457adfc56796419b6fbc8537e1b083be357af19b8fce","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/release-workflow.test.ts",
 
-    {"path":"scripts/app-store-connect-receipt.mjs","digest":"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/app-store-connect-receipt.mjs",
 
-    {"path":"scripts/apply-android-release-signing.mjs","digest":"84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/apply-android-release-signing.mjs",
 
-    {"path":"scripts/check-ios-store-profile.mjs","digest":"7467a49dc8616e9472ab7b37fad9648b96e58fe7a0268e7261094dcb0eae7e5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/check-ios-store-profile.mjs",
 
-    {"path":"scripts/ensure-ios-agent-activity-extension.mjs","digest":"8d6a311a638629b54b3ae592572197b8681f623510784bab2302d82eabd29a6d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ensure-ios-agent-activity-extension.mjs",
 
-    {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-channel-icons.mjs",
 
-    {"path":"scripts/ios-exported-entitlements.mjs","digest":"af64ec411d76e4d926967e10db8fbc9e7f7f3555f11f19aa1260918851239257","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-exported-entitlements.mjs",
 
-    {"path":"scripts/ios-local-release-preflight.mjs","digest":"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-local-release-preflight.mjs",
 
-    {"path":"scripts/ios-store-signing-config.mjs","digest":"6925f7a23762e4176dc170703fd59ed579840803e03a89f4d6ab0ad88fa17297","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-store-signing-config.mjs",
 
-    {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-testflight-channel.mjs",
 
-    {"path":"scripts/ios-testflight-internal-authority.mjs","digest":"480c939736cba2acf4292b421283afbbc48a0334d807c73bdf5eda5276bd7ef2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-testflight-internal-authority.mjs",
 
-    {"path":"scripts/ios-testflight-readiness.mjs","digest":"dadb2c4e200865e81384ff448c62ef3a577e0745e1b9572139c2eba3a4d0143c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/ios-testflight-readiness.mjs",
 
-    {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/native-release-config.mjs",
 
-    {"path":"scripts/lib/release-artifacts.mjs","digest":"ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/release-artifacts.mjs",
 
-    {"path":"scripts/lib/release-variants.mjs","digest":"37971798872193d2eac0eefd67049401211254bb5b048f6b8257123909c5968e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/release-variants.mjs",
 
-    {"path":"scripts/native-update-feed.mjs","digest":"5331b5766432d532131d71c0227f7d7cf2be1574fe1345c69cc6e4e8fc9b1f27","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/native-update-feed.mjs",
 
-    {"path":"scripts/publish-mobile-feed-transaction.sh","digest":"e983e732ff706b8b2c7fbd4e13001331de7341c7aaed0d66656ddfc99cd7a34f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/publish-mobile-feed-transaction.sh",
 
-    {"path":"scripts/release-artifacts.mjs","digest":"24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/release-artifacts.mjs",
 
-    {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/release-platform-matrix.mjs",
 
-    {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-desktop/Cargo.lock",
 
-    {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-desktop/Cargo.toml",
 
-    {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-desktop/ios/StationNotificationService/NotificationService.swift",
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-server/services/notifications/agent-activity-publisher.ts",
 
-    {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
 
-    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
 
-    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    "package.json#/scripts/mobile:permissions:gate"
   ],
 
   "checks": [

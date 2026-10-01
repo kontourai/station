@@ -9,52 +9,50 @@
 
   "limits": "EXECUTED FAIL: public Enterprise build reached standalone dependency preparation and timed out in spawnSync /bin/sh after 60 seconds. No intrinsic build defect inferred from that timeout. No live CRM, Outlook, directory, notes-vault MCP or model qualification. Source review is complete for README claims, not a deployment certification.",
 
-  "document": {"digest":"041236ce05d0fba05f396924fd2cdc70fc3770b93a0695a111242980c92e026e","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"examples/enterprise-layout/agents/enterprise-assistant/agent.json","digest":"7ee6182e36b6cfd38ba02fc1549b928043ba4ca69e8e909bbb0ea3afce43e009","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/agents/enterprise-assistant/agent.json",
 
-    {"path":"examples/enterprise-layout/integrations/calendar/integration.json","digest":"8ce6c18ca5bd6f50c16dc7fa419f3848fda96c486a8bccb35489cf4eb017d814","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/integrations/calendar/integration.json",
 
-    {"path":"examples/enterprise-layout/integrations/crm/integration.json","digest":"0fc4d21a4f949dbc9ddf016ea28ecdd014064d27dacd98bcf67384487b565eff","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/integrations/crm/integration.json",
 
-    {"path":"examples/enterprise-layout/layout.json","digest":"717fce45ed18904c46b4cf0e0197d100b411a20a3a3edf83c42e9d899a943774","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/layout.json",
 
-    {"path":"examples/enterprise-layout/plugin.json","digest":"108f69275b930e47eeb045b44b15ef7e7783c9dbaa99c275f62787aa4909ca6d","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/plugin.json",
 
-    {"path":"examples/enterprise-layout/src/data/index.ts","digest":"c4d17d77bd1f1791b5ef0f9079e2096aa2230f22ef7e260bf9069313fc41e5bf","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/index.ts",
 
-    {"path":"examples/enterprise-layout/src/data/init.ts","digest":"0811b4834a7ecb4b542d146f9bbe758528de326da73fcd50053581c8989e7e9d","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/init.ts",
 
-    {"path":"examples/enterprise-layout/src/data/notes-hooks.ts","digest":"f123828808e5dd7fe5e2cf3c1d240b75f85000e0008f71923f05f192ed188105","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/notes-hooks.ts",
 
-    {"path":"examples/enterprise-layout/src/data/providers.ts","digest":"2747fb3336f816e8c0d8134a2d5bd29bef696b1253f681d987a7a25a25159646","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/providers.ts",
 
-    {"path":"examples/enterprise-layout/src/data/providers/calendar.ts","digest":"0a0dc67a30003cba27bb2ad5eb3400acb0b73e35bc4df4ed37cf7f91a7be6233","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/providers/calendar.ts",
 
-    {"path":"examples/enterprise-layout/src/data/providers/crm.ts","digest":"1a46629d661d45fd8fb4fb035395fcc02a995242b7d1415ad4412c11e73b3352","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/providers/crm.ts",
 
-    {"path":"examples/enterprise-layout/src/data/providers/directory.ts","digest":"dbbac4ce23bd250584001530b67cb698abe7277681b74a673e48bde822deefb3","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/providers/directory.ts",
 
-    {"path":"examples/enterprise-layout/src/data/providers/email.ts","digest":"6e932eb0d0748be7c225e752aa39e751cd4501b599cb7e32a2d411c2ce4a07f4","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/data/providers/email.ts",
 
-    {"path":"examples/enterprise-layout/src/index.tsx","digest":"2e1d90626d9613dffc5f46945f6b89226e07f3f2bfe23d1d69d02f24dc747b90","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/enterprise-layout/src/index.tsx",
 
-    {"path":"examples/shared-providers/plugin.json","digest":"035868ae1a26d8a3d3411aecfacd7af1081ca6e3a3f93aa8c2a3cda0cadd3bc3","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "examples/shared-providers/plugin.json",
 
-    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/api-agent-runtime.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    "packages/shared/src/build.ts",
 
-    {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/routes/projects/projects.ts",
 
-    {"path":"src-server/services/knowledge/knowledge-search.ts","digest":"ae111c58c926d5d43cf096b4ab199dab44495b996817bfc851a0fd4d2c012c31","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/knowledge/knowledge-search.ts",
 
-    {"path":"src-server/services/plugins/plugin-command-skill-source.ts","digest":"f878c80f17efdd53016dddf595edf9fdc22aca4dc96eefde120794826f38d7bb","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/plugins/plugin-command-skill-source.ts",
 
-    {"path":"src-server/services/plugins/workspace-pane-host-actions.ts","digest":"75590eb71c83be080b9f8b7fb080bc6276c18202b48f91f80cda8eff461c9474","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/plugins/workspace-pane-host-actions.ts",
 
-    {"path":"src-server/services/plugins/workspace-pane-host-admission.ts","digest":"e7cb42a0b3b5cd8d41f5f5ef20e8d32334ae3871cb2aca771b5f32f0e7b7f05d","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    "src-server/services/plugins/workspace-pane-host-admission.ts"
   ],
 
   "checks": [

@@ -9,14 +9,12 @@
 
   "limits": "No tenant/job adversarial runtime experiment, cloud selection, managed-operation qualification, per-member storage completeness, or production sandbox assurance. Most proposal requirements were classified, not semantically verified.",
 
-  "document": {"digest":"51ff3cd20bb8a9cde0ebca3f8c775c4437a75af801031ccef14b4ff6b5f9cb5d","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
-
   "sources": [
-    {"path":"src-server/runtime/bootstrap/hosted-persistence-boundary.ts","digest":"458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
+    "src-server/services/plugins/plugin-public-server.ts"
   ],
 
   "checks": [

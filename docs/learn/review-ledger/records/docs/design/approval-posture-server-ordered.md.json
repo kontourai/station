@@ -9,14 +9,12 @@
 
   "limits": "Current posture resolution and orchestration callers were checked for routing only; no comprehensive authorization, recovery, cross-device, or engine-posture proof.",
 
-  "document": {"digest":"fe178e2a287aee8f785b5e839f67a71aea98ea80cfd27b832e2c4c36fc551e2a","revision":"de3ec944a2f6b587c5cc22e95f6847bd26d1cc8c"},
-
   "sources": [
-    {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/security/coding-authority.ts",
 
-    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/services/orchestration/approval-posture.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"}
+    "src-server/services/orchestration/orchestration-service.ts"
   ],
 
   "checks": [

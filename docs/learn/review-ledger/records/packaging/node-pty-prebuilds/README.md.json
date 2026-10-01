@@ -9,24 +9,22 @@
 
   "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
 
-  "document": {"digest":"fa89e2fa1c7c2487af76d52b2be36878de9021dfe3c50831e51158da95820dfb","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":".github/workflows/node-pty-prebuilds.yml","digest":"764daeea2e3e7ce837be3daa83c22ad249050a7e6571598380e6a9574e37dcfc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    ".github/workflows/node-pty-prebuilds.yml",
 
-    {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    "config/dependency-lifecycle-allowlist.json",
 
-    {"path":"packaging/node-pty-prebuilds/manifest.json","digest":"22b3c66570004f238adb60b2b34c830c9d285ac01f060de3d1195f8098b73254","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "packaging/node-pty-prebuilds/manifest.json",
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "pnpm-lock.yaml",
 
-    {"path":"scripts/__tests__/dependency-lifecycle.test.ts","digest":"b94c5e49462f77454aca7aaee0a34f29fd05b5d3b89839aaadbea6e922815d54","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/__tests__/dependency-lifecycle.test.ts",
 
-    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/lib/dependency-lifecycle-policy.mjs",
 
-    {"path":"scripts/lib/elf-symbol-floor.mjs","digest":"7b51f6f692022736fc8b41161c1b6f47e2d31819ecc0df5fd637af55066eb73b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/lib/elf-symbol-floor.mjs",
 
-    {"path":"scripts/verify-node-pty-prebuild.mjs","digest":"07e6c6f0e6ad7030c9017bf08f75f3437bbdee6a3fa069aa46cb34158d1e5157","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    "scripts/verify-node-pty-prebuild.mjs"
   ],
 
   "checks": [

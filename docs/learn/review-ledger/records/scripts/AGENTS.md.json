@@ -9,20 +9,18 @@
 
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
 
-  "document": {"digest":"6500d9d9e476f425384826b8c40f1845bb87b97efe0bbd53595eb429f7b1668d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
   "sources": [
-    {"path":"docs/guides/code-quality.md","digest":"96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "docs/guides/code-quality.md",
 
-    {"path":"docs/guides/testing.md","digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    "docs/guides/testing.md",
 
-    {"path":"scripts/code-health-gate.mjs","digest":"601c9b86a673c782230fad9f1caaec8791a1fdd15f64b7124ef8bdf6151b9927","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/code-health-gate.mjs",
 
-    {"path":"scripts/lib/owned-process.mjs","digest":"02af599ddc7b4612f1af31e8fcb6dd4bc7e3857d64d8a5bb4f9cb8e0be894227","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/owned-process.mjs",
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/verification-lanes.mjs",
 
-    {"path":"scripts/vitest-resource-manifest.mjs","digest":"0dc87c296ab86b7b2951e18282471e5c9e7e0d234861c5af5c15e1acc74d909b","revision":"9c30c877c4899bcf6510ce6c7ada4c9c47fbc102"}
+    "scripts/vitest-resource-manifest.mjs"
   ],
 
   "checks": [

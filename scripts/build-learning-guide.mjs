@@ -9,6 +9,7 @@ import {
   findBrokenRenderedMarkdownLinks,
 } from './check-markdown-links.mjs';
 import {
+  assertDocumentationFresh,
   formatFreshnessAdvisory,
   freshnessRequirement,
   resolveDocumentationFreshness,
@@ -111,6 +112,8 @@ export async function buildLearningGuide({
   const policy = check
     ? (freshness ?? resolveDocumentationFreshness({ root: inputRoot }))
     : undefined;
+  if (policy?.sourceDrops?.length)
+    assertDocumentationFresh({ policy, blocking: policy.sourceDrops });
   // One read of the ledger directory and capture manifest (#2936).
   const reviewState = readReviewState(inputRoot);
   const media = reviewState.media

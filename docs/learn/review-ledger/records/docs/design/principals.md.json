@@ -9,14 +9,12 @@
 
   "limits": "Historical epics, every principal/authorization edge, all shared-resource admission and actual shared-access enablement remain unverified. No blanket approval of the retained policy or present-tense body.",
 
-  "document": {"digest":"6885d4b09222c1da93e888d9773372768e7f0e8a8687a44077fee496fd859a5a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
-
   "sources": [
-    {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
+    "src-server/runtime/bootstrap/orchestration-request-principal.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/services/projects/project-membership-runtime.ts","digest":"9fe2ba3155f861ffeea00a89982b1cb00739ab37f334c80beb96e4f109b7ca2a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    "src-server/services/projects/project-membership-runtime.ts"
   ],
 
   "checks": [

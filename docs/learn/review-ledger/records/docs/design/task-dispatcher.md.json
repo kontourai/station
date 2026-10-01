@@ -9,20 +9,18 @@
 
   "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
 
-  "document": {"digest":"f9bd229c601cd56e85be31ece9d299bda3e57394f27c539380cc49e8d09492ba","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
-
   "sources": [
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "src-server/runtime/routes/runtime-route-support.ts",
 
-    {"path":"src-server/services/projects/__tests__/task-dispatch-composition.test.ts","digest":"c1b3ad60cc891048833519a06190064645c93f6c1bf5270cfc30d67bb76fe32c","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "src-server/services/projects/__tests__/task-dispatch-composition.test.ts",
 
-    {"path":"src-server/services/projects/__tests__/task-dispatcher.test.ts","digest":"70be27a940a27e8de12f6f509382c2172e2de1b7556fcd6905346b3d9b293e3b","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/projects/__tests__/task-dispatcher.test.ts",
 
-    {"path":"src-server/services/projects/task-dispatch-composition.ts","digest":"53723bc8fe1804b5dee5d33be3fed9e7912a85d2acc0cb66b35fd419e4ad9638","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "src-server/services/projects/task-dispatch-composition.ts",
 
-    {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    "src-server/services/projects/task-dispatcher.ts"
   ],
 
   "checks": [

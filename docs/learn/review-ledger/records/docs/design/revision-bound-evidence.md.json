@@ -9,18 +9,16 @@
 
   "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
 
-  "document": {"digest":"02e65ecf6fbd4fadabfc175d3d685df58ad453004079716d4011585c829d10cf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":"src-server/domain/__tests__/revision-bound-evidence.test.ts","digest":"84744b9133107d4ca9a34daf044ef5faa44b79ceb6af5345406fa43dba250398","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/__tests__/revision-bound-evidence.test.ts",
 
-    {"path":"src-server/domain/revision-bound-evidence.ts","digest":"cb297f8375790f638ce0f0097de0e5f4ec13d72b16cc60fb4209cbb8ec723787","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/revision-bound-evidence.ts",
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/orchestration/event-store.ts",
 
-    {"path":"src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts","digest":"b15475ea8e06e179b98493884ce70f4eca5bc98ce1911aa9bb8537be0265217e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts",
 
-    {"path":"src-server/services/orchestration/sqlite-revision-evidence-persistence.ts","digest":"522bfbd015ec9c314a1edffa628a36e35fcc54eae6c911ac7529b93f14b77952","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts"
   ],
 
   "checks": [

@@ -9,56 +9,54 @@
 
   "limits": "Source and caller review; local fixtures do not establish live provider, device, deployed service or production workload behavior.",
 
-  "document": {"digest":"976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"scripts/lib/release-sboms.mjs","digest":"22a283e108c25da5ae116b2e6782520dec564a7263e7991673bdb3ed4f9ce5b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/release-sboms.mjs",
 
-    {"path":"scripts/lib/verification-admission.mjs","digest":"751718b28118e916eece0283e5a22e2606e9df9ca38816826864528adfaf87c8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/verification-admission.mjs",
 
-    {"path":"scripts/lib/verification-lease-ownership.mjs","digest":"0b808e1ead25286b125f913323dd28d0dd0fca966c11886e7aff4f71d18efc2d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/verification-lease-ownership.mjs",
 
-    {"path":"scripts/lib/verification-request-context.mjs","digest":"95f066f98b4f5bba441115a9bcbbbf175f994e14a4cc01c57e9405ebb616a5bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/verification-request-context.mjs",
 
-    {"path":"scripts/lib/verification-request-identity.mjs","digest":"407273adb9efbaca0efafead8b45e5b03c28e9b5b0428bd319c9eaa689f536ca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/verification-request-identity.mjs",
 
-    {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/verification-terminal-receipt.mjs",
 
-    {"path":"src-server/domain/config-loader-agents.ts","digest":"e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/config-loader-agents.ts",
 
-    {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/agents/agents.ts",
 
-    {"path":"src-server/routes/operations/scheduler.ts","digest":"54d753dc983ec8f5736c4ae750e1da2749976a237ac1eba83071d4be63b1f59a","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/routes/operations/scheduler.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/conversation/runtime-event-log.ts",
 
-    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/routes/runtime-route-support.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/services/flow/flow-readiness-bridge.ts","digest":"28fe60cf8c343aa08fef0c8a2f425ca1105c2eeff3b447aaaa2f0fbec2719c53","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/flow/flow-readiness-bridge.ts",
 
-    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/flow/flow-run-service.ts",
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"f9986a2e545f629b58313c053ca1605f1bc6755748a386beab6a9da465a9eb3d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/orchestration/event-store.ts",
 
-    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/flow-policy-sidecar.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/session-command-module.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/plugin-install-transaction.ts",
 
-    {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-ui/src/components/review/ReviewLayout.tsx",
 
-    {"path":"src-ui/src/contexts/MonitoringContext.tsx","digest":"65fc125213795d0077de6bc5fa6c68a665c71d3527cd7baf519313c97bb93b3e","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    "src-ui/src/contexts/MonitoringContext.tsx"
   ],
 
   "checks": [

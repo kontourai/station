@@ -9,30 +9,28 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/shared/src/__tests__/instance-registry-claim.test.ts","digest":"98b894680405a1bc586166f2fd61a97aad4ae9d34360276f425de5b4776eb43b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/__tests__/instance-registry-claim.test.ts",
 
-    {"path":"packages/shared/src/__tests__/instance-registry.test.ts","digest":"320d873261bab55ebc282b945a0c46157dfdd923875fb1893db1beed97093f73","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/__tests__/instance-registry.test.ts",
 
-    {"path":"packages/shared/src/fs-windows-compat.ts","digest":"d92d47e2d6a96f3222056220186f427dadb0c3036a5dad80d398d4abedc96fa4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/fs-windows-compat.ts",
 
-    {"path":"packages/shared/src/instance-registry.ts","digest":"551ccf7724ce473de8da5150fb8280f3b9474b3c255e48a5370fa6bb3ffc46fc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/instance-registry.ts",
 
-    {"path":"packages/shared/src/lifecycle-events.ts","digest":"9a8c0591fccc9fb2a5d206d60fbe759ebf75d9c1bc783368aa28d8161039f767","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/lifecycle-events.ts",
 
-    {"path":"packages/shared/src/process-identity.mjs","digest":"c51afd74ac7c56c24ad8f5cdc13c88e63f1966478b8829d30ea781d8c559127b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/process-identity.mjs",
 
-    {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/runtime-path-resolver.ts",
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-server/tools/instance-registry-bridge.ts","digest":"bb68aa5e87bf85c0262beda833b5d5a69a8f279fecc151e61a3c8be4bda45b13","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-server/tools/instance-registry-bridge.ts"
   ],
 
   "checks": [

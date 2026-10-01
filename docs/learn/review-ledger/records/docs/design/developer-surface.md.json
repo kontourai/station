@@ -9,20 +9,18 @@
 
   "limits": "Mounted fixture and source evidence; no native keyboard or external telemetry collector qualification.",
 
-  "document": {"digest":"3e059dd4826272938ae5312a05969db0217074a7592bba4c2edd8586ed35b616","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"src-ui/src/App.tsx","digest":"6ef4c426651d75c5154177265ef355c68a17c1deb19b08a4da6764e9364481a6","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/App.tsx",
 
-    {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/app-shell/routing.ts",
 
-    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
 
-    {"path":"src-ui/src/views/DeveloperView.tsx","digest":"bcac66d9b3e4be2b6be74ca3a1dc7b968f99ddf352f0f1c8ec6bc2cc9f669bf8","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/views/DeveloperView.tsx",
 
-    {"path":"src-ui/src/views/MonitoringView.tsx","digest":"24eeee8533eaaa6cf7dea10b310f2b1a97be11858cc90f4a5f8d9818f5ae4432","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/views/MonitoringView.tsx",
 
-    {"path":"src-ui/src/views/developer/TelemetryTab.tsx","digest":"2235b04a0824b03eb041273ba019bbf6202b95defd9228d5b0c0a2885abb7d9f","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    "src-ui/src/views/developer/TelemetryTab.tsx"
   ],
 
   "checks": [

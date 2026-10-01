@@ -9,14 +9,12 @@
 
   "limits": "Initial 39-52 KB window, 0.9-1.7 KB snapshot, and roughly 1 MB live-turn observations were not reproduced. The historical calibration is not current performance evidence or authority to change ceilings.",
 
-  "document": {"digest":"d3f783333e53ae3480ac102ee43fef0ff4a59210030f4eb4e4d88781ab3a89f7","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
-
   "sources": [
-    {"path":"scripts/fixtures/orchestration-transfer/budget.json","digest":"47a0ff2379a93d58de745f0fdc26350e448ae31290eb87cdcd22ee0205d47f9b","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/fixtures/orchestration-transfer/budget.json",
 
-    {"path":"scripts/orchestration-transfer-capture.ts","digest":"7107a7dc69364236ebea29d3daa7fba149c735b245671eebf0e033c99293eab8","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/orchestration-transfer-capture.ts",
 
-    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"c10941f00e2d434ca22c4cc4e4bdfb1c892cde9e18e7fb8cf558d4acf3c5eaed","revision":"10355abb29c67ba8bac4c9ad44c8718d0f42a85c"}
+    "scripts/orchestration-transfer-gate.mjs"
   ],
 
   "checks": [

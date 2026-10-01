@@ -9,92 +9,90 @@
 
   "limits": "No sandbox claim, physical UI journey or all-owner authorization certification. Cached UI projection and cleanup semantics routed to existing user guide.",
 
-  "document": {"digest":"ec519bd0a32aefd4172f8fe3d20068ccc480ae9236d16fe9797eba4570fc7cc2","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
-
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/container-smoke.yml",
 
-    {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/interactive-workspace-performance.yml",
 
-    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/security-analysis.yml",
 
-    {"path":".github/workflows/windows-vitest-diagnostic.yml","digest":"040f1a8683332740c89c7c9716f7f70370838e9d86441827913cc3db7786d527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/windows-vitest-diagnostic.yml",
 
-    {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "config/product-laws.json",
 
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    "package.json",
 
-    {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/cli/src/commands/cloud-project-import.ts",
 
-    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/cli/src/commands/cloud.ts",
 
-    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/contracts/src/workspace-home-role.ts",
 
-    {"path":"packages/sdk/src/client/delegations.ts","digest":"148d12ffed1091b83149a7d0caa834088f58eebf295ce4c97b697ec1fad747db","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/delegations.ts",
 
-    {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/shared/src/workspace-package-io.ts",
 
-    {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/shared/src/workspace-package.ts",
 
-    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    "pnpm-workspace.yaml",
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    "scripts/actionlint-gate.mjs",
 
-    {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/codeql-error-baseline.json",
 
-    {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/codeql-sarif-policy.mjs",
 
-    {"path":"scripts/container-smoke.sh","digest":"31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/container-smoke.sh",
 
-    {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/dependency-advisory-policy.mjs",
 
-    {"path":"scripts/lib/dependency-audit-diagnostics.mjs","digest":"c81447d6f6746f19a8a75c5937359850d74935dd43ed53d991ee90929404993a","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/lib/dependency-audit-diagnostics.mjs",
 
-    {"path":"scripts/lib/pnpm-advisory.mjs","digest":"d744934bbc925b7a8cf799b335864c0e8555d6b099de2acf6e6990ca5a580bc7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/lib/pnpm-advisory.mjs",
 
-    {"path":"scripts/lib/product-laws.mjs","digest":"b7a549ca0025afb7f662b215e56aad007308b999a3700e0bd7e28464954cc275","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/lib/product-laws.mjs",
 
-    {"path":"scripts/product-law-gate.mjs","digest":"3611528993c47648caa7c64150902820410f1f330c235891396f4927033e4766","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/product-law-gate.mjs",
 
-    {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/environments/home-authority-routes.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/spatial-board.ts",
 
-    {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/runtime/bootstrap/personal-home-authority-database.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/delegation-attempt-claim-store.ts",
 
-    {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
 
-    {"path":"src-server/services/orchestration/planned-home-control-room-write-adapter.ts","digest":"dec0df930857ef8e7de10cbe5d4d8e4e3e604027a866355b020bda1711301f79","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/planned-home-control-room-write-adapter.ts",
 
-    {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/project-task-room-history.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-reference.ts","digest":"f3f49b82131fc679b5454d4d5f1cc9ffbe0afd41dfd1317336ac74c7f057d5a1","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/spatial-board/spatial-board-reference.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-resolver.ts","digest":"cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/spatial-board/spatial-board-resolver.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/spatial-board/spatial-board-store.ts",
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    "src-server/tools/station-control-delegation.ts",
 
-    {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-ui/src/views/home/HomeRolePane.tsx",
 
-    {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-ui/src/views/HomeView.tsx",
 
-    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
-    {"path":"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx","digest":"511e0ac91b3e0c2b744ffe1da6967e1741aa9d2d99f9daa10f39d1b2e78e8494","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
 
-    {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
 
-    {"path":"tests/container-self-host.spec.ts","digest":"35a9f2abca5519fa980137f32f8011bb6a88311f2bc3bacd3e9cca830f5379f6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
+    "tests/container-self-host.spec.ts"
   ],
 
   "checks": [

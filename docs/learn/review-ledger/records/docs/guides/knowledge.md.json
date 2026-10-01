@@ -9,74 +9,72 @@
 
   "limits": "Local source and fixture/SQLite evidence. No live embedding provider, Neo4j server, external Kit interoperability, physical-device capture, or historical dogfood revalidation. Known model/content identity and provenance gaps remain linked to GitHub.",
 
-  "document": {"digest":"c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
-
   "sources": [
-    {"path":"docs/learn/media/repository-knowledge-narrow.png","digest":"d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "docs/learn/media/repository-knowledge-narrow.png",
 
-    {"path":"docs/learn/media/repository-knowledge.png","digest":"8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "docs/learn/media/repository-knowledge.png",
 
-    {"path":"examples/knowledge-library/layout.json","digest":"9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/knowledge-library/layout.json",
 
-    {"path":"examples/knowledge-library/plugin.json","digest":"56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/knowledge-library/plugin.json",
 
-    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
 
-    {"path":"examples/knowledge-library/src/RootPicker.tsx","digest":"f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/knowledge-library/src/RootPicker.tsx",
 
-    {"path":"examples/knowledge-library/src/index.tsx","digest":"0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/knowledge-library/src/index.tsx",
 
-    {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/knowledge-library/src/knowledge-library.css",
 
-    {"path":"examples/meeting-notes/src/CaptureModal.tsx","digest":"99620a534b8c7248d5d1024c67656d58904b29d8d9b4396d6d04e13f91308181","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "examples/meeting-notes/src/CaptureModal.tsx",
 
-    {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "packages/contracts/src/knowledge-store.ts",
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/knowledge.ts",
 
-    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "packages/sdk/src/components/KnowledgeRecall.css",
 
-    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
 
-    {"path":"packages/sdk/src/hooks/knowledge.ts","digest":"b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "packages/sdk/src/hooks/knowledge.ts",
 
-    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
 
-    {"path":"src-server/knowledge-index/migrate-pre-index-knowledge.ts","digest":"f00bf506fff7fb1ef1ec2c846e50e3e81b451e24b415184b274b18f93a08ca51","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
 
-    {"path":"src-server/knowledge-index/sqlite-vec-index-provider.ts","digest":"96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/knowledge-index/sqlite-vec-index-provider.ts",
 
-    {"path":"src-server/knowledge-store/adapters/default-store.ts","digest":"003db4b89b4f5fb5238cfececcffdb33c36953e8922fc12ba941c1619d619cc6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/knowledge-store/adapters/default-store.ts",
 
-    {"path":"src-server/knowledge-store/adapters/obsidian-store.ts","digest":"2ee5ba813b7ee62d61788b9bb28fc1a5d75999b401172db8563df3e30e60b5a8","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/knowledge-store/adapters/obsidian-store.ts",
 
-    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/knowledge-store/knowledge-store-provider.ts",
 
-    {"path":"src-server/knowledge-store/neo4j-connection.ts","digest":"711a8d553aa67488e4b32706fd75733ad88f5bb8ba3f8065e1177f4b96c560be","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/knowledge-store/neo4j-connection.ts",
 
-    {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/routes/knowledge/knowledge-index-routes.ts",
 
-    {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e62792941e8de79239fa616cc6d265af4304e29b9978535533a26b9688b86265","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/routes/knowledge/knowledge-store-routes.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
 
-    {"path":"src-server/services/knowledge/knowledge-service.ts","digest":"ed5b4adef24f9f7be62eed1af9ed6d586f96228a6e599427cf335c622328bbed","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/services/knowledge/knowledge-service.ts",
 
-    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/components/header/Header.tsx",
 
-    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/components/header/useHeaderViewModel.ts",
 
-    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
+    "src-ui/src/index.css",
 
-    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/views/page-layout.css",
 
-    {"path":"src-ui/src/views/project-settings/KnowledgeSection.tsx","digest":"456b7dbbaf3232c9127c547ad6e8087b2f5947d75143ba66bec4a18a72b52744","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/views/project-settings/KnowledgeSection.tsx",
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
 
-    {"path":"docs/learn/media.json#/captures/6","digest":"d439fffbb12f94d32532b32a4e15363981c8ed65c3c4e0bf31c10fb92db60616","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+    "docs/learn/media.json#/captures/6",
 
-    {"path":"docs/learn/media.json#/captures/7","digest":"1bfef4b8a5a1eacc113acfe951e4498bea40e4a03bf6842c2d651c0766bc6fe0","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
+    "docs/learn/media.json#/captures/7"
   ],
 
   "checks": [

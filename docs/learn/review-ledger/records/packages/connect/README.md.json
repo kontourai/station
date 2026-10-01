@@ -9,32 +9,30 @@
 
   "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability. Native diagnostic echo is identified only as a source export, not a validated physical-device diagnostic journey.",
 
-  "document": {"digest":"ad9c5fe804fe6d45843985d8afed0350ca9e482ef4d97e0fce0426e285cde3a4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
-
   "sources": [
-    {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+    "packages/connect/package.json",
 
-    {"path":"packages/connect/src/__tests__/nativeApplicationTransport.test.ts","digest":"240fcf26b2e9b39c18e6d4fd00975614c40519c96716e356dee9e5c3cdce0dcf","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "packages/connect/src/__tests__/nativeApplicationTransport.test.ts",
 
-    {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/ConnectionStore.ts",
 
-    {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "packages/connect/src/core/applicationChannel.ts",
 
-    {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/brokerRouteEnrollment.ts",
 
-    {"path":"packages/connect/src/core/browserPionConnection.ts","digest":"85e30d796461ad69a6134b42e5a0066e5a04e34846765a8c6a4262ff35ead8e0","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/browserPionConnection.ts",
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    "packages/connect/src/core/nativeApplicationTransport.ts",
 
-    {"path":"packages/connect/src/core/selfHostedBrowser.ts","digest":"4b7329608a945e6723f69b1607992b6c5b2b6bfba209e9ed1eb98ef62c0d0487","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/selfHostedBrowser.ts",
 
-    {"path":"packages/connect/src/core/storage.ts","digest":"ccc9b390c0ab8521df87d6c37d7e2b519bbe1c0c98c91562be67137d57b155aa","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/core/storage.ts",
 
-    {"path":"packages/connect/src/index.ts","digest":"cc849d431465dff7d0a98b8a06ef4a6a5efe65e645c31c96a2ce5e0deee14e80","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/src/index.ts",
 
-    {"path":"packages/connect/tsconfig.json","digest":"1dcde2ae94b6f60717ece7e76c02f9585a5193fc5fcace5bc62d6b5a02da2bdb","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    "packages/connect/tsconfig.json",
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    "src-ui/src/platform/native/stationProfileStorage.ts"
   ],
 
   "checks": [
