@@ -15,6 +15,7 @@ import {
   STATION_PLUGIN_HEADER,
 } from '@kontourai/station-contracts/http';
 import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
+import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
@@ -749,6 +750,32 @@ function configureRuntimeSecurity(
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
       c.req.path.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`);
+    if (
+      (NATIVE_RELAY_ENROLLMENT_PATHS as readonly string[]).includes(c.req.path)
+    ) {
+      if (!security.nativeEnrollment)
+        return c.json(
+          { error: { code: 'native_enrollment_unsupported' } },
+          403,
+        );
+      try {
+        const capability = security.nativeEnrollment.capability(c.req.raw);
+        capability.assertCurrent();
+        const installationKey = capability.installationBudgetKey();
+        const retryAfter = limiter.retryAfterSeconds(installationKey);
+        if (retryAfter !== undefined) {
+          c.header('Retry-After', String(retryAfter));
+          return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
+        }
+        limiter.recordFailure(installationKey);
+        await next();
+        capability.assertCurrent();
+        if (c.res.status < 400) limiter.clear(installationKey);
+        return c.res;
+      } catch {
+        return c.json({ error: { code: 'native_enrollment_invalid' } }, 403);
+      }
+    }
     if (
       !security.deploymentAuthentication &&
       !accountOperation &&
