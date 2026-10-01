@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
-    {"path":"docs/guides/agents.md","digest":"b28d533268d33758318539723a00a9259b904c777690a4c947c71e3be7a7f8c7","revision":"5148a05e2089e41546cfed52b0046ed64f938af5"},
+    {"path":"docs/guides/agents.md","digest":"1ebaf5821d7fe94bf50fae7d2ddbd516ff3993eee61939d2a959f91b65b82fef","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
