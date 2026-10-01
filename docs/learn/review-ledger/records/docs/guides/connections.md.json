@@ -70,9 +70,9 @@
 
     {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"28424df3841c4d12bd108ead688723c7fb604251545133ff6d9bf34628f52198","revision":"d566cc37ffb13172fb649c9b4c370e2430ecdd5b"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
@@ -106,7 +106,7 @@
 
     {"path":"src-server/runtime/agents/delegation.ts","digest":"68f406b4334bf5b4ed0bb64efc3a7149199fa6b8dcbab9aca17213dba5c3e363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
 
     {"path":"src-server/runtime/agents/request-delegation.ts","digest":"4580434538f5c94c90ecf3217bb8a4bef4fad2c4681a56d9de99b6241826c34f","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

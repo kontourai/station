@@ -16,7 +16,7 @@
 
     {"path":"src-server/providers/adapters/acp-mcp-passthrough.ts","digest":"bae3c16d36044bd319ec404432f98469e5140297f7875f2e139b95ea1b5e16b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"2651e71e5af7d1cd804f1cb4f790a6223bfd76b107a7bb5bfcfbb119b9cf99ae","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8d5cdcdc29642064219f23126b57f166b5ec5eff24454c6b4dc358494100c8a9","revision":"0265780f92a96e6aaacfa835ece7f1ee9736a732"},
 
     {"path":"src-server/providers/adapters/claude-skills-materialization.ts","digest":"221b6098abf237f280d14480d9afc6913973b9a94b47593999ba70ff731f0280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -36,7 +36,7 @@
 
     {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"1eaac93727668859c4347da608d045137ec995e8"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
 
