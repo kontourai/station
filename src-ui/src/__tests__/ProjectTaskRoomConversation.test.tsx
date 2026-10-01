@@ -10,7 +10,33 @@ const mocks = vi.hoisted(() => ({
   },
   stream: 'live' as 'live' | 'terminal',
 }));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'test',
+    isCurrent: () => true,
+  }),
+}));
+vi.mock('../hooks/useUnsavedGuard', () => ({
+  useUnsavedGuard: () => ({ DiscardModal: () => null }),
+}));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
+  TaskRoomWorkNotSentError: class extends Error {},
+  useTaskRoomAgentOptionsQuery: () => ({
+    data: { targets: [] },
+    isLoading: false,
+    isError: false,
+  }),
+  useTaskRoomAgentRequestsQuery: () => ({
+    data: { records: [] },
+    isError: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useSubmitTaskRoomAgentRequestMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
   useProjectTaskRoomDiscoveryQuery: () => mocks.discovery,
   useProjectTaskRoomHistoryQuery: () => ({
     data: { pages: [] },
@@ -58,8 +84,14 @@ describe('ProjectTaskRoomConversation capability states', () => {
         kind: 'existing',
         capabilities: { historyRead, messageWrite, revisionLinks: false },
       };
-      render(<ProjectTaskRoomConversation taskId="task-1" />);
-      expect(screen.getByRole('status').textContent).toBe(copy);
+      render(
+        <ProjectTaskRoomConversation
+          taskId="task-1"
+          projectSlug="demo"
+          taskCreatedAt="2026-09-30T12:00:00.000Z"
+        />,
+      );
+      expect(screen.getAllByRole('status')[0].textContent).toBe(copy);
       expect(
         screen.getByRole('textbox', { name: 'Message' }).matches(':disabled'),
       ).toBe(disabled);
@@ -76,8 +108,14 @@ describe('ProjectTaskRoomConversation capability states', () => {
       },
     };
     mocks.stream = 'terminal';
-    render(<ProjectTaskRoomConversation taskId="task-1" />);
-    expect(screen.getByRole('status').textContent).toBe(
+    render(
+      <ProjectTaskRoomConversation
+        taskId="task-1"
+        projectSlug="demo"
+        taskCreatedAt="2026-09-30T12:00:00.000Z"
+      />,
+    );
+    expect(screen.getAllByRole('status')[0].textContent).toBe(
       'Room history is readable and read-only.',
     );
     expect(

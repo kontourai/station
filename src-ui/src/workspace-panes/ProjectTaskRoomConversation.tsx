@@ -1,11 +1,8 @@
 import type { ProjectTaskRoomBrowserRecord } from '@kontourai/station-contracts/project-task-room-browser';
 import {
-  useAppendProjectTaskRoomHumanMessageMutation,
   useProjectTaskRoomDiscoveryQuery,
   useProjectTaskRoomHistoryQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useId, useState } from 'react';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomComposer } from './TaskRoomComposer';
 import { taskRoomRevisionLink } from './taskRoomRevisionLink';
@@ -36,9 +33,6 @@ export function ProjectTaskRoomConversation({
   const discover = useProjectTaskRoomDiscoveryQuery(taskId);
   const shared = useProjectTaskRoomContext(taskId);
   const history = useProjectTaskRoomHistoryQuery(taskId);
-  const append = useAppendProjectTaskRoomHumanMessageMutation(taskId);
-  const [draft, setDraft] = useState('');
-  const id = useId().replaceAll(':', '');
   const room = shared?.discovery ?? discover;
   const pages = history.data?.pages ?? [];
   const records = pages
@@ -61,16 +55,6 @@ export function ProjectTaskRoomConversation({
         : writable
           ? 'Message sending is available, but room history is not readable.'
           : 'Room history and message writing are unavailable.';
-  const submit = () => {
-    const text = draft.trim();
-    if (!text || !writable || append.isPending) return;
-    void append
-      .mutateAsync({ proposalId: randomCorrelationId(), text })
-      .then((outcome) => {
-        if (outcome.kind === 'committed' || outcome.kind === 'duplicate')
-          setDraft('');
-      });
-  };
   return (
     <section
       className="project-task-room-conversation"
@@ -131,40 +115,16 @@ export function ProjectTaskRoomConversation({
           resumed when the server provides its continuation cursor.
         </p>
       ) : null}
-      {projectSlug && taskCreatedAt ? (
-        <TaskRoomComposer
-          taskId={taskId}
-          projectSlug={projectSlug}
-          taskCreatedAt={taskCreatedAt}
-          writable={writable}
-          readable={readable}
-        />
-      ) : (
-        <>
-          <label htmlFor={`task-room-message-${id}`}>Message</label>
-          <textarea
-            id={`task-room-message-${id}`}
-            value={draft}
-            onChange={(event) => setDraft(event.currentTarget.value)}
-            disabled={!writable || append.isPending}
-          />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!writable || !draft.trim() || append.isPending}
-          >
-            Send to task room
-          </button>
-          {append.isError ||
-          (append.data && append.data.kind === 'rejected') ? (
-            <p role="alert">
-              {append.data?.kind === 'rejected'
-                ? `Message rejected: ${append.data.reason}. Draft retained.`
-                : 'Message outcome is unavailable. Do not resend until you have checked the room history.'}
-            </p>
-          ) : null}
-        </>
-      )}
+      {!projectSlug || !taskCreatedAt ? (
+        <p role="status">Verifying Task identity before sending.</p>
+      ) : null}
+      <TaskRoomComposer
+        taskId={taskId}
+        projectSlug={projectSlug ?? ''}
+        taskCreatedAt={taskCreatedAt ?? ''}
+        writable={writable && !!projectSlug && !!taskCreatedAt}
+        readable={readable}
+      />
     </section>
   );
 }

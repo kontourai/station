@@ -29,6 +29,7 @@ import { projectTaskRoomQueries } from '../queryFactories';
 
 export { TaskRoomWorkNotSentError } from '../client/task-room-work';
 export {
+  type TaskRoomWorkRequestScope,
   useSubmitTaskRoomAgentRequestMutation,
   useTaskRoomAgentOptionsQuery,
   useTaskRoomAgentRequestsQuery,

@@ -76,7 +76,7 @@ export function TaskRoomComposer({
     )
     .slice(0, 8);
   const selected = Math.min(active, Math.max(0, candidates.length - 1));
-  const picker = !!mention && !composing && !recipient && !locked;
+  const picker = writable && !!mention && !composing && !recipient && !locked;
   const select = (index: number) => {
     const agent = candidates[index];
     if (!agent?.ready || !mention) return;
