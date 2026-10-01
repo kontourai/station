@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { PageFrame } from '../../components/page-frame';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import {
@@ -210,7 +211,7 @@ function NativeMemberProjects({
         </p>
       )}
       {!selected ? (
-        <Empty label="No Projects are shared with this account yet." />
+        <Empty label="Nothing is shared with this account yet." />
       ) : (
         <>
           <nav aria-label="Shared Projects">
@@ -304,47 +305,51 @@ function NativeRelayMemberContent() {
   const route = activeConnection?.nativeBrokerRoute;
   if (!route) return null;
   return (
-    <main className="project-page">
-      <div className="project-page__inner">
-        <h1>{activeConnection.name}</h1>
-        <QueryClientProvider client={recoveryClient}>
-          <NativeSavedStations
-            onInvitationAccepted={(accepted, capturedScope) => {
-              if (
-                !memberClient ||
-                !scope?.isCurrent() ||
-                !capturedScope.isCurrent() ||
-                capturedScope.authorityKey !== scope.authorityKey ||
-                capturedScope.apiBase !== scope.apiBase ||
-                accepted.scope.stationId !== route.stationId
-              )
-                return;
-              void memberClient.invalidateQueries({
-                queryKey: [
-                  'native-member-projects',
-                  scope.apiBase,
-                  scope.authorityKey,
-                ],
-                exact: true,
-              });
-            }}
-          />
-        </QueryClientProvider>
-        {scope?.isCurrent() && memberClient ? (
-          <NativeMemberEpoch
-            key={scope.authorityKey}
-            scope={scope}
-            stationId={route.stationId}
-            client={memberClient}
-          />
-        ) : (
-          <p>
-            Sign in to this Station to view the Projects shared with your
-            account.
-          </p>
-        )}
-      </div>
-    </main>
+    <PageFrame
+      spec={{ title: activeConnection.name, width: 'full' }}
+      routeIdentity={`native-relay:${activeConnection.id}`}
+    >
+      <main className="project-page">
+        <div className="project-page__inner">
+          <QueryClientProvider client={recoveryClient}>
+            <NativeSavedStations
+              onInvitationAccepted={(accepted, capturedScope) => {
+                if (
+                  !memberClient ||
+                  !scope?.isCurrent() ||
+                  !capturedScope.isCurrent() ||
+                  capturedScope.authorityKey !== scope.authorityKey ||
+                  capturedScope.apiBase !== scope.apiBase ||
+                  accepted.scope.stationId !== route.stationId
+                )
+                  return;
+                void memberClient.invalidateQueries({
+                  queryKey: [
+                    'native-member-projects',
+                    scope.apiBase,
+                    scope.authorityKey,
+                  ],
+                  exact: true,
+                });
+              }}
+            />
+          </QueryClientProvider>
+          {scope?.isCurrent() && memberClient ? (
+            <NativeMemberEpoch
+              key={scope.authorityKey}
+              scope={scope}
+              stationId={route.stationId}
+              client={memberClient}
+            />
+          ) : (
+            <p>
+              Sign in to this Station to view the Projects shared with your
+              account.
+            </p>
+          )}
+        </div>
+      </main>
+    </PageFrame>
   );
 }
 

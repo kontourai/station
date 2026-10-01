@@ -267,6 +267,9 @@ it('reads published task content through the real member SDK without starting op
 it('keeps accountless native recovery open without any protected or operator request', () => {
   state.scope = null;
   render(<NativeRelayMemberShell />);
+  expect(
+    screen.getByRole('heading', { level: 1, name: 'Home Station' }),
+  ).toBeDefined();
   expect(screen.getByText('Native account recovery')).toBeDefined();
   expect(
     screen.getByText(
@@ -391,7 +394,7 @@ it('the real invitation panel refreshes an already-empty member catalog in its s
     throw new Error(path);
   });
   render(<NativeRelayMemberShell />);
-  await screen.findByText('No Projects are shared with this account yet.');
+  await screen.findByText('Nothing is shared with this account yet.');
   fireEvent.change(
     screen.getByRole('textbox', { name: 'Account invitation token' }),
     { target: { value: 'i'.repeat(43) } },
