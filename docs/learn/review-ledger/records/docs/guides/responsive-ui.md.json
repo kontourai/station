@@ -12,7 +12,7 @@
   "document": {"digest":"a2971c46c0cd8f8f7d8d315da79f4cb22faf67389e354e563f5c957411645d11","revision":"d7f3dc8591b9993d2fbf1d8156cbc27a3219af11"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"6d7061ad48a113e41fa1fa724d5bab6e2595cae92a19a8b11266203d31bdf43f","revision":"d3df244e3ce786e10d3a170b84435ab018618a62"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"03f403ab64ab73c3f46714dac224b5441826d3c236dbe87bb2c39cb070ce0fb1","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"2e2199715f6a2c6d3fa1ef7b3f712f6160d4a069d76acf6e61ab9a414c249731","revision":"d3df244e3ce786e10d3a170b84435ab018618a62"},
+    {"path":"src-ui/src/index.css","digest":"9b0f73c59e84688e32fcaff618a290e4fad31a51ace52e2ab6aa7ef2e714aa23","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-ui/src/slashCommands/tools.ts","digest":"a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/tokens.css","digest":"18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/tokens.css","digest":"482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c","revision":"de4d8ae141f5831213eacd90dee84bcdc45d87ba"},
 
     {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
