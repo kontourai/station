@@ -118,7 +118,7 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/components/ProjectTaskBoard.tsx","digest":"b9c7cb7dea85a39807c81516b71a1bc64e007fd25c3aff5ad03ebddc0fd1ad36","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
+    {"path":"src-ui/src/components/ProjectTaskBoard.tsx","digest":"f44e595e00051a0b9a39bb0ea86c0024182e9d4502c5716df78797a4c1c79fa4","revision":"62306ed51dd5dafdf744d3b779a251030f0e8bcb"},
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"}
   ],
