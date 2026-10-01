@@ -61,7 +61,10 @@ lifetime. Neither user port 3141 nor 3000 is allowed.
 ## Fresh person and Device journey
 
 1. `project plan.json /absolute/new-owned-run/person-invitation.json` creates an
-   owned Project and a pending viewer invitation through actual operator APIs.
+   owned Project, one published Task with fixed human message/document text, an
+   unshared private Project control, and a pending viewer invitation through
+   actual operator APIs. Publication is checked by a real shared-document
+   snapshot read before the person invitation is written.
    The person remains unregistered and has no membership or Device grant.
 2. The receiver creates a relay profile and copies its real public install
    proof from native key approval. Place it in a private operator input file.
@@ -85,9 +88,10 @@ lifetime. Neither user port 3141 nor 3000 is allowed.
    through the fixed native HTTP operation, and read the actual member Project.
    Invitation acceptance is not inferred from an arbitrary HTTP 200.
 
-The first helper creates a Project only. Shared-task document publication and
-the full user-action driver are follow-up fixture work; an empty shared-work
-response is not evidence of reading a published artifact. Only fixed small text
+The full user-action driver and physical receiver remain follow-up evidence.
+An empty shared-work response is not evidence of reading the published artifact.
+The operator publisher uses actual human TaskRoom message/edit-plan/batch
+operations; it dispatches no Agent or model. Only fixed small text
 traffic is authorized: no Agents, billable models, audio, or file traffic.
 
 Keep negative controls for unapproved/foreign surfaces, wrong Station key code,
@@ -101,7 +105,11 @@ Do not extend protocol, invitation, enrollment, or peer TTLs for fixture ease.
 SIGINT/SIGTERM or the owned deadline revokes current native routing grants in
 this exact broker scope, then settles the owned Station/Pion process group.
 Cleanup failures are errors, not success receipts. `cleanup.json` records both
-broker and process settlement. Already-issued end-user TURN credentials are
+broker and process settlement. After owned termination/EOF drain,
+`runtime-output.json` privately retains the bounded stdout/stderr capture, exit
+outcome, primary failure and truncation/invalid-UTF8 classifications. It is never
+printed. Capture or cleanup failures remain errors and preserve the primary
+runtime failure rather than replacing it with a success receipt. Already-issued end-user TURN credentials are
 bounded to at most 600 seconds after the last possible issuance; this service
 does not expose their instantaneous revocation. The broker owner may separately
 revoke known test usernames through an approved provider operation. Never delete
