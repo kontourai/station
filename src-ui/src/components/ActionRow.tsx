@@ -16,6 +16,9 @@ export type { OverflowAction } from './ActionOverflowMenu';
  * a third labelled button. `scripts/button-cap-ratchet.mjs` holds the same
  * line for rows that are not written with this component.
  *
+ * With neither `primary` nor `secondary`, the overflow trigger carries a word
+ * and IS the row's one labelled action; the scan counts it as one.
+ *
  * Order on screen is secondary, primary, overflow — the primary action sits
  * where a row's last button has always been, and the menu trails it.
  */
@@ -26,7 +29,6 @@ export function ActionRow({
   overflowLabel,
   label,
   className,
-  aloneText = 'Manage',
 }: {
   /** The action this row exists for. One element. */
   primary?: ReactNode;
@@ -38,18 +40,18 @@ export function ActionRow({
    * Names the `⋯` trigger and its menu ("More skill actions"). Required even
    * when `overflow` is empty today, so adding the first item cannot ship a
    * trigger with no accessible name.
+   *
+   * When the row has NO labelled action of its own (a card in a state that
+   * recommends nothing), the trigger shows this label's FIRST WORD beside the
+   * glyph — "Manage ⋯" for "Manage Kiro CLI", "More ⋯" for "More actions for
+   * Studio Mac". A lone glyph does not say there is anything behind it, and
+   * taking the word from the name keeps the name one clean phrase that begins
+   * with what is shown.
    */
   overflowLabel: string;
   /** Names the row as a group for assistive technology, when it needs one. */
   label?: string;
   className?: string;
-  /**
-   * The word shown beside `⋯` when the row has NO labelled action of its own
-   * (a card in a state that recommends nothing). A lone glyph does not say
-   * there is anything behind it; this makes the menu the row's one labelled
-   * action. `overflowLabel` should contain this word.
-   */
-  aloneText?: string;
 }) {
   if (!primary && !secondary && overflow.length === 0) return null;
   return (
@@ -62,7 +64,9 @@ export function ActionRow({
       <ActionOverflowMenu
         actions={overflow}
         label={overflowLabel}
-        {...(!primary && !secondary ? { triggerText: aloneText } : {})}
+        {...(!primary && !secondary
+          ? { triggerText: overflowLabel.trim().split(/\s+/)[0] }
+          : {})}
       />
     </div>
   );

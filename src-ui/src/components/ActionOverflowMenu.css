@@ -48,20 +48,6 @@
   gap: var(--space-3);
 }
 
-/* A menu opened from inside a dialog belongs ABOVE that dialog. The base
-   layer (`--layer-navigation`, index.css) is below `--layer-dialog`, so the
-   menu opened behind the surface holding its trigger. Same remedy, one step
-   up, that NewProjectModal's in-dialog browser uses; the backdrop stays one
-   below its own menu, as it does at the base layer. Two classes, so this
-   beats `.chat-dock__more-menu`/`-backdrop` on specificity, not order. */
-.chat-dock__more-backdrop.action-overflow--above-dialog {
-  z-index: calc(var(--layer-dialog) + 1);
-}
-
-.chat-dock__more-menu.action-overflow--above-dialog {
-  z-index: calc(var(--layer-dialog) + 2);
-}
-
 /* The hit area, ALWAYS ON rather than behind a coarse-pointer query: a 32px
    control is drawn, a 44px one is pressed. A pseudo-element instead of a
    bigger box so the row's height and the trigger's alignment with its

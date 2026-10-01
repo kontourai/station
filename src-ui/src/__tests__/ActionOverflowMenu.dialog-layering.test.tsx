@@ -1,33 +1,31 @@
 /**
- * @vitest-environment jsdom
- *
- * #3045 review M2 — an overflow menu opened from INSIDE a dialog, proved in a
- * real engine.
+ * #3045 review M2/M3 — an overflow menu opened from inside an overlay, proved
+ * in a real engine with the real components running.
  *
  * The menu portals to the body at `--layer-navigation` (9350), which is right
  * for the dock and for a page: it beats the dock and yields to a dialog. It
- * is wrong for a trigger that sits IN a dialog (`--layer-dialog`, 10000): the
- * menu opened behind the surface holding its own trigger — nothing appeared,
- * and its rows hit-tested to the dialog. A z-index is a cascade outcome and
- * "is it clickable" is a hit test, so neither can be answered by reading the
- * declaration; jsdom's `elementsFromPoint` returns nothing useful.
+ * is wrong for a trigger hosted by anything higher: the menu opened BEHIND
+ * the surface holding its own trigger — nothing appeared, and its rows
+ * hit-tested to that surface.
  *
- * Shape follows ChatDockHeaderMoreMenu.layering.test.tsx: the REAL `Dialog`
- * and `ActionRow` are rendered here with the menu open, and that markup is
- * laid out by the real stylesheets in Chromium.
+ * The first fix asked "is there a dialog among the trigger's DOM ancestors".
+ * That missed two cases, both here: a surface portalled out of a dialog (the
+ * dialog is not a DOM ancestor) and a dialog on the system layer (above
+ * `dialog + 2`). The menu now reads its host's actual layer from computed
+ * style and from the overlay context, and neither is something jsdom
+ * computes — so this bundles a small entry with esbuild and runs React in
+ * Chromium: real clicks, real layout, real `elementFromPoint`.
  */
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from '@playwright/test';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { chromium, type Page } from '@playwright/test';
+import { build } from 'esbuild';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   assertNoImportsSurvive,
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
-import { ActionRow } from '../components/ActionRow';
-import { Dialog } from '../components/Dialog';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
@@ -37,188 +35,195 @@ const SHEETS = [
   '../components/ActionOverflowMenu.css',
 ].map((sheet) => resolve(HERE, sheet));
 
-const ITEMS = [
-  { key: 'a', label: 'Duplicate', onSelect: () => {} },
-  { key: 'b', label: 'Export', onSelect: () => {} },
-  { key: 'c', label: 'Remove', tone: 'danger' as const, onSelect: () => {} },
-];
-
-/** The real components, menu open, with the trigger in or out of a dialog. */
-function markupWithOpenMenu(inDialog: boolean): string {
-  // One case measures both arrangements, so start from an empty document.
-  cleanup();
-  document.body.innerHTML = '';
-  const row = (
-    <ActionRow
-      overflowLabel="More skill actions"
-      primary={<button type="button">Save</button>}
-      overflow={ITEMS}
-    />
-  );
-  render(
-    inDialog ? (
-      <Dialog title="Edit skill" closeLabel="Close" onClose={() => {}}>
-        {row}
-      </Dialog>
-    ) : (
-      row
-    ),
-  );
-  const trigger = screen.getByRole('button', { name: 'More skill actions' });
-  // The middle of a 1200x800 viewport, where the centred dialog panel is, so
-  // the menu opens over the panel rather than beside it.
-  trigger.getBoundingClientRect = () =>
-    ({ top: 380, bottom: 412, left: 668, right: 700 }) as DOMRect;
-  fireEvent.click(trigger);
-  return document.body.innerHTML;
-}
-
-function fixtureHtml(bodyMarkup: string): string {
-  const seen = new Set<string>();
-  const css = SHEETS.map((sheet) => resolveCssImports(sheet, seen)).join('\n');
-  assertNoImportsSurvive(css);
-  return `<!doctype html>
-<html>
-  <head><style>${css}</style></head>
-  <body style="margin:0">${bodyMarkup}</body>
-</html>`;
-}
-
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 describe.skipIf(!chromiumAvailable)(
-  'overflow menu reachability from inside a dialog (#3045)',
+  'overflow menu reachability from inside an overlay (#3045)',
   () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
+    let html: (scenario: string) => string;
 
     beforeAll(async () => {
+      const bundle = await build({
+        entryPoints: [resolve(HERE, 'fixtures/overflow-menu-harness.tsx')],
+        bundle: true,
+        format: 'iife',
+        write: false,
+        jsx: 'automatic',
+        platform: 'browser',
+        loader: { '.css': 'empty' },
+        define: {
+          'process.env.NODE_ENV': '"production"',
+          'import.meta.env': '{}',
+        },
+        logLevel: 'silent',
+      });
+      const script = bundle.outputFiles[0]!.text.replaceAll(
+        '</script',
+        '<\\/script',
+      );
+      const seen = new Set<string>();
+      const css = SHEETS.map((sheet) => resolveCssImports(sheet, seen)).join(
+        '\n',
+      );
+      assertNoImportsSurvive(css);
+      html = (scenario) => `<!doctype html>
+<html>
+  <head><style>${css}</style></head>
+  <body style="margin:0">
+    <script>window.__scenario = ${JSON.stringify(scenario)};</script>
+    <script>${script}</script>
+  </body>
+</html>`;
       browser = await chromium.launch();
-    });
+    }, 120_000);
     afterAll(async () => {
       await browser?.close();
     });
-    afterEach(() => {
-      cleanup();
-      document.body.innerHTML = '';
-    });
 
-    async function measure(inDialog: boolean) {
+    async function withMenuOpen<T>(
+      scenario: string,
+      run: (page: Page) => Promise<T>,
+    ): Promise<T> {
       const page = await browser.newPage({
         viewport: { width: 1200, height: 800 },
       });
       try {
-        await page.setContent(fixtureHtml(markupWithOpenMenu(inDialog)));
-        return await page.evaluate(() => {
-          const menu = document.querySelector<HTMLElement>('[role="menu"]');
-          if (!menu) throw new Error('no menu rendered');
-          const rows = [
-            ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-          ];
-          const overlay = document.querySelector('.responsive-surface-overlay');
-          const panel = document.querySelector('.responsive-surface-panel');
-          const layer = (element: Element | null) =>
-            element ? Number(getComputedStyle(element).zIndex) : Number.NaN;
-          const overlaps = (a?: DOMRect, b?: DOMRect) =>
-            Boolean(
-              a &&
-                b &&
-                a.top < b.bottom &&
-                a.bottom > b.top &&
-                a.left < b.right &&
-                a.right > b.left,
-            );
-          const describe = (element: Element | null) =>
-            element
-              ? `${element.tagName.toLowerCase()}.${element.className || '(no class)'}`
-              : 'null';
-          const backdrop = document.querySelector('.chat-dock__more-backdrop');
-          const backdropRect = backdrop?.getBoundingClientRect();
-          return {
-            menuOverPanel: overlaps(
-              menu.getBoundingClientRect(),
-              panel?.getBoundingClientRect(),
-            ),
-            layers: {
-              menu: layer(menu),
-              backdrop: layer(backdrop),
-              dialog: layer(overlay),
-            },
-            rows: rows.map((row) => {
-              const rect = row.getBoundingClientRect();
-              const top = document.elementFromPoint(
-                rect.left + rect.width / 2,
-                rect.top + rect.height / 2,
-              );
-              return {
-                label: row.textContent ?? '',
-                height: Math.round(rect.height),
-                hitsRow: top === row || row.contains(top),
-                topmost: describe(top),
-              };
-            }),
-            // A press OUTSIDE the menu must reach the menu's own backdrop
-            // (which dismisses it), not the dialog underneath.
-            outsideHits: describe(
-              document.elementFromPoint(
-                (backdropRect?.left ?? 0) + 20,
-                (backdropRect?.top ?? 0) + 20,
-              ),
-            ),
-          };
+        await page.setContent(html(scenario));
+        const trigger = page.getByRole('button', {
+          name: 'More skill actions',
         });
+        await trigger.waitFor();
+        if (scenario === 'popover-in-dialog') {
+          // The popover layer sits BELOW the dialog layer in this app, so the
+          // trigger is covered and an ordinary click cannot reach it. What is
+          // under test is where the MENU lands once it is open, so open it
+          // through the DOM. Every other scenario uses a real click.
+          await trigger.evaluate((element: HTMLElement) => element.click());
+        } else {
+          await trigger.click();
+        }
+        await page.getByRole('menu').waitFor();
+        return await run(page);
       } finally {
         await page.close();
       }
     }
 
-    test('every row of a menu opened inside a dialog can be clicked', async () => {
-      const result = await measure(true);
+    const measure = (page: Page) =>
+      page.evaluate(() => {
+        const menu = document.querySelector<HTMLElement>('[role="menu"]');
+        if (!menu) throw new Error('no menu rendered');
+        const layer = (element: Element | null) =>
+          element ? Number(getComputedStyle(element).zIndex) : Number.NaN;
+        const describe = (element: Element | null) =>
+          element
+            ? `${element.tagName.toLowerCase()}.${element.className || '(no class)'}`
+            : 'null';
+        const overlays = [
+          ...document.querySelectorAll('.responsive-surface-overlay'),
+        ];
+        const box = menu.getBoundingClientRect();
+        return {
+          layers: {
+            menu: layer(menu),
+            backdrop: layer(
+              document.querySelector('.chat-dock__more-backdrop'),
+            ),
+            overlays: overlays.map(layer),
+          },
+          menuOverAnOverlayPanel: [
+            ...document.querySelectorAll('.responsive-surface-panel'),
+          ].some((panel) => {
+            const other = panel.getBoundingClientRect();
+            return (
+              box.top < other.bottom &&
+              box.bottom > other.top &&
+              box.left < other.right &&
+              box.right > other.left
+            );
+          }),
+          rows: [
+            ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+          ].map((row) => {
+            const rect = row.getBoundingClientRect();
+            const top = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2,
+            );
+            return {
+              label: row.textContent ?? '',
+              hitsRow: top === row || row.contains(top),
+              topmost: describe(top),
+            };
+          }),
+          outsideHits: describe(document.elementFromPoint(5, 5)),
+        };
+      });
 
-      // The premise: a menu beside the dialog would hit-test fine whatever
-      // its layer.
-      expect(
-        result.menuOverPanel,
-        'fixture must open the menu over the dialog panel',
-      ).toBe(true);
-      expect(result.rows.map((row) => row.label)).toEqual([
-        'Duplicate',
-        'Export',
-        'Remove',
-      ]);
-      for (const row of result.rows) {
-        expect(row.height).toBeGreaterThan(0);
+    test.each([
+      ['dialog', 'a dialog'],
+      ['system', 'a dialog on the system layer'],
+      ['dialog-in-dialog', 'a dialog opened from a dialog'],
+      ['popover-in-dialog', 'a popover surface opened from a dialog'],
+    ])(
+      '%s: every row of a menu opened inside %s can be hit',
+      async (scenario) => {
+        const result = await withMenuOpen(scenario, measure);
+
+        // The premise: a menu that misses every overlay would hit-test fine
+        // whatever its layer.
         expect(
-          row.hitsRow,
-          `a click at the centre of "${row.label}" landed on ${row.topmost}`,
+          result.menuOverAnOverlayPanel,
+          'fixture must open the menu over an overlay panel',
         ).toBe(true);
-      }
+        expect(result.rows.map((row) => row.label)).toEqual([
+          'Duplicate',
+          'Export',
+          'Remove',
+        ]);
+        for (const row of result.rows) {
+          expect(
+            row.hitsRow,
+            `a click at the centre of "${row.label}" landed on ${row.topmost}`,
+          ).toBe(true);
+        }
+        // Above EVERY overlay on the page, with its backdrop one step below it
+        // and still above them — so a press outside reaches the backdrop.
+        const host = Math.max(...result.layers.overlays);
+        expect(result.layers.menu).toBeGreaterThan(host);
+        expect(result.layers.backdrop).toBeGreaterThan(host);
+        expect(result.layers.backdrop).toBe(result.layers.menu - 1);
+        expect(result.outsideHits).toContain('chat-dock__more-backdrop');
+      },
+    );
+
+    test('a real click on a row inside a dialog runs its action', async () => {
+      const selected = await withMenuOpen('dialog', async (page) => {
+        await page.getByRole('menuitem', { name: 'Export' }).click();
+        await page.getByRole('menu').waitFor({ state: 'detached' });
+        return page.evaluate(() => window.__selected);
+      });
+      expect(selected).toEqual(['Export']);
     });
 
-    test('the menu and its backdrop are above the dialog, one step apart', async () => {
-      const { layers, outsideHits } = await measure(true);
-
-      expect(layers.dialog).toBeGreaterThan(0);
-      expect(layers.menu).toBeGreaterThan(layers.dialog);
-      expect(layers.backdrop).toBeGreaterThan(layers.dialog);
-      expect(layers.backdrop).toBe(layers.menu - 1);
-      expect(outsideHits).toContain('chat-dock__more-backdrop');
-    });
-
-    test('outside a dialog the menu stays on the navigation layer, below dialogs', async () => {
-      const inside = await measure(true);
-      const { layers, rows } = await measure(false);
+    test('outside any overlay the menu stays on the navigation layer, below dialogs', async () => {
+      const dialog = await withMenuOpen('dialog', measure);
+      const page = await withMenuOpen('page', measure);
 
       // Raising EVERY menu above dialogs would put a page's menu over a
       // confirm it did not open.
-      expect(layers.menu).toBeLessThan(inside.layers.dialog);
-      expect(layers.backdrop).toBe(layers.menu - 1);
-      expect(rows.every((row) => row.hitsRow)).toBe(true);
+      expect(page.layers.menu).toBeLessThan(
+        Math.max(...dialog.layers.overlays),
+      );
+      expect(page.layers.backdrop).toBe(page.layers.menu - 1);
+      expect(page.rows.every((row) => row.hitsRow)).toBe(true);
     });
   },
 );
 
 test.skipIf(chromiumAvailable)(
-  'overflow menu in a dialog — Chromium not installed, cannot verify (#3045)',
+  'overflow menu in an overlay — Chromium not installed, cannot verify (#3045)',
   () => {
     throw new Error(
       'Playwright Chromium is not installed in this worktree, so the menu’s ' +

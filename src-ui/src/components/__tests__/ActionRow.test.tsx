@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ActionRow } from '../ActionRow';
 
@@ -189,18 +189,18 @@ describe('ActionRow', () => {
     expect(trigger.className).toContain('action-overflow__trigger--labelled');
     unmount();
 
-    // A label that does not contain the word gets it prefixed (WCAG 2.5.3).
+    // The word is the label's own first word, so the name is one phrase
+    // that begins with what is shown (WCAG 2.5.3) — never "Manage: More …".
     render(
       <ActionRow
         overflowLabel="More actions for Studio Mac"
         overflow={[item('a', 'Edit'), item('b', 'Remove')]}
       />,
     );
-    expect(
-      screen.getByRole('button', {
-        name: 'Manage: More actions for Studio Mac',
-      }),
-    ).toBeTruthy();
+    const other = screen.getByRole('button', {
+      name: 'More actions for Studio Mac',
+    });
+    expect(other.textContent).toBe('More⋯');
   });
 
   test('the glyph column exists only when a row has a glyph', () => {
@@ -410,23 +410,65 @@ describe('ActionRow', () => {
       );
     });
 
-    test('follows its trigger when the page scrolls or the window resizes', () => {
+    /** Placement is batched to one per frame. */
+    const nextFrame = () =>
+      act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+
+    test('follows its trigger when the page scrolls or the window resizes', async () => {
       const geometry = {
         trigger: { left: 748, top: 100, width: 32, height: 32 },
         menu: { left: 600, top: 138, width: 180, height: 80 },
       };
-      withGeometry(geometry, () => {
+      const rect = (box: Box) =>
+        ({
+          ...box,
+          right: box.left + box.width,
+          bottom: box.top + box.height,
+        }) as DOMRect;
+      const rects = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          return rect(
+            this.getAttribute('role') === 'menu'
+              ? geometry.menu
+              : geometry.trigger,
+          );
+        });
+      try {
         const menu = openMenu();
         expect(menu.style.top).toBe('138px');
 
         geometry.trigger = { ...geometry.trigger, top: 40 };
         fireEvent.scroll(document.body);
+        // Not yet: one placement per frame, however many events arrive.
+        expect(menu.style.top).toBe('138px');
+        await nextFrame();
         expect(menu.style.top).toBe('78px');
 
         geometry.trigger = { ...geometry.trigger, left: 400 };
         fireEvent(window, new Event('resize'));
+        await nextFrame();
         expect(menu.style.right).toBe(`${window.innerWidth - 432}px`);
-      });
+
+        // The menu's OWN scroll (it is height-capped) is not a reason to move.
+        geometry.trigger = { ...geometry.trigger, top: 300 };
+        fireEvent.scroll(menu);
+        await nextFrame();
+        expect(menu.style.top).toBe('78px');
+
+        // Scrolled out of the viewport: nothing left to be attached to.
+        geometry.trigger = { ...geometry.trigger, top: -200 };
+        fireEvent.scroll(document.body);
+        await nextFrame();
+        expect(screen.queryByRole('menu')).toBeNull();
+      } finally {
+        rects.mockRestore();
+      }
     });
   });
 

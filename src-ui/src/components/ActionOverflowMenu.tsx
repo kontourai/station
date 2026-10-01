@@ -2,6 +2,7 @@ import type React from 'react';
 import {
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../hooks/useMenuFocus';
+import { hostLayerOf, OverlayLayerContext } from './overlay-layer';
 // The dismiss backdrop's button reset lives with the header's portalled menus,
 // which is the same shape this one is: a full-viewport hit target that must not
 // inherit the global button chrome.
@@ -89,10 +91,6 @@ const MENU_PADDING_PX = 12;
 const roomNeededPx = (rowCount: number) =>
   rowCount * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
 
-/** A dialog the trigger sits inside, if any. */
-const DIALOG_SELECTOR =
-  '[aria-modal="true"], [role="dialog"], [role="alertdialog"]';
-
 /**
  * A `⋯` trigger and the menu of commands folded behind it.
  *
@@ -153,11 +151,11 @@ export function ActionOverflowMenu({
   triggerClassName?: string;
   /**
    * A visible word beside the `⋯`, for a trigger that stands ALONE. A bare
-   * glyph with nothing next to it does not say there is anything to manage;
-   * `ActionRow` passes this when it has no labelled action of its own. It is
-   * then the row's one labelled action. The accessible name must contain it
-   * (WCAG 2.5.3), so when `label` does not, the name becomes
-   * `<triggerText>: <label>`.
+   * glyph with nothing next to it does not say there is anything behind it.
+   * `ActionRow` passes the first word of `label` when it has no labelled
+   * action of its own, so the accessible name (`label`) always begins with
+   * what is shown (WCAG 2.5.3). A direct caller must keep that true: the word
+   * has to appear in `label`.
    */
   triggerText?: string;
   /**
@@ -171,7 +169,9 @@ export function ActionOverflowMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<React.CSSProperties>({});
-  const [aboveDialog, setAboveDialog] = useState(false);
+  /** The menu's z-index when its host outranks the default; see `placeMenu`. */
+  const [layer, setLayer] = useState<number | null>(null);
+  const overlay = useContext(OverlayLayerContext);
   const reasonIdPrefix = useId();
   const ownRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
@@ -212,7 +212,17 @@ export function ActionOverflowMenu({
    *
    * Run before paint on open, and again on scroll and resize while open: the
    * menu is `position: fixed`, so without that it stays put while the row it
-   * belongs to scrolls away underneath it.
+   * belongs to scrolls away underneath it. If the trigger has scrolled out of
+   * the viewport altogether the menu closes: a menu pinned to an edge with
+   * nothing visibly attached to it belongs to nothing.
+   *
+   * LAYER, decided here too. The menu's own layer (`--layer-navigation`) is
+   * below a dialog's, so a menu whose trigger is hosted by anything on a
+   * higher layer opened BEHIND its host. It takes the layer just above
+   * whatever hosts the trigger — read from the trigger's real stacking
+   * context (`hostLayerOf`), not from "is there a dialog ancestor": that
+   * missed a popover portalled out of a dialog, and a dialog on the system
+   * layer. Its backdrop stays one step below it, above the host.
    */
   const placeMenu = useCallback(() => {
     const menu = menuRef.current;
@@ -223,6 +233,28 @@ export function ActionOverflowMenu({
     // jsdom lays nothing out; keep the press-time position rather than
     // "correcting" it from a 0x0 box.
     if (box.width === 0 && box.height === 0) return;
+    if (
+      anchor.bottom < 0 ||
+      anchor.top > window.innerHeight ||
+      anchor.right < 0 ||
+      anchor.left > window.innerWidth
+    ) {
+      setOpen(false);
+      return;
+    }
+    const hostLayer = hostLayerOf(trigger, overlay);
+    const ownLayer = Number.parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--layer-navigation',
+      ),
+      10,
+    );
+    // +2: the backdrop takes +1, between the host and the menu.
+    setLayer(
+      Number.isFinite(ownLayer) && hostLayer >= ownLayer - 1
+        ? hostLayer + 2
+        : null,
+    );
     // `scrollHeight` is the content's height even while `max-height` clips it.
     const natural = menu.scrollHeight + (box.height - menu.clientHeight);
     const roomBelow =
@@ -247,20 +279,37 @@ export function ActionOverflowMenu({
     setPosition((current) =>
       JSON.stringify(current) === JSON.stringify(next) ? current : next,
     );
-  }, [menuRef]);
+  }, [menuRef, overlay]);
 
   useLayoutEffect(() => {
     if (!open) return;
     placeMenu();
-    window.addEventListener('resize', placeMenu);
+    // One placement per frame however many scroll events arrive in it.
+    let frame: number | null = null;
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        placeMenu();
+      });
+    };
+    const onScroll = (event: Event) => {
+      // The menu scrolling INSIDE itself (it is height-capped) moves nothing
+      // it is anchored to.
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      schedule();
+    };
+    window.addEventListener('resize', schedule);
     // Capture: the scroller is usually an ancestor pane, not the window, and
     // scroll does not bubble.
-    window.addEventListener('scroll', placeMenu, true);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
-      window.removeEventListener('resize', placeMenu);
-      window.removeEventListener('scroll', placeMenu, true);
+      if (frame !== null) cancelAnimationFrame(frame);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', onScroll, true);
     };
-  }, [open, placeMenu]);
+  }, [open, placeMenu, menuRef]);
 
   /**
    * Close whenever the row count changes the branch that OWNS the menu.
@@ -345,13 +394,8 @@ export function ActionOverflowMenu({
   ];
   const hasGlyphColumn =
     reserveGlyphColumn || actions.some((action) => action.glyph);
-  const namedLabel =
-    triggerText && !label.toLowerCase().includes(triggerText.toLowerCase())
-      ? `${triggerText}: ${label}`
-      : label;
   const triggerName =
-    badgeCount > 0 && badgeLabel ? `${namedLabel} — ${badgeLabel}` : namedLabel;
-  const layerClass = aboveDialog ? ' action-overflow--above-dialog' : '';
+    badgeCount > 0 && badgeLabel ? `${label} — ${badgeLabel}` : label;
 
   return (
     <>
@@ -382,10 +426,6 @@ export function ActionOverflowMenu({
                   right: `${window.innerWidth - rect.right}px`,
                 },
           );
-          // A menu belongs above the surface that hosts its trigger. Portalled
-          // to the body at the navigation layer it would open BEHIND a dialog
-          // (`--layer-dialog` is higher), invisible and unclickable.
-          setAboveDialog(event.currentTarget.closest(DIALOG_SELECTOR) !== null);
           setOpen((wasOpen) => !wasOpen);
         }}
       >
@@ -409,7 +449,8 @@ export function ActionOverflowMenu({
               <button
                 type="button"
                 tabIndex={-1}
-                className={`header-menu__dismiss-backdrop chat-dock__more-backdrop${layerClass}`}
+                className="header-menu__dismiss-backdrop chat-dock__more-backdrop"
+                style={layer === null ? undefined : { zIndex: layer - 1 }}
                 aria-label={`Close ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
                 // Stopped for the same reason every row stops it: the portal
                 // leaves the DOM subtree but not the React tree, so without
@@ -425,11 +466,16 @@ export function ActionOverflowMenu({
                   `menu-primitive.cascade.test.tsx` measures these selectors. */}
               <div
                 ref={menuRef}
-                className={`menu-surface dock-placement-menu chat-dock__more-menu${layerClass}`}
+                className="menu-surface dock-placement-menu chat-dock__more-menu"
                 role="menu"
                 aria-label={label}
                 tabIndex={-1}
-                style={{ position: 'fixed', overflowY: 'auto', ...position }}
+                style={{
+                  position: 'fixed',
+                  overflowY: 'auto',
+                  ...position,
+                  ...(layer === null ? {} : { zIndex: layer }),
+                }}
               >
                 {ordered.map((action, index) => {
                   // See `OverflowAction.disabledReason`: a row that explains
