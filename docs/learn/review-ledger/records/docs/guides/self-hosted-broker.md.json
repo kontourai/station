@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
 
-  "document": {"digest":"069254200af71e444c1ccb959c35cce1931b56db475ee74a63e3c1f73b37ffd8","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+  "document": {"digest":"88d6a1ac06c9efe9f51df9234a3770d993716296b946bfbe5f789324be3849dd","revision":"66619dbe76e6d19eb63f6be3e77a2643601b6f8e"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
@@ -26,29 +26,29 @@
 
     {"path":"packages/connect/src/core/selfHostedBrokerBrowserClient.ts","digest":"9faa38be38d8546deb92d03624067408c37f222604291f2e7120950f285bdea2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"packages/contracts/src/self-hosted-broker.ts","digest":"afca2af3b7263c1cc1713efcbaca132e212fee73178b395a705ad89ab4be2963","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"packages/contracts/src/self-hosted-broker.ts","digest":"cb8835bbd9ac3a09aa9ea8ecafb0c6b42488a64021eb98d5b445ce764a6df907","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
     {"path":"packages/shared/src/connection-proof.ts","digest":"921ea3f05e5e87aa308552c46b7dc567a340ca6c02989b710306ecfc6dd3c6b4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
     {"path":"scripts/native-relay-diagnostic-echo-lab.ts","digest":"66ea51d710a67c1675c9290cac13ec03b314a9e37069a5d0fe87f1bfd39c1442","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"scripts/self-hosted-broker.ts","digest":"94f81b48093080a0e80c3cb131a5fb568ca970b277209fb8a47ab560bd6fff25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
     {"path":"scripts/self-hosted-connector-identity.ts","digest":"ee28b6effe541e06b4cce903e44fcbd2c3452649b0620e0a23391eb22cda977d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-desktop/src/lib.rs","digest":"3fc1ce652ceafb683a3e7740ba36f18508d8e4169f982f775bb9705b2ce1a5bf","revision":"9fed6339746f3ecb61fc427b505e02b2824745cf"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"c702b8c3079399f04156eef2a27fee77e36930042ed8d2d7ebf18d65c0869318","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"be92e2c3c83bbfddfa0259210b0334f86dfad8bc249ad96456eef51b927dddb8","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"27104959cd867e90c3871113e84c6794a5a921f8b8e7143a28c73bc7481e53bf","revision":"c8f4f46d043674770b67cf26f41f541433a74de9"},
 
-    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"77f5b988eb6104e08c59594d1666791534f973e165c0f3691cec81774e9115d5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"467b2f9d1da99055b26b24e7ce09d225440a2a145f653bbc96025662e14bf771","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
     {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"bfb4210cc70ad838829c8e340b6c15536b93a6cb15ee3d26c0fd1b4b3f39981a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"fe87d55c8a067d068c07d79d3d1f3e5dbd488db7795bea0a5eafd4913629903a","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
     {"path":"src-server/routes/system/relay-enrollment-routes.ts","digest":"3844e28d46c1394058412e854d53c725d813651ebea53c7de22430bc409fc52f","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -72,9 +72,9 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-client.ts","digest":"1ed8d00b5231ddaf349f20ded6536562516662db8eacf485a67a00e96f3064c3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"0acbbb36351bcb535e346310a19163921ce8b4314617d0a5b5f011b70ad443a8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"408c9acaacc694e5dd56d93289701fc54a3f9c688470f33b88d982c3f470a263","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"8dcff05f0bbf43d8729dd9fd24c2191048720126bd94fa4528753cc3df3def56","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -104,11 +104,11 @@
 
     {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"scripts/__tests__/self-hosted-broker-cli.test.ts","digest":"fc0e77c83d53e1aa2fa7dc56792e3b7d64c56ef096064143a967377ef2c02313","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"scripts/__tests__/self-hosted-broker-cli.test.ts","digest":"3420d7853707f5ea714bf673a691e499cd3567c54b457b23824f49bd76ee3ec1","revision":"7badec8afccf1359a99e3a81b6b688fd1a32a916"},
 
     {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"781f0ffca73205d3a35391ddb9f8a5dd8204eb710867c2f8c0030592fa1ddfc5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"ae25f8d557c8b484434c3266683a466b1048289577508666194e5da736cd87b9","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
     {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
@@ -128,7 +128,29 @@
 
     {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"}
+    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"deployment/self-hosted-broker/compose.yaml","digest":"236dc3357eb52f96e942914bbeab383f51be82e92718eab117bc15f8aea1b67e","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
+
+    {"path":"deployment/self-hosted-broker/Caddyfile","digest":"609544b0060b97fd9167078d768a4538444c39682ebe33a18539dbd47efa8e7f","revision":"d55b3c7896a9f7b347a2db676a8096f53931b5d2"},
+
+    {"path":"deployment/self-hosted-broker/.env.example","digest":"556b997484fc854ea509f91bb0f39b12829ddd882e89619180098ed9b95bd101","revision":"ce1dff921cfc4c580e38ae66f5d27f32eda7f0ce"},
+
+    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"e01bc77122b9ed7b4323dde178d7c82334f7de49"},
+
+    {"path":"scripts/lib/turn-fixture.ts","digest":"cce759228189ccf1849d9e339a08ca6bbf82558d0a1a501e9e3c1723237d6917","revision":"60a7e0cc312d3dd061f5f30babcf966131b6129e"},
+
+    {"path":"packages/contracts/src/relay-ice.ts","digest":"b6adeb4613b99bd77ea6520d058f1752c0afc4e4204f5676c3c6a15acdac7ce6","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+
+    {"path":"packages/connect/src/core/relayIceConfiguration.ts","digest":"36136718fdba9d009a3855856fd4869f6aeb2f3d8ef275b5e371f2e8d2a205c7","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+
+    {"path":"src-server/services/connections/broker-ice-service.ts","digest":"876a5129560e1a7c51eec6a9d553cab08f30a1c46770c144e286e83866832fe3","revision":"1efe2d8ed7db54f07c856ff186585096cb25d738"},
+
+    {"path":"src-server/services/connections/cloudflare-turn-provider.ts","digest":"9cbdebaa7fc780b8bda0a5716475698ea82c0ee9ae5114bddb5ae65fe277a272","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+
+    {"path":"src-server/services/connections/__tests__/broker-ice-service.test.ts","digest":"4fbd788308386f2cb2bd270963df4dd24707d4839d5e58857806a8d3857c4925","revision":"7badec8afccf1359a99e3a81b6b688fd1a32a916"},
+
+    {"path":"packages/connect/src/__tests__/relayIceConfiguration.test.ts","digest":"3146699fe18f669c88e277edc5ebd750a3250233d6fe1f85055c9e3ce059a637","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"}
   ],
 
   "checks": [

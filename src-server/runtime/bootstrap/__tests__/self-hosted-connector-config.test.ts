@@ -15,7 +15,7 @@ import { serve } from '@hono/node-server';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
 import { calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { writeNativeRelayInvitation } from '../../../../scripts/native-relay-invite.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
 import {
@@ -321,6 +321,39 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
     ).toThrow('connector_config_path_not_absolute');
   });
 
+  test('explicit broker-issued TURN mode mounts through the normal connector factory without storing TURN credentials', async () => {
+    const setup = await validSetup({ turn: { source: 'broker' } });
+    const factory = loadSelfHostedBrokerConnectorConfig({
+      homeDir: setup.home,
+      env: { STATION_BROKER_CONFIG_FILE: setup.configPath },
+    });
+    expect(factory).not.toBeNull();
+    const request = vi.spyOn(globalThis, 'fetch');
+    try {
+      const runtime = factory!.selfHostedBrokerConnector.create(
+        fakeApplication(),
+      );
+      expect(runtime).toBeInstanceOf(SelfHostedBrokerRuntime);
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      request.mockRestore();
+    }
+  });
+  test.each([
+    { source: 'broker', password: 'forbidden-static-mix' },
+    { source: 'arbitrary-issuer' },
+  ])(
+    'refuses mixed or arbitrary dynamic TURN configuration %#',
+    async (turn) => {
+      const setup = await validSetup({ turn });
+      expect(() =>
+        loadSelfHostedBrokerConnectorConfig({
+          homeDir: setup.home,
+          env: { STATION_BROKER_CONFIG_FILE: setup.configPath },
+        }),
+      ).toThrow('connector_config_turn_invalid');
+    },
+  );
   test('valid config loads, defaults apply, factory composes without network', async () => {
     const { home, configPath } = await validSetup();
     // Producer widths agree with the closed schema (22/43).

@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./relay-ice": "./src/core/relayIceConfiguration.ts",
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
@@ -26,7 +27,8 @@
     "./application-channel-frames": "./src/core/applicationChannelFrames.ts",
     "./self-hosted-browser": "./src/core/selfHostedBrowser.ts",
     "./native-diagnostic-echo": "./src/core/nativeDiagnosticEcho.ts",
-    "./native-application": "./src/core/nativeApplicationTransport.ts"
+    "./native-application": "./src/core/nativeApplicationTransport.ts",
+    "./native-enrollment": "./src/core/nativeEnrollmentExchange.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets && node ../../scripts/write-dist-stamp.mjs",

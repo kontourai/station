@@ -87,9 +87,11 @@ account/Device enrollment. See the [broker lifecycle contract](../guides/self-ho
 The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 `__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
 
-### Desktop application signaling commands
+<a id="desktop-application-signaling-commands"></a>
 
-The Desktop registers main-window-only commands for public binding metadata and
+### Native application signaling commands
+
+Desktop and mobile hosts register main-window-only commands for public binding metadata and
 the separate host-owned native application peer. The existing
 `station_native_relay_application_binding` command remains the source of the
 saved profile's public scope, client surface and approved Station trust view.
@@ -125,10 +127,12 @@ packaged-platform behavior, physical-device qualification or a completed
 authenticated Project journey. The account proof-key vault below also remains
 separate from account sign-in and enrollment.
 
-### Desktop account proof-key foundation
+<a id="desktop-account-proof-key-foundation"></a>
+
+### Native account proof-key foundation
 
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
-is included only for non-mobile builds. The vault remains Rust-internal; the
+is included in desktop and mobile builds. The vault remains Rust-internal; the
 [account operation owner](../../src-desktop/src/native_account_operations.rs)
 reaches it through three main-window commands, with no raw signing IPC. This
 does not select a native transport or enable ordinary sign-in/recovery actions.
@@ -168,17 +172,19 @@ The source includes memory-backend tests and an opt-in macOS Keychain test.
 Unit checks do not establish IPC, account continuation, mobile custody or
 packaged/device behavior; those require separate integration and platform evidence.
 
-### Desktop Device proof-key foundation
+<a id="desktop-device-proof-key-foundation"></a>
+
+### Native Device proof-key foundation
 
 The [Device proof-key vault](../../src-desktop/src/native_device_proof_key.rs)
-is also desktop-only and Rust-internal. Its keyring service and record prefix
+is also shared across native targets and remains Rust-internal. Its keyring service and record prefix
 are separate from the account and routing vaults. Its exact owner adds a random
 Device binding UUID to the app, channel, client instance, Station and Device
 IDs. A shared [private custody core](../../src-desktop/src/native_proof_key_core.rs)
 preserves the account record format and implements both vaults' storage and
 ES256 operations.
 
-The vault remains Rust-internal. A desktop-only, main-window-guarded
+The vault remains Rust-internal. A main-window-guarded
 `station_native_device_binding_candidate` command in the
 [native relay owner](../../src-desktop/src/native_relay_redemption.rs) returns
 only the public candidate descriptor. Under one locked profile-store snapshot,
@@ -219,7 +225,9 @@ account operation owners require a positive observation bound to the current
 owner/epoch; ordinary route-selection UI does not automatically invoke this command.
 Source and Rust/HTTP fixtures do not establish an executed native IPC or packaged journey.
 
-### Desktop paired-Device identity custody
+<a id="desktop-paired-device-identity-custody"></a>
+
+### Native paired-Device identity custody
 
 The [Device custody owner](../../src-desktop/src/native_device_custody.rs) keeps
 a versioned companion beside the existing bearer in a separate OS-keyring
@@ -243,8 +251,61 @@ both owned keyring entries are confirmed absent, without attempting deletion.
 
 Pending pairing handles remain process-memory state; they do not survive a
 crash. Cold observation of a completed profile and retirement recovery are
-separate from unfinished pairing recovery. Mobile deletion behavior is
-unchanged. Source tests and the macOS Keychain roundtrip do not establish
+separate from unfinished pairing recovery. Mobile pairing commit, selection,
+deletion, profile removal and cold cleanup use the same custody and retirement
+owners as desktop. Mobile metadata stays in the application's private config
+directory and retains its existing mobile lock protocol; desktop process-birth
+ownership is not substituted. A compound Device capture receives the already
+locked profile path, so it does not retake mobile's genesis lock.
+
+The shared [secret entry](../../src-desktop/src/native_secure_entry.rs) selects
+the OS-backed mobile store separately for each namespace. iOS writes use
+`AfterFirstUnlockThisDeviceOnly`. Foreground reads distinguish a missing item
+from locked or unavailable storage; a background convenience read cannot turn
+those failures into absence. These settings and software-key custody do not
+establish hardware non-exportability or physical background/lock behavior.
+
+On September 30, 2026, source
+`c8f4f46d043674770b67cf26f41f541433a74de9` compiled, packaged, installed and ran
+as the isolated `io.kontourai.station.dev.instance` application on an iOS 26.5
+simulator. Its executable SHA-256 was
+`e74a0cd8f345c51b80e7fd2f47646b56e5194e6e393c1b6671bf109dcd38bdbe`.
+Actual main-WebView IPC observed `tauri://localhost`, iOS and the development
+channel. It completed independently compared Station-key approval, host-held
+routing-grant redemption, a real account-bound Device pairing exchange, the
+requires-auth → bearer-and-companion → configured transaction, and host active
+selection. Device candidate capture matched the pairing Device and completed in
+414 milliseconds; exact operator approval and the authenticated Station
+self-receipt returned `current`. No bearer was returned to the renderer.
+The stale profile revision refused, and local credential deletion completed.
+
+The first receipt qualifies paired bootstrap and custody using a synthetic local
+account and the real source runtime. A later revocation attempt reached an
+expired five-minute fixture process, and the prepared full Project run then
+failed its startup prerequisite under host resource exhaustion. Neither failure
+is counted as a passed application scenario.
+
+A separately recorded full run reused that same installed iOS simulator
+executable and the existing native account/RTC acceptance helper. Its isolated
+Linux Station/Pion/TURN runtime used clean source
+`f5eda517106a4547d1934e841f0fca25e4785655`; explicit SSH TCP forwards exposed
+only fixture-owned loopback endpoints to the simulator. Real Keychain/IPC and
+the account provider completed protected Project read (200), fresh-peer
+reconnect (200), account revocation (401), reauthentication (200) and Device
+revocation (403). Every read recorded a fresh host peer, a selected relay pair,
+relay candidates in the offer and zero direct Project HTTP attempts. Successful
+reads contained the expected Project; revoked reads contained no Project payload.
+Both account challenge/exchange pairs returned 200 and passed their closed
+version, target, Device and surface checks. Owned profile/grant cleanup returned
+an empty profile store; the runtime stopped, its TURN container disappeared,
+and the three owned SSH forwarders closed.
+
+This qualifies the development iOS simulator and that SSH fixture topology.
+It does not qualify ordinary native onboarding, fresh relay-only enrollment,
+signed or physical iOS Nightly, public TLS/TURN/NAT reachability, a hosted service,
+or physical two-human use. No timeout increase or CSP relaxation was used.
+
+Source tests and the macOS Keychain roundtrip do not establish
 packaged or physical-device Project access.
 
 ### Pairing deep-link threat review (station#1957)

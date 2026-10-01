@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Worker } from 'node:worker_threads';
+import { RELAY_ICE_CONFIGURATION_VERSION } from '@kontourai/station-contracts/relay-ice';
 import type {
   SelfHostedBrokerNativeClientGrantV2,
   SelfHostedBrokerNativeClientSurfaceV2,
@@ -25,7 +26,12 @@ import {
   importJWK,
 } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
+import {
+  BrokerIceService,
+  type BrokerTurnProvider,
+} from '../broker-ice-service.js';
 import {
   BrokerNativeGrantRenewalConflictError,
   SelfHostedBrokerClient,
@@ -142,6 +148,272 @@ test('fails closed where private path custody is not implemented', () => {
 describe.runIf(process.platform !== 'win32')(
   'self-hosted broker control plane',
   () => {
+    const makeIceTempDir = trackTempDirs();
+    test('ICE HTTP routes require exact native PoP or connector authority and refuse retired owners', async () => {
+      const root = makeIceTempDir('station-broker-ice-routes-');
+      const now = 1_000;
+      const service = new SelfHostedBrokerService(
+        join(root, 'broker.sqlite'),
+        () => now,
+      );
+      const provider: BrokerTurnProvider = {
+        issue: vi.fn(async () => [
+          {
+            urls: ['turns:turn.example:443?transport=tcp'],
+            username: 'end-user',
+            credential: 'end-user-secret',
+          },
+        ]),
+      };
+      const ice = new BrokerIceService(
+        join(root, 'ice.sqlite'),
+        provider,
+        {},
+        () => now,
+      );
+      try {
+        const issued = service.provision(scope, 600_000);
+        const native = await createNativeClient();
+        const invitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: issued.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: native.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const grant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, native),
+        );
+        const app = new Hono();
+        app.route(
+          '/broker/v1',
+          createSelfHostedBrokerRoutes(service, {
+            ice,
+            brokerOrigin: 'https://broker.example',
+          }),
+        );
+        const body = JSON.stringify({
+          version: RELAY_ICE_CONFIGURATION_VERSION,
+          scope: nativeScope,
+          surface: native.surface,
+        });
+        const nativeProof = (
+          purpose: SelfHostedBrokerNativeRequestProofClaimsV1['purpose'] = 'station-native-ice-configuration-v1',
+        ) =>
+          signNativeRequest(
+            {
+              version: 'station-broker-native-request-proof/v1',
+              aud: 'https://broker.example',
+              brokerOrigin: 'https://broker.example',
+              purpose,
+              method: 'POST',
+              path: '/broker/v1/native/ice/configuration',
+              grantId: grant.credential.id,
+              scope: nativeScope,
+              surface: native.surface,
+              stationSigningKeyId: grant.stationSigningKeyId,
+              stationSigningGeneration: grant.stationSigningGeneration,
+              bodySha256: createHash('sha256').update(body).digest('base64url'),
+              ath: createHash('sha256')
+                .update(grant.credential.secret)
+                .digest('base64url'),
+              jti: randomBytes(32).toString('base64url'),
+              iat: 1,
+              exp: 31,
+            },
+            native,
+          );
+        const postNative = (
+          proof: string,
+          extra: Record<string, string> = {},
+        ) =>
+          app.fetch(
+            new Request(
+              'http://broker.example/broker/v1/native/ice/configuration',
+              {
+                method: 'POST',
+                body,
+                headers: {
+                  'content-type': 'application/json',
+                  authorization: `Bearer ${grant.credential.secret}`,
+                  'x-broker-credential-id': grant.credential.id,
+                  'x-station-native-proof': proof,
+                  ...extra,
+                },
+              },
+            ),
+          );
+        expect((await postNative('')).status).toBe(401);
+        expect(
+          (
+            await postNative(await nativeProof(), {
+              origin: scope.browserOrigin,
+            })
+          ).status,
+        ).toBe(401);
+        expect(
+          (
+            await postNative(
+              await nativeProof('station-native-connection-open-v2'),
+            )
+          ).status,
+        ).toBe(400);
+        expect(provider.issue).not.toHaveBeenCalled();
+        const forged = await app.fetch(
+          new Request(
+            'http://forged.example/broker/v1/native/ice/configuration',
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                authorization: `Bearer ${grant.credential.secret}`,
+                'x-broker-credential-id': grant.credential.id,
+                'x-station-native-proof': await nativeProof(),
+                'x-forwarded-proto': 'https',
+                'x-forwarded-host': 'broker.example',
+              },
+              body,
+            },
+          ),
+        );
+        expect(forged.status).toBe(401);
+        expect(provider.issue).not.toHaveBeenCalled();
+        const proof = await nativeProof();
+        const accepted = await postNative(proof);
+        expect(accepted.status).toBe(200);
+        expect(accepted.headers.get('cache-control')).toBe('no-store');
+        const receipt = await accepted.json();
+        expect(receipt).toMatchObject({
+          version: RELAY_ICE_CONFIGURATION_VERSION,
+          scope: nativeScope,
+          surface: native.surface,
+          iceTransportPolicy: 'relay',
+          expiresAt: 601000,
+        });
+        expect(Object.keys(receipt).sort()).toEqual([
+          'expiresAt',
+          'iceServers',
+          'iceTransportPolicy',
+          'issuedAt',
+          'scope',
+          'surface',
+          'version',
+        ]);
+        expect((await postNative(proof)).status).toBe(409);
+        for (let index = 0; index < 6; index++)
+          expect((await postNative(await nativeProof())).status).toBe(200);
+        expect(provider.issue).toHaveBeenCalledOnce();
+        service.revokeNativeClientGrant(
+          scope,
+          issued.routing,
+          grant.credential.id,
+        );
+        expect((await postNative(await nativeProof())).status).toBe(401);
+        const postConnector = (credential = issued.connector, target = app) =>
+          target.fetch(
+            new Request('https://broker.example/broker/v1/ice/configuration', {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                authorization: `Bearer ${credential.secret}`,
+                'x-broker-credential-id': credential.id,
+              },
+              body: JSON.stringify({
+                version: RELAY_ICE_CONFIGURATION_VERSION,
+                scope,
+              }),
+            }),
+          );
+        expect((await postConnector(issued.routing)).status).toBe(401);
+        const noIssuer = new Hono();
+        noIssuer.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+        expect((await postConnector(issued.connector, noIssuer)).status).toBe(
+          503,
+        );
+        const connectorClient = new SelfHostedBrokerClient(
+          'https://broker.example',
+          scope,
+          issued.connector,
+          async (input, init) => app.fetch(new Request(input, init)),
+          () => now,
+        );
+        const receiptFromCaller = await connectorClient.iceConfiguration(
+          new AbortController().signal,
+        );
+        expect(receiptFromCaller.scope).toEqual(nativeScope);
+        expect(receiptFromCaller.iceServers[0]?.username).toBe('end-user');
+        // Registration still needs the original exact Origin; only ICE omits it.
+        await connectorClient.register(new AbortController().signal);
+        expect(provider.issue).toHaveBeenCalledTimes(2);
+        service.withdraw(scope, issued.connector);
+        expect((await postConnector()).status).toBe(401);
+        expect(provider.issue).toHaveBeenCalledTimes(2);
+      } finally {
+        ice.close();
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('connector withdrawal during TURN issuance discards the issued credential', async () => {
+      const root = makeIceTempDir('station-broker-ice-withdraw-');
+      const service = new SelfHostedBrokerService(
+        join(root, 'broker.sqlite'),
+        () => 1000,
+      );
+      const issued = service.provision(scope, 600_000);
+      const ice = new BrokerIceService(
+        join(root, 'ice.sqlite'),
+        {
+          issue: async () => {
+            service.withdraw(scope, issued.connector);
+            return [
+              {
+                urls: ['turns:turn.example:443?transport=tcp'],
+                username: 'late-user',
+                credential: 'late-secret',
+              },
+            ];
+          },
+        },
+        {},
+        () => 1000,
+      );
+      try {
+        const app = new Hono();
+        app.route(
+          '/broker/v1',
+          createSelfHostedBrokerRoutes(service, {
+            ice,
+            brokerOrigin: 'https://broker.example',
+          }),
+        );
+        const response = await app.request(
+          'http://broker.example/broker/v1/ice/configuration',
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${issued.connector.secret}`,
+              'x-broker-credential-id': issued.connector.id,
+            },
+            body: JSON.stringify({
+              version: RELAY_ICE_CONFIGURATION_VERSION,
+              scope,
+            }),
+          },
+        );
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({
+          error: 'broker_credential_refused',
+        });
+      } finally {
+        ice.close();
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
     test('publishes deterministic native redemption signing bytes without the invite secret', () => {
       const invitation: SelfHostedBrokerNativeRouteInvitationV2 = {
         version: 'station-broker-native-route-invitation/v2',

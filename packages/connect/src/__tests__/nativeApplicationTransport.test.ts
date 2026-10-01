@@ -1,6 +1,7 @@
 import {
   APPLICATION_TRANSPORT_CHANNEL,
   createNativeApplicationTransport,
+  createNativeVerifiedPeerTransport,
 } from '@kontourai/station-connect/native-application';
 import type {
   ApprovedStationConnectionTrust,
@@ -14,7 +15,10 @@ import {
 import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
 import { writeApplicationFrame } from '../core/applicationChannelFrames.js';
-import type { NativeApplicationPeerAnswer } from '../core/nativeApplicationTransport.js';
+import type {
+  NativeApplicationPeerAnswer,
+  NativeApplicationTransportInput,
+} from '../core/nativeApplicationTransport.js';
 
 const CLIENT_FP = Array(32).fill('AA').join(':');
 const STATION_FP = Array(32).fill('BB').join(':');
@@ -255,7 +259,7 @@ async function fixture() {
     return createOffer();
   });
   const controller = new AbortController();
-  const transport = createNativeApplicationTransport({
+  const input: NativeApplicationTransportInput = {
     signaling,
     origin: ORIGIN,
     signal: controller.signal,
@@ -271,8 +275,10 @@ async function fixture() {
       },
     },
     createPeer: () => peer as unknown as RTCPeerConnection,
-  });
+  };
+  const transport = createNativeApplicationTransport(input);
   return {
+    input,
     transport,
     controller,
     peer,
@@ -561,6 +567,33 @@ describe('native application transport client', () => {
     expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
   });
 
+  test('closing an adopted peer during signing refuses proof with a still-live request signal', async () => {
+    const f = await fixture();
+    const channel = await f.transport.openChannel(new AbortController().signal);
+    const signing = f.deferSign();
+    const request = {
+      method: 'GET',
+      path: '/api/projects',
+      body: new Uint8Array(0),
+      headers: new Headers(),
+      signal: new AbortController().signal,
+    };
+    const preparing = channel.prepareRequest!(request);
+    const rejected = expect(preparing).rejects.toThrow(
+      'native_application_trust_retired',
+    );
+    await signing.started;
+    channel.close();
+    signing.resolve();
+    await rejected;
+    expect(request.signal.aborted).toBe(false);
+    expect(f.requests).toHaveLength(0);
+    await expect(channel.prepareRequest!(request)).rejects.toThrow(
+      'native_application_trust_retired',
+    );
+    expect(f.signaling.sign).toHaveBeenCalledOnce();
+  });
+
   test('a wrong Station proof never reaches setRemoteDescription or dispatch', async () => {
     const f = await fixture();
     f.overrideBinding({ stationFingerprint: CLIENT_FP });
@@ -682,5 +715,28 @@ describe('native application transport client', () => {
     expect(received).toHaveLength(0);
     expect(closed).toBe(1);
     expect(f.peer.closed).toBe(true);
+  });
+  test('enrollment verifies its own peer transcript without Device signing and rechecks trust after EOF', async () => {
+    const f = await fixture();
+    f.substitutePeer({
+      ...peerDescriptor(),
+      version: 'station-native-enrollment-peer/v1',
+    });
+    const transport = createNativeVerifiedPeerTransport({
+      ...f.input,
+      peerVersion: 'station-native-enrollment-peer/v1',
+    });
+    const opened = await transport.openVerifiedPeer(f.controller.signal);
+    expect(f.peer.remoteCalls).toBe(1);
+    expect(opened.peer.version).toBe('station-native-enrollment-peer/v1');
+    expect(f.signaling.sign).not.toHaveBeenCalled();
+    opened.channel.close();
+    await opened.close();
+    expect(f.peer.closed).toBe(true);
+    await expect(opened.assertCurrent()).resolves.toBeUndefined();
+    f.revokeTrust();
+    await expect(opened.assertCurrent()).rejects.toThrow(
+      'native_application_trust_retired',
+    );
   });
 });

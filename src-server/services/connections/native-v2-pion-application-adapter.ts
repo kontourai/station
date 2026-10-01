@@ -19,8 +19,8 @@ import type {
   ApprovedNativeSurface,
   NativeSurfaceRegistry,
 } from './native-surface-registry.js';
-import type { PionApplicationAdapterInput } from './pion-application-adapter.js';
 import { startPionApplicationAdapter } from './pion-application-adapter.js';
+import { capturePionTurn, type PionTurnSource } from './relay-ice-consumer.js';
 import type {
   BrokerNativeOfferAdapter,
   BrokerNativeOfferResolver,
@@ -224,7 +224,7 @@ export interface NativeV2PionApplicationAdapterInput {
   executable: string;
   certificatePem: string;
   privateKeyPem: string;
-  turn: PionApplicationAdapterInput['turn'];
+  turn: PionTurnSource;
   trust: {
     current(): ApprovedStationConnectionTrust | null;
     isCurrent(value: ApprovedStationConnectionTrust): boolean;
@@ -274,7 +274,10 @@ export function createNativeV2PionApplicationAdapter(
   const executable = input.executable;
   const certificatePem = input.certificatePem;
   const privateKeyPem = input.privateKeyPem;
-  const turn = Object.freeze(structuredClone(input.turn));
+  const turn: PionTurnSource =
+    'source' in input.turn
+      ? Object.freeze({ source: 'broker', capture: input.turn.capture })
+      : Object.freeze(structuredClone(input.turn));
   const trustOwner = input.trust;
   const issuerOwner = input.issuer;
   const peers = new Set<NativeApplicationPeer>();
@@ -533,6 +536,13 @@ export function createNativeV2PionApplicationAdapter(
         )
           throw new Error('native_pion_application_station_binding_mismatch');
 
+        const peerTurn = await capturePionTurn(
+          turn,
+          offer.scope,
+          controller.signal,
+          90_000,
+        );
+        assertCurrent();
         const started = await dependencies.startAdapter({
           executable,
           profile: 'application',
@@ -540,10 +550,9 @@ export function createNativeV2PionApplicationAdapter(
           offer: { type: 'offer', sdp: offer.offerSdp },
           certificatePem,
           privateKeyPem,
-          turn,
+          ...peerTurn,
           accept,
           signal: controller.signal,
-          maxLifetimeMs: 90_000,
         });
         const entry: NativeApplicationPeer = {
           peer: started,

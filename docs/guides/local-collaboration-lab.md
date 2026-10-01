@@ -524,6 +524,48 @@ not prove real two-human or remote-machine use, native account continuation,
 shared-broker tenant isolation, compute/plugin isolation, or a hosted service.
 It does not change the incomplete result of `lab:collaboration --check=all`.
 
+For two Stations using one broker process and database, choose the separate
+shared-broker topology:
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --shared-broker-isolation --keep
+```
+
+Do not combine `--shared-broker-isolation` with `--two-station-isolation` or
+`--station-ui`. It uses the same local prerequisites and five-minute fixture
+lifetime as the two-Station mode. The controller starts one broker CLI, then
+uses its real `init` command to provision a second private credential bundle
+into the running broker's database immediately before Station B starts.
+The receipt records the shared broker PID, Origin and database path, and asserts
+separate Station identities, Device identities, issuer-qualified principals,
+connector credentials and routing credentials.
+
+Both clients read their own published Task history and documents. Foreign
+routing credentials receive 401, foreign Project invitations receive 409, and
+foreign documents and private Projects receive 404. Station B's connector must
+actually renew its lease and replace its peer before a protected read succeeds
+again. Revoking B's Device and client routing grant leaves A readable. Stopping
+only B then withdraws B's lease, while A's lease and protected read remain live.
+The grouped fixture's `stopStation()` owns that one child; its `stop()` still
+owns final group cleanup and listener-lease release. Successful publication
+requires cleanup of the owned Stations, broker, browser, TURN and recorder.
+
+On September 30, 2026, the first run at `4b64ec1b160f835881be47e6311c4e313e6b0092`
+failed at the independent withdrawal check: it called the group's `stop()` and
+closed both Stations. Corrected clean source
+`363462bb4b6ebc1a46303a31187d2996e8e57579` passed the actual
+Pion/TURN/Chromium matrix, including B withdrawal with A still readable. Both
+browser paths recorded zero direct application HTTP attempts. The 549,748-byte
+TURN capture contained none of the tested application markers; the report also
+records the actual Pion executable hash, Chromium version and pinned TURN image.
+The failed run remains separate evidence rather than being counted as success.
+
+This proves synthetic local accounts and approved Devices on two source
+Stations sharing one routing service. It does not prove hostile-process or
+tenant execution isolation, compute/plugin authority, native client behavior,
+public TLS/TURN or NAT reachability, a hosted service, or real two-human use.
+Those exits remain separate, and `lab:collaboration --check=all` remains incomplete.
+
 The additional `--station-ui` mode drives the actual Station SPA through
 operator key-report approval, invitation acceptance, TURN setup, Connect,
 fresh account login, operator Device approval, invitation redemption, and

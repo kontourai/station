@@ -478,21 +478,28 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
     }
   }
   const turn = config.turn as Record<string, unknown>;
+  const brokerTurn =
+    !!turn &&
+    typeof turn === 'object' &&
+    !Array.isArray(turn) &&
+    Object.keys(turn).join(',') === 'source' &&
+    turn.source === 'broker';
   if (
-    !turn ||
-    typeof turn !== 'object' ||
-    Array.isArray(turn) ||
-    Object.keys(turn).sort().join(',') !== 'password,url,username' ||
-    typeof turn.url !== 'string' ||
-    turn.url.length === 0 ||
-    turn.url.length > 4096 ||
-    !(turn.url.startsWith('turn:') || turn.url.startsWith('turns:')) ||
-    typeof turn.username !== 'string' ||
-    turn.username.length === 0 ||
-    turn.username.length > 512 ||
-    typeof turn.password !== 'string' ||
-    turn.password.length === 0 ||
-    turn.password.length > 1024
+    !brokerTurn &&
+    (!turn ||
+      typeof turn !== 'object' ||
+      Array.isArray(turn) ||
+      Object.keys(turn).sort().join(',') !== 'password,url,username' ||
+      typeof turn.url !== 'string' ||
+      turn.url.length === 0 ||
+      turn.url.length > 4096 ||
+      !(turn.url.startsWith('turn:') || turn.url.startsWith('turns:')) ||
+      typeof turn.username !== 'string' ||
+      turn.username.length === 0 ||
+      turn.username.length > 512 ||
+      typeof turn.password !== 'string' ||
+      turn.password.length === 0 ||
+      turn.password.length > 1024)
   )
     fail('connector_config_turn_invalid');
 
@@ -649,11 +656,13 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
     executable,
     certificatePem: certificateRef.bytes.toString('utf8'),
     privateKeyPem: keyRef.bytes.toString('utf8'),
-    turn: Object.freeze({
-      url: turn.url as string,
-      username: turn.username as string,
-      password: turn.password as string,
-    }),
+    turn: brokerTurn
+      ? Object.freeze({ source: 'broker' as const })
+      : Object.freeze({
+          url: turn.url as string,
+          username: turn.username as string,
+          password: turn.password as string,
+        }),
     maxPeers,
     maxPeerLifetimeMs,
     nativeClient: nativeClient
@@ -747,7 +756,9 @@ function factoryCreateRuntime(
     executable: string;
     certificatePem: string;
     privateKeyPem: string;
-    turn: { url: string; username: string; password: string };
+    turn:
+      | { url: string; username: string; password: string }
+      | { source: 'broker' };
     maxPeers: number;
     maxPeerLifetimeMs: number;
     nativeClient?:

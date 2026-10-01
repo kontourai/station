@@ -1,5 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { parseRelayIceConfiguration } from '@kontourai/station-connect/relay-ice';
 import type { StationConnectionKeyCandidateV1 } from '@kontourai/station-contracts/connection-proof';
+import {
+  RELAY_ICE_CONFIGURATION_VERSION,
+  type RelayIceConfigurationV1,
+} from '@kontourai/station-contracts/relay-ice';
 import type {
   SelfHostedBrokerNativeClientGrantV2,
   SelfHostedBrokerNativeClientSurfaceV2,
@@ -65,10 +70,14 @@ function exact(value: unknown, keys: string[]) {
     throw new Error('broker_response_invalid');
   return candidate;
 }
-async function readBounded(response: Response, signal: AbortSignal) {
+async function readBounded(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes = MAX_RESPONSE_BYTES,
+) {
   if (!response.body) throw new Error('broker_response_invalid');
   const reader = response.body.getReader();
-  const bytes = new Uint8Array(MAX_RESPONSE_BYTES);
+  const bytes = new Uint8Array(maxBytes);
   let chunks = 0;
   let total = 0;
   let complete = false;
@@ -97,8 +106,7 @@ async function readBounded(response: Response, signal: AbortSignal) {
       }
       if (++chunks > 1024) throw new Error('broker_response_too_large');
       total += item.value.byteLength;
-      if (total > MAX_RESPONSE_BYTES)
-        throw new Error('broker_response_too_large');
+      if (total > maxBytes) throw new Error('broker_response_too_large');
       bytes.set(item.value, total - item.value.byteLength);
     }
   } finally {
@@ -127,6 +135,8 @@ export class SelfHostedBrokerClient {
     path: string,
     body: Record<string, unknown>,
     signal: AbortSignal,
+    omitOrigin = false,
+    maxResponseBytes = MAX_RESPONSE_BYTES,
   ) {
     signal.throwIfAborted();
     const boundedSignal = AbortSignal.any([
@@ -141,9 +151,12 @@ export class SelfHostedBrokerClient {
           Authorization: `Bearer ${this.#credential.secret}`,
           'X-Broker-Credential-Id': this.#credential.id,
           'Content-Type': 'application/json',
-          Origin: this.#scope.browserOrigin,
+          ...(omitOrigin ? {} : { Origin: this.#scope.browserOrigin }),
         },
         body: JSON.stringify({ ...body, scope: this.#scope }),
+        ...(omitOrigin
+          ? { credentials: 'omit' as const, cache: 'no-store' as const }
+          : {}),
         redirect: 'error',
         signal: boundedSignal,
       });
@@ -165,7 +178,7 @@ export class SelfHostedBrokerClient {
     }
     let bytes: Uint8Array;
     try {
-      bytes = await readBounded(response, boundedSignal);
+      bytes = await readBounded(response, boundedSignal, maxResponseBytes);
     } catch (error) {
       if (
         !signal.aborted &&
@@ -184,6 +197,30 @@ export class SelfHostedBrokerClient {
       throw new Error('broker_response_invalid');
     }
     return record(value);
+  }
+
+  /** Connector-only short-lived ICE; the fixed leaf refuses browser headers. */
+  async iceConfiguration(
+    signal: AbortSignal,
+  ): Promise<RelayIceConfigurationV1> {
+    const value = await this.#post(
+      '/ice/configuration',
+      { version: RELAY_ICE_CONFIGURATION_VERSION },
+      signal,
+      true,
+      16 * 1024,
+    );
+    return parseRelayIceConfiguration(
+      value,
+      {
+        scope: {
+          stationId: this.#scope.stationId,
+          enrollmentId: this.#scope.enrollmentId,
+          routingGeneration: this.#scope.routingGeneration,
+        },
+      },
+      this.now(),
+    );
   }
 
   /** Operator-only routing credential operation; never returns that credential. */

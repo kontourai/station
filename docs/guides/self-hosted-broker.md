@@ -17,7 +17,7 @@ native user journeys.
 
 The current private-file custody implementation is POSIX-only. Windows startup refuses with `self_hosted_broker_private_custody_unavailable_on_windows` until the broker adopts an audited DACL owner; it never falls back to unchecked Windows paths.
 
-The self-hosted broker carries versioned connection metadata only. It never receives Station operator credentials, account credentials, Project data, plugin data, application frames, or execution authority. Station still signs the opaque connection proof and enforces Device, account, and Project policy at the endpoint.
+The self-hosted broker carries versioned routing metadata and, when explicitly configured, short-lived TURN credentials for relay allocation. It never receives Station operator credentials, account credentials, Project data, plugin data, application frames, or execution authority. Station still signs the opaque connection proof and enforces Device, account, and Project policy at the endpoint.
 
 Run `npm run broker:self-hosted -- init /absolute/private-init-config.json` once for a routing generation, then run `npm run broker:self-hosted -- serve /absolute/private-serve-config.json`. The configuration and credential output must be owner-only files in owner-only directories. The database path, credential path, loopback port, and every provisioned Station/enrollment/routing-generation/browser-Origin scope are explicit. A routing generation is independent of Station's connection-signing key generation and cannot rotate or approve endpoint trust. Port `0` requests an owned ephemeral listener; ports 3000 and 3141 are refused.
 
@@ -71,6 +71,316 @@ Registration is the presence heartbeat; lease renewal is separate. A composed
 supervisor must refresh both.
 
 Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
+
+## Operator-owned community deployment
+
+[The community deployment bundle](../../deployment/self-hosted-broker/compose.yaml)
+is a small source-built broker setup for an operator who wants to run a shared
+front door. It pins Caddy and coturn by multi-architecture image digest and
+builds the broker from the checked-out Station source using the repository's
+pinned Node base image. It does not create a domain, issue a public certificate,
+open a cloud firewall, or qualify a remote deployment.
+
+The broker keeps its loopback-only listener. Caddy and the broker share one
+container network namespace, so Caddy can reach that loopback listener while
+the host publishes only the configured HTTPS ingress port. coturn is a
+separate service with an explicit UDP/TCP listener, TLS listener, bounded relay
+port range, quotas, and resource limits. The sample uses non-default host ports
+8443, 13478, and 15349; change them deliberately if they are already in use.
+The relay UDP range 49160-49200 must also be forwarded through the host and
+firewall.
+
+Use a Linux host with Docker Compose v2 and a Station source checkout. The
+example binds ingress and TURN to loopback. For an intentional remote deployment,
+choose a DNS name, set `PUBLIC_BIND_ADDRESS` to an externally reachable host
+interface, set `TURN_EXTERNAL_IP` to its actual public IPv4 address, and arrange
+the host firewall/NAT for the listed ports. Then obtain a certificate whose SAN
+contains the DNS name. The same certificate is used by HTTPS and TURN/TLS. Do
+not use the loopback-only local setup as remote reachability evidence.
+Put the certificate and private key in a root-owned directory outside the
+checkout. The pinned coturn image runs as `nobody:nogroup`; make the directory
+traversable by its group and the key readable only by root and that group
+(directory mode 0750, key mode 0640, group 65534). The bundle expects
+`fullchain.pem` and `privkey.pem` there. Copy the example environment file,
+then edit it with the DNS name, absolute certificate directory, and TURN
+credentials. Keep `.env` owner-only and out of source control:
+
+```sh
+cd deployment/self-hosted-broker
+cp .env.example .env
+chmod 600 .env
+BROKER_HOST="$(sed -n 's/^BROKER_HOST=//p' .env)"
+TLS_CERT_DIR="$(sed -n 's/^TLS_CERT_DIR=//p' .env)"
+BROKER_HTTPS_PORT="$(sed -n 's/^BROKER_HTTPS_PORT=//p' .env)"
+TURN_TLS_PORT="$(sed -n 's/^TURN_TLS_PORT=//p' .env)"
+umask 077
+mkdir -m 700 private state backup
+mkdir -m 700 private/unused private/station-a private/station-b
+sudo chown root:65534 "$TLS_CERT_DIR" "$TLS_CERT_DIR/privkey.pem"
+sudo chmod 750 "$TLS_CERT_DIR"
+sudo chmod 640 "$TLS_CERT_DIR/privkey.pem"
+sudo chmod 644 "$TLS_CERT_DIR/fullchain.pem"
+```
+
+Keep `fullchain.pem` readable by the coturn service (mode 0644 is sufficient);
+the TLS private key should not be world-readable. Caddy runs as root inside its
+read-only container so it can read the same key while binding HTTPS.
+
+Generate a static TURN username and password with an OS random source, and put
+the resulting values in `.env`. Configure each Station connector with the same
+TURN username/password and
+`turns:<BROKER_HOST>:<TURN_TLS_PORT>?transport=tcp`. Keep those connector
+credentials in each Station's private connector configuration; do not pass
+them to a browser or put them in the broker database. The sample TURN service
+uses long-term username/password authentication. It does not implement a
+credential minting service.
+
+Create the exact owner-only serving configuration and one initialization file
+per Station. `stationId`, `enrollmentId`, routing generation, and browser Origin
+must match that Station's connector and client setup. Give each Station a
+different credentials path. The database path is shared:
+
+```sh
+cat > private/serve.json <<'JSON'
+{"version":"station-self-hosted-broker/v1","databasePath":"/data/broker.sqlite","credentialsPath":"/run/broker/unused/credentials.json","port":18765,"provision":[]}
+JSON
+cat > private/station-a-init.json <<'JSON'
+{"version":"station-self-hosted-broker/v1","databasePath":"/data/broker.sqlite","credentialsPath":"/run/broker/station-a/credentials.json","port":18765,"provision":[{"stationId":"station-a-example","enrollmentId":"enrollment-a-example","routingGeneration":1,"browserOrigin":"https://station-client.example"}]}
+JSON
+cat > private/station-b-init.json <<'JSON'
+{"version":"station-self-hosted-broker/v1","databasePath":"/data/broker.sqlite","credentialsPath":"/run/broker/station-b/credentials.json","port":18765,"provision":[{"stationId":"station-b-example","enrollmentId":"enrollment-b-example","routingGeneration":1,"browserOrigin":"https://station-client.example"}]}
+JSON
+```
+
+The sample values are placeholders, not credentials. Restrict ownership and
+permissions to the broker's runtime UID/GID 1000, and keep the database and
+configuration directories private. Set `TURN_EXTERNAL_IP` to the host's actual
+public IPv4 address for remote operation. For a local diagnostic setup, leave
+both bind addresses at loopback. The compose network maps TURN's fixed
+container address to the configured host address; choose a different bridge
+subnet in `compose.yaml` if it conflicts with the host's Docker networks.
+Before serving, set the source build identity from the checkout and build the
+image:
+
+```sh
+chown -R 1000:1000 private state
+chmod -R go-rwx private state
+export STATION_RELEASE_SHA="$(git -C ../.. rev-parse HEAD)"
+export STATION_RELEASE_REF=v0.1.11
+export STATION_RELEASE_CREATED_AT="$(git -C ../.. show -s --format=%cI HEAD | xargs -I{} node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' '{}')"
+docker compose -f compose.yaml build
+docker compose -f compose.yaml up -d ingress
+docker compose -f compose.yaml run --rm --no-deps broker init /run/broker/station-a-init.json
+docker compose -f compose.yaml run --rm --no-deps broker init /run/broker/station-b-init.json
+docker compose -f compose.yaml up -d broker turn
+```
+
+The image build includes Station's full source build. Keep the source SHA in
+the operator's change record. Do not set the published Station web image as the
+broker image: the broker service runs the source checkout's `broker:self-hosted`
+CLI. The build and setup commands do not deploy or alter a remote host.
+
+Verify the HTTPS certificate through the platform trust store and check both
+services are running before sharing their addresses:
+
+```sh
+docker compose -f compose.yaml ps
+docker compose -f compose.yaml logs --tail=100 ingress broker turn
+test "$(curl --silent --show-error -o /dev/null -w '%{http_code}' \
+  "https://${BROKER_HOST}:${BROKER_HTTPS_PORT:-8443}/")" = 404
+openssl s_client -connect "${BROKER_HOST}:${TURN_TLS_PORT:-15349}" \
+  -servername "${BROKER_HOST}" -verify_hostname "${BROKER_HOST}" \
+  -verify_return_error </dev/null
+```
+
+`curl` verifies the HTTPS certificate and expected broker 404 response;
+`openssl` checks the TURN/TLS name and trust chain. A local/self-signed
+certificate is suitable only when the test clients explicitly trust its test
+CA. These checks establish listener and certificate behavior from the machine
+where they ran; they do not prove public reachability or a client-to-Station
+application session. Check container health, logs, TLS expiry, disk space, and
+the operator grant list as part of routine service monitoring:
+
+```sh
+docker compose -f compose.yaml exec broker npm run broker:self-hosted -- grants /run/broker/station-a-init.json
+docker compose -f compose.yaml exec broker npm run broker:self-hosted -- grants /run/broker/station-b-init.json
+```
+
+Docker rotates each service's JSON/stdout logs to three 10 MiB files. The
+broker health check only proves that its loopback HTTP process answers; it
+does not prove a Station is registered. A connector renews its lease during
+normal operation. Check the Station-specific grant/listener behavior through
+the exact configuration and connector, and keep the service logs with the
+source SHA and operator change record.
+
+### Restart, backup, restore, and rotation
+
+The services use `unless-stopped` restart policy. A broker restart preserves
+the SQLite database and private credential files; connected Stations reconnect
+and renew using their existing connector credentials. Check the process and
+both Station grant lists after restart:
+
+```sh
+docker compose -f compose.yaml restart broker
+docker compose -f compose.yaml ps
+docker compose -f compose.yaml logs --since=5m broker turn ingress
+```
+
+Take a consistent local backup by stopping the broker first, then archive the
+database, exact per-Station credential/configuration files, and TURN
+environment file together. Protect and encrypt the archive using the
+operator's backup system; it contains live routing credentials:
+
+```sh
+docker compose -f compose.yaml stop broker
+umask 077
+tar -czf "backup/broker-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" state private .env
+docker compose -f compose.yaml start broker
+```
+
+Restore only with the broker stopped. Extract into a private staging directory,
+retain the current directories for rollback, then replace them and recreate the
+broker so Docker binds the restored directory. Preserve the archive and old
+state until the broker and both Station connectors have recovered:
+
+```sh
+docker compose -f compose.yaml stop broker
+restore_dir="$(mktemp -d ./restore.XXXXXX)"
+chmod 700 "$restore_dir"
+tar -xzf /absolute/path/to/broker-backup.tar.gz -C "$restore_dir"
+mv state "state.before-restore-$(date -u +%Y%m%dT%H%M%SZ)"
+mv private "private.before-restore-$(date -u +%Y%m%dT%H%M%SZ)"
+mv "$restore_dir/state" state
+mv "$restore_dir/private" private
+cp "$restore_dir/.env" .env
+chmod 600 .env
+chown -R 1000:1000 state private
+chmod -R go-rwx state private
+docker compose -f compose.yaml up -d --force-recreate broker
+```
+
+This is an offline local file restore recipe; it does not fence another host,
+prove an off-host archive is readable, or transfer Station authority. Keep one
+writer for the broker database.
+
+Rotate one Station's routing authority independently by creating a new private
+init file with that Station's exact scope and the next routing generation, but
+a new credential path. Run `init`, update only that Station's connector bundle,
+then restart its Station connector and verify registration before retiring the
+old credential copy. A higher generation replaces that Station's old lease;
+it does not rotate the Station signing key, Device, account, or Project grants.
+Do not regenerate an existing generation: `init` deliberately reuses the
+matching bundle. Rotate TURN credentials separately by replacing the username
+and password in `.env`, updating every intended connector configuration, then
+restarting coturn and those connectors. Rotate the certificate by atomically
+installing a new matching chain/key pair in the configured certificate
+directory and restarting `ingress` and `turn`; rerun the TLS checks above.
+
+The bundle's host-port exposure, container quotas, logging bounds, and TURN
+relay range are starting limits for a small community host. Size them against
+measured load and host policy before widening them. Public DNS, firewall/NAT,
+certificate issuance, sustained bandwidth, external monitoring, and a
+separately recorded remote run remain operator responsibilities. The free
+[local collaboration lab](local-collaboration-lab.md) is diagnostic evidence;
+it does not qualify this deployment as remotely reachable.
+
+## Short-lived TURN credentials
+
+The broker has a provider-neutral, authenticated ICE configuration endpoint.
+The [wire contract](../../packages/contracts/src/relay-ice.ts) contains only the
+exact routing scope, optional native installation surface, issue/expiry times,
+relay-only policy and bounded TURN URLs with end-user credentials. It grants
+neither Device nor account/Project access. The
+[Connect parser](../../packages/connect/src/core/relayIceConfiguration.ts)
+checks the closed shape, route binding, expiry and TURN URL bounds; parsing is
+not authorization.
+
+The built-in [Cloudflare provider](../../src-server/services/connections/cloudflare-turn-provider.ts)
+keeps its long-lived issuer token in a separate owner-only operator file.
+Cloudflare's [credential API](https://developers.cloudflare.com/realtime/turn/generate-credentials/)
+returns expiring end-user credentials. The provider uses the fixed official
+HTTPS API, an honest Station user agent, no redirects and a 16 KiB response
+bound; the broker composition owns its ten-second deadline. Its issuer token never appears in a broker
+response, native profile, WebView or client RTC configuration. The community
+coturn example above remains a manually configured static deployment; it does
+not enable this issuer.
+
+Write a `0600` file outside the checkout, with a private `0700` parent for the
+separate issuance ledger. Replace the placeholders through the operator's
+secret setup; do not put the actual token in shell arguments or source control:
+
+```json
+{
+  "version": "station-broker-cloudflare-turn/v1",
+  "keyId": "replace-with-provider-key-id",
+  "apiToken": "replace-with-private-provider-api-token",
+  "ledgerPath": "/srv/station-broker/ice.sqlite",
+  "policy": {
+    "ttlSeconds": 600,
+    "maxAttemptsPerDay": 12,
+    "maxAttemptsPerSubject": 4,
+    "maxConcurrent": 2
+  }
+}
+```
+
+Set `STATION_BROKER_ICE_CONFIG_FILE=/absolute/private/turn-issuer.json` only on
+the broker `serve` process. With no issuer configured, authenticated ICE
+requests refuse with HTTP 503. Invalid private custody or policy refuses before
+the listener opens. No Station account or application credential can substitute
+for the broker's routing credentials.
+
+The [issuer service](../../src-server/services/connections/broker-ice-service.ts)
+reserves each provider attempt in a separate private SQLite ledger before
+network work. Failures also consume the budget. Limits survive process restart:
+at most 100 attempts per rolling 24 hours, four per credential owner per rolling
+ten minutes and four concurrent calls per process; the configuration can lower
+these limits. Credentials last at most 600 seconds and native credentials are
+additionally clipped to the current native routing grant. A native grant with
+less than 120 seconds left must renew before requesting new ICE credentials.
+Preserve the ledger during restart and backup; deleting it resets the issuance
+history. The ledger pins its operator-owned file and parent identities before
+schema writes and checks them again before issuing or returning a receipt.
+This fences replacement of those exact private files; it is not a general
+sandbox against another process running as the operator.
+
+Each request reauthenticates its current owner. A bounded in-memory cache reuses
+only that exact scope, routing generation, credential identity and native surface
+while at least 120 seconds remain. It stores no credentials on disk and loses
+its entries on restart. Every native request still needs a fresh proof and JTI;
+credential reuse does not reuse peer nonces or Station proofs. A consumer must
+also ensure its chosen peer deadline precedes credential expiry. Route retirement
+refuses another receipt, including a cached one; it does not instantly revoke a
+previously distributed provider credential. Issuance limits are not a bandwidth
+or spending cap. The operator must monitor provider usage and stop issuance at
+the chosen usage boundary.
+
+For TLS offload, set the operator-owned
+`STATION_BROKER_PUBLIC_ORIGIN=https://broker.example` on the broker process.
+The configured value must be a canonical HTTPS origin, except HTTP loopback for
+local fixtures. The reverse proxy must preserve the public request hostname and
+port. A different request URL host is refused; `X-Forwarded-Host` and
+`X-Forwarded-Proto` cannot supply authority. Native invitations and exact request
+proofs bind the pinned public origin even when the backend request uses HTTP.
+With this setting absent, the existing request-origin behavior remains.
+
+Prepare the Station home, Pion executable and private connector files before
+broker initialization. CLI `init` creates a 60-second initial lease; a serving
+broker alone does not keep that Station available. Start the actual Station
+connector promptly so it continually registers and renews. An expired or
+withdrawn lease needs deliberate reprovisioning, as described below. A broker
+404, TURN allocation or minted credential does not prove a registered Station
+or an application session.
+
+Source `32fe4ff3c` has executed local route/unit evidence: seven separately
+signed native configuration requests reuse one provider issuance, native grant
+revocation refuses the cached receipt, connector withdrawal during issuance
+refuses its result, and restart preserves the attempt limit. Removing the
+post-provider currentness check at `7dc84da36` made the mounted withdrawal test
+return 200 instead of 401; restoring it passed. Provider output was supplied at
+the unit boundary. Dynamic native host/Pion consumption, a live Cloudflare
+journey through this endpoint, physical iOS Nightly and public NAT reachability
+remain **NOT_VERIFIED** by these checks.
 
 ## Native routing grant foundation (v2)
 
@@ -251,6 +561,8 @@ connector's configured Origin and credential. The request body is capped at
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
 | `/native/grants/redeem` | Bound native P-256 key | V2 invitation plus exact ES256 proof; no browser Origin |
 | `/native/grants/renew` | Native grant plus ES256 PoP | Exact request proof and body-bound renewal ID; returns committed expiry or a typed current-expiry conflict |
+| `/native/ice/configuration` | Native installation routing grant plus ES256 PoP | Exact version, scope and surface; fixed purpose/path and fresh JTI; short-lived relay-only ICE response |
+| `/ice/configuration` | Connector | Exact version and scope; no Origin or cookies; current connector lease checked before and after provider work |
 | `/native/connections/open` | Native grant plus ES256 PoP | Exact body bytes, request path, scope, surface, Station key/generation and one-use JTI |
 | `/native/connections/read` | Native grant plus ES256 PoP | Own attempt by nonce; same request and surface binding |
 | `/native/grants/retire` | Native grant plus ES256 PoP | Retires only the caller's native grant; idempotent after revocation |
@@ -390,6 +702,11 @@ entrypoint evidence must name the configuration and revision actually tested.
   own private configuration, loopback binding, persisted grants, and signaling.
 - [Wire contracts](../../packages/contracts/src/self-hosted-broker.ts) define
   versioned browser/native fields and limits.
+- [ICE contract](../../packages/contracts/src/relay-ice.ts),
+  [issuer budgets](../../src-server/services/connections/broker-ice-service.ts),
+  [provider adapter](../../src-server/services/connections/cloudflare-turn-provider.ts),
+  and [response parser](../../packages/connect/src/core/relayIceConfiguration.ts)
+  own bounded TURN issuance separately from application admission.
 - [Connector](../../src-server/services/connections/self-hosted-broker-connector.ts),
   [Pion composition](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts),
   and [lifecycle](../../src-server/runtime/bootstrap/self-hosted-broker-runtime.ts)

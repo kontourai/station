@@ -37,6 +37,7 @@ import {
   type SelfHostedBrokerScopeV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { calculateJwkThumbprint, compactVerify, importJWK } from 'jose';
+import type { BrokerIceAuthority } from './broker-ice-service.js';
 
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
@@ -731,6 +732,68 @@ export class SelfHostedBrokerService {
     } finally {
       this.transactionDepth--;
     }
+  }
+  /** Captures existing routing authority only; TURN grants no Station access. */
+  captureNativeIceAuthority(
+    scope: SelfHostedBrokerNativeScopeV2,
+    credential: BrokerCredential,
+    surface: SelfHostedBrokerNativeClientSurfaceV2,
+  ): BrokerIceAuthority {
+    const ownedScope = Object.freeze(
+      structuredClone(validateNativeScope(scope)),
+    );
+    const ownedSurface = Object.freeze(
+      structuredClone(validateNativeSurface(surface)),
+    );
+    const ownedCredential = Object.freeze({ ...credential });
+    const { grant } = this.nativeRoutingOwner(
+      ownedScope,
+      ownedCredential,
+      ownedSurface,
+    );
+    const publicKey = grant.proof_public_key;
+    const signingKeyId = grant.signing_key_id;
+    const signingGeneration = grant.signing_generation;
+    return Object.freeze({
+      scope: ownedScope,
+      surface: ownedSurface,
+      subject: `native:${grant.grant_id}:${grant.key_thumbprint}`,
+      grantExpiresAt: grant.expires_at,
+      assertCurrent: () => {
+        const fresh = this.nativeRoutingOwner(
+          ownedScope,
+          ownedCredential,
+          ownedSurface,
+        ).grant;
+        if (
+          fresh.proof_public_key !== publicKey ||
+          fresh.signing_key_id !== signingKeyId ||
+          fresh.signing_generation !== signingGeneration
+        )
+          throw new Error('broker_credential_refused');
+      },
+    });
+  }
+  captureConnectorIceAuthority(
+    scope: BrokerScope,
+    credential: BrokerCredential,
+  ): BrokerIceAuthority {
+    const ownedScope = Object.freeze(
+      structuredClone(validateBrokerScope(scope)),
+    );
+    const ownedCredential = Object.freeze({ ...credential });
+    this.lease(ownedScope, ownedCredential, 'connector');
+    return Object.freeze({
+      scope: Object.freeze({
+        stationId: ownedScope.stationId,
+        enrollmentId: ownedScope.enrollmentId,
+        routingGeneration: ownedScope.routingGeneration,
+      }),
+      subject: `connector:${ownedScope.stationId}:${ownedScope.enrollmentId}:${ownedScope.routingGeneration}:${ownedCredential.id}`,
+      assertCurrent: () => {
+        this.lease(ownedScope, ownedCredential, 'connector');
+      },
+    });
   }
   /** Verifies one exact native request and atomically consumes its JTI with the operation. */
   async withNativeRequestProof<T>(input: {
