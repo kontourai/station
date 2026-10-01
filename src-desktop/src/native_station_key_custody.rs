@@ -533,8 +533,9 @@ pub(crate) struct OsStationTrustBackend;
 impl StationTrustBackend for OsStationTrustBackend {
     fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
         super::initialize_credential_store().map_err(|_| CandidateError::TrustStore)?;
-        let entry = keyring_core::Entry::new(TRUST_KEYRING_SERVICE, account)
-            .map_err(|_| CandidateError::TrustStore)?;
+        let entry =
+            crate::native_secure_entry::NativeSecureEntry::new(TRUST_KEYRING_SERVICE, account)
+                .map_err(|_| CandidateError::TrustStore)?;
         match entry.get_password() {
             Ok(value) => Ok(Some(Zeroizing::new(value))),
             Err(keyring_core::Error::NoEntry) => Ok(None),
@@ -544,8 +545,9 @@ impl StationTrustBackend for OsStationTrustBackend {
 
     fn write(&mut self, account: &str, value: &str) -> CandidateResult<()> {
         super::initialize_credential_store().map_err(|_| CandidateError::TrustStore)?;
-        let entry = keyring_core::Entry::new(TRUST_KEYRING_SERVICE, account)
-            .map_err(|_| CandidateError::TrustStore)?;
+        let entry =
+            crate::native_secure_entry::NativeSecureEntry::new(TRUST_KEYRING_SERVICE, account)
+                .map_err(|_| CandidateError::TrustStore)?;
         entry
             .set_password(value)
             .map_err(|_| CandidateError::TrustStore)
