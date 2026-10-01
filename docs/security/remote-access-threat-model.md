@@ -364,14 +364,22 @@ reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
 `inference:invoke` and later promotions. Operator-specific route authority is a
 separate check, not a claim that this credential carries every scope.
 
-The engine sign-in exception admits a currently verified operator only to
-GET `/api/connections/agent/:id/device-code-profiles` and GET/POST/DELETE
-`/api/connections/agent/:id/enrolment/:ref/device-code`. A paired device needs
-an explicit `engine:login` grant. The profile read projects references, display
-labels, authentication state and observed device-code support; it excludes
-host paths, commands, environment variables, recovery policy and diagnostics.
-It checks live authority before reads and before publishing results. A sign-in
-grant alone does not admit credential management or manual enrolment reads.
+The engine sign-in exception admits a currently verified operator to the profile
+index, account metadata, and registered-profile login leaves. A paired device
+needs explicit `engine:login`. Account metadata projects references, labels,
+authentication state and observed login support; it excludes paths, commands,
+environment, policy and diagnostics. Current authority is checked before private
+work and publication. No new login route admits a default/global account target.
+Codex device codes and Claude browser codes stay within the engine-owned login;
+raw CLI output is private. Saved Claude profiles override both the config root
+and secure-store root so an ambient Keychain namespace cannot select another
+profile's account.
+
+Quota reads remain `access:manage`: they borrow a selected account's stored token
+for an outbound provider request. An engine-login grant alone admits neither
+quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only
+reads; its engine filter does not lower that floor, grant access to another
+principal's receipts or make them per-account billing.
 
 ### Coding routes: command execution and client paths (#2412)
 

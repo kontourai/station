@@ -14,7 +14,26 @@ claim that post-hoc configuration, quality, or uniform-stop gates are absent.
 The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
-`canUseTool` also honors that Agent's matching `tools.autoApprove` patterns.
+`canUseTool` also honors that Agent's matching `tools.autoApprove` patterns,
+for plain calls only (#2933). A pattern never answers an escalation or a plan
+exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
+`tool` or `edit-mode` case of the session-grant computation below. An
+autoApprove match in the staged evaluator (`toolGrant`) is therefore not
+returned as a `PreToolUse` allow. After a hook allow, Claude Code 2.1.278
+(read in its bundled binary, as 2.1.261 was first) re-checks only deny rules,
+ask rules, safety checks and user-interaction tools, so the allow would have
+skipped its working-directory check. The hook states no
+opinion, and the engine asks `canUseTool` for anything it does not allow
+itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
+(`switch_mode` kind or `ExitPlanMode`). A session answer to an ACP plan exit is
+an `accept` and mints no Station session grant. Its response mapper prefers
+`allow_once` but falls back to `allow_always` when that is the only allow option,
+so Station cannot guarantee one-call behavior in that agent;
+the request payload carries `toolKind`, so a `switch_mode` request offers no
+session option. In a delegated child that cannot grant approvals
+(`delegation.denyApprovals`), a request either adapter would otherwise open is
+denied at once with the staged evaluator's `delegation_deny_approvals` denial,
+since nobody could answer it. That includes a question from such a child.
 Known `AskUserQuestion` callbacks are handled before those grants: answering
 a question requires an exact structured batch and never creates a session
 tool grant. This is a question interaction boundary, not a new consent floor

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 import type { AgentSummary } from '../../types';
+import { ActionRow } from '../ActionRow';
 import { FolderGlyph } from '../icons/Glyph';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { ConnectionIcon } from './ConnectionIcon';
@@ -118,57 +119,58 @@ export function ACPConnectionCard({
         </div>
       )}
 
-      <div className="acp-connection-card__actions">
-        {!isPlugin && conn.enabled && (
-          <button
-            type="button"
-            className="button button--small button--success"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowDisableConfirm(true);
-            }}
-          >
-            Disable
-          </button>
-        )}
-        {!isPlugin && recommendedAction === 'Enable' && (
-          <button
-            type="button"
-            className="button button--small button--secondary"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle(true);
-            }}
-          >
-            Enable
-          </button>
-        )}
-        {!isPlugin && recommendedAction === 'Reconnect' && conn.enabled && (
-          <button
-            type="button"
-            className="button button--small button--secondary"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReconnect();
-            }}
-          >
-            Reconnect
-          </button>
-        )}
-        <div className="acp-connection-card__actions-spacer" />
-        {!isPlugin && (
-          <button
-            type="button"
-            className="button button--small button--danger-outline"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowRemoveConfirm(true);
-            }}
-          >
-            Remove
-          </button>
-        )}
-      </div>
+      {/* #3045: the card shows the one action its state recommends. Disable
+          and Remove are there for every user-owned connection, so they fold
+          into the menu instead of standing beside it. */}
+      {!isPlugin && (
+        <ActionRow
+          className="acp-connection-card__actions"
+          overflowLabel={`Manage ${conn.name}`}
+          primary={
+            recommendedAction === 'Enable' ? (
+              <button
+                type="button"
+                className="button button--small button--secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle(true);
+                }}
+              >
+                Enable
+              </button>
+            ) : recommendedAction === 'Reconnect' && conn.enabled ? (
+              <button
+                type="button"
+                className="button button--small button--secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReconnect();
+                }}
+              >
+                Reconnect
+              </button>
+            ) : null
+          }
+          overflow={[
+            ...(conn.enabled
+              ? [
+                  {
+                    key: 'disable',
+                    label: 'Disable',
+                    tone: 'danger' as const,
+                    onSelect: () => setShowDisableConfirm(true),
+                  },
+                ]
+              : []),
+            {
+              key: 'remove',
+              label: 'Remove',
+              tone: 'danger' as const,
+              onSelect: () => setShowRemoveConfirm(true),
+            },
+          ]}
+        />
+      )}
       <ConfirmModal
         isOpen={showDisableConfirm}
         title="Disable Connection"

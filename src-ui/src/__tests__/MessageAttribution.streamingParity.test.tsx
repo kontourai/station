@@ -64,7 +64,7 @@ vi.mock('../hooks/useStreamingContent', () => ({
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 
-const OWNER = { id: 'brian', label: 'Brian Anderson' };
+const OWNER = { id: 'casey', label: 'Casey Example' };
 const GAP = { state: 'unavailable', reason: 'not-reported-by-engine' } as const;
 const STATION_GAP = {
   state: 'unavailable',
@@ -144,8 +144,8 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
     expect(within(persisted).getByText('Dev Agent')).toBeTruthy();
 
     // Owner chip text is present, identically, on both rows.
-    expect(within(streaming).getByText(/via Brian Anderson/)).toBeTruthy();
-    expect(within(persisted).getByText(/via Brian Anderson/)).toBeTruthy();
+    expect(within(streaming).getByText(/via Casey Example/)).toBeTruthy();
+    expect(within(persisted).getByText(/via Casey Example/)).toBeTruthy();
 
     // Engine-chip PRESENCE STATE — not a hardcoded absence — must match
     // between streaming and persisted. Today both are false; a correct

@@ -2,6 +2,7 @@ import {
   type MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { closeBrowserCodeLogins } from '../../services/connections/browser-code-login.js';
 import { cancelSharedDeviceCodeLogins } from '../../services/connections/device-code-login.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { stopLiveGitProcessGroups } from '../../utils/git-exec.js';
@@ -121,6 +122,7 @@ export async function shutdownRuntimeServices({
   // the code expires.
   await attempt('deviceCodeLogins.cancelAll', async () => {
     cancelSharedDeviceCodeLogins();
+    closeBrowserCodeLogins();
   });
 
   await attempt(

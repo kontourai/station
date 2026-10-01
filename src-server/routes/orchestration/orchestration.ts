@@ -130,6 +130,12 @@ import {
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import {
+  type TaskRoomInvocationAdmission,
+  TaskRoomWorkAuthorityChangedError,
+  type TaskRoomWorkModule,
+  type TaskRoomWorkScope,
+} from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import {
   orchestrationStreamDuration,
@@ -521,6 +527,14 @@ export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
+  taskRoomRequest: z
+    .object({
+      taskId: z.string().min(1).max(160),
+      taskCreatedAt: z.string().min(1).max(40),
+      operationId: z.string().min(1).max(160),
+    })
+    .strict()
+    .optional(),
   /**
    * #2601: a CLAIM, like `/chat/delegated`'s. `deps.resolveRequestDelegation`
    * derives the context from a verified caller, keeps it only when Station's
@@ -780,6 +794,8 @@ interface DelegateTaskRequest {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  sessionId?: string;
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
   userId: string;
@@ -1310,6 +1326,14 @@ export function createOrchestrationRoutes(
      */
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
+    taskRoomWork?: {
+      module: TaskRoomWorkModule;
+      authorize(
+        taskId: string,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomWorkScope | undefined>;
+    };
     /**
      * #484 phase A: admits (or refuses) the explicit portable-execution
      * intent against this Station's operator offer, binding the CURRENT
@@ -2358,41 +2382,133 @@ export function createOrchestrationRoutes(
           ? { attestation: delegationAttestation }
           : {}),
       });
-      const data = await deps.delegateTask({
-        ...request,
-        ...(delegation ? { delegation } : {}),
-        target: normalizeExecutionTarget(
-          withCanonicalCwd(body.target, scoped.canonicalCwd),
-        ),
-        userId,
-        principal,
-        ownerAttribution,
-        fullAccessGrant,
-        clientOrigin,
-        ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
-        // The tool keys claims by `deviceId`: project the verified grant's
-        // id explicitly — passing the `{ id }` grant object through would
-        // key every claim under `undefined:` (cross-grant collision) and
-        // lookups keyed by the real id would never hit.
-        ...(body.attemptId && delegationAttemptCaller
-          ? {
-              delegationAttemptCaller: {
-                deviceId: delegationAttemptCaller.id,
-              },
-            }
-          : {}),
-        ...(deps.delegationAttemptClaimStore
-          ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
-          : {}),
-        ...(portableIntent
-          ? {
-              authorizeReceiverExecution,
-              inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
-              isRequestAuthorityCurrent: () =>
-                deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
-            }
-          : {}),
-      });
+      const delegate = deps.delegateTask;
+      const roomRequest = body.taskRoomRequest;
+      const dispatch = (
+        sessionId?: string,
+        recheck?: () => Promise<void>,
+        roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
+      ) =>
+        delegate({
+          ...request,
+          ...(delegation ? { delegation } : {}),
+          target: normalizeExecutionTarget(
+            withCanonicalCwd(body.target, scoped.canonicalCwd),
+          ),
+          userId,
+          principal,
+          ownerAttribution,
+          fullAccessGrant,
+          clientOrigin,
+          ...(sessionId
+            ? { sessionId, parentTaskId: roomRequest?.taskId }
+            : {}),
+          ...(recheck && roomBinding
+            ? {
+                taskRoomInvocationAdmission: {
+                  roomBinding,
+                  recheck: async () => {
+                    try {
+                      await recheck();
+                    } catch (error) {
+                      if (error instanceof TaskRoomWorkAuthorityChangedError)
+                        throw new ReceiverExecutionRefusal(
+                          'receiver_execution_authority_changed',
+                          error.message,
+                        );
+                      throw error;
+                    }
+                  },
+                },
+              }
+            : {}),
+          ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
+          // The tool keys claims by `deviceId`: project the verified grant's
+          // id explicitly — passing the `{ id }` grant object through would
+          // key every claim under `undefined:` (cross-grant collision) and
+          // lookups keyed by the real id would never hit.
+          ...(body.attemptId && delegationAttemptCaller
+            ? {
+                delegationAttemptCaller: {
+                  deviceId: delegationAttemptCaller.id,
+                },
+              }
+            : {}),
+          ...(deps.delegationAttemptClaimStore
+            ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+            : {}),
+          ...(portableIntent
+            ? {
+                authorizeReceiverExecution,
+                inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+                isRequestAuthorityCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              }
+            : {}),
+        });
+      if (roomRequest) {
+        const work = deps.taskRoomWork;
+        if (
+          !work ||
+          !principal ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind !== 'project'
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'Task room agent requests are unavailable for this target.',
+            },
+            503,
+          );
+        const workspace = body.target.workspace;
+        const authorize = async () => {
+          const scope = await work.authorize(
+            roomRequest.taskId,
+            c.req.raw,
+            principal,
+          );
+          return scope &&
+            scope.projectSlug === workspace.projectSlug &&
+            scope.taskCreatedAt === roomRequest.taskCreatedAt
+            ? scope
+            : undefined;
+        };
+        const outcome = await work.module.submit(
+          roomRequest.taskId,
+          userId,
+          {
+            operationId: roomRequest.operationId,
+            agentId: body.target.agent,
+            prompt: body.prompt,
+          },
+          authorize,
+          async (sessionId, scope, recheck) => {
+            const handle = await dispatch(sessionId, recheck, {
+              projectId: scope.roomProjectId,
+              taskId: roomRequest.taskId,
+            });
+            if (
+              !handle ||
+              typeof handle !== 'object' ||
+              !('sessionId' in handle) ||
+              typeof handle.sessionId !== 'string'
+            )
+              throw new Error('Agent execution identity was not returned.');
+            return { sessionId: handle.sessionId };
+          },
+        );
+        return c.json(
+          { success: outcome.kind === 'recorded', data: outcome },
+          outcome.kind === 'recorded'
+            ? 200
+            : outcome.reason === 'access'
+              ? 403
+              : 409,
+        );
+      }
+      const data = await dispatch();
       return c.json({ success: true, data });
     } catch (error) {
       const refused = delegationRefusal(c, error);

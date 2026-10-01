@@ -20,13 +20,13 @@ describe('project-form-utils path handling', () => {
   test('Windows paths take their leaf after the last backslash', () => {
     // Splitting on `/` alone treated the whole path as one segment and named
     // the project after it (the pre-fix behavior this pins out).
-    expect(getWorkingDirectoryLeaf('C:\\Users\\brian\\my-project')).toBe(
+    expect(getWorkingDirectoryLeaf('C:\\Users\\me\\my-project')).toBe(
       'my-project',
     );
-    expect(inferProjectNameFromPath('C:\\Users\\brian\\my-project')).toBe(
+    expect(inferProjectNameFromPath('C:\\Users\\me\\my-project')).toBe(
       'My Project',
     );
-    expect(looksLikeWorkspacePath('C:\\Users\\brian\\my-project')).toBe(true);
+    expect(looksLikeWorkspacePath('C:\\Users\\me\\my-project')).toBe(true);
   });
 
   test('drive roots survive normalization instead of becoming drive-relative', () => {

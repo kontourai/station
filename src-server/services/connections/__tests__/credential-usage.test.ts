@@ -347,3 +347,55 @@ describe('adversarial 200 bodies degrade to unknown, never throw', () => {
     ]);
   });
 });
+
+test('Claude quota borrows only the selected secure-store credential without exposing it', async () => {
+  const secure = vi.fn(async () => CLAUDE_CREDS);
+  const fetch = jsonFetch(CLAUDE_USAGE);
+  const usage = await readClaudeUsage(
+    '/selected-account',
+    deps({
+      readTextFile: async () => {
+        throw new Error('ENOENT');
+      },
+      readClaudeSecureCredentials: secure,
+      fetch,
+    }),
+  );
+  expect(secure).toHaveBeenCalledWith('/selected-account');
+  expect(usage.status).toBe('ok');
+  expect(JSON.stringify(usage)).not.toContain('tok-claude');
+  expect(fetch).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer tok-claude' }),
+    }),
+  );
+});
+
+test('Codex nested CLI credentials retain their account selector when reading quota', async () => {
+  const fetch = jsonFetch(CODEX_USAGE);
+  const usage = await readCodexUsage(
+    '/selected-account',
+    deps({
+      readTextFile: async () =>
+        JSON.stringify({
+          tokens: {
+            access_token: 'nested-token',
+            account_id: 'nested-account',
+          },
+        }),
+      fetch,
+    }),
+  );
+  expect(usage.status).toBe('ok');
+  expect(fetch).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: 'Bearer nested-token',
+        'Chatgpt-Account-Id': 'nested-account',
+      }),
+    }),
+  );
+  expect(JSON.stringify(usage)).not.toContain('nested-token');
+});
