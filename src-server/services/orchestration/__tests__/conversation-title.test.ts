@@ -18,6 +18,22 @@ describe('derivedConversationTitle', () => {
     ['a _em_ b', 'a em b'],
     ['a ~~old~~ b', 'a old b'],
     ['see [the docs](https://example.com)', 'see the docs'],
+    // A destination may hold balanced parentheses: the link ends at the `)`
+    // that balances its `(`, not at the first one (which left a stray `)`).
+    ['[docs (v2)](https://x.com/a_(b))', 'docs (v2)'],
+    [
+      'read [Foo](https://en.wikipedia.org/wiki/Foo_(bar)) first',
+      'read Foo first',
+    ],
+    ['![shot (1)](a_(b).png) here', 'shot (1) here'],
+    ['[a](u_(b_(c))) tail', 'a tail'],
+    // Two links keep each its own label; parentheses outside a link are text.
+    ['[a](x_(1)) and [b](y) (note)', 'a and b (note)'],
+    // An unbalanced destination ends at its first `)`, as it always did.
+    ['[x](http://a.com/foo(bar) tail', 'x tail'],
+    // Not a link: no destination, or no closing parenthesis at all.
+    ['[x] (y)', '[x] (y)'],
+    ['[x](never closes', '[x](never closes'],
     ['# Heading here', 'Heading here'],
     ['* list item', 'list item'],
     ['- list item', 'list item'],

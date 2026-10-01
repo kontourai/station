@@ -32,10 +32,50 @@ const EMPHASIS = [
   new RegExp(`${OPENS}_(?=\\S)(.+?)(?<=\\S)_${CLOSES_UNDERSCORE}`, 'g'),
 ];
 
+/**
+ * Where a link destination that opens at `start` (just past its `(`) ends: the
+ * `)` that balances it, because a URL may contain balanced parentheses
+ * (`https://en.wikipedia.org/wiki/A_(b)`). A destination whose parentheses
+ * never balance ends at its first `)`, as a destination always did.
+ */
+function linkDestinationEnd(text: string, start: number): number {
+  let depth = 1;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === '(') depth += 1;
+    else if (char === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return text.indexOf(')', start);
+}
+
+/** `[label](destination)` and `![alt](destination)` become their label. */
+function withoutLinks(text: string): string {
+  let plain = '';
+  let index = 0;
+  while (index < text.length) {
+    const open = text[index] === '!' ? index + 1 : index;
+    if (text[open] === '[') {
+      const labelEnd = text.indexOf(']', open + 1);
+      if (labelEnd !== -1 && text[labelEnd + 1] === '(') {
+        const end = linkDestinationEnd(text, labelEnd + 2);
+        if (end !== -1) {
+          plain += text.slice(open + 1, labelEnd);
+          index = end + 1;
+          continue;
+        }
+      }
+    }
+    plain += text[index];
+    index += 1;
+  }
+  return plain;
+}
+
 function plainTitleText(text: string): string {
-  let plain = text
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/`([^`]+)`/g, '$1');
+  let plain = withoutLinks(text).replace(/`([^`]+)`/g, '$1');
   for (const pattern of EMPHASIS) plain = plain.replace(pattern, '$1$2');
   return plain
     .replace(/^\s*(?:#{1,6}|>|[-+*]|\d+\.)\s+/, '')
