@@ -2016,6 +2016,19 @@ export class AcpAdapter implements ProviderAdapterShape {
             outcome: mapAcpDecisionToOutcome('accept', params.options),
           };
         }
+        if (decision.behavior === 'allow' && !decision.toolGrant) {
+          // The evaluator has already logged the guardian's allow; say here
+          // that it did not decide the request. The guardian is still asked
+          // about such a request: its enforce-mode deny must decline it.
+          context.logger.info?.(
+            'Approval guardian allow not applied; the request goes to a person',
+            {
+              toolName,
+              threadId: record.session.threadId,
+              reason: 'the request is a plan exit or a question for a person',
+            },
+          );
+        }
         if (decision.behavior === 'deny') {
           return {
             outcome: mapAcpDecisionToOutcome('decline', params.options),

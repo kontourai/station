@@ -940,6 +940,35 @@ function serverDelegation(
  */
 const MAX_PENDING_POLICY_ALLOWS = 256;
 
+/** JSON with object keys sorted at every depth, so key order is no difference. */
+function stableJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJson);
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(source)
+        .sort()
+        .map((key) => [key, stableJson(source[key])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * #2947: a digest of a tool call's input, binding a guardian allow to the
+ * input the guardian reviewed. Undefined for an input that cannot be
+ * serialised, which then matches nothing.
+ */
+function toolInputDigest(toolInput: unknown): string | undefined {
+  try {
+    const json = JSON.stringify(stableJson(toolInput));
+    if (json === undefined) return undefined;
+    return crypto.createHash('sha256').update(json).digest('hex');
+  } catch {
+    return undefined;
+  }
+}
+
 function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
   // #2933, #2947: Station's allow is never a hook `allow`. After one, Claude
   // Code 2.1.278 (as 2.1.261 before it) re-checks only deny rules, ask
@@ -1012,7 +1041,11 @@ async function evaluateClaudePreToolPolicy(
    * external path that is the approval guardian's allow, the only other
    * allow the staged evaluator reaches before it hands interaction back.
    */
-  onPolicyAllow: (toolUseId: string, toolName: string) => void,
+  onPolicyAllow: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+  ) => void,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1045,7 +1078,7 @@ async function evaluateClaudePreToolPolicy(
       }),
     ]);
     if (decision.behavior === 'allow' && !decision.toolGrant) {
-      onPolicyAllow(input.tool_use_id, input.tool_name);
+      onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
     }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
@@ -2688,22 +2721,46 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
     // so the guardian's verdict is carried here and answers the engine's
     // ask only when that ask is a plain call. The guardian is not asked
-    // twice, and an entry is used once.
-    const policyAllows = new Map<string, string>();
-    const rememberPolicyAllow = (toolUseId: string, toolName: string) => {
+    // twice, and an entry is used once. Each allow is bound to the tool and
+    // to a digest of the input the guardian reviewed: another hook (a
+    // user-settings PreToolUse hook returning `updatedInput`) can change
+    // the input after the guardian saw it, and the engine then asks about
+    // an input nobody reviewed.
+    const policyAllows = new Map<
+      string,
+      { toolName: string; inputDigest: string }
+    >();
+    const rememberPolicyAllow = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+    ) => {
       policyAllows.delete(toolUseId);
-      policyAllows.set(toolUseId, toolName);
+      const inputDigest = toolInputDigest(toolInput);
+      if (!toolUseId || inputDigest === undefined) return;
+      policyAllows.set(toolUseId, { toolName, inputDigest });
       if (policyAllows.size > MAX_PENDING_POLICY_ALLOWS) {
         const oldest = policyAllows.keys().next();
         if (!oldest.done) policyAllows.delete(oldest.value);
       }
     };
-    /** Consumes the allow recorded for exactly this call of this tool. */
-    const takePolicyAllow = (toolUseId: unknown, toolName: string) => {
-      if (typeof toolUseId !== 'string') return false;
-      if (policyAllows.get(toolUseId) !== toolName) return false;
+    /**
+     * Consumes the allow recorded for this call of this tool. `changed`
+     * means the guardian allowed the call with a different input: the entry
+     * is consumed and the allow is not used.
+     */
+    const takePolicyAllow = (
+      toolUseId: unknown,
+      toolName: string,
+      toolInput: unknown,
+    ): 'allowed' | 'changed' | 'none' => {
+      if (typeof toolUseId !== 'string' || toolUseId === '') return 'none';
+      const allow = policyAllows.get(toolUseId);
+      if (allow?.toolName !== toolName) return 'none';
       policyAllows.delete(toolUseId);
-      return true;
+      return allow.inputDigest === toolInputDigest(toolInput)
+        ? 'allowed'
+        : 'changed';
     };
     return {
       cwd: input.cwd,
@@ -2910,13 +2967,32 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // only: an escalation (a path outside the session's directories, a
         // safety check, an ask rule), a plan exit and a question reach a
         // person, as they do for a pattern above.
-        const policyAllowed = takePolicyAllow(options.toolUseID, toolName);
-        if (
-          !questionnaire &&
-          policyAllowed &&
-          toolRequestIsPlainCall(request)
-        ) {
-          return { behavior: 'allow', updatedInput: toolInput };
+        // The allow is bound to the input the guardian reviewed.
+        const policyAllow = takePolicyAllow(
+          options.toolUseID,
+          toolName,
+          toolInput,
+        );
+        if (policyAllow !== 'none') {
+          // The question guard is defence in depth: a question is never a
+          // plain call (`toolRequestNeedsPerson`).
+          const notApplied =
+            policyAllow === 'changed'
+              ? 'the input changed after the guardian reviewed it'
+              : questionnaire
+                ? 'the request is a question for a person'
+                : toolRequestIsPlainCall(request)
+                  ? undefined
+                  : 'the request is an escalation or a plan exit';
+          if (notApplied === undefined) {
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
+          // The evaluator has already logged the guardian's allow; say here
+          // that it did not decide the request.
+          (this.options.logger ?? console).info?.(
+            'Approval guardian allow not applied; the request goes to a person',
+            { toolName, threadId: input.threadId, reason: notApplied },
+          );
         }
         // Tool-level session grant: "Allow Bash for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.

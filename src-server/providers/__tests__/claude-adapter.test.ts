@@ -2105,16 +2105,21 @@ describe('ClaudeAdapter', () => {
         metadata?: Record<string, unknown>;
         /** #2947: the staged evaluator the PreToolUse hook runs. */
         preToolPolicy?: StagedPreToolPolicyEvaluator;
+        logger?: {
+          info: (...args: any[]) => void;
+          warn: (...args: any[]) => void;
+        };
       } = {},
     ) {
       const query = options.query ?? createMockQuery([]);
       mockQuery.mockReturnValue(query);
       const { preToolPolicy } = options;
-      const adapter = new ClaudeAdapter(
-        preToolPolicy
+      const adapter = new ClaudeAdapter({
+        ...(preToolPolicy
           ? { resolvePreToolPolicy: async () => preToolPolicy }
-          : {},
-      );
+          : {}),
+        ...(options.logger ? { logger: options.logger } : {}),
+      });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
       await adapter.startSession({
         provider: 'claude',
@@ -3200,6 +3205,215 @@ describe('ClaudeAdapter', () => {
         expect(otherTool.kind).toBe('prompted');
         if (otherTool.kind === 'prompted') await otherTool.answer('decline');
         await adapter.stopSession('thread-guardian-plain');
+      });
+
+      /** What the adapter logs when it does not apply a guardian allow. */
+      const NOT_APPLIED =
+        'Approval guardian allow not applied; the request goes to a person';
+      /** A plain file edit inside the working directories, default mode. */
+      const plainEdit = (toolUseId: string): ClaudeCanUseToolRequest => ({
+        tool_name: 'Edit',
+        display_name: 'Edit',
+        input: { file_path: '/work/a/x.ts', old_string: 'a', new_string: 'b' },
+        permission_suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+        tool_use_id: toolUseId,
+      });
+
+      test('the allow is bound to the input the guardian reviewed: a different input prompts and consumes it', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const logger = { info: vi.fn(), warn: vi.fn() };
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-input',
+          { agent, preToolPolicy: evaluator, logger },
+        );
+        // Another PreToolUse hook rewrote the command after the guardian
+        // reviewed it: the engine asks about an input nobody reviewed.
+        await hook('Bash', { command: 'git status' }, 'toolu_rewritten');
+        const rewritten = await askFrame(
+          plainBash('git push --force', 'toolu_rewritten'),
+        );
+        expect(rewritten.kind).toBe('prompted');
+        if (rewritten.kind === 'prompted') await rewritten.answer('decline');
+        expect(logger.info).toHaveBeenCalledWith(NOT_APPLIED, {
+          toolName: 'Bash',
+          threadId: 'thread-guardian-input',
+          reason: 'the input changed after the guardian reviewed it',
+        });
+        // The entry is gone: the reviewed input under that id prompts too.
+        const replay = await askFrame(
+          plainBash('git status', 'toolu_rewritten'),
+        );
+        expect(replay.kind).toBe('prompted');
+        if (replay.kind === 'prompted') await replay.answer('decline');
+
+        // Key order is no difference (positive control).
+        await hook(
+          'mcp__github__create_issue',
+          { title: 'x', labels: { b: 1, a: [2, { d: 3, c: 4 }] } },
+          'toolu_reordered',
+        );
+        await expect(
+          askFrame({
+            tool_name: 'mcp__github__create_issue',
+            input: { labels: { a: [2, { c: 4, d: 3 }], b: 1 }, title: 'x' },
+            tool_use_id: 'toolu_reordered',
+          }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await adapter.stopSession('thread-guardian-input');
+      });
+
+      test('an allow under an empty tool-use id is never kept', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-empty-id',
+          { agent, preToolPolicy: evaluator },
+        );
+        await hook('Bash', { command: 'git status' }, '');
+        const asked = await askFrame(plainBash('git status', ''));
+        expect(asked.kind).toBe('prompted');
+        if (asked.kind === 'prompted') await asked.answer('decline');
+        await adapter.stopSession('thread-guardian-empty-id');
+      });
+
+      test('a guardian-allowed AskUserQuestion still opens the question card', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const logger = { info: vi.fn(), warn: vi.fn() };
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-question',
+          { agent, preToolPolicy: evaluator, logger },
+        );
+        const input = {
+          questions: [
+            {
+              question: 'Where should we deploy?',
+              header: 'Target',
+              multiSelect: false,
+              options: [
+                { label: 'Staging', description: 'Try first' },
+                { label: 'Production', description: 'Release' },
+              ],
+            },
+          ],
+        };
+        await expect(
+          hook('AskUserQuestion', input, 'toolu_question'),
+        ).resolves.toEqual({ continue: true });
+        const question = await askFrame({
+          tool_name: 'AskUserQuestion',
+          input,
+          requires_user_interaction: true,
+          tool_use_id: 'toolu_question',
+        });
+        if (question.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(question.event).toMatchObject({
+          title: 'The agent has questions for you',
+          payload: { questionnaire: expect.anything() },
+        });
+        expect(logger.info).toHaveBeenCalledWith(
+          NOT_APPLIED,
+          expect.objectContaining({
+            toolName: 'AskUserQuestion',
+            reason: 'the request is a question for a person',
+          }),
+        );
+        // Stopping the session settles the open card.
+        await adapter.stopSession('thread-guardian-question');
+      });
+
+      test('a file edit asked in plan mode prompts; the same edit in default mode is allowed', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const logger = { info: vi.fn(), warn: vi.fn() };
+        const plan = await grantHarness('thread-guardian-plan-edit', {
+          agent,
+          preToolPolicy: evaluator,
+          modelOptions: { permissionMode: 'plan' },
+          logger,
+        });
+        await plan.hook('Edit', plainEdit('x').input, 'toolu_plan_edit');
+        const edit = await plan.askFrame(plainEdit('toolu_plan_edit'));
+        if (edit.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(edit.event.payload).toMatchObject({ permissionMode: 'plan' });
+        expect(logger.info).toHaveBeenCalledWith(
+          NOT_APPLIED,
+          expect.objectContaining({
+            toolName: 'Edit',
+            reason: 'the request is an escalation or a plan exit',
+          }),
+        );
+        await edit.answer('decline');
+        await plan.adapter.stopSession('thread-guardian-plan-edit');
+
+        // Positive control: only the mode differs.
+        const normal = await grantHarness('thread-guardian-default-edit', {
+          agent,
+          preToolPolicy: evaluator,
+        });
+        await normal.hook('Edit', plainEdit('x').input, 'toolu_edit');
+        await expect(
+          normal.askFrame(plainEdit('toolu_edit')),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await normal.adapter.stopSession('thread-guardian-default-edit');
+      });
+
+      test('an ask whose frame was not read prompts', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, ask, hook } = await grantHarness(
+          'thread-guardian-no-frame',
+          { agent, preToolPolicy: evaluator },
+        );
+        await hook('Bash', { command: 'git status' }, 'toolu_no_frame');
+        // The ordinary options, under a request id no frame carried.
+        const missing = await ask(
+          'Bash',
+          { command: 'git status' },
+          sdkCanUseToolOptions(
+            'never-on-stdout',
+            plainBash('git status', 'toolu_no_frame'),
+          ),
+        );
+        if (missing.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(missing.event.payload.claudeAsk).toBeNull();
+        await missing.answer('decline');
+        await adapter.stopSession('thread-guardian-no-frame');
+      });
+
+      test('a chained Bash command the guardian allows is allowed (known behaviour: the #2932 chained-command gap)', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-chain',
+          { agent, preToolPolicy: evaluator },
+        );
+        const command = 'make build && git push origin main';
+        const chain = (toolUseId: string): ClaudeCanUseToolRequest => ({
+          tool_name: 'Bash',
+          display_name: 'Bash',
+          input: { command },
+          description: command,
+          decision_reason_type: 'subcommandResults',
+          tool_use_id: toolUseId,
+        });
+        await hook('Bash', { command }, 'toolu_chain');
+        await expect(askFrame(chain('toolu_chain'))).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        // A safety check on any part still prompts.
+        await hook('Bash', { command }, 'toolu_chain_safety');
+        const safety = await askFrame({
+          ...chain('toolu_chain_safety'),
+          classifier_approvable: false,
+        });
+        expect(safety.kind).toBe('prompted');
+        if (safety.kind === 'prompted') await safety.answer('decline');
+        await adapter.stopSession('thread-guardian-chain');
       });
 
       test('at most 256 unanswered allows are kept: the oldest is dropped and prompts', async () => {

@@ -1254,8 +1254,10 @@ describe('AcpAdapter', () => {
         metadata: Record<string, unknown> = {},
       ) {
         const { evaluator, reviewToolCall } = guardianPolicy(decision);
+        const logger = { info: vi.fn(), warn: vi.fn(), debug: vi.fn() };
         const { adapter, processes } = createAdapter({
           resolvePreToolPolicy: async () => evaluator,
+          logger,
         });
         const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
         await adapter.startSession({
@@ -1271,6 +1273,7 @@ describe('AcpAdapter', () => {
           adapter,
           client: processes[0].client,
           iterator,
+          logger,
           reviewToolCall,
         };
       }
@@ -1283,10 +1286,8 @@ describe('AcpAdapter', () => {
 
       test('a plain call is accepted without a request; a plan exit prompts', async () => {
         const threadId = 'thread-guardian-plan-exit';
-        const { adapter, client, iterator, reviewToolCall } = await start(
-          threadId,
-          'allow',
-        );
+        const { adapter, client, iterator, logger, reviewToolCall } =
+          await start(threadId, 'allow');
 
         // Positive control: the guardian's allow answers a plain call.
         await expect(
@@ -1318,8 +1319,16 @@ describe('AcpAdapter', () => {
           });
           await nextEvent(iterator, 'request.resolved');
         }
-        // The guardian did allow each plan exit; the adapter did not take it.
+        // The guardian did allow each plan exit; the adapter did not take it,
+        // and says so once per request.
         expect(reviewToolCall).toHaveBeenCalledTimes(1 + planExits.length);
+        expect(
+          logger.info.mock.calls.filter(
+            ([message]) =>
+              message ===
+              'Approval guardian allow not applied; the request goes to a person',
+          ),
+        ).toHaveLength(planExits.length);
       });
 
       test('a guardian deny still declines, with no request', async () => {

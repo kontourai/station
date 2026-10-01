@@ -282,8 +282,9 @@ type GuardianOutcome =
 
 /**
  * The approval guardian's verdict. An enforce-mode deny blocks; an allow
- * allows, in either mode. The guardian is shown the agent, the tool's name
- * and description and the call's arguments, and nothing of the session: not
+ * allows, in either mode. The guardian is shown the agent, the tool's name,
+ * the call's arguments and a description where the adapter passes one (ACP
+ * passes the call's title; Claude passes none), and nothing of the session: not
  * its working directories, its permission mode, or why an engine would ask.
  * Its allow therefore speaks for the call as written. On an external engine
  * it answers plain calls only and never an escalation or a plan exit

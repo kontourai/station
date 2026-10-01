@@ -30,14 +30,21 @@ opinion, and the engine asks `canUseTool` for anything it does not allow
 itself.
 
 An approval-guardian allow is handled the same way (#2947). The guardian is
-shown the Agent's name, the tool's name and description and the call's
-arguments. It is not shown the session's working directories, its permission
+shown the Agent's name, the tool's name and the call's arguments. On ACP it
+is also shown the call's title as the tool description; the Claude hook
+passes no description. It is not shown the session's working directories, its permission
 mode, or why the engine would ask, so its allow speaks for the call as
 written and not for an escalation. On Claude Code the hook states no opinion
 for a guardian allow, and the adapter keeps the allow under the engine's
-tool-use id. If the engine then asks `canUseTool` about that call of that
-tool, the allow answers it only where `toolRequestIsPlainCall` holds, and it
-is used once. An escalation, a plan exit or a question reaches a person, and a
+tool-use id, with the tool's name and a digest of the input the guardian
+reviewed (SHA-256 of the input's JSON with object keys sorted). If the engine
+then asks `canUseTool` about that call of that tool with the same input, the
+allow answers it only where `toolRequestIsPlainCall` holds, and it is used
+once. A different input, which another `PreToolUse` hook's `updatedInput` can
+produce, consumes the allow without using it, and the request prompts. A
+chained Bash command is a plain call, so a guardian allow answers it,
+including what the chained-command gaps below leave invisible. When an allow
+is not applied the adapter logs that and why. An escalation, a plan exit or a question reaches a person, and a
 call the engine allows itself never consults the allow. The guardian is asked
 once per call. At most 256 unanswered allows are kept per session; beyond
 that the oldest is dropped, and a call whose allow was dropped prompts. A
