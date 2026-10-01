@@ -10,4 +10,5 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [agent-identity-supported-surface-inventory.md](agent-identity-supported-surface-inventory.md) — Agent identity supported-surface inventory
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
 - [issue-class-prevention.md](issue-class-prevention.md) — Issue class prevention
+- [shared-work-delivery.md](shared-work-delivery.md) — Shared work delivery ledger
 <!-- docs-index:end -->

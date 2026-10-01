@@ -176,3 +176,26 @@ describe('excludeChatErrorMarkers', () => {
     ]);
   });
 });
+
+describe("excludeChatErrorMarkers accepts the scrubber's message shapes", () => {
+  test('a legacy content-string marker is excluded like a parts marker', () => {
+    const plain = { role: 'user', content: 'please answer' };
+    const contentMarker = {
+      role: 'user',
+      content: '[SYSTEM_EVENT] [CHAT_ERROR] upstream exploded sk-live-SECRET',
+    };
+    const partsMarker = {
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text: '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+        },
+      ],
+    };
+
+    expect(
+      excludeChatErrorMarkers([plain, contentMarker, partsMarker]),
+    ).toEqual([plain]);
+  });
+});
