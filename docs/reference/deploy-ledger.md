@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-01T07:13:08Z | nightly-desktop | 0.1.11-nightly.2465 | `3b001e5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36819975981) |
+| 2026-10-01T07:13:05Z | nightly-android | 0.1.11-nightly.2465 | `3b001e5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36819975981) |
 | 2026-10-01T06:47:09Z | nightly-npm | 0.7.0-nightly.2465.36819975981 | `3b001e5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36819975981) |
 | 2026-09-30T23:10:29Z | nightly-desktop | 0.1.11-nightly.2464.3 | `4dbf9ac` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36783703696) |
 | 2026-09-30T23:10:26Z | nightly-android | 0.1.11-nightly.2464.3 | `4dbf9ac` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36783703696) |
@@ -209,6 +211,60 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-01T07:13:08Z · nightly-desktop · 0.1.11-nightly.2465
+
+- Ship SHA: `3b001e5e54358931bb4c090eec900d4ecb488620`
+- Artifact built at: `2026-10-01T06:01:31.378Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36819975981)
+
+### Changelog
+
+Commits since `4dbf9ac` ([full sha](https://github.com/kontourai/station/commit/4dbf9acbcab04c4695c8ca9799bc1422526cd382)):
+
+**Features**
+
+- [#3037](https://github.com/kontourai/station/pull/3037) feat(tasks): show work on a board and lead with the shared workspace
+- [#2896](https://github.com/kontourai/station/pull/2896) feat(relay): add opt-in native Device proof pilot
+
+**Fixes**
+
+- [#3032](https://github.com/kontourai/station/pull/3032) fix(connections): admit delegated sign-in profile reads
+- [#2987](https://github.com/kontourai/station/pull/2987) fix(server): say why a Station agent turn failed, and keep provider error text off Station's chat surfaces
+- [#2983](https://github.com/kontourai/station/pull/2983) fix(ui): accessible split-pane list rows (AA selection, keyboard, names, touch targets)
+- [#3031](https://github.com/kontourai/station/pull/3031) fix(mcp): reconnect built-in tool servers without false stale custody
+
+**Other**
+
+- [#3033](https://github.com/kontourai/station/pull/3033) chore(release): publish Agent SDK 0.8 with verified release closure
+
+## 2026-10-01T07:13:05Z · nightly-android · 0.1.11-nightly.2465
+
+- Ship SHA: `3b001e5e54358931bb4c090eec900d4ecb488620`
+- Artifact built at: `2026-10-01T05:42:25.191Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36819975981)
+
+### Changelog
+
+Commits since `4dbf9ac` ([full sha](https://github.com/kontourai/station/commit/4dbf9acbcab04c4695c8ca9799bc1422526cd382)):
+
+**Features**
+
+- [#3037](https://github.com/kontourai/station/pull/3037) feat(tasks): show work on a board and lead with the shared workspace
+- [#2896](https://github.com/kontourai/station/pull/2896) feat(relay): add opt-in native Device proof pilot
+
+**Fixes**
+
+- [#3032](https://github.com/kontourai/station/pull/3032) fix(connections): admit delegated sign-in profile reads
+- [#2987](https://github.com/kontourai/station/pull/2987) fix(server): say why a Station agent turn failed, and keep provider error text off Station's chat surfaces
+- [#2983](https://github.com/kontourai/station/pull/2983) fix(ui): accessible split-pane list rows (AA selection, keyboard, names, touch targets)
+- [#3031](https://github.com/kontourai/station/pull/3031) fix(mcp): reconnect built-in tool servers without false stale custody
+
+**Other**
+
+- [#3033](https://github.com/kontourai/station/pull/3033) chore(release): publish Agent SDK 0.8 with verified release closure
 
 ## 2026-10-01T06:47:09Z · nightly-npm · 0.7.0-nightly.2465.36819975981
 

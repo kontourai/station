@@ -36,7 +36,7 @@
 
     {"path":"docs/reference/cli.md","digest":"2956e925977c7292b0b38c03fcb2b38058d5243fe9ef0c818c2fb1b910c4ac2a","revision":"2980b5579fb5a90ba37cd95a14c40065c0b57917"},
 
-    {"path":"docs/reference/config.md","digest":"4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/reference/config.md","digest":"f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
 
     {"path":"docs/reference/metrics.md","digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
