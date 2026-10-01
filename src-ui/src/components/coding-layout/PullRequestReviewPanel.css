@@ -118,6 +118,8 @@
 .pull-request-review__summary:hover {
   color: var(--text-primary);
 }
+/* The turn rides the shared motion tokens; tokens.css clamps them under
+   prefers-reduced-motion, so no page-local at-rule is needed. */
 .pull-request-review__caret {
   width: 14px;
   height: 14px;
@@ -126,11 +128,6 @@
 }
 details[open] > .pull-request-review__summary .pull-request-review__caret {
   transform: rotate(90deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .pull-request-review__caret {
-    transition: none;
-  }
 }
 /* The head: chips, branches, author, then the quieter identity line. */
 .pull-request-review__head {

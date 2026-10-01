@@ -118,7 +118,7 @@ const CHECK_STATE_TONE: Record<PullRequestCheckState, Tone> = {
  * `locked`). An enum this pane does not know is written as a word too, never
  * raw.
  */
-export function pullRequestStateChip(state: string): {
+function pullRequestStateChip(state: string): {
   label: string;
   tone: Tone;
 } {
@@ -136,7 +136,7 @@ export function pullRequestStateChip(state: string): {
  * yet. GitHub reports the latest review's state; GitLab's `reviewStatus` is
  * its detailed merge status, read the same way.
  */
-export function reviewDecisionChip(
+function reviewDecisionChip(
   status: string,
 ): { label: string; tone: Tone } | null {
   const key = status.trim().toUpperCase();
@@ -415,7 +415,7 @@ const NO_PLACED_LINES: PlacedLines = new Map();
  * between hunks: inside one, `+++ x` is an added line whose text starts
  * with `++ `, and the hunk's own line counts say where it ends.
  */
-export function placedLines(patch: string): PlacedLines {
+function placedLines(patch: string): PlacedLines {
   const files = new Map<
     string,
     { additions: Set<number>; deletions: Set<number> }
