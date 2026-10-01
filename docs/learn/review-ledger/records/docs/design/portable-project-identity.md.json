@@ -9,7 +9,7 @@
 
   "limits": "Historical consumer sweep and remaining requirements are not current exhaustive ownership/authorization verification. No physical-peer execution/membership/provider continuation or full worktree/lease audit.",
 
-  "document": {"digest":"bacc03693d6fef3d2e6105609dd6f17a9e934ef32e8095484b91c7cc06537b98","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+  "document": {"digest":"a12d83b4992132dd42fd48fa2dfcb802bb059ef1536d6f043f1035c5770bc078","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
   "sources": [
     {"path":"packages/contracts/src/project-identity.ts","digest":"c81f85061a8223065edd232c39c98b972caae30d6f93b8ee919cc39294d44aee","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
