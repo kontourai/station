@@ -98,7 +98,7 @@ function createHarness() {
 
 async function pairDevice(
   harness: ReturnType<typeof createHarness>,
-  name = 'Brian phone',
+  name = 'Casey phone',
 ) {
   const offer = harness.pairing.createOffer({
     endpoint: 'https://station.example.test',

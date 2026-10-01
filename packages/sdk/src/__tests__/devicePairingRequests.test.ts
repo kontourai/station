@@ -108,7 +108,7 @@ describe('paired-device identity query (#951 step 2)', () => {
     const devices = [
       {
         id: 'device-1',
-        name: 'Brian’s Pixel',
+        name: 'Casey’s Pixel',
         scope: 'chat:read',
         kind: 'device',
         createdAt: 1,
