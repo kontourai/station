@@ -503,14 +503,19 @@ A retained valid intent can recover an already-committed broker receipt after
 the original local expiry/grace window; this does not authorize a new renewal
 outside the broker's window or allow expired open/read operations.
 
-The Desktop `NativeRelayGrantRenewalSupervisor` is composed by `ApiBaseProvider`.
+The native `NativeRelayGrantRenewalSupervisor` is composed by `ApiBaseProvider`
+on desktop and mobile.
 It observes all saved routes while the renderer is visible, validates the host
 DTO and saved-profile revision, and renews only an existing single grant with no
 pending cleanup. Timers and wake/online refreshes recheck status before renewal;
 failures receive bounded backoff. Removing or replacing a profile fences its
 pending renderer result. The 64-route ceiling pauses all automatic maintenance
 until the saved set is within the limit. This supervisor does not approve a key,
-redeem an invitation, or make native application transport available.
+redeem an invitation, or grant application authority. Visibility is checked
+again after asynchronous status lookup before starting renewal; an already
+issued host RPC may finish under its own custody checks after the app hides.
+Mounted iOS-composition tests cover that scheduling boundary, but actual
+WKWebView background/foreground behavior remains unqualified.
 Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
@@ -532,9 +537,12 @@ only establishes endpoint trust.
 The native application adapter marks requests from an admitted peer with
 server-owned provenance before virtual ingress; omitting `Origin` on an
 ordinary HTTP request supplies no such authority. Device and account admission
-remain separate. Several native installations can hold separate grants, but
-this connector configuration names one surface; multi-surface fan-out and
-ordinary native UI onboarding remain separate work.
+remain separate. Several native installations can hold separate grants.
+The fixed-surface connector still polls one surface; the native registry mode
+polls only exact operator-approved surfaces and rechecks the captured approval
+through peer admission and response delivery. Native Device setup and bounded
+member-read UI composition now exist, with physical-client qualification
+remaining separate; see [native enrollment](../design/native-relay-enrollment.md).
 
 An explicit native-v2 `diagnosticEcho` composition is available in the
 [local lab](local-collaboration-lab.md#native-v2-signaling-diagnostic).

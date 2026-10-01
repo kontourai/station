@@ -34,7 +34,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
-| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while Desktop is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
+| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while a native renderer is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -831,10 +831,13 @@ constructor inputs; the currently selected Station does not choose which grants
 are maintained.
 
 **Composition and lifetime.** [ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx)
-constructs it only for Desktop Tauri, starts it from the owning effect and stops
+constructs it for desktop and mobile Tauri, starts it from the owning effect and stops
 it on cleanup. It listens for saved-profile changes, online, focus, pageshow and
 visibility changes. The work pump runs while the renderer is visible; waking
-requests fresh host status. `stop()` removes listeners and timers and invalidates
+requests fresh host status. Visibility is rechecked after asynchronous status
+lookup before a renewal starts. A host RPC already issued may finish after
+hiding; this is foreground scheduling, not background continuity.
+`stop()` removes listeners and timers and invalidates
 route entries. More than 64 saved routes pauses all maintenance and reports a
 route-limit issue, rather than silently maintaining a subset. The saved-route
 view explains that limit.
