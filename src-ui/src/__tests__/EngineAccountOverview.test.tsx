@@ -101,6 +101,29 @@ test.each([
               fetchedAt: '2026-10-01T12:00:00Z',
               planLabel: 'Team',
               exhausted: false,
+              metadata: {
+                identity: {
+                  email: 'viewer@example.test',
+                  accountId: 'account-test',
+                },
+                credits: { balance: 12.5, available: true, unlimited: false },
+                models: [
+                  {
+                    id: 'test-model',
+                    available: false,
+                    creditsWouldEnable: true,
+                  },
+                ],
+                capture: {
+                  source:
+                    engine === 'codex'
+                      ? 'codex-wham-usage'
+                      : 'claude-oauth-usage',
+                  unhandledFields: ['future.window'],
+                  excludedFields: [],
+                  truncated: false,
+                },
+              },
               windows: [
                 {
                   id: 'five-hour',
@@ -173,6 +196,8 @@ test.each([
                   provider: engine,
                   day: '2026-09-30',
                   inputTokens: 100,
+                  cacheReadTokens: 40,
+                  cacheWriteTokens: 0,
                   outputTokens: 20,
                   ...(engine === 'claude'
                     ? { reportedCost: { amount: 2, currency: 'USD' } }
@@ -192,8 +217,23 @@ test.each([
         <EngineAccountOverview engine={engine} connectionId={engine} />
       </QueryClientProvider>,
     );
-    if (management) await screen.findByText('80% left');
-    else
+    if (management) {
+      await screen.findByText('80% left');
+      expect(screen.getByText('viewer@example.test')).toBeTruthy();
+      fireEvent.click(screen.getByText('Account & credits'));
+      expect(screen.getByText('12.5')).toBeTruthy();
+      expect(
+        screen.getByText('Unavailable · Credits would enable'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText('Data captured · incomplete'));
+      expect(screen.getByText('future.window')).toBeTruthy();
+      expect(
+        screen.getByText('Live reading; no quota history stored'),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByText('Token breakdown & capture coverage'));
+      expect(screen.getByText('40')).toBeTruthy();
+      expect(screen.getAllByText('Not reported').length).toBeGreaterThan(0);
+    } else
       await screen.findByText(
         'Limit access requires credential-management permission.',
       );

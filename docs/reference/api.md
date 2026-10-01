@@ -2572,6 +2572,13 @@ selected profile's provider quota. Omit the reference to inspect the connection'
 default account. This token-backed read requires `access:manage`; an engine-login
 grant alone does not admit it. The result is either normalized quota windows,
 plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Both variants can include optional `metadata`: Codex identity/credits/model and
+reset-credit facts, Claude extra usage, and bounded response-shape `capture`
+(source, unmapped/excluded field paths, truncation). Windows optionally carry
+`durationSeconds`, `resetAfterSeconds`, `allowed`, `limitReached`, `model` and
+`meteredFeature`. Raw response values for unmapped fields are never returned;
+quota snapshots are not persisted. See the [capture inventory](../guides/connections.md#sign-an-engine-profile-in-from-a-device)
+for scope and live-verification limits.
 
 `GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
 an existing saved profile and `engine:login` or a verified operator. No default

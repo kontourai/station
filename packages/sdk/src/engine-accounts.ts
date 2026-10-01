@@ -18,6 +18,72 @@ const engineAccountsSchema = z
     ),
   })
   .strict();
+const usageMetadataSchema = z
+  .object({
+    identity: z
+      .object({
+        email: z.string().optional(),
+        accountId: z.string().optional(),
+        userId: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    credits: z
+      .object({
+        available: z.boolean().optional(),
+        unlimited: z.boolean().optional(),
+        balance: z.number().nonnegative().optional(),
+        overageLimitReached: z.boolean().optional(),
+        approximateLocalMessages: z
+          .array(z.number().nonnegative())
+          .length(2)
+          .optional(),
+        approximateCloudMessages: z
+          .array(z.number().nonnegative())
+          .length(2)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    extraUsage: z
+      .object({
+        enabled: z.boolean().optional(),
+        used: z.number().nonnegative().optional(),
+        monthlyLimit: z.number().nonnegative().optional(),
+        usedPercent: z.number().nonnegative().optional(),
+        limitReached: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    resetCredits: z
+      .object({
+        available: z.number().nonnegative().optional(),
+        applicable: z.number().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
+    models: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            available: z.boolean().optional(),
+            availableAt: z.string().optional(),
+            creditsWouldEnable: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    capture: z
+      .object({
+        source: z.enum(['claude-oauth-usage', 'codex-wham-usage']),
+        unhandledFields: z.array(z.string()),
+        excludedFields: z.array(z.string()),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
 const engineAccountUsageSchema = z.union([
   z
     .object({
@@ -31,10 +97,17 @@ const engineAccountUsageSchema = z.union([
             label: z.string(),
             usedPercent: z.number().min(0).max(100),
             resetsAt: z.string().optional(),
+            durationSeconds: z.number().positive().optional(),
+            resetAfterSeconds: z.number().nonnegative().optional(),
+            meteredFeature: z.string().optional(),
+            allowed: z.boolean().optional(),
+            limitReached: z.boolean().optional(),
+            model: z.string().optional(),
           })
           .strict(),
       ),
       exhausted: z.boolean(),
+      metadata: usageMetadataSchema.optional(),
     })
     .strict(),
   z
@@ -42,6 +115,7 @@ const engineAccountUsageSchema = z.union([
       status: z.literal('unknown'),
       fetchedAt: z.string(),
       reason: z.string(),
+      metadata: usageMetadataSchema.optional(),
     })
     .strict(),
 ]);

@@ -155,3 +155,36 @@
   display: grid;
   gap: 0.5rem;
 }
+
+.engine-account-overview details {
+  border-top: 1px solid var(--k-line);
+}
+.engine-account-overview summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  color: var(--k-text);
+}
+.engine-account-overview summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.engine-account-overview__facts {
+  margin: 0;
+  display: grid;
+  gap: var(--k-space-2);
+}
+.engine-account-overview__facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  justify-content: space-between;
+}
+.engine-account-overview__facts dt {
+  color: var(--k-text-muted);
+}
+.engine-account-overview__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}

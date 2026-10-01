@@ -70,12 +70,55 @@ requests a new reading; there is no continuous quota polling. Claude credentials
 may be read from its selected macOS Keychain namespace when no credential file
 exists. Tokens remain on the server.
 
+Codex window labels use the provider's reported duration. A primary window is
+not necessarily five hours; absent durations are labeled primary or secondary.
+Reset countdowns describe the last reading, with the absolute reset time beside
+them. Individual reserve/model windows retain their own availability verdict.
+
+**Account & credits** expands account identity, credit balances, approximate
+local/cloud message ranges, reset credits and model availability when Codex
+returns them. Claude extra usage shows enabled state, utilization and amounts
+in provider units; Station does not assume those amounts are dollars.
+Unavailable fields remain **Not reported**. An unavailable quota percentage does
+not discard readable account/credit details.
+
+**Data captured** shows the reading's source, storage policy, unmapped non-null
+field paths and deliberate exclusions. Only field names leave the server for
+unmapped values. This bounded shape audit excludes null/empty fields, value
+validation, credential stores and other endpoints; “none in this response” does
+not establish complete provider coverage. Quota readings are live projections,
+not persisted history. Usage receipts below are persisted separately.
+
+The current projection inventory is:
+
+| Source fields | Capture and display | Storage / limits |
+| --- | --- | --- |
+| Codex `email`, `account_id`, `user_id`, `plan_type` | Account identity and plan | Live, credential-management access |
+| Codex rate limits, additional limits, code-review limits, chat-pass windows | Percentage, duration, absolute/relative reset, availability; additional model/feature identity | Live; null windows omitted, unknown durations not guessed |
+| Codex `credits` | Availability, unlimited flag, balance, overage verdict and message ranges | Live; credit units are not currency |
+| Codex `model_usage` | Model availability, availability time, whether credits enable it | Live; at most 32 models projected |
+| Codex `rate_limit_reset_credits` | Available and applicable counts | Live |
+| Codex `spend_control.reached` | Account exhaustion verdict | Live; individual spend-limit policy, promo and limit-reached type deliberately excluded |
+| Claude `five_hour`, `seven_day`, model/OAuth/Cowork weekly windows and scoped `limits` | Percentage, reset and provider exhaustion verdict | Live; not all accounts return each window |
+| Claude `extra_usage` | Enabled state, used amount, monthly limit, utilization, spend-limit verdict | Live; amounts stay in provider units |
+| Station usage rollup | Input/output/cache tokens, receipts, reported/estimated costs, pricing sources/snapshots, coverage/freshness/observed turns | Persisted receipts; all engine accounts on this Station, not provider-wide billing |
+| Non-null unrecognized response leaves | Unmapped paths, never their values | No raw-response storage; audit capped at depth 8, 2048 visited nodes, 256 leaves, 64 keys/object and 32 items/array |
+
+On 2026-10-01 a read-only Codex account probe confirmed the weekly-primary,
+reserve, model availability, credit, chat-pass and reset-credit response shapes.
+The then-stored Claude credential returned 401; Claude additions are validated
+against controlled response fixtures and are **not live-verified** for that
+account. Other plans and provider endpoints remain outside this observation.
+
 **Activity** shows 7 or 30 days of this engine's runs on this Station, across all
 accounts. Receipts do not identify the credential profile, so this is not
 per-account history. Reported cost and estimates remain separate. The daily chart uses reported cost
 when available, estimates when only estimates are available, and otherwise
 tokens. Missing days keep their place and are marked unreported. Missing costs
-are shown as unavailable, and partial coverage is disclosed. Subscription
+are shown as unavailable, and partial coverage is disclosed. **Token breakdown &
+capture coverage** expands cache/input/output totals, pricing provenance and
+observed-versus-usage-reported turn counts. Missing values are not added as
+known zeros; reported subtotals can be incomplete. Subscription
 allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
 even when the page requests only this Station.
 

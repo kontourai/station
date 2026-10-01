@@ -18,6 +18,45 @@ export interface EngineAccountUsageWindow {
   label: string;
   usedPercent: number;
   resetsAt?: string;
+  durationSeconds?: number;
+  resetAfterSeconds?: number;
+  meteredFeature?: string;
+  allowed?: boolean;
+  limitReached?: boolean;
+  model?: string;
+}
+/** Safe projection of a live provider response; never credential material. */
+export interface EngineAccountUsageMetadata {
+  identity?: { email?: string; accountId?: string; userId?: string };
+  credits?: {
+    available?: boolean;
+    unlimited?: boolean;
+    balance?: number;
+    overageLimitReached?: boolean;
+    approximateLocalMessages?: number[];
+    approximateCloudMessages?: number[];
+  };
+  extraUsage?: {
+    enabled?: boolean;
+    used?: number;
+    monthlyLimit?: number;
+    usedPercent?: number;
+    limitReached?: boolean;
+  };
+  resetCredits?: { available?: number; applicable?: number };
+  models?: Array<{
+    id: string;
+    available?: boolean;
+    availableAt?: string;
+    creditsWouldEnable?: boolean;
+  }>;
+  /** Shape audit only: no unrecognized response values leave the server. */
+  capture: {
+    source: 'claude-oauth-usage' | 'codex-wham-usage';
+    unhandledFields: string[];
+    excludedFields: string[];
+    truncated: boolean;
+  };
 }
 export type EngineAccountUsage =
   | {
@@ -26,8 +65,14 @@ export type EngineAccountUsage =
       planLabel?: string;
       windows: EngineAccountUsageWindow[];
       exhausted: boolean;
+      metadata?: EngineAccountUsageMetadata;
     }
-  | { status: 'unknown'; fetchedAt: string; reason: string };
+  | {
+      status: 'unknown';
+      fetchedAt: string;
+      reason: string;
+      metadata?: EngineAccountUsageMetadata;
+    };
 export interface EngineAccountLogin {
   engine: 'claude' | 'codex';
   mechanism: 'browser-code' | 'device-code';

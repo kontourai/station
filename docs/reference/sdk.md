@@ -3812,7 +3812,11 @@ and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
 keys partition API base, authority, engine connection and profile. Login retries
 are disabled and live status polls only while a login is pending. Quota refresh
 is explicit. Strict contracts live in
-`@kontourai/station-contracts/engine-accounts`.
+`@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
+optional account/credit/model metadata and response-shape audit fields on both
+known and unknown quota variants. Consumers must not treat unknown quota as zero
+or credit balances as dollars. Window durations come from the provider, rather
+than inferring five hours from the primary position.
 
 These exports require a release containing this change; current source presence
 is not evidence of npm publication. The Connections guide owns account-viewing,

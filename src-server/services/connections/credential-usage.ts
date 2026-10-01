@@ -40,28 +40,13 @@ import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
-/** One quota window, as the page renders it. */
-export interface CredentialUsageWindow {
-  /** Stable identity for the row, e.g. 'five-hour', 'weekly', or a model name. */
-  id: string;
-  label: string;
-  /** 0-100. */
-  usedPercent: number;
-  /** ISO-8601, or absent when the provider did not say. */
-  resetsAt?: string;
-}
+import type {
+  EngineAccountUsage as CredentialUsage,
+  EngineAccountUsageWindow as CredentialUsageWindow,
+} from '@kontourai/station-contracts/engine-accounts';
+import { projectUsageMetadata } from './credential-usage-metadata.js';
 
-export type CredentialUsage =
-  | {
-      status: 'ok';
-      /** When this reading was taken. It is a remote counter, not our measurement. */
-      fetchedAt: string;
-      planLabel?: string;
-      windows: CredentialUsageWindow[];
-      /** The PROVIDER's verdict that this account is currently spent. */
-      exhausted: boolean;
-    }
-  | { status: 'unknown'; fetchedAt: string; reason: string };
+export type { CredentialUsage, CredentialUsageWindow };
 
 export interface UsageFetchDeps {
   fetch: typeof globalThis.fetch;
@@ -340,6 +325,28 @@ function normalizeClaude(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
         : {}),
     });
   }
+  const modelWindows = raw && typeof raw === 'object' ? raw : {};
+  for (const [key, label] of [
+    ['seven_day_sonnet', 'Weekly · Sonnet'],
+    ['seven_day_opus', 'Weekly · Opus'],
+    ['seven_day_oauth_apps', 'Weekly · OAuth apps'],
+    ['seven_day_cowork', 'Weekly · Cowork'],
+  ] as const) {
+    if (!(key in modelWindows)) continue;
+    const window = (modelWindows as Record<string, unknown>)[key];
+    if (!window || typeof window !== 'object') continue;
+    const record = window as { utilization?: unknown; resets_at?: unknown };
+    const value = percent(record.utilization);
+    if (value === undefined) continue;
+    const resetsAt = isoFromIsoString(record.resets_at);
+    windows.push({
+      id: key,
+      label,
+      usedPercent: value,
+      durationSeconds: 604800,
+      ...(resetsAt ? { resetsAt } : {}),
+    });
+  }
   // Per-model rows: `weekly_scoped` entries name their model in `scope`.
   for (const limit of Array.isArray(body.limits) ? body.limits : []) {
     if (limit?.kind !== 'weekly_scoped') continue;
@@ -374,10 +381,13 @@ function normalizeClaude(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
   // "Limit reached" behind `unknown`. A recognized verdict is information, so
   // it survives; only a payload that yielded neither is unknown.
   if (windows.length === 0 && !exhausted) {
-    return unknown(
-      deps,
-      'The provider reported no limits this version recognizes.',
-    );
+    return {
+      ...unknown(
+        deps,
+        'The provider reported no limits this version recognizes.',
+      ),
+      metadata: projectUsageMetadata('claude', raw),
+    };
   }
   const planKey = typeof body.plan === 'string' ? body.plan : undefined;
   return {
@@ -386,6 +396,7 @@ function normalizeClaude(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
     ...(planKey ? { planLabel: CLAUDE_PLAN_LABELS[planKey] ?? planKey } : {}),
     windows,
     exhausted,
+    metadata: projectUsageMetadata('claude', raw),
   };
 }
 
@@ -413,8 +424,29 @@ export async function readCodexUsage(
   return normalizedOrUnknown(deps, () => normalizeCodex(deps, result.body));
 }
 
+function durationLabel(seconds: unknown, fallback: string): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0)
+    return fallback;
+  const duration =
+    seconds === 604800
+      ? 'Weekly'
+      : seconds % 86400 === 0
+        ? `${seconds / 86400}-day`
+        : seconds % 3600 === 0
+          ? `${seconds / 3600}-hour`
+          : `${Math.round(seconds / 60)}-minute`;
+  return fallback.includes(' · ')
+    ? `${fallback.split(' · ')[0]} · ${duration.toLowerCase()}`
+    : `${duration} limit`;
+}
+
 function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
-  type CodexWindow = { used_percent?: unknown; reset_at?: unknown };
+  type CodexWindow = {
+    used_percent?: unknown;
+    reset_at?: unknown;
+    limit_window_seconds?: unknown;
+    reset_after_seconds?: unknown;
+  };
   type CodexRateLimit = {
     allowed?: unknown;
     limit_reached?: unknown;
@@ -426,8 +458,12 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
     rate_limit?: CodexRateLimit;
     additional_rate_limits?: Array<{
       limit_name?: unknown;
+      metered_feature?: unknown;
+      normal_model_slug?: unknown;
       rate_limit?: CodexRateLimit;
     }>;
+    code_review_rate_limit?: CodexRateLimit;
+    chatpass?: { windows?: CodexWindow[] };
     spend_control?: { reached?: unknown };
   };
 
@@ -436,20 +472,56 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
     id: string,
     label: string,
     window: CodexWindow | undefined,
+    verdict?: CodexRateLimit,
+    context?: { metered_feature?: unknown; normal_model_slug?: unknown },
   ) => {
     const value = percent(window?.used_percent);
     if (value === undefined) return;
     const resetsAt = isoFromEpochSeconds(window?.reset_at);
     windows.push({
       id,
-      label,
+      label: durationLabel(window?.limit_window_seconds, label),
       usedPercent: value,
+      ...(typeof window?.limit_window_seconds === 'number' &&
+      Number.isFinite(window.limit_window_seconds) &&
+      window.limit_window_seconds > 0
+        ? { durationSeconds: window.limit_window_seconds }
+        : {}),
+      ...(typeof verdict?.allowed === 'boolean'
+        ? { allowed: verdict.allowed }
+        : {}),
+      ...(typeof verdict?.limit_reached === 'boolean'
+        ? { limitReached: verdict.limit_reached }
+        : {}),
+      ...(typeof window?.reset_after_seconds === 'number' &&
+      Number.isFinite(window.reset_after_seconds) &&
+      window.reset_after_seconds >= 0
+        ? { resetAfterSeconds: window.reset_after_seconds }
+        : {}),
+      ...(typeof context?.normal_model_slug === 'string' &&
+      context.normal_model_slug.length <= 128
+        ? { model: context.normal_model_slug }
+        : {}),
+      ...(typeof context?.metered_feature === 'string' &&
+      context.metered_feature.length <= 128
+        ? { meteredFeature: context.metered_feature }
+        : {}),
       ...(resetsAt ? { resetsAt } : {}),
     });
   };
 
-  pushWindow('primary', '5-hour limit', body.rate_limit?.primary_window);
-  pushWindow('secondary', 'Weekly limit', body.rate_limit?.secondary_window);
+  pushWindow(
+    'primary',
+    'Primary limit',
+    body.rate_limit?.primary_window,
+    body.rate_limit,
+  );
+  pushWindow(
+    'secondary',
+    'Secondary limit',
+    body.rate_limit?.secondary_window,
+    body.rate_limit,
+  );
   for (const [index, extra] of (Array.isArray(body.additional_rate_limits)
     ? body.additional_rate_limits
     : []
@@ -460,14 +532,37 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
         : `Additional ${index + 1}`;
     pushWindow(
       `${name}-primary`,
-      `${name} (5-hour)`,
+      `${name} · primary`,
       extra?.rate_limit?.primary_window,
+      extra?.rate_limit,
+      extra,
     );
     pushWindow(
       `${name}-weekly`,
-      `${name} (weekly)`,
+      `${name} · secondary`,
       extra?.rate_limit?.secondary_window,
+      extra?.rate_limit,
+      extra,
     );
+  }
+
+  pushWindow(
+    'code-review-primary',
+    'Code review · primary',
+    body.code_review_rate_limit?.primary_window,
+    body.code_review_rate_limit,
+  );
+  pushWindow(
+    'code-review-secondary',
+    'Code review · secondary',
+    body.code_review_rate_limit?.secondary_window,
+    body.code_review_rate_limit,
+  );
+  for (const [index, window] of (Array.isArray(body.chatpass?.windows)
+    ? body.chatpass.windows
+    : []
+  ).entries()) {
+    pushWindow(`chatpass-${index}`, `Chat pass · window ${index + 1}`, window);
   }
 
   // The provider says so explicitly; do not infer it from used_percent.
@@ -479,10 +574,13 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
   // See the Claude normalizer: an explicit exhaustion verdict survives even
   // with no usable percentage windows.
   if (windows.length === 0 && !exhausted) {
-    return unknown(
-      deps,
-      'The provider reported no limits this version recognizes.',
-    );
+    return {
+      ...unknown(
+        deps,
+        'The provider reported no limits this version recognizes.',
+      ),
+      metadata: projectUsageMetadata('codex', raw),
+    };
   }
   const planKey =
     typeof body.plan_type === 'string' ? body.plan_type : undefined;
@@ -492,6 +590,7 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
     ...(planKey ? { planLabel: CODEX_PLAN_LABELS[planKey] ?? planKey } : {}),
     windows,
     exhausted,
+    metadata: projectUsageMetadata('codex', raw),
   };
 }
 

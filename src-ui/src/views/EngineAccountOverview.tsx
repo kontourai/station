@@ -1,3 +1,4 @@
+import type { EngineAccountUsageMetadata } from '@kontourai/station-contracts/engine-accounts';
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
 import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
@@ -267,12 +268,32 @@ function AccountPage({
                 />
                 {window.resetsAt && (
                   <small>
+                    {resetCountdown(window.resetsAt, usage.data?.fetchedAt)} ·
                     Resets{' '}
                     {new Date(window.resetsAt).toLocaleString(undefined, {
                       weekday: 'short',
                       hour: 'numeric',
                       minute: '2-digit',
                     })}
+                  </small>
+                )}
+                {(window.model || window.meteredFeature) && (
+                  <small>
+                    {[window.model, window.meteredFeature]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </small>
+                )}
+                {(window.allowed !== undefined ||
+                  window.limitReached !== undefined) && (
+                  <small>
+                    {window.limitReached
+                      ? 'Limit reached'
+                      : window.allowed === false
+                        ? 'Unavailable'
+                        : window.allowed === true
+                          ? 'Available'
+                          : 'Availability not reported'}
                   </small>
                 )}
               </div>
@@ -295,6 +316,9 @@ function AccountPage({
             Limits unavailable
             {usage.data?.status === 'unknown' ? `. ${usage.data.reason}` : '.'}
           </p>
+        )}
+        {!usage.isError && !usage.isLoading && usage.data?.metadata && (
+          <AccountMetadata metadata={usage.data.metadata} />
         )}
       </section>
       <div className="engine-account-overview__activity">
@@ -527,6 +551,167 @@ function AccountLogin({
     </div>
   );
 }
+function resetCountdown(at: string, checkedAt: string | undefined): string {
+  if (!checkedAt) return 'Reset time unavailable';
+  const minutes = Math.max(
+    0,
+    Math.ceil((Date.parse(at) - Date.parse(checkedAt)) / 60000),
+  );
+  if (!Number.isFinite(minutes)) return 'Reset time unavailable';
+  if (!minutes) return 'Reset due at last check';
+  const days = Math.floor(minutes / 1440),
+    hours = Math.floor((minutes % 1440) / 60);
+  return `Reset in ${days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`} at last check`;
+}
+
+type FactRow = [string, string | number | undefined];
+
+function Facts({ rows }: { rows: FactRow[] }) {
+  return (
+    <dl className="engine-account-overview__facts">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value ?? 'Not reported'}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+const yesNo = (value: boolean | undefined) =>
+  value === undefined ? undefined : value ? 'Yes' : 'No';
+
+function AccountMetadata({
+  metadata,
+}: {
+  metadata: EngineAccountUsageMetadata;
+}) {
+  const { identity, credits, extraUsage, resetCredits, models, capture } =
+    metadata;
+  return (
+    <>
+      {identity?.email && <small>{identity.email}</small>}
+      <details>
+        <summary>Account & credits</summary>
+        <Facts
+          rows={[
+            ...(identity
+              ? ([
+                  ['Account ID', identity.accountId],
+                  ['User ID', identity.userId],
+                ] satisfies FactRow[])
+              : []),
+            ...(credits
+              ? ([
+                  ['Credit balance', credits.balance],
+                  ['Credits available', yesNo(credits.available)],
+                  ['Unlimited credits', yesNo(credits.unlimited)],
+                  ['Overage limit reached', yesNo(credits.overageLimitReached)],
+                  [
+                    'Approx. local messages',
+                    credits.approximateLocalMessages?.join('–'),
+                  ],
+                  [
+                    'Approx. cloud messages',
+                    credits.approximateCloudMessages?.join('–'),
+                  ],
+                ] satisfies FactRow[])
+              : []),
+            ...(resetCredits
+              ? ([
+                  ['Reset credits', resetCredits.available],
+                  ['Applicable reset credits', resetCredits.applicable],
+                ] satisfies FactRow[])
+              : []),
+            ...(extraUsage
+              ? ([
+                  ['Extra usage enabled', yesNo(extraUsage.enabled)],
+                  ['Extra usage consumed (provider units)', extraUsage.used],
+                  [
+                    'Monthly extra limit (provider units)',
+                    extraUsage.monthlyLimit,
+                  ],
+                  [
+                    'Extra usage used',
+                    extraUsage.usedPercent === undefined
+                      ? undefined
+                      : `${extraUsage.usedPercent}%`,
+                  ],
+                  ['Extra usage limit reached', yesNo(extraUsage.limitReached)],
+                ] satisfies FactRow[])
+              : []),
+          ]}
+        />
+        {!identity && !credits && !extraUsage && !resetCredits && (
+          <small>No account or credit details were returned.</small>
+        )}
+        {!!models?.length && (
+          <Facts
+            rows={models.map((model) => [
+              model.id,
+              [
+                model.available === undefined
+                  ? 'Availability not reported'
+                  : model.available
+                    ? 'Available'
+                    : 'Unavailable',
+                model.availableAt
+                  ? `Available ${new Date(model.availableAt).toLocaleString()}`
+                  : '',
+                model.creditsWouldEnable ? 'Credits would enable' : '',
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            ])}
+          />
+        )}
+      </details>
+      <details>
+        <summary>
+          Data captured
+          {capture.unhandledFields.length || capture.truncated
+            ? ' · incomplete'
+            : ''}
+        </summary>
+        <Facts
+          rows={[
+            [
+              'Source',
+              capture.source === 'codex-wham-usage'
+                ? 'OpenAI account usage'
+                : 'Anthropic OAuth usage',
+            ],
+            ['Storage', 'Live reading; no quota history stored'],
+            [
+              'Unmapped fields',
+              capture.unhandledFields.length
+                ? capture.unhandledFields.join(', ')
+                : 'None in this response',
+            ],
+            [
+              'Excluded fields',
+              capture.excludedFields.length
+                ? capture.excludedFields.join(', ')
+                : 'None in this response',
+            ],
+            [
+              'Shape audit',
+              capture.truncated
+                ? 'Incomplete: response exceeded audit bounds'
+                : 'Completed for this response',
+            ],
+          ]}
+        />
+        <small>
+          Field names identify gaps; unrecognized values and credentials stay
+          private. Empty fields, value validation and other provider endpoints
+          are outside this audit.
+        </small>
+      </details>
+    </>
+  );
+}
+
 function Activity({ data, engine }: { data: UsageRollup; engine: string }) {
   const rows = data.rows.filter((row) => row.provider === engine);
   if (!rows.length)
@@ -652,6 +837,87 @@ function Activity({ data, engine }: { data: UsageRollup; engine: string }) {
           <span>{data.window.to}</span>
         </div>
       </figure>
+      <details>
+        <summary>Token breakdown & capture coverage</summary>
+        <small>
+          Totals include reported values only. Missing token categories and
+          turns remain gaps.
+        </small>
+        <Facts
+          rows={[
+            ...(
+              [
+                'inputTokens',
+                'outputTokens',
+                'cacheReadTokens',
+                'cacheWriteTokens',
+              ] as const
+            ).map((key, index): [string, string | undefined] => [
+              [
+                'Input tokens',
+                'Output tokens',
+                'Cache read tokens',
+                'Cache write tokens',
+              ][index]!,
+              rows.some((row) => row[key] !== undefined)
+                ? rows
+                    .reduce((sum, row) => sum + (row[key] ?? 0), 0)
+                    .toLocaleString()
+                : undefined,
+            ]),
+            [
+              'Usage receipts',
+              rows
+                .reduce((sum, row) => sum + row.receiptCount, 0)
+                .toLocaleString(),
+            ],
+            [
+              'Pricing',
+              [...new Set(rows.map((row) => row.pricingStatus))].join(', '),
+            ],
+            [
+              'Estimate sources',
+              [
+                ...new Set(
+                  estimates
+                    .map((item) => item.pricingSnapshotSource)
+                    .filter(Boolean),
+                ),
+              ].join(', ') || undefined,
+            ],
+            [
+              'Pricing snapshots',
+              [
+                ...new Set(estimates.map((item) => item.pricingSnapshotId)),
+              ].join(', ') || undefined,
+            ],
+          ]}
+        />
+        {data.coverage.map((coverage, index) => (
+          <Facts
+            key={`${coverage.stationId}:${index}`}
+            rows={[
+              ['Capture status', coverage.state],
+              ['Source freshness', coverage.freshness],
+              ['Source observed through', coverage.observedThrough],
+              ['Source observed turns', coverage.observedTurnCount],
+              ['Source turns with usage', coverage.usageReportedTurnCount],
+              ['Source reason', coverage.reason],
+              ['Dropped receipts', coverage.droppedReceiptCount],
+              ...(coverage.providers
+                ?.filter((provider) => provider.provider === engine)
+                .flatMap((provider): FactRow[] => [
+                  ['Provider capture', provider.state],
+                  ['Observed turns', provider.observedTurnCount],
+                  ['Turns with usage', provider.usageReportedTurnCount],
+                  ['Freshness', provider.freshness],
+                  ['Observed through', provider.observedThrough],
+                  ['Reason', provider.reason],
+                ]) ?? []),
+            ]}
+          />
+        ))}
+      </details>
       {partial && <small>Some activity is missing.</small>}
       <small>
         Reported and estimated costs are separate. Subscription allowance is not
