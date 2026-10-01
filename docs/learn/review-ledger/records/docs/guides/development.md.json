@@ -42,7 +42,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"088bb39e956453e408b5c8ccee5e2784a0b33c8ce7487e2ef722755b54f14b1a","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"packages/cli/src/commands/helpers.ts","digest":"f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -67,6 +67,8 @@
     {"path":"scripts/ecosystem-manifest.mjs","digest":"00924f84cf27a5683761b6511fb017b7013c8eeaaecdac8637901faf7efaeff8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":"scripts/fast-checks-shard.mjs","digest":"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/gh-app-token.mjs","digest":"a04d8595b86db65207f5d7da128cd0c9b6a97ae32f0f2d7e9c0237a526af3f3a","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"},
 
     {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -100,9 +102,7 @@
 
     {"path":"src-server/__test-utils__/sse-helpers.ts","digest":"daa4853dc02cf11574f8afb6c813145c58cc5356a2ff432870e55b1b23511492","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
-
-    {"path":"scripts/gh-app-token.mjs","digest":"a04d8595b86db65207f5d7da128cd0c9b6a97ae32f0f2d7e9c0237a526af3f3a","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"}
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
   ],
 
   "checks": [

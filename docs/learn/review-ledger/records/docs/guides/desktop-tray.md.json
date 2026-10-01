@@ -30,6 +30,8 @@
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"package.json#/scripts/verify:desktop-rust","digest":"b0a5ad23be7852f2a63c0d18bd361b8ed467265578d94a4125f9f9e1ce40068e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/dev-ports.ts","digest":"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -44,7 +46,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"f0af8762619b6a2cfa7a8df7ca91b103e66098c02c9f671b4737c65af3a214a6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -136,9 +138,7 @@
 
     {"path":"src-ui/src/views/settings/SystemSection.tsx","digest":"628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/verify:desktop-rust","digest":"b0a5ad23be7852f2a63c0d18bd361b8ed467265578d94a4125f9f9e1ce40068e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

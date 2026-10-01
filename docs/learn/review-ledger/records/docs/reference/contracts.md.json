@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/package.json","digest":"0d88852a0f507668152064eaf75ce4f1ffa9c3809e56b69042f2b5a1abbcfba2","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/contracts/package.json","digest":"38707b08db236194259725f9eba6790a784024963121d627df37bfd1678ba2c0","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -28,6 +28,8 @@
 
     {"path":"packages/contracts/src/conversation-pull-request-links.ts","digest":"f49fc639b21741343e1a4fce0ea30314cec0e8b36c1ac34a8dd69fff4ab0777c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"},
+
     {"path":"packages/contracts/src/index.ts","digest":"ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -35,6 +37,8 @@
     {"path":"packages/contracts/src/learning-review.ts","digest":"b62b6b9a2a3c6d8e623ca9851f5a9f7a870b9eee0f96a87677967a95c4b05ad6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/mobile-device.ts","digest":"0b7073c81f961bf6f06ee49bf2c2c25ef9f2fead7bebe8b0a677181540701f1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/native-device-proof.ts","digest":"b127a8c088a98e9c5b2b99f1eae2848f6f61a848be415f6496ff32b6bedcd502","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
     {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -108,17 +112,13 @@
 
     {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
 
     {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"},
-
-    {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"},
-
-    {"path":"packages/contracts/src/native-device-proof.ts","digest":"b127a8c088a98e9c5b2b99f1eae2848f6f61a848be415f6496ff32b6bedcd502","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"}
+    {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"}
   ],
 
   "checks": [

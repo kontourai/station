@@ -14,7 +14,7 @@
   "sources": [
     {"path":"examples/fieldwork-review/layout.json","digest":"9385a6d479fcd1ec14f4ed4ab75952a82a893268716a3ed15eb2478e1017dd6c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"examples/fieldwork-review/package.json","digest":"221167be362ff00f15a38a60e525c53674c6356257cac7785fd4bd7fbaea8f22","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"examples/fieldwork-review/package.json","digest":"907339d649e9a79646f58f1aefffcad0d2dc876ebe20b2a1ca87cd03c4975a69","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
 
     {"path":"examples/fieldwork-review/plugin.json","digest":"7c47f239ea51df6d01ff0f5361fd28f23f0573f9124cce07553cd876623266bb","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -30,7 +30,7 @@
 
     {"path":"examples/fieldwork-review/src/index.tsx","digest":"7abbde486126b089a3110f2babb5136034b30777ea054b208dfa6db701e2c3a7","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"pnpm-lock.yaml","digest":"f0af8762619b6a2cfa7a8df7ca91b103e66098c02c9f671b4737c65af3a214a6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

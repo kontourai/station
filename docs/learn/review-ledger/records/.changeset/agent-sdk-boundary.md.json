@@ -13,7 +13,5 @@
 
   "sources": [],
 
-  "checks": [
-    "Reviewed the release intent against the additive public entry and shared builder delta."
-  ]
+  "checks": []
 }

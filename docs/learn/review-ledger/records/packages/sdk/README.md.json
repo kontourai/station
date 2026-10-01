@@ -16,7 +16,9 @@
 
     {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/package.json","digest":"d145d931b46e4c522f7493ecbe869be6ca825e40fd0c567b281905fa64212ed0","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"packages/sdk/package.json","digest":"6c47c9a39c8e5dd5ffc865fe9c32fcc79a956b227e982c159757ef5b752bec77","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -48,7 +50,7 @@
 
     {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
 
     {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -58,9 +60,7 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"}
+    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

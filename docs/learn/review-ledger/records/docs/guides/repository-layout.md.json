@@ -42,7 +42,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"pnpm-workspace.yaml","digest":"24b189e1f47c32b47c25d750b4eaec44aedac0b3a3c01197a58477bfb13e560e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -70,7 +70,7 @@
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
 
     {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

@@ -14,7 +14,11 @@
   "sources": [
     {"path":"docs/conformance/station-runtime-conformance.json","digest":"0e490185dc517a73778f26db61735d8d0fe74f597ebca0ed1afc46c62c620bf3","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"pnpm-lock.yaml","digest":"f0af8762619b6a2cfa7a8df7ca91b103e66098c02c9f671b4737c65af3a214a6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"package.json#/scripts/conduit:conformance:generate","digest":"cba739550476cc421d79a51df9b131ae3d710713e565e31b43be1fdbe6c7988e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify:static","digest":"11d986f344d89ce8a809af289108cb97f7f204e0661fed6f0f1bac572371982d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -28,11 +32,7 @@
 
     {"path":"src-server/runtime/frameworks/strands-agent-hooks.ts","digest":"491f93e51fb022603ae2b45af1a350c9f758c3dc5c45823c8ff53e10269009df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4","revision":"6834c8272c12f1d98125b4f21c8d2617d9113b08"},
-
-    {"path":"package.json#/scripts/conduit:conformance:generate","digest":"cba739550476cc421d79a51df9b131ae3d710713e565e31b43be1fdbe6c7988e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/verify:static","digest":"11d986f344d89ce8a809af289108cb97f7f204e0661fed6f0f1bac572371982d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4","revision":"6834c8272c12f1d98125b4f21c8d2617d9113b08"}
   ],
 
   "checks": [

@@ -13,7 +13,5 @@
 
   "sources": [],
 
-  "checks": [
-    "Read the full retained changeset during the frozen f3954615e upstream review."
-  ]
+  "checks": []
 }
