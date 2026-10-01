@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"278903557f2cbcfe8e4179fd930f7a8824c518c83387da546970fa3956a1fa08","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
+  "document": {"digest":"2c333535b9d6cfa4896983fc24342468bc0f5d42668555ab4e4aecd08bcda224","revision":"43d5daf2e8844311876589bd4b4d13fe91679e3e"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -28,7 +28,7 @@
 
     {"path":"packages/sdk/src/components/LayoutHeader.tsx","digest":"e8fa75ca2b662a2b0befe9c660d4e2f264f387a9dccac7dce0a7734d9c1bca10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/App.tsx","digest":"3c8bd0e4d4aa0e5ad47504de008989bece222f9da58cc83d6fa8a99524a85fd6","revision":"ed7085f59e12659653228c48ae3493dc2c3811e7"},
+    {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
 
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
