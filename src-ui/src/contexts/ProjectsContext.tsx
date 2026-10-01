@@ -15,11 +15,6 @@ import {
   useProjectQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
-import {
-  getProjectSharedTaskPublication,
-  readProjectSharedTaskDocument,
-  readProjectSharedTaskHistory,
-} from '@kontourai/station-sdk/project-shared-tasks';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useMemo } from 'react';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
@@ -315,6 +310,12 @@ export function useScopedMemberProjectSharedTaskDetails(
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
+      const { getProjectSharedTaskPublication } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
+      signal.throwIfAborted();
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
       const value = await getProjectSharedTaskPublication(
         captured.apiBase,
         project.slug,
@@ -362,6 +363,12 @@ export function useScopedMemberProjectSharedTaskDetails(
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
+      const { readProjectSharedTaskHistory } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
+      signal.throwIfAborted();
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
       const value = await readProjectSharedTaskHistory(
         captured.apiBase,
         project.slug,
@@ -389,6 +396,12 @@ export function useScopedMemberProjectSharedTaskDetails(
       const captured = requestScope;
       if (!captured?.isCurrent())
         throw new Error('The selected Station authority is unavailable.');
+      const { readProjectSharedTaskDocument } = await import(
+        '@kontourai/station-sdk/project-shared-tasks'
+      );
+      signal.throwIfAborted();
+      if (!captured.isCurrent())
+        throw new Error('The selected Station authority changed.');
       const value = await readProjectSharedTaskDocument(
         captured.apiBase,
         project.slug,

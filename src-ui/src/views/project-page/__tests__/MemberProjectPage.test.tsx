@@ -77,46 +77,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     throw new Error('operator Project hooks must not mount for a member');
   }),
 }));
-vi.mock(
-  '@kontourai/station-sdk/project-shared-tasks',
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import('@kontourai/station-sdk/project-shared-tasks')
-      >();
-    return {
-      ...actual,
-      listProjectSharedTasks: (...args: unknown[]) => {
-        const [base, slug, options] = args as [string, string, unknown];
-        expect(base).toBe('https://station.example.test');
-        expect(slug).toBe('relay-shared');
-        const opts = options as Record<string, unknown>;
-        expect(opts.requireCredential).toBe(
-          authority.current?.requiresEnrolledCredential ?? true,
-        );
-        expect(opts.authentication).not.toBe('omit');
-        expect(opts.requestScope).toEqual(authority.current);
-        return sharedWork.read();
-      },
-      getProjectSharedTaskPublication: (...args: unknown[]) => {
-        sharedDetails.calls.push({ kind: 'publication', args });
-        return sharedDetails.publication(...args);
-      },
-      readProjectSharedTaskHistory: (...args: unknown[]) => {
-        sharedDetails.calls.push({ kind: 'history', args });
-        return sharedDetails.history(...args);
-      },
-      readProjectSharedTaskDocument: (...args: unknown[]) => {
-        sharedDetails.calls.push({ kind: 'document', args });
-        return sharedDetails.document(...args);
-      },
-    };
-  },
-);
 
 import {
   _setApiBase,
   StationHttpError,
+  setClientCredentialResolver,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { ProjectPage } from '../../ProjectPage';
@@ -149,7 +114,59 @@ const summary: ProjectSharedTaskSummary = {
   sharedAt: '2026-09-23T12:01:00.000Z',
 };
 
+function installSharedTaskTransport() {
+  const apiBase = 'https://station.example.test';
+  setClientCredentialResolver(() => ({
+    origin: apiBase,
+    requestAuthority: authority.current
+      ? {
+          apiBase: authority.current.apiBase,
+          authorityKey: authority.current.authorityKey,
+          isCurrent: () => authority.current?.isCurrent() === true,
+        }
+      : undefined,
+    transportBindingIsCurrent: () => authority.current?.isCurrent() === true,
+    transport: async (input, init) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      const segments = url.pathname.split('/').map(decodeURIComponent);
+      if (url.pathname.endsWith('/shared-work'))
+        return Response.json({
+          success: true,
+          data: await sharedWork.read(),
+        });
+      const kind = segments.at(-1);
+      if (kind === 'publication' || kind === 'history' || kind === 'document') {
+        const args = [
+          url.origin,
+          segments[3],
+          segments[5],
+          {
+            requestScope: authority.current,
+            requireCredential:
+              authority.current?.requiresEnrolledCredential ?? true,
+            timeoutMs: 15_000,
+            maxResponseBytes: kind === 'publication' ? 64 * 1024 : 1024 * 1024,
+            signal: init?.signal,
+          },
+        ];
+        sharedDetails.calls.push({ kind, args });
+        const data =
+          kind === 'publication'
+            ? await sharedDetails.publication(...args)
+            : kind === 'history'
+              ? await sharedDetails.history(...args)
+              : await sharedDetails.document(...args);
+        return Response.json({ success: true, data });
+      }
+      return fetch(input, init);
+    },
+  }));
+}
+
 function renderPage() {
+  installSharedTaskTransport();
   const values = new Map<string, string>();
   const store = new ConnectionStore({
     storage: {
@@ -190,6 +207,7 @@ function UpdateProjectControl() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
   _setApiBase('');
   authority.current = {
     apiBase: 'https://station.example.test',
@@ -413,6 +431,7 @@ test('still requires the enrolled credential over a relay route', async () => {
 test('an operator Project update invalidates the member-aware Project page detail cache', async () => {
   sdk.memberView = project;
   sharedWork.read.mockResolvedValue([summary]);
+  installSharedTaskTransport();
   _setApiBase('https://station.example.test');
   vi.stubGlobal(
     'fetch',
@@ -444,6 +463,7 @@ test('an operator Project update invalidates the member-aware Project page detai
 
   expect(await screen.findByText('Review the shared design')).toBeTruthy();
   const initialDetailReads = sdk.projectOptions.length;
+  setClientCredentialResolver(undefined);
   fireEvent.click(
     screen.getByRole('button', { name: 'Update Project settings' }),
   );
