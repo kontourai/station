@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"dc8e1155b3021a6132143bc548f75384dde94c0549bdc452d6478810a9114c8b","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
+  "document": {"digest":"b6d2555fa4a5d8a62be5f7cbdac240d0791466f20fbb35b2495d0eb37b6b1d80","revision":"c259630c0b3c332e6808dcc79425ea2eb3f4732c"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-placement.ts","digest":"25fbfd594288f945664092139e20c1e37c1a74888cdddb1bf7826b0a7bf3a296","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"4ea23e5a0c1d9f57bdd95bfd320ddc702852255c2e32c4f08307001d098116e4","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
+    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"25e0e4cbd92370e733f9b7d59c9cb37878a86038acde4d89d48f0abd146910cc","revision":"c259630c0b3c332e6808dcc79425ea2eb3f4732c"},
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx","digest":"adbfc13058751ddc325188504ed102282546456b531287a3ae12b773c0b900e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -80,7 +80,7 @@
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx","digest":"1e5ba5ee73ae0d145b3834b11fb3835c4a19b1f07ec53c5fe3d82a7f44507eb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"cf597b2f3a9007f5815654875462f15e988e10fc88a1be2260d095d692526ba7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"4401c10b86b61cd905264f9a787eac1164149380880d4d7d3d88c20c0b1fbcaa","revision":"4ee1954372bee169d46dad855b36329eb13fc3d6"},
 
     {"path":"src-ui/src/contexts/useDismissPhoneLayer.ts","digest":"9ebdbb98dd1fe419fb92f7ee1210efbe7bd141c53697ddf9453478d9e8ff3720","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
