@@ -1,11 +1,6 @@
 import type {
   PullRequest,
-  PullRequestCheck,
-  PullRequestCheckState,
-  PullRequestChecksObservation,
   PullRequestRepositoryContext,
-  PullRequestReviewComment,
-  PullRequestReviewCommentsObservation,
   PullRequestReviewInput,
   PullRequestReviewOutcome,
   PullRequestReviewSnapshot,
@@ -58,7 +53,6 @@ async function detail(
   context: PullRequestRepositoryContext,
   ref: string,
   run: Run,
-  withChecks = false,
 ) {
   const repository = `${host}/${context.repository.owner}/${context.repository.name}`;
   return record(
@@ -73,7 +67,7 @@ async function detail(
                 '--repo',
                 repository,
                 '--json',
-                `number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable${withChecks ? ',statusCheckRollup' : ''}`,
+                'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable',
               ]
             : [
                 'mr',
@@ -89,258 +83,6 @@ async function detail(
     ),
   );
 }
-/** More than this many checks or inline comments is reported as partial. */
-const PULL_REQUEST_REVIEW_MAX_CHECKS = 200;
-const PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS = 100;
-const INLINE_COMMENT_BODY_MAX = 8192;
-const INLINE_COMMENT_TOTAL_MAX = 65_536;
-
-const httpsUrl = (value: unknown) => {
-  const text = string(value);
-  try {
-    return new URL(text).protocol === 'https:' ? text : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const GITHUB_CONCLUSION: Record<string, PullRequestCheckState> = {
-  SUCCESS: 'success',
-  FAILURE: 'failure',
-  TIMED_OUT: 'failure',
-  STARTUP_FAILURE: 'failure',
-  ACTION_REQUIRED: 'failure',
-  NEUTRAL: 'neutral',
-  STALE: 'neutral',
-  SKIPPED: 'skipped',
-  CANCELLED: 'cancelled',
-};
-const GITHUB_STATUS_STATE: Record<string, PullRequestCheckState> = {
-  SUCCESS: 'success',
-  FAILURE: 'failure',
-  ERROR: 'failure',
-  PENDING: 'pending',
-  EXPECTED: 'pending',
-};
-const GITLAB_PIPELINE_STATE: Record<string, PullRequestCheckState> = {
-  success: 'success',
-  failed: 'failure',
-  canceled: 'cancelled',
-  canceling: 'cancelled',
-  skipped: 'skipped',
-  manual: 'neutral',
-  created: 'pending',
-  waiting_for_resource: 'pending',
-  preparing: 'pending',
-  pending: 'pending',
-  running: 'pending',
-  scheduled: 'pending',
-};
-
-/**
- * The checks the forge reports for the observed head. GitHub's
- * `statusCheckRollup` mixes check runs and commit statuses; GitLab reports
- * the head pipeline. An entry this reader does not understand makes the
- * observation partial rather than being guessed at.
- */
-function readChecks(
-  forge: Forge,
-  value: Json,
-  head: string,
-): PullRequestChecksObservation {
-  if (forge === 'gitlab') {
-    const pipeline = value.head_pipeline;
-    if (pipeline === null || pipeline === undefined)
-      return { state: 'available', checks: [], partial: false };
-    try {
-      const p = record(pipeline);
-      if (string(p.sha) !== head)
-        return {
-          state: 'unavailable',
-          reason: 'The latest pipeline ran on a different revision.',
-        };
-      const state = GITLAB_PIPELINE_STATE[string(p.status)];
-      if (!state)
-        return {
-          state: 'unavailable',
-          reason:
-            'The provider reported a pipeline state Station does not know.',
-        };
-      const url = httpsUrl(p.web_url);
-      return {
-        state: 'available',
-        partial: false,
-        checks: [
-          {
-            name: `Pipeline ${String(p.id ?? '')}`.trim(),
-            state,
-            ...(url ? { url } : {}),
-          },
-        ],
-      };
-    } catch {
-      return {
-        state: 'unavailable',
-        reason: 'The provider returned an incomplete pipeline.',
-      };
-    }
-  }
-  const rollup = value.statusCheckRollup;
-  if (!Array.isArray(rollup))
-    return {
-      state: 'unavailable',
-      reason: 'The provider did not report checks.',
-    };
-  const checks: PullRequestCheck[] = [];
-  let partial = rollup.length > PULL_REQUEST_REVIEW_MAX_CHECKS;
-  for (const entry of rollup.slice(0, PULL_REQUEST_REVIEW_MAX_CHECKS)) {
-    try {
-      const item = record(entry);
-      if (item.__typename === 'CheckRun') {
-        const name = string(item.name);
-        const state =
-          item.status === 'COMPLETED'
-            ? GITHUB_CONCLUSION[string(item.conclusion)]
-            : 'pending';
-        if (!name || !state) throw Error('Unknown check run');
-        const url = httpsUrl(item.detailsUrl);
-        const group = string(item.workflowName);
-        checks.push({
-          name,
-          state,
-          ...(group ? { group } : {}),
-          ...(url ? { url } : {}),
-        });
-      } else if (item.__typename === 'StatusContext') {
-        const name = string(item.context);
-        const state = GITHUB_STATUS_STATE[string(item.state)];
-        if (!name || !state) throw Error('Unknown status');
-        const url = httpsUrl(item.targetUrl);
-        checks.push({ name, state, ...(url ? { url } : {}) });
-      } else throw Error('Unknown check kind');
-    } catch {
-      partial = true;
-    }
-  }
-  return { state: 'available', checks, partial };
-}
-
-/**
- * Inline review comments, one page from the forge. GitHub maps each
- * comment onto the current diff itself (`line` null once outdated); a
- * GitLab note is placed only when it was made on the observed head.
- */
-async function readReviewComments(
-  forge: Forge,
-  host: string,
-  detailPath: string,
-  head: string,
-  run: Run,
-): Promise<PullRequestReviewCommentsObservation> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(
-      (
-        await run([
-          'api',
-          forge === 'github'
-            ? `${detailPath}/comments?per_page=${PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS}`
-            : `${detailPath}/discussions?per_page=${PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS}`,
-          '--hostname',
-          host,
-        ])
-      ).stdout,
-    );
-    if (!Array.isArray(raw)) throw Error('Not a list');
-  } catch {
-    return {
-      state: 'unavailable',
-      reason: 'The provider could not supply inline review comments.',
-    };
-  }
-  let partial = raw.length >= PULL_REQUEST_REVIEW_MAX_INLINE_COMMENTS;
-  let remaining = INLINE_COMMENT_TOTAL_MAX;
-  const comments: PullRequestReviewComment[] = [];
-  const push = (comment: PullRequestReviewComment) => {
-    const body = comment.body.slice(
-      0,
-      Math.min(INLINE_COMMENT_BODY_MAX, remaining),
-    );
-    if (body.length < comment.body.length) partial = true;
-    if (!remaining) {
-      partial = true;
-      return;
-    }
-    remaining -= body.length;
-    comments.push({ ...comment, body });
-  };
-  for (const entry of raw) {
-    try {
-      if (forge === 'github') {
-        const c = record(entry);
-        const id = String(c.id ?? '');
-        const path = string(c.path);
-        if (!id || !path) throw Error('Missing comment identity');
-        const url = httpsUrl(c.html_url);
-        push({
-          id,
-          author: string(record(c.user).login),
-          body: string(c.body),
-          createdAt: string(c.created_at),
-          path,
-          side: c.side === 'LEFT' ? 'deletions' : 'additions',
-          line:
-            c.subject_type !== 'file' && Number.isInteger(c.line)
-              ? (c.line as number)
-              : null,
-          ...(c.in_reply_to_id != null
-            ? { inReplyTo: String(c.in_reply_to_id) }
-            : {}),
-          ...(url ? { url } : {}),
-        });
-        continue;
-      }
-      const discussion = record(entry);
-      const notes = Array.isArray(discussion.notes) ? discussion.notes : [];
-      let first: string | undefined;
-      for (const value of notes) {
-        const note = record(value);
-        if (note.type !== 'DiffNote' || !note.position) continue;
-        const position = record(note.position);
-        const id = String(note.id ?? '');
-        const path = string(position.new_path) || string(position.old_path);
-        if (!id || !path) throw Error('Missing note identity');
-        const newLine = position.new_line;
-        const oldLine = position.old_line;
-        const side = Number.isInteger(newLine) ? 'additions' : 'deletions';
-        const line = Number.isInteger(newLine)
-          ? (newLine as number)
-          : Number.isInteger(oldLine)
-            ? (oldLine as number)
-            : null;
-        push({
-          id,
-          author: string(record(note.author).username),
-          body: string(note.body),
-          createdAt: string(note.created_at),
-          path,
-          side,
-          line: string(position.head_sha) === head ? line : null,
-          ...(first ? { inReplyTo: first } : {}),
-        });
-        first ??= id;
-      }
-    } catch {
-      partial = true;
-    }
-  }
-  return {
-    state: 'available',
-    comments: comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    partial,
-  };
-}
-
 /** All reads use the same explicit forge identity; the checkout never supplies diff bytes. */
 export async function readPullRequestReview(
   forge: Forge,
@@ -483,14 +225,7 @@ export async function readPullRequestReview(
       partial = true;
     }
   }
-  const reviewComments = await readReviewComments(
-    forge,
-    host,
-    address.detail,
-    revision.head,
-    run,
-  );
-  const last = await detail(forge, host, context, ref, run, true);
+  const last = await detail(forge, host, context, ref, run);
   const latest = revisions(forge, last);
   if (latest.head !== revision.head || latest.base !== revision.base)
     throw new Error(
@@ -515,9 +250,6 @@ export async function readPullRequestReview(
       a.createdAt.localeCompare(b.createdAt),
     ),
     discussionPartial: partial,
-    // From the closing read: the same head the diff was confirmed against.
-    checks: readChecks(forge, last, revision.head),
-    reviewComments,
   };
 }
 

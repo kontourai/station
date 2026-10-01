@@ -98,9 +98,6 @@ export const EditGlyph = /* @__PURE__ */ glyph(
 export const EngineGlyph = /* @__PURE__ */ glyph(
   'm9 1.8-6 7h4l-1 5.4 7-8H9l0-4.4Z',
 );
-export const ExternalLinkGlyph = /* @__PURE__ */ glyph(
-  'M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3',
-);
 export const FolderGlyph = /* @__PURE__ */ glyph(
   'M2.5 4.5h4l1.3 1.5h5.7v7h-11v-8.5Z',
 );
@@ -127,10 +124,6 @@ export const LockGlyph = /* @__PURE__ */ glyph(
   'M3.5 7h9v6.5h-9V7Zm2-0V4.8a2.5 2.5 0 0 1 5 0V7M8 9.5v1.8',
 );
 export const MenuGlyph = /* @__PURE__ */ glyph('M2.5 4h11M2.5 8h11M2.5 12h11');
-/** Horizontal ellipsis: an overflow menu's trigger. */
-export const MoreGlyph = /* @__PURE__ */ glyph(
-  'M2.8 8a.7.7 0 1 0 1.4 0 .7.7 0 1 0-1.4 0Zm4.5 0a.7.7 0 1 0 1.4 0 .7.7 0 1 0-1.4 0Zm4.5 0a.7.7 0 1 0 1.4 0 .7.7 0 1 0-1.4 0Z',
-);
 export const MessageGlyph = /* @__PURE__ */ glyph(
   'M2.5 3h11v8h-6L4 13.5V11H2.5V3Zm3 3h5m-5 2.5h3',
 );

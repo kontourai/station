@@ -1,11 +1,6 @@
 import type {
-  PullRequest,
-  PullRequestCheck,
-  PullRequestCheckState,
-  PullRequestChecksObservation,
   PullRequestMergeMethod,
   PullRequestMergeResult,
-  PullRequestReviewCommentsObservation,
   PullRequestReviewInput,
   PullRequestReviewOutcome,
 } from '@kontourai/station-contracts/pull-request-provider';
@@ -26,11 +21,6 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
-import {
-  ArrowLeftGlyph,
-  ExternalLinkGlyph,
-  RefreshGlyph,
-} from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
@@ -64,200 +54,6 @@ export function pullRequestExternalLabel(url: string): string {
   if (hostname === 'gitlab.com' || hostname === 'www.gitlab.com')
     return 'Open on GitLab';
   return 'Open in browser';
-}
-
-const MERGEABILITY_COPY: Record<PullRequest['mergeability'], string> = {
-  mergeable: 'Merges cleanly into',
-  conflicting: 'Has conflicts with',
-  unknown: 'The provider has not yet reported whether it merges cleanly into',
-};
-
-const CHECK_STATE_LABEL: Record<PullRequestCheckState, string> = {
-  failure: 'Failed',
-  pending: 'Pending',
-  cancelled: 'Cancelled',
-  success: 'Passed',
-  neutral: 'Neutral',
-  skipped: 'Skipped',
-};
-/** Failures first: the reader's next action is there. */
-const CHECK_STATE_ORDER: PullRequestCheckState[] = [
-  'failure',
-  'pending',
-  'cancelled',
-  'success',
-  'neutral',
-  'skipped',
-];
-
-const ATTENTION_STATES = new Set<PullRequestCheckState>([
-  'failure',
-  'pending',
-  'cancelled',
-]);
-
-function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
-  if (checks.length === 0) return null;
-  return (
-    <ul className="pull-request-review__checks">
-      {checks.map((check, index) => (
-        <li
-          // Names repeat across workflows; position disambiguates.
-          key={`${check.group ?? ''}:${check.name}:${index}`}
-          data-check-state={check.state}
-        >
-          <span
-            className={`pull-request-review__check-state pull-request-review__check-state--${check.state}`}
-          >
-            <span
-              className="pull-request-review__check-dot"
-              aria-hidden="true"
-            />
-            {CHECK_STATE_LABEL[check.state]}
-          </span>
-          <span className="pull-request-review__check-name">
-            {check.name}
-            {check.group ? (
-              <span className="pull-request-review__muted">
-                {' '}
-                · {check.group}
-              </span>
-            ) : null}
-          </span>
-          {check.url ? (
-            <Button
-              variant="icon"
-              className="pull-request-review__icon"
-              aria-label={`Open ${check.name} details`}
-              title={`Open ${check.name} details`}
-              onClick={() => void openExternalLink(check.url!)}
-            >
-              <ExternalLinkGlyph />
-            </Button>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * The provider's checks for the observed head. Counts come from the list
- * itself, and each state is written in words, not colour alone. Absent
- * means this server did not observe checks, which is said as such.
- */
-function PullRequestChecks({
-  checks,
-}: {
-  checks: PullRequestChecksObservation | undefined;
-}) {
-  if (!checks)
-    return (
-      <p className="pull-request-review__muted">
-        This Station did not report checks for this pull request.
-      </p>
-    );
-  if (checks.state === 'unavailable')
-    return <p className="pull-request-review__muted">{checks.reason}</p>;
-  if (checks.checks.length === 0)
-    return (
-      <p className="pull-request-review__muted">
-        The provider reports no checks for this head.
-      </p>
-    );
-  const counts = CHECK_STATE_ORDER.map(
-    (state) =>
-      [state, checks.checks.filter((c) => c.state === state).length] as const,
-  ).filter(([, count]) => count > 0);
-  const sorted = [...checks.checks].sort(
-    (a, b) =>
-      CHECK_STATE_ORDER.indexOf(a.state) - CHECK_STATE_ORDER.indexOf(b.state),
-  );
-  // What needs the reader stays open; settled checks fold away, counted.
-  const needsAttention = sorted.filter((check) =>
-    ATTENTION_STATES.has(check.state),
-  );
-  const settled = sorted.filter((check) => !ATTENTION_STATES.has(check.state));
-  return (
-    <>
-      <p role="status" className="pull-request-review__checks-summary">
-        {counts
-          .map(
-            ([state, count]) =>
-              `${count} ${CHECK_STATE_LABEL[state].toLowerCase()}`,
-          )
-          .join(' · ')}
-        {checks.partial
-          ? '. Only part of the checks could be read; open the forge for the rest.'
-          : ''}
-      </p>
-      <CheckList checks={needsAttention} />
-      {settled.length > 0 && (
-        <details className="pull-request-review__settled">
-          <summary>
-            {needsAttention.length === 0 ? 'Show' : 'Show the other'}{' '}
-            {settled.length} passed, neutral or skipped check
-            {settled.length === 1 ? '' : 's'}
-          </summary>
-          <CheckList checks={settled} />
-        </details>
-      )}
-    </>
-  );
-}
-
-/** Inline comments the diff cannot place: outdated, or on a file it omits. */
-function UnplacedReviewComments({
-  comments,
-  placedPaths,
-}: {
-  comments: PullRequestReviewCommentsObservation | undefined;
-  placedPaths: ReadonlySet<string>;
-}) {
-  if (!comments) return null;
-  if (comments.state === 'unavailable')
-    return <p className="pull-request-review__muted">{comments.reason}</p>;
-  const unplaced = comments.comments.filter(
-    (comment) => comment.line === null || !placedPaths.has(comment.path),
-  );
-  return (
-    <>
-      {comments.partial && (
-        <p className="pull-request-review__muted">
-          Only part of the inline review comments could be read. Open the forge
-          for the rest.
-        </p>
-      )}
-      {unplaced.length > 0 && (
-        <details className="pull-request-review__unplaced">
-          <summary>
-            {unplaced.length} inline comment{unplaced.length === 1 ? '' : 's'}{' '}
-            not on the current diff
-          </summary>
-          <ol className="pull-request-review__discussion">
-            {unplaced.map((comment) => (
-              <li key={comment.id}>
-                <strong>{comment.author}</strong> on <code>{comment.path}</code>
-                {comment.line === null ? ' (outdated)' : ''}
-                <div className="pull-request-review__body">{comment.body}</div>
-              </li>
-            ))}
-          </ol>
-        </details>
-      )}
-    </>
-  );
-}
-
-/**
- * Paths with hunks in a unified patch: the new name (`+++ b/x`) and, for a
- * deletion or rename, the old one (`--- a/x`).
- */
-function patchPaths(patch: string): Set<string> {
-  const paths = new Set<string>();
-  for (const match of patch.matchAll(/^(?:\+\+\+ b|--- a)\/(.+)$/gm))
-    paths.add(match[1]);
-  return paths;
 }
 
 const loadDiff = () =>
@@ -436,46 +232,27 @@ function ReviewOwner({
   };
   return (
     <section className="pull-request-review" aria-label="Pull request review">
-      <div className="pull-request-review__bar">
+      <ResponsiveSurfaceActions className="pull-request-review__actions">
         {onBack && (
-          <Button
-            variant="icon"
-            className="pull-request-review__icon"
-            aria-label="Back to pull requests"
-            title="Back to pull requests"
-            onClick={() => guard(onBack)}
-          >
-            <ArrowLeftGlyph />
-          </Button>
+          <Button onClick={() => guard(onBack)}>Back to pull requests</Button>
         )}
-        <h2 className="pull-request-review__title">
-          {data?.pullRequest.title ?? `#${target.ref}`}
-        </h2>
         <Button
-          variant="icon"
-          className="pull-request-review__icon"
-          aria-label="Refresh"
-          title="Refresh the review from the provider"
           disabled={review.isFetching || pending || !scope?.isCurrent()}
           onClick={() => void review.refetch()}
         >
-          <RefreshGlyph />
+          Refresh
         </Button>
         {data?.pullRequest.url ? (
-          // The way to the forge stays on the bar. In the Station app the host
-          // opens what its policy admits (#2480), and any refusal shows the
-          // link with a Copy action rather than nothing.
-          <Button
-            variant="icon"
-            className="pull-request-review__icon"
-            aria-label={pullRequestExternalLabel(data.pullRequest.url)}
-            title={pullRequestExternalLabel(data.pullRequest.url)}
-            onClick={() => void openExternalLink(data.pullRequest.url)}
-          >
-            <ExternalLinkGlyph />
+          // Beside Refresh rather than in the body, so the way to the forge
+          // is the first thing on screen. On the web it opens a new tab. In
+          // the Station app the host opens what its policy admits (#2480:
+          // any https link, once that widening lands), and any refusal shows
+          // the link with a Copy action rather than nothing.
+          <Button onClick={() => void openExternalLink(data.pullRequest.url)}>
+            {pullRequestExternalLabel(data.pullRequest.url)}
           </Button>
         ) : null}
-      </div>
+      </ResponsiveSurfaceActions>
       {!scope?.isCurrent() ? (
         <ErrorState
           variant="compact"
@@ -501,6 +278,7 @@ function ReviewOwner({
         />
       ) : (
         <>
+          <h2>{data.pullRequest.title}</h2>
           <p>
             {target.host}/{target.owner}/{target.repository} · #{target.ref} ·{' '}
             {data.pullRequest.state}
@@ -514,15 +292,6 @@ function ReviewOwner({
             Head <code>{data.headSha}</code> · Observed{' '}
             {new Date(data.observedAt).toLocaleString()}
           </p>
-          <h3>Status</h3>
-          <p
-            className="pull-request-review__mergeability"
-            data-mergeability={data.pullRequest.mergeability}
-          >
-            {MERGEABILITY_COPY[data.pullRequest.mergeability]}{' '}
-            <code>{data.pullRequest.targetBranch}</code>.
-          </p>
-          <PullRequestChecks checks={data.checks} />
           <ResponsiveSurfaceActions className="pull-request-review__actions">
             <Button onClick={addReviewContextToChat} disabled={!activeChat}>
               Add review context to open chat
@@ -553,9 +322,6 @@ function ReviewOwner({
                   componentProps={{
                     diff: data.diff.patch,
                     observationKey: identity,
-                    ...(data.reviewComments?.state === 'available'
-                      ? { providerComments: data.reviewComments.comments }
-                      : {}),
                   }}
                   pending={<SkeletonBlock label="Preparing changed files" />}
                 />
@@ -568,14 +334,6 @@ function ReviewOwner({
               description={data.diff.reason}
             />
           )}
-          <UnplacedReviewComments
-            comments={data.reviewComments}
-            placedPaths={
-              data.diff.state === 'available'
-                ? patchPaths(data.diff.patch)
-                : new Set()
-            }
-          />
           <h3>Discussion</h3>
           {data.discussionPartial && (
             <p>
