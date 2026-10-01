@@ -9,7 +9,7 @@
 
   "limits": "Source trace plus actual schema/template checks and existing focused fixtures. No live model, MCP server, AWS account, native/Windows ACL, external engine bounded loop, deployment or provider/network outcome was exercised. Strands configured step caps, guardrails.maxSteps admission, retained quick prompts and template-format admission are documented limitations/draft recommendations, not repaired runtime behavior. Source hashes indicate later drift only.",
 
-  "document": {"digest":"4a1ddfbce2dc29ae26566475e56793ecdab5aa208d803f7a6c4ceaef1c41105a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
 
   "sources": [
     {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -66,7 +66,7 @@
 
     {"path":"src-server/runtime/agents/agent-hooks.ts","digest":"69d4f905ff37904fa95e1f6e6da4c8e30d5ef176eee7b1753173d0c6138e261a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"7e279922b79e1c52952347b6b4b8b56d667c776e67858163dbca61a58aa78d8a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
 
     {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
