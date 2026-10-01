@@ -9,12 +9,12 @@
 
   "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
 
-  "document": {"digest":"34b601ece3b7647bf54b64ad183e7d78f57e819eb0f4b4946fd7ad164f453e55","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"34b601ece3b7647bf54b64ad183e7d78f57e819eb0f4b4946fd7ad164f453e55","revision":"402cc332734feae7e8d45cdacdfedf2459fa657e"},
 
   "sources": [
     {"path":"src-server/routes/operations/usage-telemetry-disclosure.ts","digest":"b40a1332b3e54897d0384af9f3a529126643949cd3e00a4cdcd07d79b2d7af50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
     {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
