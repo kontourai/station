@@ -456,12 +456,28 @@ and indeterminate attempts. A forge review is not a Station gate verdict.
 the inspected revision; review-origin merges observe the resulting provider state.
 
 `PullRequestBranchMergeability` on `pull-request-provider` is a conflict
-indicator's read: one open pull request's ref, source branch and mergeability,
+indicator's read: one open pull request's ref, source branch, optional
+`sourceOwner` (GitHub's head repository owner), and mergeability,
 and nothing a review needs. The GitHub adapter serves at most 100 and refuses
 a longer list as unavailable rather than serving part of it. The optional
 `IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
 repository; the route refuses a provider without it rather than falling back
 to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
+
+`PullRequestClientContext.pushTargetOwner` optionally reports the local branch's
+configured push repository owner. The resolver chooses `branch.<b>.pushRemote`,
+then `remote.pushDefault`, then the branch's upstream remote, then `origin`,
+and reads `git remote get-url --push` so a `pushurl` is honored. This does not
+change the repository resolved for PR reads. Unrecognized push URLs, detached
+checkouts, or failed push-target reads omit the owner. `/context` projects only
+declared client fields; checkout paths and PR-opening head/base facts stay private.
+
+The session conflict chip matches the local `branch`, never the upstream branch
+name. When both owners are known it also requires `pushTargetOwner` and
+`sourceOwner` to match case-insensitively. Missing either owner retains branch-only
+matching. GitLab does not report `sourceOwner`, so its behavior is unchanged.
+See the [resolver](../../src-server/services/pull-requests/pull-request-repository-context-resolver.ts)
+and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConflictChip.pushurl.test.tsx).
 
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`

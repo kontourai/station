@@ -355,7 +355,7 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
         // so a longer list is refused rather than served partially.
         '101',
         '--json',
-        'number,headRefName,mergeable',
+        'number,headRefName,mergeable,headRepositoryOwner',
       ],
     ]);
     expect(gh.count('auth')).toBe(1);
