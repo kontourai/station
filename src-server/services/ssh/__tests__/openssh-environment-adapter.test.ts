@@ -10,7 +10,7 @@ import {
 
 const EFFECTIVE_CONFIG = `
 hostname brian-media.internal
-user brian
+user casey
 port 22
 identityagent none
 proxyjump none

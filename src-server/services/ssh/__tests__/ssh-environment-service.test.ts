@@ -10,7 +10,7 @@ const homes: string[] = [];
 const HOST = {
   alias: 'brian-media',
   hostname: 'brian-media.internal',
-  user: 'brian',
+  user: 'casey',
   port: 22,
   identityAgent: 'default' as const,
   proxyJump: null,

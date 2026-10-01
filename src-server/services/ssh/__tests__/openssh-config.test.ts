@@ -22,7 +22,7 @@ afterEach(async () => {
 
 const EFFECTIVE_CONFIG = `
 hostname brian-media.internal
-user brian
+user casey
 port 2222
 identityagent /Users/me/Library/Group Containers/agent.sock
 proxyjump tailnet-gateway
@@ -35,7 +35,7 @@ describe('OpenSSH effective config', () => {
     expect(parseOpenSshGOutput('brian-media', EFFECTIVE_CONFIG)).toEqual({
       alias: 'brian-media',
       hostname: 'brian-media.internal',
-      user: 'brian',
+      user: 'casey',
       port: 2222,
       identityAgent: 'configured',
       proxyJump: 'tailnet-gateway',
@@ -56,7 +56,7 @@ describe('OpenSSH effective config', () => {
         'brian-media',
         [
           'hostname brian-media.internal',
-          'user brian',
+          'user casey',
           'port 22',
           'userknownhostsfile "/Users/me/Application Support/known_hosts"',
         ].join('\n'),
@@ -68,7 +68,7 @@ describe('OpenSSH effective config', () => {
     expect(
       parseOpenSshGOutput(
         'brian-media',
-        'hostname brian-media.internal\nuser brian\nport 22\n',
+        'hostname brian-media.internal\nuser casey\nport 22\n',
       ).userKnownHostsFiles,
     ).toEqual([]);
   });
