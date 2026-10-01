@@ -9,14 +9,14 @@
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"d9a78f38e05b333a1b2626368749389787dd093f4d4199d30cfdeba786548708","revision":"1d49e432472043f4c3ab7d870104fb3baaf4ad05"},
+  "document": {"digest":"e2d7013b3518ac907c93699b83329195c39672be84142e86c2bf323e03134e06","revision":"673fcf80b16b39268d3b29a9f392333f404a889e"},
 
   "sources": [
     {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"10ac031f7d84abf32d47f9fdf5266a4e009760dd00c428c9bba88acc14d3e746","revision":"3a496195fe405aa2834aecf5960149222c92a48f"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"c325e539ffdea9be736b30c6d781ae23a1f31c48824d42c9e987e8012a4b84b8","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"c4423806cc22a78fe2edbed63c94ece359bca2caf12467ca666759f06f839082","revision":"3a496195fe405aa2834aecf5960149222c92a48f"},
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
