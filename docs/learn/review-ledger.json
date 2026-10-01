@@ -2158,7 +2158,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2382,7 +2382,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -2416,7 +2416,8 @@
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by module-map.md (scheduler addProvider/legacy-output sentence corrected); browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Station Documentation' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "This branch changed the Browser pane, its guide, the glossary and the module map; the index descriptions of those documents remain accurate. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "This branch changed the Browser pane, its guide, the glossary and the module map; the index descriptions of those documents remain accurate. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -2841,7 +2842,7 @@
     {
       "path": "docs/adr/0017-browser-preview-host.md",
       "documentDigest": "9be14f3fe1a2cd87746feb09a90699767a0957a984a914dacbb21038f2319a85",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; keep original desktop choices/platform gaps and dated body. Added current Browser guide link in existing banner.",
@@ -3045,7 +3046,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3067,12 +3068,13 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) made DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private and dropped a re-export from DeviceWorkspacePane.tsx. There is no behavior change, and the ADR's adapter-local preview-host decision does not depend on these exports. Prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Keep browser-preview hosting adapter-local' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
       "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "design",
       "state": "classified",
       "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
@@ -3297,7 +3299,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3327,13 +3329,14 @@
         "Re-read 'ADR 0018 — SSE is the realtime transport, because resume rides `Last-Event-ID`' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); orchestration.ts refuses a saved Environment on GET /delegations and POST /delegations/options for station-control callers who are not bound operators; runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
         "Merge review (origin/main 74c2f4f31 into #2915/#2916): both sides changed this record. Main's #2920 (C2b) forwards station-control remote-Station calls through one RemoteStationForwarder, refuses a saved Environment on the delegation listing/options routes for non-operator station-control callers, and guards SDK body reads with the request deadline; this branch adds approvalModeAuthority to the command route's respondToRequest and the Claude session-grant rules. Resume still rides Last-Event-ID: neither the deadline guard on SDK body reads nor the respond-route flag changes the SSE resume path. Classification unchanged.",
         "ensureOrchestrationEventStream.ts changed one comment only (a Draft sits outside the live lanes, not 'Active now'); no transport behavior changed, ADR claims unaffected.",
-        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
       "documentDigest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated planned/unverified statements. Current implementation uses per-Project/principal profiles, bound tool grants, shared Device producer. CEF and multiplex plans are not current implementations. Added current guide link only.",
@@ -3537,7 +3540,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -3559,7 +3562,8 @@
         "Integration source review through 5731eba07: #2919 makes DeviceWorkspacePane exports (DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout, placeholder re-exports) module-private with no behavior change. The ADR's Device pane capture and adoption claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'ADR 0019 — Host the Browser pane server-side, behind a host adapter' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -4059,7 +4063,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "2bbd01d616d0940dcd8942d98f92a14e7d07210df742e7589e387f966ae659c4",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -5755,7 +5759,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -5818,7 +5822,8 @@
         "Merge review (origin/main fa78d02a5 into #2915/#2916): both sides changed this record. Main's #2954 keeps recorded ports when station upgrade re-runs install.sh (lifecycle.ts). Main's #2599 refreshed dependency versions (package manifests and pnpm-lock.yaml; Agent SDK 0.3.261 to 0.3.278, bundling Claude Code 2.1.278), with no script, export or workspace change. This branch's side is the Claude session-grant and approval-authority work. The CLI lifecycle and orchestration sections' ownership is unchanged by both. Prose accurate.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "Edited on this branch in two sections only: BrowserSessionService (page-tools ownership and tests) and Shared live surface (LiveSurfaceInputRefusal/page-dialog-open and the capped keep-alive); both traced to their code and tests. Other sections not re-reviewed. Recorded on the merge with origin/main (b2a69152a)."
+        "Edited on this branch in two sections only: BrowserSessionService (page-tools ownership and tests) and Shared live surface (LiveSurfaceInputRefusal/page-dialog-open and the capped keep-alive); both traced to their code and tests. Other sections not re-reviewed. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -6679,7 +6684,7 @@
     {
       "path": "docs/design/browser-preview-host-spike.md",
       "documentDigest": "054668c44ea7e835f73044ed1f004a832f5412d2da133d11f7958f8ba3211510",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated upstream/platform experiment and go/no-go rationale; source/current guide link added, no experiment rerun or current-upstream claim.",
@@ -6883,7 +6888,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -6905,13 +6910,14 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx un-exports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and re-exports with no behavior change; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser-preview host spike (Station #1376)' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
       "path": "docs/design/browser-preview-pane-mvp.md",
       "documentDigest": "e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "historical",
       "state": "classified",
       "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
@@ -7115,7 +7121,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -7137,7 +7143,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) makes DEVICE_TOOLS_DOCK_MIN_WIDTH and deviceToolsLayout module-private in DeviceWorkspacePane and drops a re-export. There is no behaviour change, and the historical Browser pane design claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser Preview Pane MVP (Station #1375)' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "Dated Browser design record. This branch changed the Browser pane contracts, server, live-surface refusal and keep-alive, toolbar and float; none alters this record's dated claims, and its opening note routes current behaviour to the Browser workspace guide. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -10541,7 +10548,7 @@
     {
       "path": "docs/glossary.md",
       "documentDigest": "eb0852bc9a3cdd0a5e612424c94333f04e06924048c2d7567887bdef84632255",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
@@ -10793,7 +10800,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -10829,7 +10836,8 @@
         "Live lanes entry: Needs you now also names an offline-queued send (chat.status 'queued' folds to Needs attention in chatLifecycleLabel). Checked against home-view-model.ts and liveLaneFor.",
         "Merge of origin/main 62a39b083: main left glossary bytes unchanged and re-reviewed it against C2b source changes; this lane's Live lanes / Unsent draft / Needs-you wording is the only text delta. Re-read those lines on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes.",
         "Merge of origin/main e27600d1f: main left glossary bytes unchanged (its record changes follow source edits it reviewed); this lane's Live lanes / Unsent draft / Needs-you lines are the only text delta, re-read on the merged tree against liveLaneFor and chatDraftsStore; digest recomputed from merged bytes.",
-        "Edited on this branch: the control-lease entry says a holder can release control explicitly (the Browser pane's driver chip) and that a keep-alive is not input and is capped from the last real input (checked against releaseHumanControl and keepHumanAlive). Other Browser entries re-read; still accurate. Recorded on the merge with origin/main (b2a69152a)."
+        "Edited on this branch: the control-lease entry says a holder can release control explicitly (the Browser pane's driver chip) and that a keep-alive is not input and is capped from the last real input (checked against releaseHumanControl and keepHumanAlive). Other Browser entries re-read; still accurate. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -11507,7 +11515,7 @@
     {
       "path": "docs/guides/browser-workspace.md",
       "documentDigest": "f07a9ff1a9b60c086377613548d2fce75f0e360c299468ba8546b578852816ea",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
@@ -11711,7 +11719,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -11734,7 +11742,8 @@
         "Integration source review through 5731eba07: #2919 makes DeviceWorkspacePane helpers module-private with no behavior change. The guide's Device pane pointer and frame-transport claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Browser workspace' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "Edited on this branch and traced to code and tests: page dialogs held for the person in control (answer route that refuses Agents, 504/502/409 outcomes, dismissal when their control ends, a capped keep-alive while the card is on screen, the float's compact card), the bounded console (generation, agent gate), screenshots (one in flight), one-tab popup folding, and the quiet one-row chrome. Exercised by the route, producer (real Chrome), automation, lease, pane, card, canvas and float tests and an isolated-Station run at 1280px and 390px. Recorded on the merge with origin/main (b2a69152a)."
+        "Edited on this branch and traced to code and tests: page dialogs held for the person in control (answer route that refuses Agents, 504/502/409 outcomes, dismissal when their control ends, a capped keep-alive while the card is on screen, the float's compact card), the bounded console (generation, agent gate), screenshots (one in flight), one-tab popup folding, and the quiet one-row chrome. Exercised by the route, producer (real Chrome), automation, lease, pane, card, canvas and float tests and an isolated-Station run at 1280px and 390px. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -15781,7 +15790,7 @@
     {
       "path": "docs/guides/mobile-device-workspace.md",
       "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
@@ -15985,7 +15994,7 @@
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "3fe955db6a4b55f3b46a1b09853da5482b7b67876e23a35c542137920a8c05ed"
+          "digest": "5b48d41c05ce77dfeeaaa92340c200eaed1745b7b90a11a6005ae9ef4436a5b6"
         },
         {
           "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -16008,7 +16017,8 @@
         "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH/deviceToolsLayout and a re-export. The pane still renders LiveSurfaceCanvas, controller/input status and device tools as the guide states; prose accurate. Source review is separate from executed test evidence.",
         "2026-09-28 test-audit refresh (PR #2918): sources changed only by browser-automation.ts (uses the shared jpegSize helper); browser-session-registry.ts (requires hostResolver (test-only createHost convenience removed)); chromium-screencast-producer.ts (jpegDimensions replaced by the shared jpegSize helper); station-listeners.ts (unused isStationListenerDestination deleted); device-live-surface-producer.ts (imports jpegSize from its new shared module); mobile-device-host.ts (constructor requires a DeviceHubEndpoint (bare endpoint/fetch options removed)); claims unaffected.",
         "Re-read 'Mobile device workspace' against C2b: the SDK's body-read catches now pass a mid-body StationRequestTimeoutError on (rethrowDeadline/unlessDeadline); runtime-routes.ts now builds the RemoteStationForwarder at startup and passes it to the delegation route deps and webhook starter, and no longer wires the caller-delegation route. The document makes no claim about those behaviours, so its statements still hold.",
-        "The shared live-surface hook and canvas gained optional releaseControl/keepControlAlive and the registry a typed refusal path, used only by the Browser pane; the Device producer uses neither. This guide's Device lease, input and screenshot-poll claims are unaffected. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "The shared live-surface hook and canvas gained optional releaseControl/keepControlAlive and the registry a typed refusal path, used only by the Browser pane; the Device producer uses neither. This guide's Device lease, input and screenshot-poll claims are unaffected. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against BrowserPane.tsx after the static-gate fix: the pane now marks data-coarse / data-narrow from the shared pointer and mobile hooks and the page-dialog card marks data-pointer; behaviour, the one-row toolbar, the 44px touch floor (coarse pointer or window up to 768px) and every claim here are unchanged."
       ]
     },
     {
@@ -18595,7 +18605,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18603,11 +18613,11 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "23363d271bf3e7dcf5bddd7f83a1b446115c418a96993da69070ac5e3fee4db1"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
-          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+          "digest": "ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6"
         },
         {
           "path": "packages/sdk/src/client/http.ts",
@@ -18759,7 +18769,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against the responsive inventories after adding the Browser console drawer, page dialog and pane toolbar entries (covered, jsdom-only evidence stated as such); no claim here about the inventories, ratchets or shared primitives changed."
       ]
     },
     {
@@ -20238,7 +20249,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "50273b47fb6784cf8cdbe654ad46dad2121b0ed9b0872582d6c2100b0caecc5c",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -20246,11 +20257,11 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "23363d271bf3e7dcf5bddd7f83a1b446115c418a96993da69070ac5e3fee4db1"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
-          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+          "digest": "ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6"
         },
         {
           "path": "packages/sdk/src/client/http.ts",
@@ -20418,7 +20429,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Updated for the ui 1.16.0 bump and the focus fix. The installed tokens define the roles, so the --k-brand fallback beside --k-action no longer applies. The focus-visible outline reads --k-focus only under data-brand-focus (applyBrandingTheme sets it while the applied theme supplies --k-focus for the current mode) or on a Dev, Beta or Nightly build, and --accent-primary otherwise, so a device accent recolours the ring again; checked against index.css, branding-theme.ts writeMode and branding-role-cascade.test.ts (device accent, theme focus and channel cases). The white-label section names validateBrandOverride from @kontourai/ui/contrast, the flat-key shape and Station's two stricter text rules, matching branding-theme.ts; #2944's channel brand-as-text paragraph is kept. Added that a mode setting only the brand also gets it as its action role, because the installed tokens define --k-action; checked against expandModes in branding-theme.ts and the brand-only cascade case in branding-role-cascade.test.ts (button fill, accent and focus follow the brand). The focus-ring and stricter-rule statements are unchanged.",
         "Reviewed #2991/#2990 response-boundary delta against this page: step frames now carry type only; framework chat HTTP 5xx uses fixed text and a correlation ID. API reference documents the changes. This page's authentication, lifecycle, storage and transport claims remain unchanged; no broader error-scrubbing or live-provider proof is claimed. Owner-boundary canary regressions failed before repair and 109 focused tests passed after repair.",
-        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against the responsive inventories after adding the Browser console drawer, page dialog and pane toolbar entries (covered, jsdom-only evidence stated as such); no claim here about the inventories, ratchets or shared primitives changed."
       ]
     },
     {
@@ -21449,7 +21461,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -21457,11 +21469,11 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "23363d271bf3e7dcf5bddd7f83a1b446115c418a96993da69070ac5e3fee4db1"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
-          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+          "digest": "ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6"
         },
         {
           "path": "packages/sdk/src/client/http.ts",
@@ -21614,13 +21626,14 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked HTTP composition, error and SSE patterns against the response boundary change. Fixed text on framework chat 5xx and type-only step frames do not change authentication or pipeline ownership.",
-        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against the responsive inventories after adding the Browser console drawer, page dialog and pane toolbar entries (covered, jsdom-only evidence stated as such); no claim here about the inventories, ratchets or shared primitives changed."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
-      "sourceRevision": "b2a69152a03d8221d5a04283d645f9e36bd0fdef",
+      "sourceRevision": "027c189b201b8f67d786e9843bd00b84cb5475a5",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -21628,11 +21641,11 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "48bcc4b4039a625b53a8bdc2d62e60c80fdb8bfcd3d3e591eda3dd7e9e7013c5"
+          "digest": "23363d271bf3e7dcf5bddd7f83a1b446115c418a96993da69070ac5e3fee4db1"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
-          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+          "digest": "ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6"
         },
         {
           "path": "packages/sdk/src/client/http.ts",
@@ -21788,7 +21801,8 @@
         "Reviewed against the #2599 dependency refresh after merging main at 91472e665: package manifests and pnpm-lock.yaml change only dependency versions (runtime/UI minor-patch group: React 19.3, TanStack Query 5.103, Agent SDK 0.3.278, AI SDK/AWS SDK/OpenTelemetry/Strands minors, better-auth 1.7.5, jose 6.2.12, zod 4.6.5, esbuild 0.28.2, Playwright 1.63.0, @tauri-apps/cli 2.11.5, @napi-rs/keyring 2.1.0, node-datachannel 0.33.4); no scripts, workspace membership, exports or overrides changed (packages/shared/package.json, pnpm-lock.yaml). Checked by searching the document for every bumped package and action name and each prior version string, and reading every hit. The document states none of the moved versions or action pins, so its statements still hold. | Reviewed against the #2599 advisory follow-up: pnpm-lock.yaml moves the transitive undici 6.28.0 to 6.29.0 and ip-address 10.3.1 to 10.7.2, and pnpm-workspace.yaml raises the existing @ai-sdk/provider-utils>undici override to ^6.28.1 and adds express-rate-limit>ip-address and socks>ip-address overrides (^10.5.1). Searched the document for undici, ip-address and those override keys and for override counts: no mention or count, so its statements still hold. Checked by search, not a full re-read.",
         "Package and lockfile change in this branch is only the @kontourai/ui bump from ^1.12.0 to ^1.16.0 (every workspace importer resolves 1.16.0; no other package moved). Checked this page for claims about that package, its version or its tokens; none depends on the bump, so the page stays accurate. index.css change in this branch is only the keyboard focus-visible rule: the ring follows --accent-primary, and follows --k-focus under data-brand-focus (a white-label theme that sets focus) or on a Dev, Beta or Nightly build. With no device accent the painted ring is unchanged (cascade test and before/after screenshots). This document makes no claim about focus ring colour.",
         "Checked frontend transport and error contracts against changed server egress: no consumer reads step diagnostics; framework compatibility HTTP 5xx is outside ordinary orchestration UI dispatch. Existing claims remain accurate.",
-        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a)."
+        "src-ui/src/index.css changed on this branch only by an additive `.button--icon` rule (Button variant=\"icon\"), used solely by the Browser pane toolbar and its dialog card; docs/learn/media.json changed only in capture review metadata. Searched this document for Button-variant, toolbar and Browser-pane claims and the captures it embeds; none is affected. No prose change. Recorded on the merge with origin/main (b2a69152a).",
+        "Re-read against the responsive inventories after adding the Browser console drawer, page dialog and pane toolbar entries (covered, jsdom-only evidence stated as such); no claim here about the inventories, ratchets or shared primitives changed."
       ]
     },
     {
