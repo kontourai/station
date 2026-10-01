@@ -12,7 +12,7 @@
   "document": {"digest":"2d64c0f341304434bf822fa3ed2997a2c59ada8dd305c22d7cc66ec5e01aad74","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
   "sources": [
-    {"path":"package.json","digest":"b737eaed444b890e6643b8eafb8a22bb9a59ee084b6e1e813457b7b42ffce17c","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"package.json","digest":"174f7a52d451a4390ffd26548d12a501d56a92abef8e86f5aba1b204ccb914ca","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -24,7 +24,7 @@
 
     {"path":"packages/shared/src/tool-request-preview.ts","digest":"32a2636e1267a213c32434980f5e8dea111c52eb5004ed41cf02655da3d81361","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"pnpm-lock.yaml","digest":"45e2d15395b90e50f873bf23f56a844abe5fe40ecab9868db89148398c3f6b7f","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
     {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"1b2d0a77fa35206c395dd028c288a0308617ad59d4b2acec5f4f3e1cb090e8cf","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
