@@ -33,16 +33,22 @@ function fixture() {
   );
   directories.push(home, workspace);
   let taskPresent = true;
+  let taskCreatedAt = '2026-10-01T00:00:00.000Z';
   const taskGraphService = {
     readTask: (taskId: string) =>
       taskId === 'task-a' && taskPresent
-        ? { id: taskId, projectId: 'project-a' }
+        ? {
+            id: taskId,
+            projectId: 'project-a',
+            createdAt: taskCreatedAt,
+          }
         : null,
     readTaskForOpen: async (taskId: string) =>
       taskId === 'task-a' && taskPresent
         ? {
             id: taskId,
             projectId: 'project-a',
+            createdAt: taskCreatedAt,
             workspaceBinding: {
               availability: 'available' as const,
               workingDirectory: workspace,
@@ -54,6 +60,9 @@ function fixture() {
     home,
     workspace,
     taskGraphService,
+    setTaskCreatedAt: (value: string) => {
+      taskCreatedAt = value;
+    },
     setTaskPresent: (present: boolean) => {
       taskPresent = present;
     },
@@ -62,7 +71,7 @@ function fixture() {
     module: (options?: TaskOutputTestOptions) =>
       new TaskOutputModule({
         homeDir: home,
-        taskGraphService: taskGraphService as any,
+        taskGraphService,
         ...(options ?? {}),
       }),
   };
@@ -74,6 +83,153 @@ afterEach(() => {
 });
 
 describe('TaskOutputModule', () => {
+  test('new private provenance preserves the public v1 output shape', async () => {
+    const { home, workspace, module } = fixture();
+    const bytes = 'declared provenance bytes';
+    writeFileSync(join(workspace, 'declared.txt'), bytes);
+    const declaredBy = {
+      sessionId: 'session-a',
+      eventId: 'event-a',
+      turnId: 'turn-a',
+      toolCallId: 'call-a',
+      declarationId: 'declaration-a',
+    };
+    const kept = await module().createDeclared('task-a', {
+      operationId: 'private-source',
+      title: 'Declared',
+      sourceWorkspace: workspace,
+      relativePath: 'declared.txt',
+      digest: createHash('sha256').update(bytes).digest('hex'),
+      length: Buffer.byteLength(bytes),
+      fingerprintContext: 'session-a:event-a',
+      declaredBy,
+    });
+    expect(kept.output.schemaVersion).toBe(1);
+    expect(kept.output).not.toHaveProperty('taskCreatedAt');
+    expect(kept.output).not.toHaveProperty('declaredBy');
+    const store = JSON.parse(
+      readFileSync(join(home, 'task-outputs', 'index.json'), 'utf8'),
+    );
+    expect(store.schemaVersion).toBe(2);
+    expect(store.outputs[0]).toMatchObject({
+      taskCreatedAt: '2026-10-01T00:00:00.000Z',
+      declaredBy,
+    });
+    expect(
+      (await module().readContent('task-a', kept.output.id)).bytes.toString(),
+    ).toBe(bytes);
+  });
+
+  test('a recreated Task cannot read or replay a previous incarnation output after restart', async () => {
+    const { workspace, module, setTaskCreatedAt } = fixture();
+    writeFileSync(join(workspace, 'one.txt'), 'original');
+    const input = {
+      operationId: 'same-operation',
+      relativePath: 'one.txt',
+      title: 'Original',
+    };
+    const original = await module().create('task-a', input);
+    setTaskCreatedAt('2026-10-01T01:00:00.000Z');
+    const restarted = module();
+    expect(await restarted.list('task-a')).toEqual([]);
+    await expect(
+      restarted.readContent('task-a', original.id),
+    ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
+    await expect(restarted.create('task-a', input)).rejects.toBeInstanceOf(
+      TaskOutputNotFoundError,
+    );
+    const fresh = await restarted.create('task-a', {
+      ...input,
+      operationId: 'new-operation',
+    });
+    expect(fresh.id).not.toBe(original.id);
+    expect(
+      (await restarted.readContent('task-a', fresh.id)).bytes.toString(),
+    ).toBe('original');
+  });
+
+  test('deleted operation receipts remain tied to their original Task incarnation', async () => {
+    const { home, workspace, module, setTaskCreatedAt } = fixture();
+    writeFileSync(join(workspace, 'one.txt'), 'one');
+    const input = {
+      operationId: 'deleted-source',
+      relativePath: 'one.txt',
+      title: 'One',
+    };
+    const original = await module().create('task-a', input);
+    await module().delete('task-a', original.id);
+    const store = JSON.parse(
+      readFileSync(join(home, 'task-outputs', 'index.json'), 'utf8'),
+    );
+    expect(store.deletedOperations[0].taskCreatedAt).toBe(
+      '2026-10-01T00:00:00.000Z',
+    );
+    setTaskCreatedAt('2026-10-01T01:00:00.000Z');
+    await expect(module().create('task-a', input)).rejects.toBeInstanceOf(
+      TaskOutputNotFoundError,
+    );
+    expect(await module().list('task-a')).toEqual([]);
+  });
+
+  test('legacy v1 bytes stay readable without manufacturing provenance', async () => {
+    const { home, workspace, module } = fixture();
+    writeFileSync(join(workspace, 'one.txt'), 'legacy bytes');
+    const original = await module().create('task-a', {
+      operationId: 'legacy-operation',
+      relativePath: 'one.txt',
+      title: 'Legacy',
+    });
+    const index = join(home, 'task-outputs', 'index.json');
+    const store = JSON.parse(readFileSync(index, 'utf8'));
+    store.schemaVersion = 1;
+    delete store.outputs[0].taskCreatedAt;
+    store.outputs[0].fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          relativePath: 'one.txt',
+          title: 'Legacy',
+          declaredMediaType: null,
+        }),
+      )
+      .digest('hex');
+    writeFileSync(index, JSON.stringify(store));
+    expect(
+      (await module().readContent('task-a', original.id)).bytes.toString(),
+    ).toBe('legacy bytes');
+    const retained = JSON.parse(readFileSync(index, 'utf8'));
+    expect(retained.schemaVersion).toBe(1);
+    expect(retained.outputs[0]).not.toHaveProperty('taskCreatedAt');
+    await expect(
+      module().create('task-a', {
+        operationId: 'legacy-operation',
+        relativePath: 'one.txt',
+        title: 'Legacy',
+      }),
+    ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
+  });
+
+  test('Task replacement during descriptor read refuses publication', async () => {
+    const { workspace, module, setTaskCreatedAt } = fixture();
+    writeFileSync(join(workspace, 'one.txt'), 'one');
+    const owner = module({
+      sourceSnapshotPort: {
+        noFollow: fsConstants.O_NOFOLLOW,
+        observe: (stage) => {
+          if (stage === 'after-read')
+            setTaskCreatedAt('2026-10-01T01:00:00.000Z');
+        },
+      },
+    });
+    await expect(
+      owner.create('task-a', {
+        operationId: 'changed-scope',
+        relativePath: 'one.txt',
+        title: 'One',
+      }),
+    ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
+    expect(await module().list('task-a')).toEqual([]);
+  });
+
   test('publishes declared bytes only when the descriptor digest and length match the same read', async () => {
     const { workspace, module } = fixture();
     writeFileSync(join(workspace, 'declared.txt'), 'declared bytes');
@@ -269,7 +425,7 @@ describe('TaskOutputModule', () => {
     const { home, taskGraphService } = fixture();
     const hosted = new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
       hosted: () => true,
     });
     await expect(hosted.list('task-a')).rejects.toBeInstanceOf(
@@ -412,7 +568,7 @@ describe('TaskOutputModule', () => {
     directories.push(quotaHome);
     const bounded = new TaskOutputModule({
       homeDir: quotaHome,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
       limits: { maxBytes: 4, maxHomeBytes: 4 },
     });
     writeFileSync(join(workspace, 'one.txt'), 'same');
@@ -457,7 +613,7 @@ describe('TaskOutputModule', () => {
     const { home, workspace, taskGraphService } = fixture();
     const bounded = new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
       limits: { maxDeletedOperations: 2, maxTombstones: 2 },
     });
     const outputs = [];
@@ -502,13 +658,18 @@ describe('TaskOutputModule', () => {
     const taskGraphService = {
       readTask: (taskId: string) =>
         (taskId === 'task-a' && taskAPresent) || taskId === 'task-b'
-          ? { id: taskId, projectId: `project-${taskId}` }
+          ? {
+              id: taskId,
+              projectId: `project-${taskId}`,
+              createdAt: '2026-10-01T00:00:00.000Z',
+            }
           : null,
       readTaskForOpen: async (taskId: string) =>
         (taskId === 'task-a' && taskAPresent) || taskId === 'task-b'
           ? {
               id: taskId,
               projectId: `project-${taskId}`,
+              createdAt: '2026-10-01T00:00:00.000Z',
               workspaceBinding: {
                 availability: 'available' as const,
                 workingDirectory: workspace,
@@ -518,7 +679,7 @@ describe('TaskOutputModule', () => {
     };
     const bounded = new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
       limits: { maxDeletedOperations: 1, maxTombstones: 1 },
     });
     writeFileSync(join(workspace, 'one.txt'), 'one');
@@ -543,7 +704,7 @@ describe('TaskOutputModule', () => {
     await bounded.deleteForTask('task-a');
     await new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
       limits: { maxDeletedOperations: 1, maxTombstones: 1 },
     }).reconcile();
     const second = await bounded.create('task-b', {
@@ -565,7 +726,7 @@ describe('TaskOutputModule', () => {
     ) =>
       new TaskOutputModule({
         homeDir: home,
-        taskGraphService: taskGraphService as any,
+        taskGraphService,
         sourceSnapshotPort: { noFollow: fsConstants.O_NOFOLLOW, observe },
       });
     writeFileSync(join(workspace, 'report.txt'), 'original');
@@ -605,7 +766,7 @@ describe('TaskOutputModule', () => {
     ) =>
       new TaskOutputModule({
         homeDir: home,
-        taskGraphService: taskGraphService as any,
+        taskGraphService,
         sourceSnapshotPort: { noFollow: undefined, observe },
       });
     writeFileSync(join(workspace, 'report.txt'), 'source');
@@ -679,7 +840,7 @@ describe('TaskOutputModule', () => {
     let cleanupCalls = 0;
     const module = new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
       afterDeleteCommitCleanup: () => {
         cleanupCalls += 1;
         throw new Error('injected cleanup failure');
@@ -707,7 +868,7 @@ describe('TaskOutputModule', () => {
     );
     await new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraphService as any,
+      taskGraphService,
     }).reconcile();
     expect(() => readFileSync(blob)).toThrow();
   });
