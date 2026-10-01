@@ -90,5 +90,6 @@ category.
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
+- [shared-task-channels.md](shared-task-channels.md) — Shared Task channels, task board, agent participation, and previews (active delivery target)
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

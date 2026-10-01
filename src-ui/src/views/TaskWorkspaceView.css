@@ -2,6 +2,24 @@
   min-width: 0;
 }
 
+.task-workspace__record-details {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-3);
+}
+
+.task-workspace__record-details summary {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  align-content: center;
+  cursor: pointer;
+  color: var(--k-text-muted);
+}
+
+.task-workspace__record-details summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
 .task-workspace__body {
   flex: 1;
   min-height: 0;
