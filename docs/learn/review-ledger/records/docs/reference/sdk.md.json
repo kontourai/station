@@ -110,7 +110,7 @@
 
     {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
-    {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/projects.ts","digest":"9fd218a7c499cab4fcc9d04e04ca8ff4a7cd7465d2c4176d3b4434cf627c2ffa","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
     {"path":"packages/sdk/src/client/pull-request-review.ts","digest":"041031116030811215c0edcc98bf8948fe5e112bf4c212c5fe287494b5bd7fc7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -230,7 +230,7 @@
 
     {"path":"packages/sdk/src/query-domains/workspacePaneHostActions.ts","digest":"9746eed3bf2ad3f615af8afcaaf78421768de6359277d967d77622a1d4ce6a67","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"6d054cbb50d2e7c97f1a69464c9277d831e7fcafb6090c490d209e792166f7a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
     {"path":"packages/sdk/src/query-domains/workspaceWorkflows.ts","digest":"82fa04ec2c2389aa11a4046923f91290aaa9a88d0cfad47f9dc54ad1f59fdf7e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -410,7 +410,7 @@
 
     {"path":"src-server/services/projects/task-tool-result-reference-read-adapter.ts","digest":"a04a8f7d2fd028ff6400f062e542c013da2fcbd89edad0cfbba3f57ad05c7874","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"84e8ad33b4a43775d736be8e0963a34be71791b20394f8c2284c0d83ee105cd1","revision":"14a01d2782aa476127be589c1db85b6b296f0bed"},
 
     {"path":"src-server/services/search/isolated-transcript-search.ts","digest":"d0e8ab0bb7b6caacee44982532383b23fd7e1d3c68eb1b0b72e869d45be1b982","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"dc8e1155b3021a6132143bc548f75384dde94c0549bdc452d6478810a9114c8b","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
+  "document": {"digest":"dc8e1155b3021a6132143bc548f75384dde94c0549bdc452d6478810a9114c8b","revision":"66848daadfd8c5cea2ee606d24fe162468cc25f9"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
+    {"path":"src-ui/src/index.css","digest":"73b79688f9837f5f22ec96b2b3a485a6a72cbd2b930983703756631ef897c9ee","revision":"8c4cf9b920af95b446eceb3ffa3de6fae7137d10"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
