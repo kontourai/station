@@ -97,7 +97,7 @@ remote/native and hostile-tenant isolation receipts throughout delivery.
 ## Public test deployment — October 1, 2026
 
 The operator-approved test broker runs as a separate loopback-bound process on
-brian-media, reached through the named Cloudflare Tunnel at
+the operator's Linux host, reached through the named Cloudflare Tunnel at
 `https://relay-test.kontourai.com`. The tunnel exposes broker signaling only;
 Station application HTTP is not published through it. Cloudflare TURN supplies
 short-lived ICE credentials. Application traffic remains encrypted to the
