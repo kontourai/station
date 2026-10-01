@@ -195,13 +195,45 @@ names the host in its title, so every new host prompts; a call with
 exactly `dangerouslyDisableSandbox`, `requiresUserInteraction` or `Your
 organization requires approval for this tool`; and a request flagged
 `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`. Agent
-SDK 0.3.278 forwards the first two; `requiresUserInteraction` applies once an
-SDK forwards it. `request.opened` carries the sanitised `decisionReason` and any
-of the flags that are set. Not covered yet: a Bash safety check and a plain
-`permissions.ask` rule reach Station with no signal the SDK forwards, so a
-Bash tool grant or pattern can still answer them. A session answer never
-writes the engine's settings files: every forwarded suggestion is sent with
-`destination: 'session'`.
+SDK 0.3.278 forwards the first two; Station reads `requiresUserInteraction`
+from the engine's own request. `request.opened` carries the sanitised
+`decisionReason` and any of the flags that are set.
+
+Station also reads the engine's structured reason for each ask, which the
+SDK does not forward, from the engine's `can_use_tool` request (#2932). The
+same rule applies: these always prompt, under a tool grant or `autoApprove`
+of `*`, and offer no session option unless the engine suggested a directory
+to forward.
+
+- An ask with a reason type other than `other`: an ask rule (`rule`), a
+  safety check (`safetyCheck`), a compound command (`subcommandResults`), a
+  sandbox override, a path outside the working directories, and the mode,
+  hook, classifier, permission-prompt-tool and headless-agent types, plus
+  any type a later engine adds.
+- An ask whose `classifier_approvable` is set, which the engine does only
+  when a safety check is involved.
+- An ask of type `other` whose reason is not exactly `This command requires
+  approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
+  command.
+- An ask whose request Station could not read. This fails closed: a changed
+  or missing request costs a prompt, never a grant.
+
+An ask with no reason type is a plain call: that is what the engine sends for
+an ordinary MCP tool call, WebFetch, and a file edit inside the working
+directories. `request.opened` carries the result as `claudeAsk`: an object
+with `decisionReasonType`, `classifierApprovable` and `decisionReasonCode`
+where the engine set them, or `null` when the request could not be read.
+Other engines send no `claudeAsk`.
+
+Two limits follow from what the engine sends. It reports a compound Bash
+command (`a && b`, a pipeline) only as `subcommandResults`, without the
+reasons of its parts, so every compound command prompts even under a Bash
+grant. PowerShell wraps its ordinary ask the same way, so a PowerShell grant
+answers nothing. And the ordinary Bash ask is recognised by its text: if a
+later engine rewords it, ordinary Bash calls prompt until Station is updated.
+
+A session answer never writes the engine's settings files: every forwarded
+suggestion is sent with `destination: 'session'`.
 
 The command records the decision: the adapter publishes `request.resolved`
 when Station records it, on every engine. Whether the engine then received it

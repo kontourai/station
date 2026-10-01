@@ -60,12 +60,31 @@ const {
   mockAugmentedSpawnEnv: vi.fn(),
 }));
 
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  deleteSession: mockDeleteSession,
-  forkSession: mockForkSession,
-  listSessions: mockListSessions,
-  query: mockQuery,
-}));
+// #2932: the adapter owns the engine spawn and reads each permission ask off
+// the engine's stdout. Its real spawn wrapper and tap run here over a fake
+// child; `query` wraps `canUseTool` so a call with no frame of its own gets
+// one first.
+vi.mock('../adapters/claude-code-spawn.js', async (importOriginal) => {
+  const { fakeEngineProcessModule } = await import(
+    './claude-engine-process-test-utils.js'
+  );
+  return fakeEngineProcessModule(
+    await importOriginal<typeof import('../adapters/claude-code-spawn.js')>(),
+  );
+});
+
+vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
+  const { withRecordedClaudeAsks } = await import(
+    './claude-engine-process-test-utils.js'
+  );
+  return {
+    deleteSession: mockDeleteSession,
+    forkSession: mockForkSession,
+    listSessions: mockListSessions,
+    query: (args: { options?: unknown }) =>
+      mockQuery(withRecordedClaudeAsks(args)),
+  };
+});
 
 vi.mock('../auth/cli-auth.js', () => ({
   buildCliRuntimePrerequisites: mockBuildCliRuntimePrerequisites,
@@ -101,6 +120,12 @@ import {
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
 import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
+import {
+  type ClaudeCanUseToolRequest,
+  claudeCanUseToolFrame,
+  sdkCanUseToolOptions,
+  startFakeClaudeEngine,
+} from './claude-engine-process-test-utils.js';
 import { loadClaudeTaskCapture } from './claude-task-captures.js';
 
 function createMockQuery(
@@ -2165,7 +2190,26 @@ describe('ClaudeAdapter', () => {
         };
         return { kind: 'prompted' as const, event: race.event.value, answer };
       };
-      return { adapter, ask, query, seen, waitFor };
+      let frames = 0;
+      /**
+       * #2932: the ask as the engine sends it. Writes a real `can_use_tool`
+       * NDJSON frame to the engine's stdout, waits until the SDK side has
+       * read it through the adapter's tap, then calls `canUseTool` with the
+       * options the SDK builds from that frame, `requestId` included.
+       */
+      const askFrame = async (request: ClaudeCanUseToolRequest) => {
+        const requestId = `${threadId}-frame-${++frames}`;
+        const engine = startFakeClaudeEngine(
+          mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options,
+        );
+        await engine.write(claudeCanUseToolFrame(requestId, request));
+        return ask(
+          request.tool_name,
+          request.input,
+          sdkCanUseToolOptions(requestId, request),
+        );
+      };
+      return { adapter, ask, askFrame, query, seen, waitFor };
     }
 
     /**
@@ -3332,6 +3376,452 @@ describe('ClaudeAdapter', () => {
           await adapter.stopSession(threadId);
         },
       );
+    });
+
+    describe("#2932 part 2: the engine's structured reason, read from its can_use_tool frame", () => {
+      const everything = { slug: 'engine-lab', autoApprove: ['*'] };
+      // Frames as Claude Code 2.1.278 writes them (its `can_use_tool`
+      // request builder; undefined fields are absent).
+      /** An ordinary Bash ask: no rule matched (`bashMissKind: no-rule-match`). */
+      const bashOrdinary = (command: string): ClaudeCanUseToolRequest => ({
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command },
+        description: command,
+        permission_suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'Bash', ruleContent: `${command}:*` }],
+            behavior: 'allow',
+            destination: 'localSettings',
+          },
+        ],
+        decision_reason: 'This command requires approval',
+        decision_reason_type: 'other',
+        tool_use_id: 'toolu_bash',
+      });
+      /** A Bash safety check that requires manual approval. */
+      const bashSafetyCheck: ClaudeCanUseToolRequest = {
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command: 'sleep 600 &' },
+        description: 'sleep 600 &',
+        decision_reason:
+          'This command uses the `&` background operator, which defers execution past approval-time safety checks. Approve only if you trust it.',
+        decision_reason_type: 'safetyCheck',
+        classifier_approvable: false,
+        tool_use_id: 'toolu_bash',
+      };
+      /** A `permissions.ask` rule such as `Bash(git push:*)`: no reason text. */
+      const bashAskRule: ClaudeCanUseToolRequest = {
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command: 'git push' },
+        description: 'git push',
+        decision_reason_type: 'rule',
+        tool_use_id: 'toolu_bash',
+      };
+      /** A compound command: its parts' reasons are not sent. */
+      const bashCompound: ClaudeCanUseToolRequest = {
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command: 'git add -A && git push' },
+        description: 'git add -A && git push',
+        permission_suggestions: [
+          {
+            type: 'addRules',
+            rules: [
+              { toolName: 'Bash', ruleContent: 'git add:*' },
+              { toolName: 'Bash', ruleContent: 'git push:*' },
+            ],
+            behavior: 'allow',
+            destination: 'localSettings',
+          },
+        ],
+        decision_reason_type: 'subcommandResults',
+        tool_use_id: 'toolu_bash',
+      };
+      /** A sandbox override; part 1's input flag and literal mark it too. */
+      const bashSandboxOverride: ClaudeCanUseToolRequest = {
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: {
+          command: 'curl https://example.com',
+          dangerouslyDisableSandbox: true,
+        },
+        description: 'curl https://example.com',
+        decision_reason: 'dangerouslyDisableSandbox',
+        decision_reason_type: 'sandboxOverride',
+        tool_use_id: 'toolu_bash',
+      };
+      /** `other` with a reason that is not the ordinary one. */
+      const bashShellOperators: ClaudeCanUseToolRequest = {
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command: '(cd /tmp && rm -rf build)' },
+        description: '(cd /tmp && rm -rf build)',
+        decision_reason:
+          'This command uses shell operators that require approval for safety',
+        decision_reason_type: 'other',
+        tool_use_id: 'toolu_bash',
+      };
+      /** An ordinary MCP ask carries no reason at all. */
+      const mcpOrdinary: ClaudeCanUseToolRequest = {
+        tool_name: 'mcp__github__create_issue',
+        mcp_server: { name: 'github', source: 'user' },
+        display_name: 'github - create_issue (MCP)',
+        input: { title: 'x' },
+        permission_suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'mcp__github__create_issue' }],
+            behavior: 'allow',
+            destination: 'localSettings',
+          },
+        ],
+        tool_use_id: 'toolu_mcp',
+      };
+      const webFetchSuggestions = [
+        {
+          type: 'addRules',
+          destination: 'localSettings',
+          rules: [{ toolName: 'WebFetch', ruleContent: 'domain:example.com' }],
+          behavior: 'allow',
+        },
+      ];
+      /** An ordinary WebFetch ask carries no reason either. */
+      const webFetchOrdinary: ClaudeCanUseToolRequest = {
+        tool_name: 'WebFetch',
+        display_name: 'WebFetch',
+        input: { url: 'https://example.com/a', prompt: 'summarise' },
+        permission_suggestions: webFetchSuggestions,
+        tool_use_id: 'toolu_fetch',
+      };
+      /**
+       * A `WebFetch(domain:example.com)` ask rule: identical on the
+       * `canUseTool` callback to the ordinary ask above; only the frame's
+       * reason type differs.
+       */
+      const webFetchAskRule: ClaudeCanUseToolRequest = {
+        ...webFetchOrdinary,
+        decision_reason_type: 'rule',
+      };
+      const acceptEdits = [
+        { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+      ];
+      /** A plain edit inside the working directories: no reason. */
+      const editOrdinary: ClaudeCanUseToolRequest = {
+        tool_name: 'Edit',
+        display_name: 'Edit',
+        input: {
+          file_path: '/repo/src/a.ts',
+          old_string: 'a',
+          new_string: 'b',
+        },
+        permission_suggestions: acceptEdits,
+        tool_use_id: 'toolu_edit',
+      };
+      /** The sensitive-file check, which suggests the same mode change. */
+      const editSensitiveFile: ClaudeCanUseToolRequest = {
+        tool_name: 'Edit',
+        display_name: 'Edit',
+        input: {
+          file_path: '/repo/.git/config',
+          old_string: 'a',
+          new_string: 'b',
+        },
+        permission_suggestions: acceptEdits,
+        decision_reason:
+          'Claude requested permissions to edit /repo/.git/config which is a sensitive file.',
+        decision_reason_type: 'safetyCheck',
+        classifier_approvable: true,
+        tool_use_id: 'toolu_edit',
+      };
+
+      const expectPrompt = async (
+        outcome: Awaited<
+          ReturnType<Awaited<ReturnType<typeof grantHarness>>['ask']>
+        >,
+        label: string,
+      ) => {
+        expect(outcome.kind, label).toBe('prompted');
+        if (outcome.kind !== 'prompted') throw new Error('unreachable');
+        // The surfaces compute the same answer from the published payload.
+        expect(
+          toolRequestSessionGrantFromPayload(outcome.event.payload),
+          label,
+        ).toBe('none');
+        await outcome.answer('decline');
+        return outcome.event;
+      };
+
+      test('a Bash session grant answers an ordinary Bash ask and never a safety check, an ask rule, a compound command, a sandbox override or other safety prose', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-bash');
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(mint.event.payload).toMatchObject({
+          decisionReason: 'This command requires approval',
+          claudeAsk: { decisionReasonType: 'other' },
+        });
+        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
+          'tool',
+        );
+        await mint.answer('acceptForSession');
+
+        // Positive control: the grant answers the next ordinary Bash ask.
+        await expect(askFrame(bashOrdinary('git log'))).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+
+        const safety = await expectPrompt(
+          await askFrame(bashSafetyCheck),
+          'safetyCheck',
+        );
+        expect(safety.payload.claudeAsk).toEqual({
+          decisionReasonType: 'safetyCheck',
+          classifierApprovable: false,
+        });
+        const rule = await expectPrompt(await askFrame(bashAskRule), 'rule');
+        expect(rule.payload.claudeAsk).toEqual({ decisionReasonType: 'rule' });
+        expect(rule.payload).not.toHaveProperty('decisionReason');
+        await expectPrompt(await askFrame(bashCompound), 'subcommandResults');
+        await expectPrompt(
+          await askFrame(bashSandboxOverride),
+          'sandboxOverride',
+        );
+        await expectPrompt(await askFrame(bashShellOperators), 'other prose');
+
+        // The grant is intact after all of them.
+        await expect(askFrame(bashOrdinary('git diff'))).resolves.toMatchObject(
+          { kind: 'allowed' },
+        );
+        await adapter.stopSession('thread-frame-bash');
+      });
+
+      test('an ask whose frame was never recorded prompts under a Bash grant, and its payload says so', async () => {
+        const { adapter, ask, askFrame } = await grantHarness(
+          'thread-frame-missing',
+        );
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+        await expect(askFrame(bashOrdinary('git log'))).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+
+        // The same ordinary options, with a request id no frame carried.
+        const missing = await ask(
+          'Bash',
+          { command: 'git log' },
+          sdkCanUseToolOptions('never-on-stdout', bashOrdinary('git log')),
+        );
+        const event = await expectPrompt(missing, 'missing record');
+        expect(event.payload.claudeAsk).toBeNull();
+
+        // A record is consumed on read: replaying a request id reads as
+        // missing too.
+        const frame = bashOrdinary('git show');
+        const engine = startFakeClaudeEngine(
+          mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options,
+        );
+        await engine.write(claudeCanUseToolFrame('used-twice', frame));
+        await expect(
+          ask('Bash', frame.input, sdkCanUseToolOptions('used-twice', frame)),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+        await expectPrompt(
+          await ask(
+            'Bash',
+            frame.input,
+            sdkCanUseToolOptions('used-twice', frame),
+          ),
+          'record already consumed',
+        );
+        await adapter.stopSession('thread-frame-missing');
+      });
+
+      test("autoApprove '*' answers the ordinary asks and none of the escalations, a missing record included", async () => {
+        const { adapter, ask, askFrame } = await grantHarness(
+          'thread-frame-auto',
+          { agent: everything },
+        );
+        // Positive controls: ordinary Bash, MCP, WebFetch and Edit asks.
+        for (const ordinary of [
+          bashOrdinary('git status'),
+          mcpOrdinary,
+          webFetchOrdinary,
+          editOrdinary,
+        ])
+          await expect(
+            askFrame(ordinary),
+            ordinary.tool_name,
+          ).resolves.toMatchObject({ kind: 'allowed' });
+
+        for (const [label, frame] of [
+          ['safetyCheck', bashSafetyCheck],
+          ['rule', bashAskRule],
+          ['subcommandResults', bashCompound],
+          ['sandboxOverride', bashSandboxOverride],
+          ['other prose', bashShellOperators],
+          ['WebFetch ask rule', webFetchAskRule],
+          ['sensitive-file edit', editSensitiveFile],
+        ] as const) {
+          const outcome = await askFrame(frame);
+          expect(outcome.kind, label).toBe('prompted');
+          if (outcome.kind === 'prompted') await outcome.answer('decline');
+        }
+
+        const missing = await ask(
+          'Bash',
+          { command: 'git status' },
+          sdkCanUseToolOptions('never-on-stdout', bashOrdinary('git status')),
+        );
+        expect(missing.kind, 'missing record').toBe('prompted');
+        if (missing.kind === 'prompted') await missing.answer('decline');
+        await adapter.stopSession('thread-frame-auto');
+      });
+
+      test('a WebFetch ask rule prompts under a WebFetch grant that answers the ordinary ask', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-fetch');
+        const mint = await askFrame(webFetchOrdinary);
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(mint.event.payload.claudeAsk).toEqual({});
+        await mint.answer('acceptForSession');
+        await expect(askFrame(webFetchOrdinary)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+        await expectPrompt(await askFrame(webFetchAskRule), 'ask rule');
+        await adapter.stopSession('thread-frame-fetch');
+      });
+
+      test('an MCP grant still answers the ordinary MCP ask, which carries no reason', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-mcp');
+        const mint = await askFrame(mcpOrdinary);
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
+          'tool',
+        );
+        await mint.answer('acceptForSession');
+        await expect(askFrame(mcpOrdinary)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+        await adapter.stopSession('thread-frame-mcp');
+      });
+
+      test('the #2915 grants hold: a plain edit offers edit-mode, a sensitive-file check offers nothing, and folder asks keep their folder option', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-edit');
+        const plain = await askFrame(editOrdinary);
+        if (plain.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(toolRequestSessionGrantFromPayload(plain.event.payload)).toBe(
+          'edit-mode',
+        );
+        await plain.answer('decline');
+
+        // Before part 2 this offered "Auto-accept file edits" (#2932).
+        await expectPrompt(
+          await askFrame(editSensitiveFile),
+          'sensitive-file edit',
+        );
+
+        const outsideEdit = await askFrame({
+          tool_name: 'Edit',
+          display_name: 'Edit',
+          input: {
+            file_path: '/elsewhere/a.ts',
+            old_string: 'a',
+            new_string: 'b',
+          },
+          permission_suggestions: [
+            ...acceptEdits,
+            {
+              type: 'addDirectories',
+              directories: ['/elsewhere'],
+              destination: 'session',
+            },
+          ],
+          decision_reason: 'Path is outside allowed working directories',
+          decision_reason_type: 'workingDir',
+          tool_use_id: 'toolu_edit',
+        });
+        if (outsideEdit.kind !== 'prompted')
+          throw new Error('expected a prompt');
+        expect(
+          toolRequestSessionGrantFromPayload(outsideEdit.event.payload),
+        ).toBe('folder');
+        await outsideEdit.answer('decline');
+
+        const outsideRead = await askFrame({
+          tool_name: 'Read',
+          display_name: 'Read',
+          input: { file_path: '/elsewhere/notes.md' },
+          permission_suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Read', ruleContent: '//elsewhere/**' }],
+              behavior: 'allow',
+              destination: 'session',
+            },
+          ],
+          decision_reason: 'Path is outside allowed working directories',
+          decision_reason_type: 'workingDir',
+          tool_use_id: 'toolu_read',
+        });
+        if (outsideRead.kind !== 'prompted')
+          throw new Error('expected a prompt');
+        expect(
+          toolRequestSessionGrantFromPayload(outsideRead.event.payload),
+        ).toBe('read-folder');
+        await outsideRead.answer('decline');
+        await adapter.stopSession('thread-frame-edit');
+      });
+
+      test('requires_user_interaction, which the SDK drops, is read from the frame', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-rui');
+        const mint = await askFrame(mcpOrdinary);
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+        const flagged = await askFrame({
+          ...mcpOrdinary,
+          requires_user_interaction: true,
+        });
+        expect(flagged.kind).toBe('prompted');
+        if (flagged.kind !== 'prompted') throw new Error('unreachable');
+        expect(flagged.event.payload).toMatchObject({
+          requiresUserInteraction: true,
+          claudeAsk: {},
+        });
+        await flagged.answer('decline');
+        await adapter.stopSession('thread-frame-rui');
+      });
+
+      test("an engine exit error carries the engine's stderr tail", async () => {
+        let fail: (error: Error) => void = () => undefined;
+        const failed = new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        });
+        const { adapter, waitFor } = await grantHarness('thread-frame-exit', {
+          query: {
+            ...createMockQuery([]),
+            [Symbol.asyncIterator]: () => ({ next: () => failed }),
+          } as never,
+        });
+        const engine = startFakeClaudeEngine(
+          mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options,
+        );
+        engine.child.stderr.write('error: not logged in\n');
+        engine.child.closeStderr();
+        await vi.waitFor(() =>
+          expect(engine.child.stderr.destroyed).toBe(true),
+        );
+        fail(new Error('Claude Code process exited with code 1'));
+        const failure = await waitFor(
+          (event) => event.method === 'runtime.error',
+        );
+        expect(failure.message).toBe(
+          'Claude Code process exited with code 1. stderr: error: not logged in',
+        );
+        await adapter.stopSession('thread-frame-exit');
+      });
     });
 
     test('a session answer on ExitPlanMode mints nothing, and the next plan exit prompts', async () => {
@@ -6431,6 +6921,8 @@ describe('ClaudeAdapter', () => {
           ...process.env,
           TMPDIR: engineSpawnTmpDirPath(),
         }),
+        // #2932: Station owns the engine spawn to read permission asks.
+        spawnClaudeCodeProcess: expect.any(Function),
         canUseTool: expect.any(Function),
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,

@@ -261,10 +261,10 @@ const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
  * - `none`: the session answer is a one-call accept, so none is offered. A
  *   plan exit (#2916); a sandbox network-host ask or an ask flagged
  *   `suppressAlwaysAllowRule` (#2932); an escalation or read with no directory to forward
- *   (an ask rule, a read safety check, a read of `/`); or a file edit with
- *   no mode change to forward (a sensitive-file safety check once the
- *   session is already in `acceptEdits`, an ask rule) or asked in plan mode
- *   or under full access (`bypassPermissions`).
+ *   (an ask rule, a safety check, a compound command, a read of `/`, a
+ *   Claude ask whose structured reason was not read); or a file edit with
+ *   no mode change to forward or asked in plan mode or under full access
+ *   (`bypassPermissions`).
  */
 export type ToolRequestSessionGrant =
   | 'tool'
@@ -294,11 +294,35 @@ export type ToolRequestGrantInput = {
   /**
    * Ask flags the Claude CLI sends on `can_use_tool`. Agent SDK 0.3.278
    * forwards `suppressAlwaysAllowRule` and `defaultToNo` to `canUseTool`
-   * and still drops `requiresUserInteraction`. Read when present.
+   * and still drops `requiresUserInteraction`, which the Claude adapter
+   * reads from the engine's frame. Read when present.
    */
   suppressAlwaysAllowRule?: unknown;
   defaultToNo?: unknown;
   requiresUserInteraction?: unknown;
+  /**
+   * #2932: the structured reason the Claude adapter read from the engine's
+   * `can_use_tool` frame (a `ClaudeAskReason`). Left undefined by an engine
+   * that reports none, which says nothing. Anything else that is not an
+   * object, `null` included, is a Claude ask whose frame was not read: it
+   * escalates (see `claudeAskEscalates`).
+   */
+  claudeAsk?: unknown;
+};
+
+/**
+ * #2932: the reason fields of a Claude Code `can_use_tool` frame that Agent
+ * SDK 0.3.278 does not hand to `canUseTool`. `decisionReasonType` is the
+ * engine's `decision_reason_type` (`rule`, `mode`, `subcommandResults`,
+ * `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
+ * `workingDir`, `safetyCheck`, `classifier`, `other`), absent when the
+ * engine attached no reason. `classifierApprovable` is set when a safety
+ * check is involved, nested ones included.
+ */
+export type ClaudeAskReason = {
+  decisionReasonType?: string;
+  classifierApprovable?: boolean;
+  decisionReasonCode?: string;
 };
 
 /** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
@@ -328,6 +352,17 @@ const ESCALATION_DECISION_REASONS: ReadonlySet<string> = new Set([
   'dangerouslyDisableSandbox',
   'requiresUserInteraction',
   'Your organization requires approval for this tool',
+]);
+/**
+ * #2932: the `decisionReason` texts Claude Code 2.1.278 sends with reason
+ * type `other` for an ordinary ask: a single Bash command that no rule
+ * matched. Every other `other` reason is a check of some kind (shell
+ * operators, an unparseable command, a `cd` before a write, a sed write),
+ * so it escalates. If a later CLI rewords this text, the ordinary ask
+ * escalates too and prompts; it never widens.
+ */
+const ORDINARY_OTHER_DECISION_REASONS: ReadonlySet<string> = new Set([
+  'This command requires approval',
 ]);
 /**
  * Claude Code's read-only tools. The engine allows reads inside the session's
@@ -445,6 +480,9 @@ export function sessionGrantPermissionUpdates<T>(
  *   (`dangerouslyDisableSandbox: true` in its input), a `decisionReason` in
  *   `ESCALATION_DECISION_REASONS`, or any of the ask flags
  *   `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`.
+ * - #2932: the engine's structured reason (`claudeAskEscalates`): an ask
+ *   rule, a safety check, a compound command, or a Claude ask whose frame
+ *   was not read. The literal rules above stay as a second layer.
  */
 export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
   return (
@@ -457,9 +495,46 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
     request.suppressAlwaysAllowRule === true ||
     request.defaultToNo === true ||
     request.requiresUserInteraction === true ||
+    claudeAskEscalates(request.claudeAsk, request.decisionReason) ||
     suggestionList(request.suggestions).some(
       (update) => directoryPermissionUpdateKind(update) !== undefined,
     )
+  );
+}
+
+/**
+ * #2932: whether the structured reason of a Claude ask marks it as more
+ * than a plain call. Read against Claude Code 2.1.278:
+ *
+ * - no `claudeAsk` at all (`undefined`): another engine; no opinion.
+ * - a `claudeAsk` that is not an object: the frame was not read. It
+ *   escalates, so a changed or dropped frame costs a prompt, never a grant.
+ * - `classifierApprovable` set, either way: a safety check is involved.
+ * - a reason type other than `other`: an ask rule (`rule`), a safety check,
+ *   a compound command (`subcommandResults`, whose parts are not sent, so a
+ *   nested ask rule or safety check cannot be ruled out), a sandbox
+ *   override, a path outside the working directories, a mode, hook,
+ *   classifier or headless-agent ask, and any type added later.
+ * - type `other` with any reason text but the ordinary one.
+ *
+ * A plain call is therefore an ask with no reason type (an MCP tool,
+ * WebFetch, a file edit inside the working directories) or `other` with
+ * the ordinary Bash text. PowerShell wraps even its ordinary ask in
+ * `subcommandResults`, so every PowerShell ask escalates.
+ */
+export function claudeAskEscalates(
+  claudeAsk: unknown,
+  decisionReason: unknown,
+): boolean {
+  if (claudeAsk === undefined) return false;
+  if (!isRecord(claudeAsk) || Array.isArray(claudeAsk)) return true;
+  if (claudeAsk.classifierApprovable !== undefined) return true;
+  const type = claudeAsk.decisionReasonType;
+  if (type === undefined) return false;
+  if (type !== 'other') return true;
+  return !(
+    typeof decisionReason === 'string' &&
+    ORDINARY_OTHER_DECISION_REASONS.has(decisionReason)
   );
 }
 
@@ -539,10 +614,10 @@ export function toolRequestSessionGrant(
  * working directories itself), `ExitPlanMode`, and a file edit asked in plan
  * mode, under full access or with no `acceptEdits` suggestion (a safety
  * check once the session is in `acceptEdits`) all reach a person, as do a
- * sandbox network-host ask and the #2932 escalation signals. A
- * sensitive-file safety check asked in default mode carries the same
- * suggestion as a plain edit, and a Bash safety check or a plain ask rule
- * carries no signal the SDK forwards, so neither can be told apart (#2932).
+ * sandbox network-host ask and the #2932 escalation signals. For a Claude
+ * ask those include the engine's structured reason, so a safety check, an
+ * ask rule and a compound command reach a person, as does an ask whose
+ * frame was not read (`claudeAskEscalates`).
  */
 export function toolRequestIsPlainCall(
   request: ToolRequestGrantInput,
@@ -563,6 +638,7 @@ export function toolRequestSessionGrantFromPayload(
     suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
     defaultToNo: payload?.defaultToNo,
     requiresUserInteraction: payload?.requiresUserInteraction,
+    claudeAsk: payload?.claudeAsk,
     suggestions: payload?.suggestions,
     blockedPath: payload?.blockedPath,
     matchedAskRule: payload?.matchedAskRule,

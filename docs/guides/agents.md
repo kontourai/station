@@ -173,9 +173,15 @@ Claude Code these always reach a person:
   reading the workspace, not reading anywhere), or a suggestion to widen them;
 - a call forced to ask by a `permissions.ask` rule, when the engine reports
   the rule that matched;
-- a read or file-edit safety check the engine raises and Station can tell
-  apart from a plain call (the engine allows reads inside the working
-  directories itself, so any Read, Glob, Grep or LSP ask it raises prompts);
+- a safety check the engine raises, on a read, a file edit (a sensitive
+  file such as `.git/config`) or a shell command (the engine allows reads
+  inside the working directories itself, so any Read, Glob, Grep or LSP ask
+  it raises prompts);
+- a call a `permissions.ask` rule forced to ask, whether or not the engine
+  names the rule, including a WebFetch domain rule (#2932);
+- a compound shell command (`a && b`, a pipeline) and every PowerShell
+  command: the engine does not say why their parts ask, so Station cannot
+  rule out a safety check or an ask rule inside one (#2932);
 - a sandbox network-host ask (each new host prompts), a call that disables
   the sandbox, a tool whose approval is the user's own interaction, and an
   MCP tool the organization requires approval for (#2932);
@@ -184,11 +190,11 @@ Claude Code these always reach a person:
 On ACP engines a plan exit (a `switch_mode` tool call, or `ExitPlanMode`)
 always prompts, and answering it "for this session" allows that one exit
 only. ACP reports no other escalation signal. Codex and Muse do not
-honour `autoApprove`. A sensitive-file edit the engine asks about in its
-default mode carries the same signal as a plain edit, so a matching pattern
-still allows it. So does a Bash safety check, or a plain `permissions.ask`
-rule the engine reports with no matched rule: neither carries a signal Station
-receives ([delivery boundary](../conformance/tool-policy-delivery.md)).
+honour `autoApprove`. Station reads why Claude Code asks from the engine's
+own request, and a request it cannot read counts as an escalation, so a
+pattern never answers one. A pattern such as `Bash` therefore covers single
+commands only; a run with nobody to answer waits on, or is denied, a compound
+command ([delivery boundary](../conformance/tool-policy-delivery.md)).
 
 ### Unattended runs
 

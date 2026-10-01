@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  claudeAskEscalates,
   directoryPermissionUpdateKind,
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
   sessionGrantPermissionUpdates,
@@ -408,6 +409,185 @@ describe('#2932: escalation signals the engine forwards', () => {
     const request = { toolName: 'Bash', ...extra };
     expect(toolRequestSessionGrant(request)).toBe('tool');
     expect(toolRequestIsPlainCall(request)).toBe(true);
+  });
+});
+
+describe("#2932 part 2: the engine's structured ask reason", () => {
+  const ORDINARY = 'This command requires approval';
+  const acceptEdits = {
+    type: 'setMode',
+    mode: 'acceptEdits',
+    destination: 'session',
+  };
+
+  test.each([
+    'rule',
+    'mode',
+    'subcommandResults',
+    'permissionPromptTool',
+    'hook',
+    'asyncAgent',
+    'sandboxOverride',
+    'workingDir',
+    'safetyCheck',
+    'classifier',
+    'a-type-added-later',
+  ])('reason type %s escalates, whatever the reason text', (type) => {
+    expect(claudeAskEscalates({ decisionReasonType: type }, undefined)).toBe(
+      true,
+    );
+    expect(claudeAskEscalates({ decisionReasonType: type }, ORDINARY)).toBe(
+      true,
+    );
+    const request = {
+      toolName: 'Bash',
+      toolInput: { command: 'git push' },
+      decisionReason: ORDINARY,
+      claudeAsk: { decisionReasonType: type },
+    };
+    expect(toolRequestEscalates(request)).toBe(true);
+    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestIsPlainCall(request)).toBe(false);
+  });
+
+  test('type other is a plain call only with the ordinary reason text', () => {
+    expect(claudeAskEscalates({ decisionReasonType: 'other' }, ORDINARY)).toBe(
+      false,
+    );
+    for (const reason of [
+      'This command uses shell operators that require approval for safety',
+      'Process substitution requires manual approval',
+      `${ORDINARY}.`,
+      ` ${ORDINARY}`,
+      '',
+      undefined,
+      null,
+      42,
+    ])
+      expect(
+        claudeAskEscalates({ decisionReasonType: 'other' }, reason),
+        String(reason),
+      ).toBe(true);
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: ORDINARY,
+        claudeAsk: { decisionReasonType: 'other' },
+      }),
+    ).toBe('tool');
+  });
+
+  test('an ask with no reason type is a plain call: MCP, WebFetch, an edit inside the working directories', () => {
+    expect(claudeAskEscalates({}, undefined)).toBe(false);
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'mcp__github__create_issue',
+        claudeAsk: {},
+      }),
+    ).toBe('tool');
+    expect(
+      toolRequestSessionGrant({ toolName: 'WebFetch', claudeAsk: {} }),
+    ).toBe('tool');
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Edit',
+        suggestions: [acceptEdits],
+        claudeAsk: {},
+      }),
+    ).toBe('edit-mode');
+  });
+
+  test('classifierApprovable set either way escalates, with any reason type or none', () => {
+    for (const classifierApprovable of [true, false, null])
+      for (const decisionReasonType of [undefined, 'other', 'safetyCheck'])
+        expect(
+          claudeAskEscalates(
+            { decisionReasonType, classifierApprovable },
+            ORDINARY,
+          ),
+          `${String(classifierApprovable)} ${String(decisionReasonType)}`,
+        ).toBe(true);
+    // A sensitive-file edit in default mode suggests acceptEdits like a
+    // plain edit; the structured reason is what tells them apart.
+    const sensitive = {
+      toolName: 'Edit',
+      suggestions: [acceptEdits],
+      claudeAsk: {
+        decisionReasonType: 'safetyCheck',
+        classifierApprovable: true,
+      },
+    };
+    expect(toolRequestSessionGrant(sensitive)).toBe('none');
+    expect(toolRequestIsPlainCall(sensitive)).toBe(false);
+  });
+
+  test('a Claude ask whose frame was not read escalates; an engine that reports none is left alone', () => {
+    for (const missing of [null, 'other', 0, false, [], [{}]])
+      expect(claudeAskEscalates(missing, ORDINARY), String(missing)).toBe(true);
+    expect(toolRequestSessionGrant({ toolName: 'Bash', claudeAsk: null })).toBe(
+      'none',
+    );
+    expect(toolRequestIsPlainCall({ toolName: 'Bash', claudeAsk: null })).toBe(
+      false,
+    );
+    // Other engines (ACP, Codex, Station's own) set no `claudeAsk`.
+    expect(claudeAskEscalates(undefined, undefined)).toBe(false);
+    expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+  });
+
+  test('a reason type that is not a string escalates', () => {
+    for (const type of [null, 1, {}, ['other']])
+      expect(
+        claudeAskEscalates({ decisionReasonType: type }, ORDINARY),
+        String(type),
+      ).toBe(true);
+  });
+
+  test('an escalating ask still forwards the folder the engine suggested', () => {
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Edit',
+        suggestions: [
+          acceptEdits,
+          {
+            type: 'addDirectories',
+            directories: ['/elsewhere'],
+            destination: 'session',
+          },
+        ],
+        claudeAsk: { decisionReasonType: 'workingDir' },
+      }),
+    ).toBe('folder');
+  });
+
+  test('the payload reader passes claudeAsk through, null included', () => {
+    const payload = {
+      toolName: 'Bash',
+      toolInput: { command: 'git push' },
+      decisionReason: ORDINARY,
+    };
+    expect(
+      toolRequestSessionGrantFromPayload({
+        ...payload,
+        claudeAsk: { decisionReasonType: 'other' },
+      }),
+    ).toBe('tool');
+    expect(
+      toolRequestSessionGrantFromPayload({
+        ...payload,
+        claudeAsk: { decisionReasonType: 'rule' },
+      }),
+    ).toBe('none');
+    expect(
+      toolRequestSessionGrantFromPayload({ ...payload, claudeAsk: null }),
+    ).toBe('none');
+    // A payload round-tripped through JSON keeps the null.
+    expect(
+      toolRequestSessionGrantFromPayload(
+        JSON.parse(JSON.stringify({ ...payload, claudeAsk: null })),
+      ),
+    ).toBe('none');
+    expect(toolRequestSessionGrantFromPayload(payload)).toBe('tool');
   });
 });
 
