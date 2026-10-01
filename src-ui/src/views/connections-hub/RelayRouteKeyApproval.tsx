@@ -435,16 +435,25 @@ export function RelayRouteKeyApproval({
           </Button>
           <label className="editor-field" htmlFor={`${id}-invitation`}>
             <span className="editor-label">One-time Station invitation</span>
-            <textarea
+            <input
               id={`${id}-invitation`}
               className="editor-input"
+              type="password"
               value={invitation}
-              rows={4}
-              autoCapitalize="off"
+              autoComplete="off"
+              autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               placeholder="Paste the one-time v2 invitation JSON"
               onChange={(event) => setInvitation(event.target.value)}
+              onPaste={(event) => {
+                const text =
+                  event.clipboardData.getData('text/plain') ||
+                  event.clipboardData.getData('text');
+                if (!text) return;
+                event.preventDefault();
+                setInvitation(text.replace(/\r\n?/gu, ' '));
+              }}
             />
           </label>
           <Button

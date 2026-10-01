@@ -241,6 +241,14 @@ vi.mock('../../../platform/native/relayKeyApproval', () => ({
 import { NativeStationProfileStorage } from '../../../platform/native/stationProfileStorage';
 import { RelayRouteProfiles } from '../RelayRouteProfiles';
 
+function pastePlainText(target: HTMLElement, text: string) {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: { getData: (kind: string) => (kind === 'text/plain' ? text : '') },
+  });
+  fireEvent(target, event);
+}
+
 const stationId = '11111111-1111-4111-8111-111111111111';
 const enrollmentId = '22222222-2222-4222-8222-222222222222';
 
@@ -830,9 +838,15 @@ describe('RelayRouteProfiles', () => {
     expect(screen.getByText('Device setup required')).toBeTruthy();
     expect(mocks.grantInvoke).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByLabelText('One-time routing invitation'), {
-      target: { value: JSON.stringify(invitation) },
-    });
+    const routingInvitationField = screen.getByLabelText(
+      'One-time routing invitation',
+    ) as HTMLInputElement;
+    expect(routingInvitationField.type).toBe('password');
+    expect(routingInvitationField.getAttribute('autocomplete')).toBe('off');
+    expect(routingInvitationField.getAttribute('autocapitalize')).toBe('none');
+    expect(routingInvitationField.getAttribute('autocorrect')).toBe('off');
+    expect(routingInvitationField.getAttribute('spellcheck')).toBe('false');
+    pastePlainText(routingInvitationField, JSON.stringify(invitation, null, 2));
     fireEvent.click(
       screen.getByRole('button', { name: 'Redeem routing grant' }),
     );
@@ -1790,23 +1804,27 @@ describe('RelayRouteProfiles', () => {
       trustRevision: 0,
       status: 'pending' as const,
     };
-    const invitationJson = JSON.stringify({
-      version: 'station-broker-native-route-invitation/v2',
-      brokerOrigin: 'https://broker.example',
-      scope: { stationId, enrollmentId, routingGeneration: 7 },
-      stationSigningKeyId: 'sha256:station-key',
-      stationSigningGeneration: 4,
-      surface: {
-        kind: 'station-native',
-        appIdentifier: 'io.kontourai.station',
-        channel: 'stable',
-        clientInstanceId: 'install-1',
-        keyThumbprint: 'sha256:install-proof',
+    const invitationJson = JSON.stringify(
+      {
+        version: 'station-broker-native-route-invitation/v2',
+        brokerOrigin: 'https://broker.example',
+        scope: { stationId, enrollmentId, routingGeneration: 7 },
+        stationSigningKeyId: 'sha256:station-key',
+        stationSigningGeneration: 4,
+        surface: {
+          kind: 'station-native',
+          appIdentifier: 'io.kontourai.station',
+          channel: 'stable',
+          clientInstanceId: 'install-1',
+          keyThumbprint: 'sha256:install-proof',
+        },
+        invitationId: 'invite-1',
+        invitationSecret: 'one-time-invitation-secret',
+        expiresAt: Date.now() + 60_000,
       },
-      invitationId: 'invite-1',
-      invitationSecret: 'one-time-invitation-secret',
-      expiresAt: Date.now() + 60_000,
-    });
+      null,
+      2,
+    );
     mocks.prepareKey.mockResolvedValue({
       profileName: 'Home Station',
       brokerOrigin: 'https://broker.example',
@@ -1820,7 +1838,12 @@ describe('RelayRouteProfiles', () => {
     });
     mocks.beginKey.mockImplementation(
       async (_profileName: string, invitation: string) => {
-        expect(invitation).toBe(invitationJson);
+        expect(JSON.parse(invitation)).toMatchObject({
+          version: 'station-broker-native-route-invitation/v2',
+          brokerOrigin: 'https://broker.example',
+          scope: { stationId, enrollmentId, routingGeneration: 7 },
+          invitationId: 'invite-1',
+        });
         mocks.pendingKey.mockResolvedValue(candidate);
         return candidate;
       },
@@ -1862,9 +1885,15 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByText('sha256:install-proof');
     expect(screen.getByText('io.kontourai.station')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('One-time Station invitation'), {
-      target: { value: invitationJson },
-    });
+    const stationInvitationField = screen.getByLabelText(
+      'One-time Station invitation',
+    ) as HTMLInputElement;
+    expect(stationInvitationField.type).toBe('password');
+    expect(stationInvitationField.getAttribute('autocomplete')).toBe('off');
+    expect(stationInvitationField.getAttribute('autocapitalize')).toBe('none');
+    expect(stationInvitationField.getAttribute('autocorrect')).toBe('off');
+    expect(stationInvitationField.getAttribute('spellcheck')).toBe('false');
+    pastePlainText(stationInvitationField, invitationJson);
     fireEvent.click(
       screen.getByRole('button', { name: 'Discover Station key' }),
     );
