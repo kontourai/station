@@ -36,7 +36,7 @@
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
 
-    {"path":"packages/cli/src/commands/service-windows.ts","digest":"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/cli/src/commands/service-windows.ts","digest":"04481029a8c5138bcb31f108c569b5c6dd127fd63c1b3c8e116f0c30a0bb02b5","revision":"a74a3b807e9547c31045a174d4aa015ae8445f84"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

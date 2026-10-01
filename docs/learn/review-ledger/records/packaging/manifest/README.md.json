@@ -32,7 +32,7 @@
 
     {"path":"scripts/smoke-install-prebuilt-archive.sh","digest":"244d90cb7cac757aabeeced510fc4bf18ecfc6664bab71d03f2f4f306b4169f6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":".github/workflows/install-smoke.yml","digest":"c9b62d21dfa9827d6fba11e3f4168da91c32202021c82d169c22604968cf2fd0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":".github/workflows/install-smoke.yml","digest":"20228bdddaf7cb1ce274cbe72e419894c14c65688cb294fc4795585c4989fe70","revision":"a74a3b807e9547c31045a174d4aa015ae8445f84"},
 
     {"path":".github/workflows/portable-nightly-publish.yml","digest":"bdf3341cca00666ca0adaa2a849d90dbba893e0c55ca9f387da5bf4d8b488702","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

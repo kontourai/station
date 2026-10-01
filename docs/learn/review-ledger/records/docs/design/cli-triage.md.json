@@ -12,7 +12,7 @@
   "document": {"digest":"b064c8f2e26b8250bf675fac1277b9674b87ce0483d62bed32072950b536887d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/cli.md","digest":"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
+    {"path":"docs/reference/cli.md","digest":"3099926279eb47af3bad12839bbe7b00447d43ad5f5ffb3183802ea6b21ef491","revision":"fbe1113cf1e9b76fb3ab0b31d34bdb982f8534bf"},
 
     {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"e0934da8f4630b295f64b6275c25a48a41819ee58305b7b774a426aa0652bcaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
