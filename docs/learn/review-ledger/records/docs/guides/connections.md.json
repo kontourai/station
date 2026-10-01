@@ -254,7 +254,7 @@
 
     {"path":"src-server/services/connections/browser-code-login.ts","digest":"ed975062b5c25d966b1da0cb9ab654b9c861b8d33b647075b3a7a8d2b5208a3a","revision":"4750f0dd4c17a766da91628dca97b2c7627ca0ed"},
 
-    {"path":"src-server/services/connections/credential-usage.ts","digest":"2da8c8e4198937fcb544bcfe7c9da5a400782ba462c053ceb6e4e6701496cc9f","revision":"5cacbc666fbe1da2d8e144f3a4e76894a2360179"},
+    {"path":"src-server/services/connections/credential-usage.ts","digest":"0a5d2fd875ccfcc2f0d127d3af94c28efa5742b2e70cb3f48b9a7eb5f7a05e76","revision":"ef15fc62c61748cb117b869396034ca69c24e599"},
 
     {"path":"packages/sdk/src/engine-accounts.ts","digest":"195bf9231879f9baf7f3c03d8d4bdb0d4cb69d646a94ee8734c6467064e499af","revision":"5cacbc666fbe1da2d8e144f3a4e76894a2360179"},
 
