@@ -4,6 +4,11 @@ import type {
 } from '@kontourai/station-sdk';
 import { describe, expect, it } from 'vitest';
 import {
+  FOLD_FIRST_EVENT_AT,
+  FOLD_FIXTURES,
+  FOLD_SESSION_CREATED_AT,
+} from '../../../tests/helpers/session-summary-fold-fixtures';
+import {
   type ChatUIState,
   createDefaultChatState,
 } from '../contexts/active-chats-state';
@@ -24,14 +29,20 @@ import {
  * #3042: one status line per row, chosen by one ladder, and the lane read
  * off the same call.
  *
- * The session fixtures below are the REAL server folds, captured by driving
- * `projectSessionLifecycle` and `ConversationTurnActivityProjection` over an
- * event store with the named event sequences. They are literal on purpose:
- * a fixture derived from the ladder's own constants would prove nothing.
+ * THE SESSION FIXTURES ARE THE SERVER'S OWN FOLD. `FOLD_FIXTURES`
+ * (`tests/helpers/session-summary-fold-fixtures.ts`) pairs literal event
+ * sequences with the literal summary fields the server produces for them,
+ * and `src-server/services/orchestration/__tests__/
+ * session-summary-fold-fixtures.test.ts` runs every sequence through the
+ * real event store, activity projection and `buildOrchestrationSessionSummary`
+ * and requires exact equality. A fold change fails there; nothing here is a
+ * hand-written guess at a summary. (This file cannot run the fold itself:
+ * `typecheck:ui` does not resolve the server module graph.)
  */
 
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
-const TURN_STARTED = '2026-09-30T10:00:03.000Z'; // 1m 12s before NOW
+// Every sequence's first event, `turn.started`: 1m 12s before NOW.
+const TURN_STARTED = FOLD_FIRST_EVENT_AT;
 
 const SILENCE = {
   lastProgressEventAt: '2026-09-30T09:55:15.000Z',
@@ -43,154 +54,35 @@ const SILENCE = {
   },
 } satisfies OrchestrationSessionSummary['turnProgress'];
 
-function session(
-  over: Partial<OrchestrationSessionSummary>,
+/** A folded fixture as the summary the client receives: the fields the fold
+ *  test pins, plus the row-identity fields no status code reads. */
+function folded(
+  name: keyof typeof FOLD_FIXTURES,
+  over: Partial<OrchestrationSessionSummary> = {},
 ): OrchestrationSessionSummary {
   return {
     provider: 'claude',
     threadId: 'T',
     status: 'running',
-    createdAt: '2026-09-30T10:00:01.000Z',
+    createdAt: FOLD_SESSION_CREATED_AT,
     updatedAt: '2026-09-30T10:00:02.000Z',
     controlMode: 'station-owned',
     answerability: { answerable: true },
     isLoaded: true,
     isPersisted: true,
-    eventCount: 3,
+    eventCount: FOLD_FIXTURES[name].events.length,
+    ...(FOLD_FIXTURES[name].summary as Partial<OrchestrationSessionSummary>),
     ...over,
   };
 }
 
-/** turn.started, tool.started(Bash). */
-const RUNNING_TOOL = session({
-  lifecycleState: 'running',
-  previousLifecycleState: 'running',
-  transitionReason: 'turn_started',
-  transitionSource: 'runtime',
-  pendingReview: false,
-  hasActiveTurn: true,
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 2,
-    openTurn: { turnId: 't1', threadId: 'T', startedAt: TURN_STARTED },
-    runningTools: [
-      { name: 'Bash', callId: 'c1', startedAt: '2026-09-30T10:00:04.000Z' },
-    ],
-    lastActivityAt: '2026-09-30T10:00:04.000Z',
-  },
-});
-
-/** turn.started, tool.started(Bash), request.opened(approval). The turn is
- *  STILL OPEN: an approval pauses a turn, it does not close it. */
-const APPROVAL_IN_OPEN_TURN = session({
-  lifecycleState: 'review_pending',
-  previousLifecycleState: 'running',
-  transitionReason: 'review_requested',
-  transitionSource: 'runtime',
-  pendingReview: true,
-  hasActiveTurn: true,
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 3,
-    openTurn: { turnId: 't1', threadId: 'T', startedAt: TURN_STARTED },
-    runningTools: [
-      { name: 'Bash', callId: 'c1', startedAt: '2026-09-30T10:00:04.000Z' },
-    ],
-    lastActivityAt: '2026-09-30T10:00:05.000Z',
-  },
-});
-
-/** turn.started, request.opened(input). */
-const QUESTION_IN_OPEN_TURN = session({
-  lifecycleState: 'needs_input',
-  previousLifecycleState: 'running',
-  transitionReason: 'input_requested',
-  transitionSource: 'runtime',
-  pendingReview: false,
-  hasActiveTurn: true,
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 2,
-    openTurn: { turnId: 't1', threadId: 'T', startedAt: TURN_STARTED },
-    lastActivityAt: '2026-09-30T10:00:04.000Z',
-  },
-});
-
-/** turn.started, turn.aborted, then interrupted-turn recovery's stamp. */
-const INTERRUPTED = session({
-  lifecycleState: 'needs_input',
-  previousLifecycleState: 'needs_input',
-  transitionReason: 'runtime_exit',
-  transitionSource: 'system_recovery',
-  pendingReview: false,
-  hasActiveTurn: false,
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 3,
-    lastActivityAt: '2026-09-30T10:00:05.000Z',
-  },
-});
-
-/** A manual transition to blocked. `blockedReason` is raw text and must not
- *  reach the row. */
-const BLOCKED = session({
-  lifecycleState: 'blocked',
-  previousLifecycleState: 'blocked',
-  transitionReason: 'blocked_by_user',
-  transitionSource: 'user_action',
-  pendingReview: false,
-  blockedReason: 'raw adapter text',
-  hasActiveTurn: false,
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 1,
-    lastActivityAt: '2026-09-30T10:00:03.000Z',
-  },
-});
-
-/**
- * turn.started, request.opened(approval), then the process restarts:
- * recovery's turn.aborted and its `needs_input` stamp. Recovery does not
- * resolve the request the dead turn opened, so the lifecycle fold re-stamps
- * the session `review_pending` over the recovery stamp. Nothing can approve
- * it: no turn is open.
- */
-const APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN = session({
-  lifecycleState: 'review_pending',
-  previousLifecycleState: 'needs_input',
-  transitionReason: 'review_requested',
-  transitionSource: 'runtime',
-  pendingReview: true,
-  hasActiveTurn: false,
-  lastEventMethod: 'session.state-changed',
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 4,
-    lastActivityAt: '2026-09-30T10:00:06.000Z',
-  },
-});
-
-/** turn.started, turn.completed: a finished turn on a live session. */
-const TURN_COMPLETED = session({
-  lifecycleState: 'idle',
-  previousLifecycleState: 'running',
-  transitionReason: 'turn_completed',
-  transitionSource: 'runtime',
-  pendingReview: false,
-  hasActiveTurn: false,
-  conversationActivity: {
-    conversationId: 'T',
-    currentThreadId: 'T',
-    asOfSequence: 2,
-    lastActivityAt: '2026-09-30T10:00:04.000Z',
-  },
-});
+const RUNNING_TOOL = folded('runningTool');
+const APPROVAL_IN_OPEN_TURN = folded('approvalInOpenTurn');
+const QUESTION_IN_OPEN_TURN = folded('questionInOpenTurn');
+const INTERRUPTED = folded('interrupted');
+const BLOCKED = folded('blocked');
+const TURN_COMPLETED = folded('turnCompleted');
+const FAILED = folded('failed');
 
 function rowFor(summary: OrchestrationSessionSummary): {
   item: HomeWorkItem;
@@ -229,29 +121,19 @@ describe('the status ladder, from real server summaries', () => {
     });
   });
 
-  it('an approval that outlived its interrupted turn reads Interrupted, not Needs approval', () => {
-    expect(statusOf(APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN)).toEqual({
-      rung: 'interrupted',
-      lane: 'needsYou',
-      line: 'Interrupted',
+  it('an approval left behind by an interrupted turn still reads Needs approval (#3071)', () => {
+    // Recovery aborts the dead turn but does not settle the request it had
+    // opened, so the fold re-stamps the session review_pending. Nothing on
+    // the summary reliably separates this from a live approval, so the row
+    // does not guess: it says what the server says. Pinned so the row
+    // changes only when the server does.
+    const summary = folded('staleApprovalAfterInterruption');
+    expect(summary).toMatchObject({
+      lifecycleState: 'review_pending',
+      pendingReview: true,
+      hasActiveTurn: false,
     });
-  });
-
-  it('keeps Needs approval for an approval between turns that nothing interrupted', () => {
-    // Same state, but reached by a request (the last event), not by recovery.
-    expect(
-      statusOf({
-        ...APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN,
-        previousLifecycleState: 'idle',
-        lastEventMethod: 'request.opened',
-      }).line,
-    ).toBe('Needs approval');
-    expect(
-      statusOf({
-        ...APPROVAL_OUTLIVED_ITS_INTERRUPTED_TURN,
-        lastEventMethod: 'request.opened',
-      }).line,
-    ).toBe('Needs approval');
+    expect(statusOf(summary).line).toBe('Needs approval');
   });
 
   it('a running turn names its current tool and how long the turn has run', () => {
@@ -263,40 +145,22 @@ describe('the status ladder, from real server summaries', () => {
   });
 
   it('counts reported child work ahead of the tool line', () => {
-    expect(
-      statusOf({
-        ...RUNNING_TOOL,
-        conversationActivity: {
-          ...RUNNING_TOOL.conversationActivity!,
-          runningChildWork: { count: 3, producers: ['engine-subagent'] },
-        },
-      }),
-    ).toEqual({
+    const summary = folded('runningWithChildren');
+    expect(summary.conversationActivity?.runningChildWork).toMatchObject({
+      count: 3,
+      producers: ['engine-subagent'],
+    });
+    expect(statusOf(summary)).toEqual({
       rung: 'childWork',
       lane: 'running',
       line: '3 sub-agents running · 1m 12s',
     });
   });
 
-  it('child work outliving its turn still reads as running, with no turn clock', () => {
-    expect(
-      statusOf({
-        ...TURN_COMPLETED,
-        lifecycleState: 'completed',
-        conversationActivity: {
-          ...TURN_COMPLETED.conversationActivity!,
-          runningChildWork: { count: 1, producers: ['engine-subagent'] },
-        },
-      }),
-    ).toEqual({
-      rung: 'childWork',
-      lane: 'running',
-      line: '1 sub-agent running',
-    });
-  });
-
   it('a run the watchdog marks silent is its own cautionary rung, still in Running', () => {
-    const silent = rowFor({ ...RUNNING_TOOL, turnProgress: SILENCE });
+    // `turnProgress` is the watchdog's process-local observation, handed to
+    // the summary builder as an option rather than folded from events.
+    const silent = rowFor(folded('runningTool', { turnProgress: SILENCE }));
     const status = workStatus(silent.item, NOW, { facts: silent.facts });
     expect(status).toMatchObject({
       rung: 'quiet',
@@ -330,13 +194,12 @@ describe('the status ladder, from real server summaries', () => {
   });
 
   it('a request nothing here can answer is idle, with its basis, even mid-turn', () => {
-    const answerability = {
+    const summary = folded('detachedApproval');
+    expect(summary.answerability).toMatchObject({
       answerable: false,
-      qualification: 'past_resume',
       observedBy: 'station-a',
-      observedAt: '2026-09-30T10:00:10.000Z',
-    } as OrchestrationSessionSummary['answerability'];
-    const { item, facts } = rowFor({ ...APPROVAL_IN_OPEN_TURN, answerability });
+    });
+    const { item, facts } = rowFor(summary);
     const status = workStatus(item, NOW, { facts });
     expect(status.rung).toBe('unanswerable');
     expect(status.lane).toBe('idle');
@@ -346,17 +209,12 @@ describe('the status ladder, from real server summaries', () => {
     expect(facts?.attention).toBeUndefined();
   });
 
-  it('a failed session carries its recorded reason', () => {
-    expect(
-      statusOf({
-        ...TURN_COMPLETED,
-        lifecycleState: 'failed',
-        terminalAttribution: { kind: 'runtime_error', detail: 'rate limit' },
-      }),
-    ).toEqual({
+  it('a failed session carries the reason the server attributed', () => {
+    expect(FAILED.terminalAttribution?.detail).toBeTruthy();
+    expect(statusOf(FAILED)).toEqual({
       rung: 'failed',
       lane: 'finished',
-      line: 'Failed · rate limit',
+      line: `Failed · ${FAILED.terminalAttribution?.detail}`,
     });
   });
 
@@ -368,27 +226,16 @@ describe('the status ladder, from real server summaries', () => {
     });
   });
 
-  it('records the branch only for a session with its own worktree', () => {
-    expect(rowFor(RUNNING_TOOL).facts?.worktreeBranch).toBeUndefined();
+  it('the summary carries no workspace isolation, so no branch is ever claimed', () => {
+    // `ProviderSession` declares the field, and a worktree session's row in
+    // the store has it; the summary builder does not pass it on. A branch
+    // chip read from it would show for nobody.
+    // The fixture's session ROW was stored with a worktree and its branch.
     expect(
-      rowFor({ ...RUNNING_TOOL, workspaceIsolation: { mode: 'shared' } }).facts
-        ?.worktreeBranch,
-    ).toBeUndefined();
-    expect(
-      rowFor({
-        ...RUNNING_TOOL,
-        workspaceIsolation: {
-          mode: 'worktree',
-          repoPath: '/repo',
-          path: '/repo-worktrees/a',
-          branch: 'station/inbox-row',
-          baseRef: 'main',
-          cleanupPolicy: 'cleanup',
-          preserveOnFailure: true,
-          createdAt: '2026-09-30T10:00:00.000Z',
-        },
-      }).facts?.worktreeBranch,
+      FOLD_FIXTURES.worktreeSession.options.workspaceIsolation.branch,
     ).toBe('station/inbox-row');
+    const summary = folded('worktreeSession');
+    expect(summary.workspaceIsolation).toBeUndefined();
   });
 
   it('a stuck earlier execution child does not borrow the current child’s turn', () => {
@@ -693,7 +540,7 @@ describe('the status ladder, state by state', () => {
       { attention: 'approval' },
       { attention: 'interrupted' },
       { activity: { ...ACTIVITY, childWorkCount: 3 } },
-      { attention: 'approval', activity: ACTIVITY, worktreeBranch: 'b' },
+      { attention: 'approval', activity: ACTIVITY },
     ];
     for (const lifecycleLabel of [
       'Needs attention',
