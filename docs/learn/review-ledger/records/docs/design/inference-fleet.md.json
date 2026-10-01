@@ -12,11 +12,11 @@
   "document": {"digest":"01a56a31c8549da9335caf67355dec6c35d928cd5c73e6bfd564f802d5a84d9e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
   "sources": [
-    {"path":"package.json","digest":"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
+    {"path":"package.json","digest":"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
     {"path":"packages/contracts/src/datum-secret-reference.ts","digest":"df9649cef3586ffc1a91a59d9b9d7ecb0e2a56111854fc54b5f89f0be781d647","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
+    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
     {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

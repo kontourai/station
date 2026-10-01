@@ -18,7 +18,7 @@
 
     {"path":"packaging/node-pty-prebuilds/manifest.json","digest":"22b3c66570004f238adb60b2b34c830c9d285ac01f060de3d1195f8098b73254","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
+    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
     {"path":"scripts/__tests__/dependency-lifecycle.test.ts","digest":"b94c5e49462f77454aca7aaee0a34f29fd05b5d3b89839aaadbea6e922815d54","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

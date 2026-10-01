@@ -24,11 +24,11 @@
 
     {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"package.json","digest":"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
+    {"path":"package.json","digest":"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
     {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
+    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
     {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 

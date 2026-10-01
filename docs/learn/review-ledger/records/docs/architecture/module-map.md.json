@@ -112,7 +112,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a","revision":"b50eeb9584c1808e429e59dcb3c3c2253307bbbe"},
+    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
     {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
