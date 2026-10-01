@@ -126,24 +126,19 @@ export class ClaudePermissionAsks {
  * Notes an `initialize` control request the host writes to the engine's
  * stdin, so the tap can tell that request's response from any other. The
  * SDK writes one whole frame per write; anything else is ignored, and the
- * replay on that response is then not read (those asks prompt).
+ * replay on that response is then not read (those asks prompt). It never
+ * throws: the chunk's type and size are checked before it is decoded, and
+ * parsing is guarded.
  */
 export function noteClaudeHostFrame(
   asks: ClaudePermissionAsks,
   chunk: unknown,
 ): void {
-  const text =
-    typeof chunk === 'string'
-      ? chunk
-      : Buffer.isBuffer(chunk)
-        ? chunk.toString('utf8')
-        : undefined;
-  if (
-    text === undefined ||
-    text.length > MAX_PERMISSION_FRAME_BYTES ||
-    !text.includes(INITIALIZE_MARKER)
-  )
-    return;
+  // Size is checked in bytes, and before a Buffer is decoded.
+  if (typeof chunk !== 'string' && !Buffer.isBuffer(chunk)) return;
+  if (Buffer.byteLength(chunk) > MAX_PERMISSION_FRAME_BYTES) return;
+  const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+  if (!text.includes(INITIALIZE_MARKER)) return;
   let frame: unknown;
   try {
     frame = JSON.parse(text);

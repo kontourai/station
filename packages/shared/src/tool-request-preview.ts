@@ -487,9 +487,9 @@ export function sessionGrantPermissionUpdates<T>(
  *   `ESCALATION_DECISION_REASONS`, or any of the ask flags
  *   `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`.
  * - #2932: the engine's structured reason (`claudeAskEscalates`): an ask
- *   rule, a safety check, a compound command that shows either in a part,
- *   or a Claude ask whose frame was not read. The literal rules above stay
- *   as a second layer.
+ *   rule on a single command, a safety check (in any part of a chained
+ *   command too), every PowerShell ask, or a Claude ask whose frame was
+ *   not read. The literal rules above stay as a second layer.
  */
 export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
   return (
@@ -517,20 +517,35 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  * - a `claudeAsk` that is not an object: the frame was not read. It
  *   escalates, so a changed or dropped frame costs a prompt, never a grant.
  * - `classifierApprovable` set, either way: a safety check is involved,
- *   in the ask itself or in any part of a compound command.
+ *   in the ask itself or in any part of a chained command. The engine
+ *   sets it exactly then, and sends `decisionReason` text with a chained
+ *   command only then (captured from 2.1.278).
+ * - a `decisionReasonCode`: the engine sets one only for a block a host
+ *   may act on (`outside_reads_blocked`, `memory_paused`,
+ *   `classifier_transcript_too_long`), never for an ordinary ask.
  * - a reason type other than `other` and `subcommandResults`: an ask rule
  *   (`rule`), a safety check, a sandbox override, a path outside the
  *   working directories, a mode, hook, classifier or headless-agent ask,
  *   and any type added later.
- * - type `subcommandResults` (a compound shell command; PowerShell wraps
- *   every ask in it) when the frame shows a signal about one of its parts:
- *   a `matchedAskRule` (a prefix ask rule matched the command or a part)
- *   or any `decisionReason` text (the engine sends a nested warning
- *   there). With `classifierApprovable` absent no part raised a safety
- *   check. The parts themselves are not sent, so an EXACT ask rule on a
- *   single part and a part's non-safety `other` warning stay invisible;
- *   that is an accepted gap. On a tool that is not a shell tool the type
+ * - type `subcommandResults` on any tool but Bash. PowerShell wraps every
+ *   ask in it, a single command's security warning (Invoke-Expression,
+ *   download-and-execute, elevation) included, and sends nothing that
+ *   tells that from an ordinary command, so every PowerShell ask
  *   escalates.
+ * - type `subcommandResults` on Bash (a chained command: `a && b`, `a; b`,
+ *   a pipeline) with any `decisionReason` text or a `matchedAskRule`.
+ *   Otherwise it is a PLAIN call (owner decision, #2932): a Bash grant
+ *   answers chained commands. The engine does not send the reasons of a
+ *   chain's parts, so three things a part raised are NOT visible here and
+ *   a grant can answer them, as it could before this reader existed:
+ *   (i) any `permissions.ask` rule on one part, exact or prefix, when
+ *   another part also needs approval (the engine sets no
+ *   `matched_ask_rule` for it; that clause is only a second layer for a
+ *   rule the engine does report); (ii) a write or delete outside the
+ *   working directories in an `&&` or `;` chain, or in a pipeline with an
+ *   output redirect, which arrives with no blocked path and no directory
+ *   suggestion; (iii) a part's warning that is not a safety check.
+ *   Closing these needs the engine to send the nested reasons.
  * - type `other` with any reason text but the ordinary one.
  * - no reason type on a shell tool (Bash, PowerShell). The engine attaches
  *   a reason to every shell ask, so its absence means the field is no
@@ -539,10 +554,10 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
  *
  * A plain call is therefore an ask with no reason type on any other tool
  * (an MCP tool, WebFetch, a file edit inside the working directories),
- * `other` with the ordinary Bash text, or a compound shell command with no
- * signal about its parts. The signals `toolRequestEscalates` reads beside
- * this one (a blocked path, a directory suggestion, a sandbox override, the
- * ask flags) apply to a compound command as to any other ask.
+ * `other` with the ordinary Bash text, or a chained Bash command with no
+ * safety check. The signals `toolRequestEscalates` reads beside this one
+ * (a blocked path, a directory suggestion, a sandbox override, the ask
+ * flags) apply to a chained command when the engine sends them.
  */
 export function claudeAskEscalates(
   request: Pick<
@@ -554,12 +569,13 @@ export function claudeAskEscalates(
   if (claudeAsk === undefined) return false;
   if (!isRecord(claudeAsk) || Array.isArray(claudeAsk)) return true;
   if (claudeAsk.classifierApprovable !== undefined) return true;
+  if (claudeAsk.decisionReasonCode !== undefined) return true;
   const type = claudeAsk.decisionReasonType;
-  const shellTool = CLAUDE_SHELL_TOOLS.has(request.toolName?.trim() ?? '');
-  if (type === undefined) return shellTool;
+  const toolName = request.toolName?.trim() ?? '';
+  if (type === undefined) return CLAUDE_SHELL_TOOLS.has(toolName);
   if (type === 'subcommandResults')
     return (
-      !shellTool ||
+      toolName !== 'Bash' ||
       request.matchedAskRule != null ||
       (typeof decisionReason === 'string'
         ? decisionReason.trim() !== ''
@@ -650,9 +666,10 @@ export function toolRequestSessionGrant(
  * check once the session is in `acceptEdits`) all reach a person, as do a
  * sandbox network-host ask and the #2932 escalation signals. For a Claude
  * ask those include the engine's structured reason, so a safety check and
- * an ask rule reach a person, in a compound command too where the engine
- * shows them, as does an ask whose frame was not read
- * (`claudeAskEscalates`).
+ * an ask rule on a single command reach a person, as does an ask whose
+ * frame was not read. A chained Bash command hides an ask rule on one of
+ * its parts and some writes outside the working directories; see
+ * `claudeAskEscalates`.
  */
 export function toolRequestIsPlainCall(
   request: ToolRequestGrantInput,

@@ -211,11 +211,14 @@ to forward.
   permission-prompt-tool and headless-agent types, plus any type a later
   engine adds.
 - An ask whose `classifier_approvable` is set, which the engine does exactly
-  when a safety check is involved, in any part of a compound command too.
-- A compound shell command (`subcommandResults`: `a && b`, a pipeline, and
-  every PowerShell ask) whose request shows something about its parts:
-  `classifier_approvable`, a `matchedAskRule`, any `decisionReason` text, a
-  blocked path, a directory suggestion, a sandbox override or an ask flag.
+  when a safety check is involved, in any part of a chained command too.
+- An ask with a `decision_reason_code`.
+- Every PowerShell ask. PowerShell wraps an ordinary command and one with a
+  security warning in the same `subcommandResults` shape.
+- A chained Bash command (`subcommandResults`: `a && b`, `a; b`, a pipeline)
+  whose request carries `classifier_approvable`, any `decisionReason` text, a
+  `matchedAskRule`, a blocked path, a directory suggestion, a sandbox
+  override or an ask flag.
 - An ask of type `other` whose reason is not exactly `This command requires
   approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
   command.
@@ -230,15 +233,17 @@ with `decisionReasonType`, `classifierApprovable` and `decisionReasonCode`
 where the engine set them, or `null` when the request could not be read.
 Other engines send no `claudeAsk`.
 
-A compound command with none of those signals is a plain call, so a Bash or
-PowerShell grant, or an `autoApprove` pattern, answers it. The engine does
-not send the reasons of a compound command's parts, which leaves an accepted
-gap. A safety check on any part, and a prefix ask rule on the command or a
-part, always prompt. Not visible, and so answerable by a grant: an ask rule
-that matches one part exactly; a part's `other` warning that is not a safety
-check; and a part that writes outside the working directories in an `&&` or
-`;` command where another part also needs approval (the
-[delivery boundary](../conformance/tool-policy-delivery.md) lists the
+A chained Bash command with none of those signals is a plain call, so a Bash
+grant or an `autoApprove` pattern answers it. The engine does not send the
+reasons of a chain's parts, which leaves an accepted gap. A safety check on
+any part always prompts, and an ask rule on a single command always prompts.
+Inside a chained command these carry no signal and are answered: (i) any
+`permissions.ask` rule on one part, exact or prefix, when another part also
+needs approval; (ii) a write or delete outside the working directories in an
+`&&` or `;` chain, or in a pipeline with an output redirect; (iii) a part's
+warning that is not a safety check. These gaps exist on `main` today, and
+closing them needs the engine to send the nested reasons (the
+[delivery boundary](../conformance/tool-policy-delivery.md) has the captured
 shapes). The ordinary Bash ask is recognised by its text: if a later engine
 rewords it, ordinary Bash calls prompt until Station is updated.
 

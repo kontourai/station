@@ -326,6 +326,27 @@ describe('ClaudePermissionAsks', () => {
     expect(asks.take('req-safety')).toBeUndefined();
   });
 
+  test('a host frame is sized in bytes, not characters', () => {
+    const initialize = (padding: string) =>
+      JSON.stringify({
+        request_id: 'init-big',
+        type: 'control_request',
+        request: { subtype: 'initialize', padding },
+      });
+    const characters = 5 * 1024 * 1024;
+    // 5 Mi two-byte characters: under the cap in characters, over in bytes.
+    const multiByte = new ClaudePermissionAsks();
+    noteClaudeHostFrame(multiByte, initialize('é'.repeat(characters)));
+    expect(multiByte.takeInitializeResponse('init-big')).toBe(false);
+    // Positive control: the same number of one-byte characters is read.
+    const ascii = new ClaudePermissionAsks();
+    noteClaudeHostFrame(ascii, initialize('e'.repeat(characters)));
+    expect(ascii.takeInitializeResponse('init-big')).toBe(true);
+    // Anything that is neither text nor bytes is ignored, without throwing.
+    for (const odd of [undefined, null, 42, {}, new Uint8Array(4)])
+      expect(() => noteClaudeHostFrame(ascii, odd)).not.toThrow();
+  });
+
   test('awaited initialize responses are bounded', () => {
     const asks = new ClaudePermissionAsks();
     for (let index = 0; index < 20; index += 1)

@@ -88,11 +88,7 @@ export function createClaudeEngineProcess(
       ...args: unknown[]
     ) => boolean;
     stdin.write = ((...args: unknown[]) => {
-      try {
-        noteClaudeHostFrame(asks, args[0]);
-      } catch {
-        // Observation is best-effort; an unread replay prompts.
-      }
+      noteClaudeHostFrame(asks, args[0]);
       return writeToStdin(...args);
     }) as typeof stdin.write;
 

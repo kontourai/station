@@ -3508,7 +3508,8 @@ describe('ClaudeAdapter', () => {
       };
       /**
        * PowerShell wraps even a single ordinary command in
-       * `subcommandResults`, with no reason text.
+       * `subcommandResults`, with no reason text, exactly as it wraps a
+       * command with a security warning.
        */
       const powerShellOrdinary: ClaudeCanUseToolRequest = {
         tool_name: 'PowerShell',
@@ -3766,17 +3767,85 @@ describe('ClaudeAdapter', () => {
         await adapter.stopSession('thread-frame-compound');
       });
 
-      test('a PowerShell grant answers the ordinary PowerShell ask, which the engine wraps in subcommandResults', async () => {
+      describe('frames captured from Claude Code 2.1.278 for chained Bash commands', () => {
+        // Real request bodies from live turns (see the fixture's _comment).
+        // The `plain` cases pin the gap the docs state: the engine sends
+        // nothing about the part's ask rule or outside write, so a Bash
+        // grant answers the chain. The `prompts` cases are guarantees.
+        const captured = JSON.parse(
+          readFileSync(
+            new URL(
+              './fixtures/claude-2.1.278-chained-bash-asks.json',
+              import.meta.url,
+            ),
+            'utf8',
+          ),
+        ) as {
+          cases: Array<{
+            name: string;
+            what: string;
+            stationVerdictUnderBashGrant: 'plain' | 'prompts';
+            request: ClaudeCanUseToolRequest;
+          }>;
+        };
+
+        test('the fixture holds both verdicts', () => {
+          const verdicts = captured.cases.map(
+            (entry) => entry.stationVerdictUnderBashGrant,
+          );
+          expect(
+            verdicts.filter((verdict) => verdict === 'plain'),
+          ).toHaveLength(5);
+          expect(
+            verdicts.filter((verdict) => verdict === 'prompts'),
+          ).toHaveLength(4);
+        });
+
+        test.each(captured.cases.map((entry) => [entry.name, entry] as const))(
+          '%s',
+          async (name, entry) => {
+            const threadId = `thread-captured-${name}`;
+            const { adapter, askFrame } = await grantHarness(threadId);
+            const mint = await askFrame(bashOrdinary('git status'));
+            if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+            await mint.answer('acceptForSession');
+
+            const outcome = await askFrame(entry.request);
+            expect(outcome.kind, entry.what).toBe(
+              entry.stationVerdictUnderBashGrant === 'plain'
+                ? 'allowed'
+                : 'prompted',
+            );
+            if (outcome.kind === 'prompted') {
+              // No prompting case offers a Bash tool grant.
+              expect(
+                toolRequestSessionGrantFromPayload(outcome.event.payload),
+              ).not.toBe('tool');
+              await outcome.answer('decline');
+            }
+            await adapter.stopSession(threadId);
+          },
+        );
+      });
+
+      test('every PowerShell ask prompts: the engine wraps an ordinary command and a security warning alike in subcommandResults', async () => {
         const { adapter, askFrame } = await grantHarness('thread-frame-ps');
         const mint = await askFrame(powerShellOrdinary);
         if (mint.kind !== 'prompted') throw new Error('expected a prompt');
         expect(mint.event.payload.claudeAsk).toEqual({
           decisionReasonType: 'subcommandResults',
         });
+        // Nothing tells an ordinary PowerShell command from one with a
+        // security warning, so no session option is offered and a session
+        // answer covers this call only.
+        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
+          'none',
+        );
         await mint.answer('acceptForSession');
-        await expect(askFrame(powerShellOrdinary)).resolves.toMatchObject({
-          kind: 'allowed',
-        });
+        await expectPrompt(
+          await askFrame(powerShellOrdinary),
+          'PowerShell ordinary ask',
+        );
         await expectPrompt(
           await askFrame({
             ...powerShellOrdinary,
@@ -3819,7 +3888,6 @@ describe('ClaudeAdapter', () => {
         for (const ordinary of [
           bashOrdinary('git status'),
           bashCompound,
-          powerShellOrdinary,
           mcpOrdinary,
           webFetchOrdinary,
           editOrdinary,
@@ -3833,6 +3901,14 @@ describe('ClaudeAdapter', () => {
           ['safetyCheck', bashSafetyCheck],
           ['rule', bashAskRule],
           ...compoundEscalations,
+          ['PowerShell ordinary ask', powerShellOrdinary],
+          [
+            'ordinary ask with a decision reason code',
+            {
+              ...bashOrdinary('git status'),
+              decision_reason_code: 'memory_paused',
+            },
+          ],
           ['ordinary ask flagged classifier_approvable', bashFlaggedOrdinary],
           ['sandboxOverride', bashSandboxOverride],
           ['other prose', bashShellOperators],

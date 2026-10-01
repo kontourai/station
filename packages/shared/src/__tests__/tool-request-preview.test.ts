@@ -459,13 +459,15 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       ...extra,
     });
 
-    test('is a plain call when the frame shows nothing about its parts, on Bash and PowerShell', () => {
-      for (const toolName of ['Bash', 'PowerShell']) {
-        const request = compound({ toolName });
-        expect(claudeAskEscalates(request), toolName).toBe(false);
-        expect(toolRequestSessionGrant(request), toolName).toBe('tool');
-        expect(toolRequestIsPlainCall(request), toolName).toBe(true);
-      }
+    test('on Bash is a plain call when the frame shows nothing about its parts; on PowerShell it always escalates', () => {
+      const bash = compound();
+      expect(claudeAskEscalates(bash)).toBe(false);
+      expect(toolRequestSessionGrant(bash)).toBe('tool');
+      expect(toolRequestIsPlainCall(bash)).toBe(true);
+      const powerShell = compound({ toolName: 'PowerShell' });
+      expect(claudeAskEscalates(powerShell)).toBe(true);
+      expect(toolRequestSessionGrant(powerShell)).toBe('none');
+      expect(toolRequestIsPlainCall(powerShell)).toBe(false);
       // An empty or blank reason is no reason.
       for (const decisionReason of [undefined, null, '', '  '])
         expect(
@@ -526,6 +528,16 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       ['defaultToNo', { defaultToNo: true }],
       ['requiresUserInteraction', { requiresUserInteraction: true }],
       ['a tool that is not a shell tool', { toolName: 'mcp__x__y' }],
+      ['PowerShell', { toolName: 'PowerShell' }],
+      [
+        'a decision reason code',
+        {
+          claudeAsk: {
+            decisionReasonType: 'subcommandResults',
+            decisionReasonCode: 'outside_reads_blocked',
+          },
+        },
+      ],
     ])('escalates with %s', (_label, extra) => {
       const request = compound(extra);
       expect(toolRequestEscalates(request)).toBe(true);
@@ -653,6 +665,37 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     expect(escalates(undefined, undefined)).toBe(false);
     expect(escalates(undefined, undefined, 'WebFetch')).toBe(false);
     expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+  });
+
+  test('a decision reason code escalates with any reason type or none', () => {
+    for (const decisionReasonCode of [
+      'outside_reads_blocked',
+      'memory_paused',
+      'classifier_transcript_too_long',
+      'a-code-added-later',
+    ]) {
+      expect(
+        escalates(
+          { decisionReasonType: 'other', decisionReasonCode },
+          ORDINARY,
+        ),
+        decisionReasonCode,
+      ).toBe(true);
+      expect(
+        escalates({ decisionReasonCode }, undefined, 'WebFetch'),
+        decisionReasonCode,
+      ).toBe(true);
+    }
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: ORDINARY,
+        claudeAsk: {
+          decisionReasonType: 'other',
+          decisionReasonCode: 'memory_paused',
+        },
+      }),
+    ).toBe('none');
   });
 
   test('a shell ask with no reason type escalates: the engine always sends one', () => {
