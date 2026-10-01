@@ -42,7 +42,9 @@ starts another execution. A settlement write failure remains an error rather
 than a successful receipt, and lookup/replay does not invoke the provider.
 
 Scope and requesting identity are rechecked after reservation and before result
-delivery. Task incarnation is included so a replacement Task cannot inherit a
+delivery, and through a server-only admission beside the actual provider start
+and initial-turn effect inside OrchestrationService. Task and Project incarnation
+are included so a replacement cannot inherit a
 prior request. Lists distinguish refused access from an empty authorized history.
 Corruption, excessive bytes, duplicate identities and capacity pressure fail
 closed. The initial store retains at most 256 requests / 4 MiB and never silently
@@ -66,7 +68,11 @@ concurrent duplication/restart, conflicting intent, lost acknowledgement,
 corruption and revocation before/after invocation. The HTTP test reaches the
 actual delegation route and durable module, with a controlled dispatch adapter;
 it checks Project mismatch refusal, one invocation, exact parent association,
-replay and absence of account IDs in the response. It does not run a live model.
+replay and absence of account IDs in the response. A second HTTP test uses real
+delegation and OrchestrationService with SQLite and a session-tracking controlled
+provider: its positive control starts a session and sends a turn, then revocation
+during target resolution blocks another start and revocation after start blocks
+the initial turn. It does not run a live model.
 
 Still required: final scoped typecheck, mutation controls and independent review;
 runtime-composition authorization proof; SDK transport parsing and caching;

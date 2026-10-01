@@ -102,6 +102,7 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type { ReceiverExecutionEffectAdmission } from '../services/orchestration/session-command-module.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
@@ -358,6 +359,8 @@ export interface DelegateTaskInput {
   prompt: string;
   target: ExecutionTarget;
   sessionId?: string;
+  /** Task-owned authority checked inside provider start/turn effects; never public JSON. */
+  taskRoomInvocationAdmission?: ReceiverExecutionEffectAdmission;
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   /** #2601: see `AuthorityBearingForegroundMessageInput.delegationAttestation`. */
@@ -4626,6 +4629,14 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
+  if (
+    input.taskRoomInvocationAdmission &&
+    (input.target.environment.kind !== 'current' ||
+      input.target.workspace?.kind !== 'project')
+  )
+    throw new Error(
+      'Task room invocation admission requires the current Task Project.',
+    );
   const readAuthority = readAuthorityForInput(input);
   const portableIntent = input.target.workspace?.kind === 'project-portable';
   // #484 no-onward-hop, derived BEFORE any effect from the verified caller
@@ -5307,6 +5318,9 @@ export async function delegateTask(
             environmentId: target.environmentId,
           },
           resourceAdmissionIntent: 'delegated_background',
+          ...(input.taskRoomInvocationAdmission
+            ? { receiverExecutionAdmission: input.taskRoomInvocationAdmission }
+            : {}),
           // #484 phase A: the service rechecks this inside the start-effect
           // path, adjacent to the adapter invocation, AND verifies the
           // prepared input against the admitted coordinate.
@@ -5396,6 +5410,9 @@ export async function delegateTask(
           environmentId: target.environmentId,
         },
         resourceAdmissionIntent: 'delegated_background',
+        ...(input.taskRoomInvocationAdmission
+          ? { receiverExecutionAdmission: input.taskRoomInvocationAdmission }
+          : {}),
         // #484 phase A: the service rechecks this inside the start-effect
         // path, adjacent to the adapter invocation, AND verifies the
         // prepared input against the admitted coordinate.

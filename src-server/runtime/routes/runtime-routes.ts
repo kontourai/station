@@ -1212,7 +1212,7 @@ export function configureRuntimeRoutes(
         .find((p) => p.id === task.projectId || p.slug === task.projectId);
     return task && project
       ? {
-          projectId: task.projectId,
+          projectId: project.id,
           projectSlug: project.slug,
           taskCreatedAt: task.createdAt,
           requesterId: principal.id,

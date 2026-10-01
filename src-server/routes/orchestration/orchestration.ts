@@ -116,6 +116,7 @@ import {
   OrchestrationStreamPresence,
   orchestrationStreamPresenceSubjectFromAuthority,
 } from '../../services/orchestration/orchestration-stream-presence.js';
+import type { ReceiverExecutionEffectAdmission } from '../../services/orchestration/session-command-module.js';
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import {
@@ -792,6 +793,7 @@ interface DelegateTaskRequest {
   target: ExecutionTarget;
   parentTaskId?: string;
   sessionId?: string;
+  taskRoomInvocationAdmission?: ReceiverExecutionEffectAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
   userId: string;
@@ -2380,7 +2382,7 @@ export function createOrchestrationRoutes(
       });
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
-      const dispatch = (sessionId?: string) =>
+      const dispatch = (sessionId?: string, recheck?: () => Promise<void>) =>
         delegate({
           ...request,
           ...(delegation ? { delegation } : {}),
@@ -2395,6 +2397,7 @@ export function createOrchestrationRoutes(
           ...(sessionId
             ? { sessionId, parentTaskId: roomRequest?.taskId }
             : {}),
+          ...(recheck ? { taskRoomInvocationAdmission: { recheck } } : {}),
           ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
           // The tool keys claims by `deviceId`: project the verified grant's
           // id explicitly — passing the `{ id }` grant object through would
@@ -2455,8 +2458,8 @@ export function createOrchestrationRoutes(
             prompt: body.prompt,
           },
           authorize,
-          async (sessionId) => {
-            const handle = await dispatch(sessionId);
+          async (sessionId, _scope, recheck) => {
+            const handle = await dispatch(sessionId, recheck);
             if (
               !handle ||
               typeof handle !== 'object' ||

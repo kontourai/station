@@ -150,7 +150,11 @@ export class TaskRoomWorkModule {
     requesterId: string,
     input: TaskRoomWorkInput,
     authorize: () => Promise<Scope | undefined>,
-    start: (sessionId: string, scope: Scope) => Promise<{ sessionId: string }>,
+    start: (
+      sessionId: string,
+      scope: Scope,
+      recheck: () => Promise<void>,
+    ) => Promise<{ sessionId: string }>,
   ): Promise<TaskRoomWorkOutcome> {
     if (
       ![taskId, requesterId, input.operationId, input.agentId].every((v) =>
@@ -232,7 +236,19 @@ export class TaskRoomWorkModule {
     const record = selected.record;
     let state: TaskRoomWorkRecord['state'] = 'indeterminate';
     try {
-      const started = await start(record.sessionId, current);
+      const started = await start(record.sessionId, current, async () => {
+        const effectScope = await authorize();
+        if (
+          !effectScope ||
+          effectScope.projectId !== scope.projectId ||
+          effectScope.projectSlug !== scope.projectSlug ||
+          effectScope.taskCreatedAt !== scope.taskCreatedAt ||
+          effectScope.requesterId !== scope.requesterId
+        )
+          throw new TaskRoomWorkUnavailableError(
+            'Task authority changed before agent invocation.',
+          );
+      });
       if (started.sessionId === record.sessionId) state = 'dispatched';
     } catch {
       // The invocation may have started work; the durable request is never replayed.
