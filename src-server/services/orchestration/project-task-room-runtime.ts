@@ -717,7 +717,8 @@ export class ProjectTaskRoomRuntime {
     request: Request;
   }): Promise<ProjectTaskRoomInspectionOutcome> {
     if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
-    if (!this.#scope(input.taskId)) return { kind: 'not-found' };
+    const initialScope = this.#scope(input.taskId);
+    if (!initialScope) return { kind: 'not-found' };
     const grant = await this.#issue(
       input.taskId,
       input.request,
@@ -732,13 +733,15 @@ export class ProjectTaskRoomRuntime {
     try {
       const resolved = await this.#resolveGrant(grant, 'home-transfer');
       if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      const currentScope = this.#scope(input.taskId);
+      if (!currentScope || !sameScope(currentScope, initialScope))
+        return { kind: 'not-found' };
       if (resolved.kind !== 'granted') {
         return this.#scope(input.taskId)
           ? { kind: resolved.kind === 'unavailable' ? 'unavailable' : 'denied' }
           : { kind: 'not-found' };
       }
-      const currentScope = this.#scope(input.taskId);
-      if (!currentScope || !sameScope(currentScope, resolved.receipt.scope))
+      if (!sameScope(currentScope, resolved.receipt.scope))
         return { kind: 'not-found' };
       return {
         kind: 'available',
@@ -3131,10 +3134,14 @@ export class ProjectTaskRoomRuntime {
     if (issued.currentSharedRead && !(await issued.currentSharedRead()))
       return { kind: 'revoked' };
     const currentPrincipal = await this.#principal(issued.request);
+    const settledScope = this.#scope(issued.scope.taskId);
     if (
-      !currentScope ||
+      !settledScope ||
       !currentPrincipal ||
-      !sameScope(currentScope, issued.scope) ||
+      !sameScope(settledScope, issued.scope) ||
+      (issued.expectedTaskCreatedAt !== undefined &&
+        this.#deps.taskGraph.readTaskView(issued.scope.taskId)?.createdAt !==
+          issued.expectedTaskCreatedAt) ||
       !samePrincipal(currentPrincipal, issued.principal)
     )
       return { kind: 'revoked' };
@@ -3143,13 +3150,13 @@ export class ProjectTaskRoomRuntime {
       receipt: {
         receiptId: issued.receiptId,
         capability: required,
-        scope: currentScope,
+        scope: settledScope,
         principal: {
           kind: 'operator',
           operatorId: currentPrincipal.operatorId,
           deviceId: currentPrincipal.deviceId,
         },
-        policyRevision: this.#roomPolicyRevision(currentScope),
+        policyRevision: this.#roomPolicyRevision(settledScope),
       },
     };
   }

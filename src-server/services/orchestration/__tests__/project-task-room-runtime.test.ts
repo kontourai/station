@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import type {
   ProjectTaskRoomAuthority,
@@ -21,6 +22,7 @@ import {
   LiveWorkSession,
 } from '../../../domain/live-work-session.js';
 import { SharedWorkingState } from '../../../domain/shared-working-state.js';
+import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
@@ -513,9 +515,36 @@ describe('ProjectTaskRoomRuntime', () => {
       join(tmpdir(), 'station-room-message-incarnation-'),
     );
     directories.push(directory);
-    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const path = join(directory, 'orchestration.sqlite');
+    const store = new EventStore(path);
+    const probe = new DatabaseSync(path);
+    probe.exec('PRAGMA busy_timeout = 0');
+    let replaceAtCommit = false;
+    let replacementObserved = false;
     const currentTask: TaskRecord = { ...task, createdBy: 'operator-1' };
-    const { runtime } = runtimeComposition(store, { taskRecord: currentTask });
+    const { runtime } = runtimeComposition(store, {
+      taskRecord: currentTask,
+      requestAuthority: {
+        resolve: async () => {
+          if (replaceAtCommit) {
+            try {
+              probe.exec('BEGIN IMMEDIATE');
+              probe.exec('ROLLBACK');
+            } catch (error) {
+              if (!isSqliteContentionError(error)) throw error;
+              replacementObserved = true;
+              currentTask.createdAt = '2026-09-30T00:00:00.000Z';
+            }
+          }
+          return {
+            kind: 'granted',
+            operatorId: 'operator-1',
+            deviceId: 'device-1',
+            policyRevision: 'pairing-v1',
+          };
+        },
+      },
+    });
     const request = new Request('http://station');
     try {
       expect((await runtime.discover({ taskId: task.id, request })).kind).toBe(
@@ -529,7 +558,7 @@ describe('ProjectTaskRoomRuntime', () => {
         expectedTaskCreatedAt: task.createdAt,
       });
       expect(first.kind).toBe('committed');
-      currentTask.createdAt = '2026-09-30T00:00:00.000Z';
+      replaceAtCommit = true;
       const stale = await runtime.message({
         taskId: task.id,
         request,
@@ -537,6 +566,8 @@ describe('ProjectTaskRoomRuntime', () => {
         text: 'Old private draft',
         expectedTaskCreatedAt: task.createdAt,
       });
+      expect(replacementObserved).toBe(true);
+      replaceAtCommit = false;
       expect(stale.kind).toBe('not-found');
       const history = await runtime.history({ taskId: task.id, request });
       expect(history.kind).toBe('available');
@@ -549,6 +580,7 @@ describe('ProjectTaskRoomRuntime', () => {
       });
     } finally {
       await runtime.close();
+      probe.close();
       store.close();
     }
   });

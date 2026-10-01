@@ -89,7 +89,8 @@ preflight retains an editable draft; a lost create acknowledgement freezes the
 intent and reuses its operation for an explicit retry. A later retry preflight
 failure preserves the original uncertainty and operation. Ordinary message
 writes use captured request authority and send the expected Task creation time;
-the history grant rechecks that incarnation before committing. A late response
+the history grant rereads that incarnation and scope after principal resolution,
+immediately before returning commit admission. A late response
 cannot clear the draft after its captured authority expires. Unsaved navigation and
 close guards protect local drafts. Draft/operation recovery across a tab reload
 is not implemented yet. The cards display acknowledged request state and link
@@ -120,7 +121,12 @@ while the UI slice was in progress; SDK and UI typechecks passed after adding
 the contract's real package export. These are controlled diagnostic receipts,
 not final browser or release proof. Direct query-hook/HTTP tests and the real
 room-runtime/history-worker suite passed 62 cases after covering readiness,
-credential rotation, late acknowledgements and stale Task messages. The real
+credential rotation, late acknowledgements and stale Task messages. A stronger
+runtime control replaces the Task while the actual history write transaction
+awaits principal resolution: it committed before the final reread fix and is
+refused afterward, with the prior history unchanged. The full 58-case runtime
+suite also preserves the existing not-found classification for moved transfer
+rooms. The real
 delegation test now verifies the persisted room-execution binding, pending-work
 join and provider refusal after a real source seal. These remain controlled
 principal/provider fixtures, not hosted or live-model acceptance.
