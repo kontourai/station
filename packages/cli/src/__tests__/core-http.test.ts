@@ -2313,6 +2313,120 @@ describe('CLI core commands over HTTP', () => {
     ).toBe(true);
   });
 
+  describe('#3071: a request its turn left behind is not offered', () => {
+    const opened = (requestId: string, eventId: string) => ({
+      provider: 'codex',
+      threadId: 'settled-thread',
+      eventId,
+      createdAt: '2026-04-18T00:00:02.000Z',
+      method: 'request.opened',
+      requestId,
+      requestType: 'approval',
+      title: `Approve ${requestId}`,
+    });
+
+    function seedSettledThread(session: Record<string, unknown> = {}): void {
+      state.runtimeSessions = [
+        ...state.runtimeSessions,
+        {
+          provider: 'codex',
+          threadId: 'settled-thread',
+          status: 'ready',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 5,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          updatedAt: '2026-04-18T00:00:09.000Z',
+          ...session,
+        },
+      ];
+      state.runtimeSessionEvents['settled-thread'] = [
+        {
+          provider: 'codex',
+          threadId: 'settled-thread',
+          eventId: 'evt-start',
+          createdAt: '2026-04-18T00:00:01.000Z',
+          method: 'turn.started',
+          turnId: 'turn-1',
+        },
+        opened('req-dead', 'evt-open-dead'),
+        // Recovery's abort after a restart, with no resolution recorded.
+        {
+          provider: 'codex',
+          threadId: 'settled-thread',
+          eventId: 'turn-interrupted-abort:b1',
+          createdAt: '2026-04-18T00:00:05.000Z',
+          method: 'turn.aborted',
+          turnId: 'turn-1',
+          reason: 'interrupted',
+          recoveryTerminal: true,
+        },
+        opened('req-live', 'evt-open-live'),
+        opened('req-server-closed', 'evt-open-server-closed'),
+      ];
+    }
+
+    const listed = async () => {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'approvals',
+        'list',
+        '--agent=codex',
+        '--thread=settled-thread',
+        '--json',
+        `--api-base=${apiBase}`,
+      ]);
+      return (JSON.parse(printedApprovals()) as Array<{ requestId: string }>)
+        .map((row) => row.requestId)
+        .sort();
+    };
+
+    test('list drops a request settled by its turn’s abort, by the shared fold alone', async () => {
+      seedSettledThread();
+      expect(await listed()).toEqual(['req-live', 'req-server-closed']);
+    });
+
+    test('list also drops a request the server no longer lists as open', async () => {
+      seedSettledThread({ openRequestIds: ['req-live'] });
+      expect(await listed()).toEqual(['req-live']);
+    });
+
+    test('respond binds the decision to the listed request event; a settled request is posted unbound for the server to refuse', async () => {
+      const { runCli } = await import('../cli.js');
+      seedSettledThread({ openRequestIds: ['req-live'] });
+      for (const requestId of ['req-live', 'req-dead']) {
+        await runCli([
+          'approvals',
+          'respond',
+          'settled-thread',
+          requestId,
+          'accept',
+          `--api-base=${apiBase}`,
+        ]);
+      }
+      const posted = orchestrationCommands.filter(
+        (command) =>
+          command.type === 'respondToRequest' &&
+          command.threadId === 'settled-thread',
+      );
+      expect(posted).toEqual([
+        {
+          type: 'respondToRequest',
+          threadId: 'settled-thread',
+          requestId: 'req-live',
+          expectedRequestEventId: 'evt-open-live',
+          decision: 'accept',
+        },
+        {
+          type: 'respondToRequest',
+          threadId: 'settled-thread',
+          requestId: 'req-dead',
+          decision: 'accept',
+        },
+      ]);
+    });
+  });
+
   test('approvals list aggregates pending requests across every thread for an agent when --thread is omitted', async () => {
     const { runCli } = await import('../cli.js');
 
@@ -2464,6 +2578,7 @@ describe('CLI core commands over HTTP', () => {
         threadId: 'approval-thread-1',
         requestId: 'req-open',
         requestType: 'approval',
+        requestEventId: 'evt-open-1',
         title: 'Run rm -rf tmp/?',
         ageMs: expect.any(Number),
         // station#1782: the joined summary carried no decoration, and
