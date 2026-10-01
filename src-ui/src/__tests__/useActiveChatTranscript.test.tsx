@@ -2747,4 +2747,122 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
       ),
     ).toBe(true);
   });
+
+  // #2985: a cold open reads the failed turn twice — the `runtime.error`
+  // event, and the `[SYSTEM_EVENT] [CHAT_ERROR] …` user message the agent's
+  // conversation store kept. The stored copy arrives through
+  // `mapConversationMessages`, so it has no turn identity and holds its text
+  // in `content` AND in a text part: the exact shape below.
+  const storedMarker = (text: string, at: string) => ({
+    role: 'user' as const,
+    content: `[SYSTEM_EVENT] [CHAT_ERROR] ${text}`,
+    contentParts: [
+      { type: 'text' as const, content: `[SYSTEM_EVENT] [CHAT_ERROR] ${text}` },
+    ],
+    timestamp: Date.parse(at),
+  });
+  const failureCarriers = (messages: ChatSession['messages']) =>
+    messages.filter(
+      (message) =>
+        (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR') ||
+        (message.contentParts ?? []).some((part) => part.runtimeError === true),
+    );
+
+  test.each([
+    [
+      'a failure with a status, where both copies say the same sentence',
+      'The model provider returned an error (HTTP 500).',
+      'The model provider returned an error (HTTP 500).',
+    ],
+    [
+      'a failure with no status, where the stored sentence is not the event’s',
+      'The response stream failed.',
+      'The Station agent could not finish this turn.',
+    ],
+  ])(
+    'a cold open shows one failure for %s',
+    async (_label, stored, emitted) => {
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 9,
+        hasMore: false,
+        events: [
+          event('e1', 'turn.started', {
+            turnId: 'failed',
+            prompt: 'FAIL please',
+          }),
+          event('e2', 'runtime.error', {
+            turnId: 'failed',
+            severity: 'error',
+            code: 'station_agent_turn_failed',
+            message: emitted,
+          }),
+        ],
+      });
+      const session: ChatSession = {
+        ...baseSession,
+        messages: [
+          storedMarker(stored, '2026-08-09T00:00:02.400Z'),
+        ] as ChatSession['messages'],
+      };
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() =>
+        expect(failureCarriers(result.current.messages).length).toBeGreaterThan(
+          0,
+        ),
+      );
+      const carriers = failureCarriers(result.current.messages);
+      expect(carriers).toHaveLength(1);
+      expect(carriers[0]?.role).toBe('assistant');
+    },
+  );
+
+  test('a stored marker stays when its own turn shows no failure', async () => {
+    // Two turns: the first failed and only its stored marker says so (its
+    // `runtime.error` is not in this window); the second completed. The
+    // marker falls in the first turn, so the second turn's projection — or a
+    // failure anywhere else — must not take it away.
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 9,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'first', prompt: 'one' }),
+        event('e4', 'turn.started', { turnId: 'second', prompt: 'two' }),
+        event('e5', 'runtime.error', {
+          turnId: 'second',
+          severity: 'error',
+          code: 'station_agent_turn_failed',
+          message: 'The Station agent could not finish this turn.',
+        }),
+      ],
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      messages: [
+        storedMarker('The response stream failed.', '2026-08-09T00:00:02.000Z'),
+        storedMarker('The response stream failed.', '2026-08-09T00:00:05.500Z'),
+      ] as ChatSession['messages'],
+    };
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', session),
+    );
+    await waitFor(() =>
+      expect(failureCarriers(result.current.messages).length).toBeGreaterThan(
+        1,
+      ),
+    );
+    const carriers = failureCarriers(result.current.messages);
+    // First turn: its marker. Second turn: its projected failure, once.
+    expect(carriers).toHaveLength(2);
+    expect(carriers.map((message) => message.role).sort()).toEqual([
+      'assistant',
+      'user',
+    ]);
+    expect(carriers.find((message) => message.role === 'user')?.timestamp).toBe(
+      Date.parse('2026-08-09T00:00:02.000Z'),
+    );
+  });
 });

@@ -58,6 +58,75 @@ function isLiveFailureMarker(message: ChatMessage): boolean {
     .startsWith(CHAT_ERROR_MARKER_PREFIX);
 }
 
+/**
+ * The failure text a marker carries, once per distinct wording. A marker read
+ * back from the conversation store holds the same sentence in `content` AND
+ * in its text part, so the joined transcript text repeats the prefix
+ * mid-string and never matched anything.
+ */
+function failureMarkerReasons(message: ChatMessage): string[] {
+  const segments = [
+    message.content ?? '',
+    ...(message.contentParts ?? []).map((part) => part.content ?? ''),
+  ];
+  return [
+    ...new Set(
+      segments
+        .map((segment) =>
+          segment
+            .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
+            .trim(),
+        )
+        .filter((reason) => reason.length > 0),
+    ),
+  ];
+}
+
+/** Each projected turn's first moment and whether it shows a failure. */
+function projectedTurnFailures(
+  projected: readonly ChatMessage[],
+): Array<{ startedAt: number; showsFailure: boolean }> {
+  const turns = new Map<string, { startedAt: number; showsFailure: boolean }>();
+  for (const message of projected) {
+    if (
+      typeof message.turnId !== 'string' ||
+      typeof message.timestamp !== 'number'
+    )
+      continue;
+    const showsFailure =
+      message.contentParts?.some((part) => part.runtimeError === true) ?? false;
+    const turn = turns.get(message.turnId);
+    if (!turn) {
+      turns.set(message.turnId, {
+        startedAt: message.timestamp,
+        showsFailure,
+      });
+      continue;
+    }
+    turn.startedAt = Math.min(turn.startedAt, message.timestamp);
+    turn.showsFailure ||= showsFailure;
+  }
+  return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/**
+ * A marker with no turn identity falls in the newest turn that had started
+ * when it was written. Outside the projected window (an older page not read
+ * yet) there is no such turn, and the marker stays the failure's only copy.
+ */
+function markerTurnAlreadyShowsFailure(
+  marker: ChatMessage,
+  turns: ReadonlyArray<{ startedAt: number; showsFailure: boolean }>,
+): boolean {
+  if (typeof marker.timestamp !== 'number') return false;
+  let owner: { showsFailure: boolean } | undefined;
+  for (const turn of turns) {
+    if (turn.startedAt > marker.timestamp) break;
+    owner = turn;
+  }
+  return owner?.showsFailure === true;
+}
+
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
   return Boolean(
     message.ephemeral ||
@@ -674,16 +743,24 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const projectedFailureText = visibleProjected
       .map(transcriptMessageText)
       .join('\n');
+    const projectedTurns = projectedTurnFailures(visibleProjected);
     const supplementalMessages = session.messages.filter((message) => {
       if (!isLiveSupplementalMessage(message)) return false;
       if (!isLiveFailureMarker(message)) return true;
       // A turn-identified marker owns its failure's one visible element —
       // the projected copy for that turn was stripped above.
       if (message.turnId !== undefined) return true;
-      const reason = transcriptMessageText(message)
-        .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
-        .trim();
-      return reason.length === 0 || !projectedFailureText.includes(reason);
+      // #2985: a marker read back from the conversation store has no turn
+      // identity, and its words need not be the event's (a failure with no
+      // status persists the transport sentence while `runtime.error` carries
+      // the engine's). It belongs to the turn it falls in; when that turn's
+      // projection already shows the failure, the marker is its second copy.
+      if (markerTurnAlreadyShowsFailure(message, projectedTurns)) return false;
+      const reasons = failureMarkerReasons(message);
+      return (
+        reasons.length === 0 ||
+        !reasons.every((reason) => projectedFailureText.includes(reason))
+      );
     });
     const handoffBoundaries: ChatMessage[] = window.handoffs.map((handoff) => ({
       id: `conversation-handoff:${handoff.sessionId}`,
