@@ -582,7 +582,7 @@ describe('checks and inline review comments', () => {
     );
     expect(result.pullRequest.ref).toBe('17');
     expect(result.diff.state).toBe('available');
-    expect(result.reviewComments.state).toBe('available');
+    expect(result.reviewComments?.state).toBe('available');
     expect(result.checks).toEqual({
       state: 'unavailable',
       reason:
