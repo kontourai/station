@@ -1239,17 +1239,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .getByRole('button', { name: 'Expand dock region to workspace' })
       .click();
 
-    await page
-      .getByRole('button', {
-        name: /^Worker task · task first home Delegated worker/,
-      })
-      .click();
-    await expect(page.getByTestId('session-detail')).toBeVisible();
-
-    const delegate = page
-      .getByTestId('delegated-task-coordinator')
-      .getByRole('button', { name: 'Delegate subtask' });
-    await delegate.click();
+    const row = page.locator('.split-pane__item-row').filter({
+      has: page.getByRole('button', { name: /^Worker task · task first home/ }),
+    });
+    // A delegated row's "Delegate subtask…" lives in its row menu, opened
+    // from the list (in a maximized dock, selecting the row swaps the list
+    // for its detail).
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Delegate subtask…' }).click();
     const launcher = page.getByRole('dialog', { name: 'Delegate a task' });
     await expect(launcher).toBeVisible();
     await expect(launcher.getByLabel('Task')).toBeFocused();
@@ -1517,7 +1514,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await composer.fill('Continue from my phone');
       const continueButton = page
         .getByTestId('session-detail')
-        .getByRole('button', { name: 'Continue', exact: true });
+        .getByRole('button', { name: 'Send', exact: true });
       const approveButton = request.getByRole('button', { name: 'Approve' });
       const declineButton = request.getByRole('button', { name: 'Decline' });
       for (const control of [continueButton, approveButton, declineButton]) {
@@ -1576,8 +1573,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       });
       await page.goto('/?surface=activity&session=task-first-home');
 
-      const statusLine = page
-        .getByTestId('session-detail')
+      // Project workflows are evidence: they live in the detail's collapsed
+      // Details disclosure, which the reader opens.
+      const detail = page.getByTestId('session-detail');
+      await detail.locator('summary', { hasText: /^Details$/ }).click();
+      const statusLine = detail
         .locator('.workflow-status-line')
         .filter({ hasText: 'kontourai-station-592' });
       await expect(statusLine).toBeVisible();
@@ -1596,41 +1596,33 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.gateOverflowWrap).toBe('anywhere');
     });
 
-    test('directs delegated work from the mobile session list before opening detail', async ({
+    test('offers Delegate subtask from the mobile row menu with touch-sized targets, then opens detail', async ({
       page,
     }) => {
-      const commands: Array<Record<string, unknown>> = [];
-      await mockTaskFirstHome(page, { commands });
+      await mockTaskFirstHome(page);
       await page.goto('/?surface=activity');
 
-      const coordinator = page.getByTestId('delegated-task-coordinator');
-      await expect(coordinator).toBeVisible();
-      await expect(coordinator).toContainText('task first home');
-      await expect(coordinator).toContainText('Engine');
-
-      const input = coordinator.getByLabel('Direct worker follow-up');
-      const send = coordinator.getByRole('button', { name: 'Send follow-up' });
-      const view = coordinator.getByRole('button', { name: 'View task' });
-      const delegate = coordinator.getByRole('button', {
-        name: 'Delegate subtask',
+      // The delegated row's own controls: the row itself and its one "⋯"
+      // menu, whose items include "Delegate subtask…".
+      const rowButton = page.getByRole('button', {
+        name: /^Worker task · task first home/,
       });
-      for (const control of [input, send, view, delegate]) {
+      await expect(rowButton).toBeVisible();
+      await expect(rowButton).toContainText('Delegated worker');
+      const menuTrigger = page
+        .locator('.split-pane__item-row')
+        .filter({ has: rowButton })
+        .getByRole('button', { name: 'More actions' });
+      await menuTrigger.click();
+      const delegate = page.getByRole('menuitem', {
+        name: 'Delegate subtask…',
+      });
+      for (const control of [menuTrigger, delegate]) {
         const bounds = await control.boundingBox();
         expect(bounds).not.toBeNull();
         expect(bounds?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
         expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
-
-      await input.fill('Run the focused mobile checks');
-      await send.click();
-      await expect.poll(() => commands.length).toBe(1);
-      expect(commands[0]).toEqual({
-        type: 'continueExecutionMessage',
-        threadId: 'task-first-home',
-        input: {
-          message: 'Run the focused mobile checks',
-        },
-      });
 
       await delegate.click();
       const launcher = page.getByRole('dialog', { name: 'Delegate a task' });
@@ -1691,9 +1683,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }
       await cancelDelegation.click();
       await expect(launcher).toHaveCount(0);
-      await expect(delegate).toBeFocused();
+      await expect(menuTrigger).toBeFocused();
 
-      await view.click();
+      await rowButton.click();
       await expect(page.getByTestId('session-detail')).toBeVisible();
       const back = page.getByRole('button', { name: '← Back to list' });
       await expect(back).toBeVisible();

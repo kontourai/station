@@ -146,7 +146,6 @@ The only channel today is `modelOptions.approvalMode`. It is read by
 | Queued follow-up drain | `src-ui/src/hooks/orchestration/queueDrain.ts:205-219` | `approvalModeToSend` |
 | Legacy needs-input reply | `components/attention/AttentionCard.tsx:545` | none (#2418) |
 | Needs-input reply | `components/attention/NeedsInputReply.tsx:122` | none (#2418) |
-| Delegated task coordinator | `components/session-detail/DelegatedTaskCoordinator.tsx:49` | none (#2418) |
 | Session-detail composer | `hooks/useMutableSessionDetailState.ts:279` | none (#2418) |
 | Steer | `useActiveChatSessionMessaging.ts:299`, `ChatDockBody.tsx:1021` | none (continues the open turn, so exempt) |
 

@@ -1100,7 +1100,7 @@ describe('orchestration display identity', () => {
           provider: 'codex',
           status: 'ready',
           displayTitle: 'Ship the Home history fix',
-          cwd: '/Users/brian/dev/github/kontourai/station-worktrees/ui-chat-project-affordances',
+          cwd: '/Users/me/dev/github/kontourai/station-worktrees/ui-chat-project-affordances',
           createdAt: '2026-07-30T00:00:00Z',
           updatedAt: '2026-07-30T00:00:00Z',
           isLoaded: true,

@@ -22,6 +22,7 @@ const USAGE_ROLLUP_MAX_SOURCES = 3;
 const USAGE_ROLLUP_SOURCE_DEADLINE_MS = 3_000;
 
 export interface UsageRollupRequest {
+  provider?: string;
   from: string;
   to: string;
   groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
@@ -148,10 +149,18 @@ export class UsageRollupService {
     const result = foldUsageReceipts({
       ...request,
       pageSize,
-      receipts: results.flatMap((result) => result.receipts),
-      aggregateReceipts: results.flatMap(
-        (result) => result.aggregateReceipts ?? result.receipts,
-      ),
+      receipts: results
+        .flatMap((result) => result.receipts)
+        .filter(
+          (receipt) =>
+            !request.provider || receipt.provider === request.provider,
+        ),
+      aggregateReceipts: results
+        .flatMap((result) => result.aggregateReceipts ?? result.receipts)
+        .filter(
+          (receipt) =>
+            !request.provider || receipt.provider === request.provider,
+        ),
       coverage: [
         ...results.map((result) => result.coverage),
         ...this.unqueriedCoverage,

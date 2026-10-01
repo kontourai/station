@@ -59,7 +59,7 @@ function windowsFs(): ServiceFs {
   } as unknown as ServiceFs;
 }
 
-const WINDOWS_ACCOUNT = 'DESKTOP-WIN\\brian';
+const WINDOWS_ACCOUNT = 'DESKTOP-WIN\\casey';
 const WINDOWS_SID = 'S-1-5-21-1000';
 
 function whoamiIdentity() {
@@ -184,12 +184,12 @@ describe('Windows Task Scheduler service backend', () => {
         instanceId: 'agent',
         lifecycle: {
           ...lifecycle('C:\\Station Data'),
-          stationRoot: 'C:\\Users\\Brian\\Station Root',
+          stationRoot: 'C:\\Users\\Me\\Station Root',
         },
         nodePath: 'C:\\node.exe',
         repoPath: 'C:\\repo',
       }),
-    ).toContain('set "STATION_ROOT=C:\\Users\\Brian\\Station Root"');
+    ).toContain('set "STATION_ROOT=C:\\Users\\Me\\Station Root"');
   });
 
   test.each([
