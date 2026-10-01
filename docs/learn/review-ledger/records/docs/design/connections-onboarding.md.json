@@ -36,7 +36,7 @@
 
     {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/routes/connections/app-home.ts","digest":"192c3cb50ba36ecf3a9de3f9586a1e975f4ebed2a0ddb931817c97bae717e8c9","revision":"1eaac93727668859c4347da608d045137ec995e8"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"8f3dc6ebf7861f09ec30becc61f7436ed27b819a50738e7f415e15f954551966","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},
 
@@ -54,7 +54,7 @@
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"91c5c5749543ab72af57313c6c3f7256469d6d88eed881aad5886ded2f8c9026","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
 
     {"path":"src-ui/src/components/first-run/first-run-gate.ts","digest":"5098d3dda3a9db7da3e7e8d1552641aaac680ed467bb5c28f151844f18908efc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
