@@ -50,6 +50,7 @@ import {
   BrowserConsoleDrawer,
   useBrowserConsole,
 } from './BrowserConsoleDrawer';
+import { BrowserIconButton } from './BrowserIconButton';
 import { BrowserLocalTargetsPanel } from './BrowserLocalTargetsPanel';
 import {
   type BrowserMenuItem,
@@ -982,36 +983,32 @@ function BrowserSessionPane({
               </span>
             )}
           </span>
-          <Button
-            variant="icon"
-            className="browser-pane__icon browser-pane__omni-reveal"
+          <BrowserIconButton
+            className="browser-pane__omni-reveal"
             aria-label="Back"
             title="Back"
             disabled={!live || busy}
             onClick={() => history.mutate('back')}
           >
             <ArrowLeftGlyph />
-          </Button>
-          <Button
-            variant="icon"
-            className="browser-pane__icon browser-pane__omni-reveal"
+          </BrowserIconButton>
+          <BrowserIconButton
+            className="browser-pane__omni-reveal"
             aria-label="Forward"
             title="Forward"
             disabled={!live || busy}
             onClick={() => history.mutate('forward')}
           >
             <ArrowRightGlyph />
-          </Button>
-          <Button
-            variant="icon"
-            className="browser-pane__icon"
+          </BrowserIconButton>
+          <BrowserIconButton
             aria-label="Reload"
             title="Reload"
             disabled={!live || busy}
             onClick={() => history.mutate('reload')}
           >
             <RefreshGlyph />
-          </Button>
+          </BrowserIconButton>
         </div>
         <BrowserDriverChip
           tone={chipTone}
@@ -1020,9 +1017,7 @@ function BrowserSessionPane({
           releaseBlocked={pendingDialog !== undefined}
           onRelease={() => void control?.releaseControl()}
         />
-        <Button
-          variant="icon"
-          className="browser-pane__icon"
+        <BrowserIconButton
           aria-label={consoleLabel}
           title={consoleLabel}
           aria-pressed={panel === 'console'}
@@ -1036,7 +1031,7 @@ function BrowserSessionPane({
               {errors > 9 ? '9+' : errors}
             </span>
           ) : null}
-        </Button>
+        </BrowserIconButton>
         <BrowserOverflowMenu label="More browser actions" items={menuItems}>
           <MoreGlyph />
         </BrowserOverflowMenu>

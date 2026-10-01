@@ -203,7 +203,9 @@
 
 /* --- Toolbar (#90): quiet chrome, one row --------------------------------
    Omnibox, driver chip, Console, ⋯. Layout and sizing only: every button is
-   the shared Button (`variant="icon"`), every menu the shared menu surface.
+   `BrowserIconButton` (the shared ghost Button, round, sized by
+   `--browser-pane-control` from its own sheet), every menu the shared menu
+   surface.
    On a coarse pointer or a phone-width window (`data-coarse` / `data-narrow`, set
    by the pane from the shared hooks: media queries are the primitives' business) every
    target is 44px and the row never wraps: the path gives way first, then the
@@ -224,13 +226,6 @@
   flex-wrap: nowrap;
   gap: 6px;
   min-width: 0;
-}
-
-.browser-pane .browser-pane__icon {
-  flex: 0 0 auto;
-  height: var(--browser-pane-control);
-  position: relative;
-  width: var(--browser-pane-control);
 }
 
 /* The omnibox: lock, host, path, then back / forward / reload inside it. */

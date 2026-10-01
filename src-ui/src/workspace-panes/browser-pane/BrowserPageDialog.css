@@ -32,14 +32,22 @@
 }
 
 .browser-pane__page-dialog-actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2, 8px);
   justify-content: flex-end;
 }
 
+/* Open in pane: an icon-only control (`BrowserIconButton`) at the row's
+   start. On a coarse pointer it is a 44px target like the labelled OK and
+   Cancel beside it; the icon sheet reads the variable. */
 .browser-pane__page-dialog-open {
   margin-right: auto;
+}
+
+.browser-pane__page-dialog[data-pointer="coarse"] {
+  --browser-pane-control: 44px;
 }
 
 .browser-pane__page-dialog-input {
@@ -98,7 +106,6 @@
 }
 
 .browser-pane__page-dialog--compact .browser-pane__page-dialog-actions {
-  align-items: center;
   flex: 0 0 auto;
   flex-wrap: nowrap;
   gap: 4px;

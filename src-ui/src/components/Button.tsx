@@ -7,9 +7,7 @@ type ButtonVariant =
   | 'danger-outline'
   | 'success'
   | 'link'
-  | 'ghost'
-  /** Icon-only, round (`aria-label` required at the call site). */
-  | 'icon';
+  | 'ghost';
 type ButtonSize = 'sm' | 'md';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

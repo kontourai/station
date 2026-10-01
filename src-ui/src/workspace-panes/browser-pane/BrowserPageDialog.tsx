@@ -2,6 +2,7 @@ import type { BrowserPendingDialogView } from '@kontourai/station-contracts/work
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { MonitorGlyph } from '../../components/icons/Glyph';
+import { BrowserIconButton } from './BrowserIconButton';
 import { useCoarsePointer } from './useCoarsePointer';
 import './BrowserPageDialog.css';
 
@@ -146,16 +147,15 @@ export function BrowserPageDialog({
       ) : null}
       <div className="browser-pane__page-dialog-actions">
         {onOpenInPane ? (
-          <Button
+          <BrowserIconButton
             type="button"
-            variant="icon"
             className="browser-pane__page-dialog-open"
             aria-label="Open in pane"
             title="Open in pane"
             onClick={onOpenInPane}
           >
             <MonitorGlyph />
-          </Button>
+          </BrowserIconButton>
         ) : null}
         {dialog.type === 'alert' ? null : (
           <Button
