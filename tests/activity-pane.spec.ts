@@ -238,7 +238,7 @@ test.describe('The Activity page from a maximized desktop dock', () => {
   ] as const) {
     test(`the row shows the Activity page from a maximized ${label} dock`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       await page.goto(link);
       await expect(chatDockShell(page)).toBeVisible({
         timeout: FIRST_RENDER_TIMEOUT_MS,
@@ -252,7 +252,7 @@ test.describe('The Activity page from a maximized desktop dock', () => {
       await expect(heading).toBeInViewport();
       await expect(page).not.toHaveURL(/maximize=true/);
       await page.screenshot({
-        path: test.info().outputPath(`activity-page-from-${label}.png`),
+        path: testInfo.outputPath(`activity-page-from-${label}.png`),
       });
     });
   }
