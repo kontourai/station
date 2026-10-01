@@ -245,8 +245,11 @@ export async function openChatRegion(page: Page): Promise<void> {
   // The Coding layout's centre owns Chat on a wide fine-pointer screen (#928
   // coding stack): Chat is its Chat page, the dock does not hold it on that
   // route, and the region toggles report the regions without it. "Open Chat"
-  // there is the Chat page itself. A project layout route settles on one of
-  // the two Chat mounts before this reads which.
+  // there is the Chat page itself. This reads whichever of the two Chat
+  // mounts is attached: on load that is the settled one (App mounts no Chat
+  // until the layout record is known), but a viewport change that moves Chat
+  // between them unmounts one before the other mounts, so a caller that just
+  // resized waits for the new mount before calling this.
   if (/^\/projects\/[^/]+\/layouts\//.test(new URL(page.url()).pathname)) {
     await page
       .locator('#chat-workspace-pane, #chat-dock')

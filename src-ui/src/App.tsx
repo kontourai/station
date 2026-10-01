@@ -437,7 +437,16 @@ function App() {
     displayCurrentView.type === 'layout'
       ? displayCurrentView.layoutSlug
       : undefined;
-  const { data: selectedLayout, isLoading: selectedLayoutLoading } =
+  // `isPending`, not `isLoading`: the layout is UNKNOWN until the query has
+  // an answer, whether or not a fetch is in flight. While the persisted cache
+  // restores (`PersistQueryClientProvider`), every query sits idle with no
+  // data — `isLoading` is false there — and a gate on it mounted the dock's
+  // Chat for that frame, then tore it down for the layout's own Chat once the
+  // record arrived: the double controller the gate exists to prevent, and a
+  // transient `#chat-dock` on the Coding route (#3035 review). A layout route
+  // only ever has both slugs, so the query is never disabled here; `isPending`
+  // settles on its answer or its error.
+  const { data: selectedLayout, isPending: selectedLayoutUnknown } =
     useProjectLayoutQuery(selectedLayoutProjectSlug, selectedLayoutSlug);
   // Derived from the same facts `ProjectLayoutRenderer` dispatches on, not
   // from the `type` word alone: a plugin-contributed layout typed 'chat'
@@ -445,7 +454,7 @@ function App() {
   // 'coding' keeps Chat in the dock.
   const dockFoldsToOneRegion = useDockFoldsToOneRegion();
   const layoutChatPlacement =
-    displayCurrentView.type === 'layout' && !selectedLayoutLoading
+    displayCurrentView.type === 'layout' && !selectedLayoutUnknown
       ? resolveLayoutChatPlacement(selectedLayout, {
           bottomOnly: dockFoldsToOneRegion,
         })
@@ -456,7 +465,7 @@ function App() {
   // full-screen Chat layout's event listeners/state machine.
   const showAmbientChatDock =
     displayCurrentView.type !== 'layout' ||
-    (!selectedLayoutLoading && !isChatWorkspaceLayout);
+    (!selectedLayoutUnknown && !isChatWorkspaceLayout);
   /**
    * A full-screen mobile dock owns the whole viewport (archive#4460: any
    * occupant, not just Chat — `ChatDockMobileHeader` already carries the app

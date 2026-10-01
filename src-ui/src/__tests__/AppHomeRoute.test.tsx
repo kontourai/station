@@ -33,6 +33,12 @@ vi.mock('../contexts/open-chats-store', () => ({
 interface QueryState<T> {
   data?: T;
   isLoading?: boolean;
+  /**
+   * TanStack's "no answer yet", fetching or not. Left out, it reads as
+   * settled: every fixture here that gives `data` is an answered query, and
+   * `data: undefined` with it absent is a settled miss (the `/` routes).
+   */
+  isPending?: boolean;
   isError?: boolean;
 }
 
@@ -1276,6 +1282,41 @@ describe('App home route resolution', () => {
         ['fullscreen:focus'],
         ['fullscreen:new'],
       ]);
+    });
+
+    /**
+     * `PersistQueryClientProvider` keeps every query idle while the persisted
+     * cache restores, so for that frame the layout query has no answer AND
+     * `isLoading` is false. A gate on `isLoading` mounted the dock's Chat
+     * there, then tore it down for the centre's Chat once the record arrived
+     * (the CI trace on #3035: `#chat-dock` attached before the layout request
+     * was even issued). The layout is unknown until the query is no longer
+     * pending, and an unknown layout mounts no dock host at all.
+     */
+    test('while the layout record is pending but idle (a restoring cache), no dock host mounts; it mounts once the record arrives', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      hooks.layout = { data: undefined, isLoading: false, isPending: true };
+      hooks.regionModel = openBottom();
+
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+
+      // `RegionShells` is App's only dock host and registers on mount, so a
+      // dock mounted for the pending frame registers here.
+      expect(registerRegionSurfaceHost).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+
+      hooks.layout = {
+        data: { type: 'coding' },
+        isLoading: false,
+        isPending: false,
+      };
+      await act(async () => rerender(<App />));
+
+      // The answer releases the gate: the host mounts (for the other
+      // regions), with Chat still the centre's, never the dock's.
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
     });
 
     test('a plugin layout typed coding keeps Chat in the dock', async () => {

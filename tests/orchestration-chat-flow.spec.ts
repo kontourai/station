@@ -433,6 +433,11 @@ test.describe('Orchestration Chat Flow', () => {
       .toBe('root');
 
     await page.setViewportSize({ width: 1280, height: 720 });
+    // Back on a wide screen the centre takes Chat and the phone's dock
+    // unmounts: let that settle, or `openChatRegion` reads the dock that is
+    // about to vanish (the mirror of the 390px wait above).
+    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
     await openChatRegion(page);
 
     await expect
@@ -786,6 +791,13 @@ test.describe('Orchestration Chat Flow', () => {
     };
 
     await page.setViewportSize({ width: 360, height: 800 });
+    // At a phone width the Coding layout's Chat is its dock again (#928
+    // coding stack): the centre's Chat unmounts and the Chat page opens the
+    // dock maximized. `boundingBox()` does not wait, so the card has to be
+    // back on screen in the dock before its geometry is read.
+    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+    await expect(page.locator('#chat-dock')).toBeVisible();
+    await expect(allowOnce).toBeVisible();
     await expectClearLayout('pending 360');
     await expectLegibleButtons('pending');
 
