@@ -62,7 +62,7 @@ function validRecord(value: unknown): value is StoredRecord {
         taskCreatedAt: r.taskCreatedAt,
       })) &&
     r.version === TASK_ROOM_WORK_VERSION &&
-    ['taskId', 'projectId', 'operationId', 'ownerId', 'agentId'].every((key) =>
+    ['operationId', 'ownerId', 'agentId'].every((key) =>
       validText(r[key], 160),
     ) &&
     validText(r.prompt, 12_000) &&
@@ -72,7 +72,6 @@ function validRecord(value: unknown): value is StoredRecord {
     ) &&
     typeof r.createdAt === 'string' &&
     !Number.isNaN(Date.parse(r.createdAt)) &&
-    validText(r.taskCreatedAt, 40) &&
     typeof r.state === 'string' &&
     ['starting', 'dispatched', 'indeterminate', 'refused'].includes(r.state)
   );

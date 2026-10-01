@@ -1247,7 +1247,9 @@ export function configureRuntimeRoutes(
       current.roomProjectId !== scope.roomProjectId ||
       current.taskCreatedAt !== scope.taskCreatedAt ||
       current.requesterId !== scope.requesterId ||
-      (document.kind !== 'snapshot' && document.kind !== 'delta')
+      (document.kind !== 'snapshot' && document.kind !== 'delta') ||
+      typeof document.revision !== 'string' ||
+      typeof document.text !== 'string'
     )
       return undefined;
     return createTaskRoomContext(
