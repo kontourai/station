@@ -9,7 +9,7 @@
 
   "limits": "No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope.",
 
-  "document": {"digest":"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+  "document": {"digest":"f3948bb0a098dccb1433f6c88994217b3a7258e37da2104126f2197df2904511","revision":"a5cca76ed88ba6f99813da924ad1c7554335de87"},
 
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
