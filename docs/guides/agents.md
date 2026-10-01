@@ -374,7 +374,7 @@ styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
 `--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
 `--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
 soft fill), and always carry a text label; color only reinforces it. The
-installed package (1.16.0) also defines `--k-status-contrast` (text on a
+installed package (1.18.0) also defines `--k-status-contrast` (text on a
 status fill), the `--k-trust-*` trust-state inks, fills and line styles, and
 the `--k-action` and `--k-focus` interaction roles; check
 `node_modules/@kontourai/ui/tokens/tokens.css` before using a token. Follow the

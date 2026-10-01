@@ -76,8 +76,9 @@ A branding provider's `getTheme()` answer is applied by
 `--k-focus` on the document element, for the current `data-theme` mode. It is
 all or nothing: an unknown key, a non-hex value or a failed contrast check in
 either mode keeps the defaults. The check is `validateBrandOverride` from
-`@kontourai/ui/contrast`; Station adds the flat-key input shape and two
-stricter text-contrast rules for the action fill and the brand. A mode that
+`@kontourai/ui/contrast`, which rates the brand as text at 4.5:1 on the page,
+the panel and the raised panel; Station adds the flat-key input shape and one
+stricter text-contrast rule for the action fill. A mode that
 sets only the brand also gets it as its action role, because the installed
 tokens define `--k-action` and would otherwise keep buttons and links on the
 shipped colour. `main.tsx` applies the last validated copy from
