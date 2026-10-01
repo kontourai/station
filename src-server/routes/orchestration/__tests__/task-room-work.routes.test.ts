@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -16,6 +14,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderSessionStartInput } from '../../../providers/adapter-shape.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -25,8 +24,10 @@ import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-mo
 import { delegateTask } from '../../../tools/station-control-delegation.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
+const makeTempDir = trackTempDirs();
+
 test('the delegation route records one channel request and refuses a target outside its Task Project', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'task-room-work-route-'));
+  const directory = makeTempDir('task-room-work-route-');
   const eventStore = new EventStore(join(directory, 'events.sqlite'));
   const eventBus = new EventBus();
   const service = new OrchestrationService({
@@ -118,12 +119,11 @@ test('the delegation route records one channel request and refuses a target outs
   } finally {
     await service.shutdown();
     eventStore.close();
-    await rm(directory, { recursive: true, force: true });
   }
 });
 
 test('real delegation refuses revoked Task authority at provider effects and leaves a clean turn boundary', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'task-room-effect-'));
+  const directory = makeTempDir('task-room-effect-');
   const eventStore = new EventStore(join(directory, 'events.sqlite'));
   const eventBus = new EventBus();
   class SessionTrackingAdapter extends GateTestAdapter {
@@ -398,6 +398,5 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     vi.unstubAllEnvs();
     await service.shutdown();
     eventStore.close();
-    await rm(directory, { recursive: true, force: true });
   }
 });

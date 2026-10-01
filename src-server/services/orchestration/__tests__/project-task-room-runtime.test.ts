@@ -16,6 +16,7 @@ import type {
   TaskRecord,
 } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   DEFAULT_LIVE_WORK_BOUNDS,
   type LiveWorkRecoveryState,
@@ -53,6 +54,7 @@ test('browser heartbeat cadence remains comfortably below live TTL', () => {
   );
 });
 
+const makeTempDir = trackTempDirs();
 const directories: string[] = [];
 afterEach(() => {
   vi.useRealTimers();
@@ -511,10 +513,7 @@ function fixture(
 
 describe('ProjectTaskRoomRuntime', () => {
   test('a human message bound to an earlier Task incarnation never appends to its replacement', async () => {
-    const directory = mkdtempSync(
-      join(tmpdir(), 'station-room-message-incarnation-'),
-    );
-    directories.push(directory);
+    const directory = makeTempDir('station-room-message-incarnation-');
     const path = join(directory, 'orchestration.sqlite');
     const store = new EventStore(path);
     const probe = new DatabaseSync(path);

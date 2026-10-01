@@ -1,18 +1,13 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, expect, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   TaskRoomWorkModule,
   type TaskRoomWorkScope,
 } from '../task-room-work-module.js';
 
-const roots: string[] = [];
-afterEach(async () => {
-  await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-  );
-});
+const makeTempDir = trackTempDirs();
 const scope: TaskRoomWorkScope = {
   projectId: 'project',
   projectSlug: 'demo',
@@ -26,8 +21,7 @@ const input = {
   prompt: 'Investigate the onboarding flow.',
 };
 async function file() {
-  const root = await mkdtemp(join(tmpdir(), 'task-room-work-'));
-  roots.push(root);
+  const root = makeTempDir('task-room-work-');
   return join(root, 'requests.json');
 }
 
