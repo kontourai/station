@@ -331,7 +331,7 @@ A newer development iOS simulator build/install receipt names source
 It built, installed and opened on October 1, 2026. The actual Station manager
 now renders **Set up a broker route**, whose click opens the real
 [relay profiles](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
-through [GuidedConnect](../../src-ui/src/components/GuidedConnect.tsx). This
+through [the Station manager entry](../../src-ui/src/components/OnboardingGate.tsx). This
 proves that entry was reachable on the exercised simulator build; it proves no
 fresh enrollment, public application traffic or physical Nightly operation.
 See the [shell verification evidence](../guides/native-shell-verification.md).

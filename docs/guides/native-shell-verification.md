@@ -401,7 +401,7 @@ The executable SHA-256 was
 The retained `ios-first-run-build-install-receipt.json` limits its scope to that
 simulator build/install. The actual Station manager's **Set up a broker route**
 action opened real [relay profiles](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
-through [GuidedConnect](../../src-ui/src/components/GuidedConnect.tsx). That
+through [the Station manager entry](../../src-ui/src/components/OnboardingGate.tsx). That
 observed UI entry still performed no fresh enrollment or public application
 operation. It is not a physical iPhone, signed Nightly or release receipt.
 
