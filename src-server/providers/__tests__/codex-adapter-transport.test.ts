@@ -1112,9 +1112,15 @@ describe('CodexAdapterTransport — host image reads keep publish order', () => 
         }),
       );
 
-      const methods = (await drainEvents(iterator)).map(
-        (event) => event.method,
-      );
+      const methods: string[] = [];
+      for (;;) {
+        const event = await iterator.next();
+        expect(event.done).toBe(false);
+        if (event.done) break;
+        methods.push(event.value.method);
+        if (event.value.method === 'turn.completed') break;
+      }
+      await iterator.return?.();
       expect(methods.indexOf('tool.completed')).toBeGreaterThan(-1);
       expect(methods.indexOf('turn.completed')).toBeGreaterThan(
         methods.indexOf('tool.completed'),
