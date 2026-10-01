@@ -89,8 +89,14 @@ test('recovery requires confirmation and its link is cleared on a Station author
     }),
   );
   const rendered = mount();
+  // #3045: the row shows one labelled action; recovery is a menu row.
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Create recovery link' }),
+    await screen.findByRole('button', {
+      name: 'More actions for Collaborator',
+    }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Create recovery link' }),
   );
   expect(writes).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));

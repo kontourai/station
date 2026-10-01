@@ -8,10 +8,10 @@ import {
 } from '@kontourai/station-sdk/local-accounts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
-import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -110,35 +110,44 @@ function AccountControls({
                 {account.disabled ? 'Sign-in disabled' : 'Active'}
               </p>
             </div>
-            <ResponsiveSurfaceActions className="local-accounts__actions">
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  setPending({
-                    account,
-                    action: account.disabled ? 'enable' : 'disable',
-                  })
-                }
-              >
-                {account.disabled ? 'Enable sign-in' : 'Disable sign-in'}
-              </Button>
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  setPending({ account, action: 'revoke-sessions' })
-                }
-              >
-                Sign out all sessions
-              </Button>
-              <Button
-                disabled={busy || account.disabled}
-                onClick={() =>
-                  setPending({ account, action: 'create-recovery' })
-                }
-              >
-                Create recovery link
-              </Button>
-            </ResponsiveSurfaceActions>
+            {/* #3045: turning sign-in on or off is the row's action; the two
+                session commands fold into the menu. */}
+            <ActionRow
+              className="local-accounts__actions"
+              overflowLabel={`More actions for ${account.name}`}
+              primary={
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    setPending({
+                      account,
+                      action: account.disabled ? 'enable' : 'disable',
+                    })
+                  }
+                >
+                  {account.disabled ? 'Enable sign-in' : 'Disable sign-in'}
+                </Button>
+              }
+              overflow={[
+                {
+                  key: 'revoke-sessions',
+                  label: 'Sign out all sessions',
+                  disabled: busy,
+                  onSelect: () =>
+                    setPending({ account, action: 'revoke-sessions' }),
+                },
+                {
+                  key: 'create-recovery',
+                  label: 'Create recovery link',
+                  disabled: busy || account.disabled,
+                  ...(account.disabled
+                    ? { disabledReason: 'Sign-in is disabled' }
+                    : {}),
+                  onSelect: () =>
+                    setPending({ account, action: 'create-recovery' }),
+                },
+              ]}
+            />
           </div>
         ))
       )}

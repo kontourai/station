@@ -34,7 +34,12 @@ function renderCard() {
       onReconnect={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  // #3045: Remove is a menu row, not a button on the card.
+  expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More actions for Kiro CLI' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
   const dialog = screen.getByRole('dialog');
   expect(
     within(dialog).getByRole('heading', { name: 'Remove Connection' }),
@@ -59,6 +64,29 @@ test('dismissing the remove confirm does not select the connection', () => {
 
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(onRemove).not.toHaveBeenCalled();
+  expect(onClick).not.toHaveBeenCalled();
+});
+
+test('opening and dismissing the actions menu does not select the connection', () => {
+  const onClick = vi.fn();
+  render(
+    <ACPConnectionCard
+      conn={connection}
+      agents={[]}
+      onClick={onClick}
+      onToggle={vi.fn()}
+      onRemove={vi.fn()}
+      onReconnect={vi.fn()}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More actions for Kiro CLI' }),
+  );
+  expect(screen.getByRole('menu')).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Close more actions for Kiro CLI' }),
+  );
+  expect(screen.queryByRole('menu')).toBeNull();
   expect(onClick).not.toHaveBeenCalled();
 });
 

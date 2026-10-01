@@ -16,8 +16,8 @@ import {
   useUpdateDeviceSshHostMutation,
 } from '@kontourai/station-sdk/mobile-devices-query';
 import { type FormEvent, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
-import { ChatDockHeaderMoreMenu } from '../../components/chat-dock/ChatDockHeaderMoreMenu';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { DeviceShares } from '../../workspace-panes/device/DeviceShares';
@@ -365,76 +365,80 @@ function DeviceHostRow({
           </div>
         </div>
       ) : (
-        <div className="device-hosts__actions">
-          <Button
-            onClick={() => void test()}
-            pending={check.isPending}
-            pendingLabel="Testing…"
-          >
-            Test connection
-          </Button>
-          {host.hubEnabled ? (
-            host.hub.state === 'failed' || host.hub.state === 'stopped' ? (
-              <Button
-                disabled={busy}
-                onClick={() => startHub.mutate(host.hostId)}
-                pending={startHub.isPending}
-                pendingLabel={
-                  host.hub.state === 'failed' &&
-                  host.hub.failure === 'hub-not-installed'
-                    ? 'Reinstalling…'
-                    : 'Starting…'
-                }
-              >
-                {host.hub.state === 'failed' &&
-                host.hub.failure === 'hub-not-installed'
-                  ? 'Reinstall hub'
-                  : host.hub.state === 'failed'
-                    ? 'Retry hub'
-                    : 'Start hub'}
-              </Button>
-            ) : null
-          ) : (
-            <Button disabled={busy} onClick={() => setMode('consent')}>
-              Enable device hub
+        // #3045: the connection test and whatever the hub needs next are the
+        // two labelled actions; the rest fold into the menu.
+        <ActionRow
+          className="device-hosts__actions"
+          overflowLabel={`More actions for ${host.label}`}
+          secondary={
+            <Button
+              onClick={() => void test()}
+              pending={check.isPending}
+              pendingLabel="Testing…"
+            >
+              Test connection
             </Button>
-          )}
-          {/* #3045: a row shows two labelled actions — the connection test
-              and whatever the hub needs next. The rest fold into the menu. */}
-          <ChatDockHeaderMoreMenu
-            label={`More actions for ${host.label}`}
-            actions={[
-              ...(host.hubEnabled
-                ? [
-                    {
-                      key: 'share',
-                      label: sharing ? 'Hide sharing' : 'Share devices…',
-                      onSelect: () => setSharing((open) => !open),
-                    },
-                    {
-                      key: 'disable-hub',
-                      label: 'Disable hub',
-                      disabled: busy,
-                      onSelect: () =>
-                        setHub.mutate({ hostId: host.hostId, enabled: false }),
-                    },
-                  ]
-                : []),
-              {
-                key: 'edit',
-                label: 'Edit',
-                disabled: busy,
-                onSelect: () => setMode('edit'),
-              },
-              {
-                key: 'remove',
-                label: 'Remove',
-                disabled: busy,
-                onSelect: () => setMode('remove'),
-              },
-            ]}
-          />
-        </div>
+          }
+          primary={
+            host.hubEnabled ? (
+              host.hub.state === 'failed' || host.hub.state === 'stopped' ? (
+                <Button
+                  disabled={busy}
+                  onClick={() => startHub.mutate(host.hostId)}
+                  pending={startHub.isPending}
+                  pendingLabel={
+                    host.hub.state === 'failed' &&
+                    host.hub.failure === 'hub-not-installed'
+                      ? 'Reinstalling…'
+                      : 'Starting…'
+                  }
+                >
+                  {host.hub.state === 'failed' &&
+                  host.hub.failure === 'hub-not-installed'
+                    ? 'Reinstall hub'
+                    : host.hub.state === 'failed'
+                      ? 'Retry hub'
+                      : 'Start hub'}
+                </Button>
+              ) : null
+            ) : (
+              <Button disabled={busy} onClick={() => setMode('consent')}>
+                Enable device hub
+              </Button>
+            )
+          }
+          overflow={[
+            ...(host.hubEnabled
+              ? [
+                  {
+                    key: 'share',
+                    label: sharing ? 'Hide sharing' : 'Share devices…',
+                    onSelect: () => setSharing((open) => !open),
+                  },
+                  {
+                    key: 'disable-hub',
+                    label: 'Disable hub',
+                    disabled: busy,
+                    onSelect: () =>
+                      setHub.mutate({ hostId: host.hostId, enabled: false }),
+                  },
+                ]
+              : []),
+            {
+              key: 'edit',
+              label: 'Edit',
+              disabled: busy,
+              onSelect: () => setMode('edit'),
+            },
+            {
+              key: 'remove',
+              label: 'Remove',
+              tone: 'danger' as const,
+              disabled: busy,
+              onSelect: () => setMode('remove'),
+            },
+          ]}
+        />
       )}
       {check.isError || setHub.isError || startHub.isError || remove.isError ? (
         <p className="device-hosts__error" role="alert">
