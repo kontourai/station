@@ -110,29 +110,34 @@ native application peer, an approved account-bound Device and provider session
 verification. Missing browser `Origin` alone never selects native authority.
 The [native Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
 and [SDK client](../../packages/sdk/src/client/application-session-native.ts)
-consume host-supplied trust and structured peer/account operations. Their source
-composition does not enable ordinary Desktop sign-in or a default native route.
+consume host-supplied trust and structured peer/account operations. The ordinary
+selected native route now composes these owners for separate account sign-in,
+invitation acceptance and bounded member reads. This source integration does not
+establish physical iOS or released Nightly qualification.
 
-The desktop [native account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
+The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker
 routing keys. Its owner tuple names the app, channel, client instance, Station
 and approved Device; validating that tuple's shape does not establish actual
 Device approval. The separate [account operation owner](../../src-desktop/src/native_account_operations.rs)
-registers three bounded main-window commands for public-key/challenge preparation,
-local username/password exchange-body preparation and GET/HEAD Project account
-headers. It derives identity/hashes/JTI/time from the reconciled host owner,
+registers bounded commands for public-key/challenge preparation, local
+username/password exchange-body preparation, supported GET/HEAD account proofs,
+and fixed invitation-acceptance and session-revocation bodies. The prepared
+context exposes its actual host deadline; the SDK clamps the continuation's
+usable expiry to that deadline and the server's expiry. It derives identity/hashes/JTI/time from the reconciled host owner,
 fences handles/replay/expiry/key identity and exposes no raw signing input.
 The SDK's typed proof-provider path validates and retains the ordered body before
-the Device transport signs its complete bytes. This does not establish mobile
-custody, default sign-in or hardware-backed non-exportability. Follow
-[native capability boundaries](../design/native-capabilities.md) before wiring
-this owner into an application flow.
+the Device transport signs its complete bytes. Commands are registered on desktop
+and mobile, and the ordinary selected-route owner uses them. OS-keyring software
+custody does not establish hardware-backed non-exportability; physical iOS and
+process-lifecycle qualification remain separate. Follow the
+[native capability boundaries](../design/native-capabilities.md).
 
 The [Device proof key vault](../../src-desktop/src/native_device_proof_key.rs)
 uses a separate keyring namespace and adds the Device binding ID to its owner.
 Both vaults share a [private custody core](../../src-desktop/src/native_proof_key_core.rs)
-while preserving the account vault's stored format. The Desktop-only
+while preserving the account vault's stored format. The native
 [candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
 persists a provisional owner snapshot and binding ID in a separate private
 Keychain namespace before it creates the Device proof key. The main-window
