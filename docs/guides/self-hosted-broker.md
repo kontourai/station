@@ -17,7 +17,7 @@ native user journeys.
 
 The current private-file custody implementation is POSIX-only. Windows startup refuses with `self_hosted_broker_private_custody_unavailable_on_windows` until the broker adopts an audited DACL owner; it never falls back to unchecked Windows paths.
 
-The self-hosted broker carries versioned connection metadata only. It never receives Station operator credentials, account credentials, Project data, plugin data, application frames, or execution authority. Station still signs the opaque connection proof and enforces Device, account, and Project policy at the endpoint.
+The self-hosted broker carries versioned routing metadata and, when explicitly configured, short-lived TURN credentials for relay allocation. It never receives Station operator credentials, account credentials, Project data, plugin data, application frames, or execution authority. Station still signs the opaque connection proof and enforces Device, account, and Project policy at the endpoint.
 
 Run `npm run broker:self-hosted -- init /absolute/private-init-config.json` once for a routing generation, then run `npm run broker:self-hosted -- serve /absolute/private-serve-config.json`. The configuration and credential output must be owner-only files in owner-only directories. The database path, credential path, loopback port, and every provisioned Station/enrollment/routing-generation/browser-Origin scope are explicit. A routing generation is independent of Station's connection-signing key generation and cannot rotate or approve endpoint trust. Port `0` requests an owned ephemeral listener; ports 3000 and 3141 are refused.
 
@@ -284,6 +284,104 @@ separately recorded remote run remain operator responsibilities. The free
 [local collaboration lab](local-collaboration-lab.md) is diagnostic evidence;
 it does not qualify this deployment as remotely reachable.
 
+## Short-lived TURN credentials
+
+The broker has a provider-neutral, authenticated ICE configuration endpoint.
+The [wire contract](../../packages/contracts/src/relay-ice.ts) contains only the
+exact routing scope, optional native installation surface, issue/expiry times,
+relay-only policy and bounded TURN URLs with end-user credentials. It grants
+neither Device nor account/Project access. The
+[Connect parser](../../packages/connect/src/core/relayIceConfiguration.ts)
+checks the closed shape, route binding, expiry and TURN URL bounds; parsing is
+not authorization.
+
+The built-in [Cloudflare provider](../../src-server/services/connections/cloudflare-turn-provider.ts)
+keeps its long-lived issuer token in a separate owner-only operator file.
+Cloudflare's [credential API](https://developers.cloudflare.com/realtime/turn/generate-credentials/)
+returns expiring end-user credentials. The provider uses the fixed official
+HTTPS API, an honest Station user agent, no redirects and a 16 KiB response
+bound; the broker composition owns its ten-second deadline. Its issuer token never appears in a broker
+response, native profile, WebView or client RTC configuration. The community
+coturn example above remains a manually configured static deployment; it does
+not enable this issuer.
+
+Write a `0600` file outside the checkout, with a private `0700` parent for the
+separate issuance ledger. Replace the placeholders through the operator's
+secret setup; do not put the actual token in shell arguments or source control:
+
+```json
+{
+  "version": "station-broker-cloudflare-turn/v1",
+  "keyId": "replace-with-provider-key-id",
+  "apiToken": "replace-with-private-provider-api-token",
+  "ledgerPath": "/srv/station-broker/ice.sqlite",
+  "policy": {
+    "ttlSeconds": 600,
+    "maxAttemptsPerDay": 12,
+    "maxAttemptsPerSubject": 4,
+    "maxConcurrent": 2
+  }
+}
+```
+
+Set `STATION_BROKER_ICE_CONFIG_FILE=/absolute/private/turn-issuer.json` only on
+the broker `serve` process. With no issuer configured, authenticated ICE
+requests refuse with HTTP 503. Invalid private custody or policy refuses before
+the listener opens. No Station account or application credential can substitute
+for the broker's routing credentials.
+
+The [issuer service](../../src-server/services/connections/broker-ice-service.ts)
+reserves each provider attempt in a separate private SQLite ledger before
+network work. Failures also consume the budget. Limits survive process restart:
+at most 100 attempts per rolling 24 hours, four per credential owner per rolling
+ten minutes and four concurrent calls per process; the configuration can lower
+these limits. Credentials last at most 600 seconds and native credentials are
+additionally clipped to the current native routing grant. A native grant with
+less than 120 seconds left must renew before requesting new ICE credentials.
+Preserve the ledger during restart and backup; deleting it resets the issuance
+history. The ledger pins its operator-owned file and parent identities before
+schema writes and checks them again before issuing or returning a receipt.
+This fences replacement of those exact private files; it is not a general
+sandbox against another process running as the operator.
+
+Each request reauthenticates its current owner. A bounded in-memory cache reuses
+only that exact scope, routing generation, credential identity and native surface
+while at least 120 seconds remain. It stores no credentials on disk and loses
+its entries on restart. Every native request still needs a fresh proof and JTI;
+credential reuse does not reuse peer nonces or Station proofs. A consumer must
+also ensure its chosen peer deadline precedes credential expiry. Route retirement
+refuses another receipt, including a cached one; it does not instantly revoke a
+previously distributed provider credential. Issuance limits are not a bandwidth
+or spending cap. The operator must monitor provider usage and stop issuance at
+the chosen usage boundary.
+
+For TLS offload, set the operator-owned
+`STATION_BROKER_PUBLIC_ORIGIN=https://broker.example` on the broker process.
+The configured value must be a canonical HTTPS origin, except HTTP loopback for
+local fixtures. The reverse proxy must preserve the public request hostname and
+port. A different request URL host is refused; `X-Forwarded-Host` and
+`X-Forwarded-Proto` cannot supply authority. Native invitations and exact request
+proofs bind the pinned public origin even when the backend request uses HTTP.
+With this setting absent, the existing request-origin behavior remains.
+
+Prepare the Station home, Pion executable and private connector files before
+broker initialization. CLI `init` creates a 60-second initial lease; a serving
+broker alone does not keep that Station available. Start the actual Station
+connector promptly so it continually registers and renews. An expired or
+withdrawn lease needs deliberate reprovisioning, as described below. A broker
+404, TURN allocation or minted credential does not prove a registered Station
+or an application session.
+
+Source `32fe4ff3c` has executed local route/unit evidence: seven separately
+signed native configuration requests reuse one provider issuance, native grant
+revocation refuses the cached receipt, connector withdrawal during issuance
+refuses its result, and restart preserves the attempt limit. Removing the
+post-provider currentness check at `7dc84da36` made the mounted withdrawal test
+return 200 instead of 401; restoring it passed. Provider output was supplied at
+the unit boundary. Dynamic native host/Pion consumption, a live Cloudflare
+journey through this endpoint, physical iOS Nightly and public NAT reachability
+remain **NOT_VERIFIED** by these checks.
+
 ## Native routing grant foundation (v2)
 
 The broker database currently writes schema v6 and accepts the known v1–v5
@@ -463,6 +561,8 @@ connector's configured Origin and credential. The request body is capped at
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
 | `/native/grants/redeem` | Bound native P-256 key | V2 invitation plus exact ES256 proof; no browser Origin |
 | `/native/grants/renew` | Native grant plus ES256 PoP | Exact request proof and body-bound renewal ID; returns committed expiry or a typed current-expiry conflict |
+| `/native/ice/configuration` | Native installation routing grant plus ES256 PoP | Exact version, scope and surface; fixed purpose/path and fresh JTI; short-lived relay-only ICE response |
+| `/ice/configuration` | Connector | Exact version and scope; no Origin or cookies; current connector lease checked before and after provider work |
 | `/native/connections/open` | Native grant plus ES256 PoP | Exact body bytes, request path, scope, surface, Station key/generation and one-use JTI |
 | `/native/connections/read` | Native grant plus ES256 PoP | Own attempt by nonce; same request and surface binding |
 | `/native/grants/retire` | Native grant plus ES256 PoP | Retires only the caller's native grant; idempotent after revocation |
@@ -602,6 +702,11 @@ entrypoint evidence must name the configuration and revision actually tested.
   own private configuration, loopback binding, persisted grants, and signaling.
 - [Wire contracts](../../packages/contracts/src/self-hosted-broker.ts) define
   versioned browser/native fields and limits.
+- [ICE contract](../../packages/contracts/src/relay-ice.ts),
+  [issuer budgets](../../src-server/services/connections/broker-ice-service.ts),
+  [provider adapter](../../src-server/services/connections/cloudflare-turn-provider.ts),
+  and [response parser](../../packages/connect/src/core/relayIceConfiguration.ts)
+  own bounded TURN issuance separately from application admission.
 - [Connector](../../src-server/services/connections/self-hosted-broker-connector.ts),
   [Pion composition](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts),
   and [lifecycle](../../src-server/runtime/bootstrap/self-hosted-broker-runtime.ts)

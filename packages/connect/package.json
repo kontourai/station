@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./relay-ice": "./src/core/relayIceConfiguration.ts",
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
