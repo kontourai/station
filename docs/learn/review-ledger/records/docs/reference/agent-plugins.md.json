@@ -34,7 +34,7 @@
 
     {"path":"scripts/agent-plugin-validators-gate.mjs","digest":"6734c92098d215775e126b8294516e5c0a206f28f0a3433cff6df17cf6a42001","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/check-prepush-static-gates.mjs","digest":"31d110180fd7b47c41fad3748a48a4945e6726bd9c6ebcdaa410763543297431","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/check-prepush-static-gates.mjs","digest":"9c185f6b574c30d163fc25d35913c88695fcb6283e564936edc945b5379087c1","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
 
     {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"2bd3f7bc3213181f05f97d5e9f727d2d19499c0f6ba2514d318bc816f16c3330","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

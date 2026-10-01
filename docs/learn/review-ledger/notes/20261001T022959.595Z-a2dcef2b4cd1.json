@@ -1,0 +1,15 @@
+{
+  "revision": "9ed8cdffa9ba991c5bcd085b9a53c4368798fac2",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"activity-list: removed the 'Delegated task coordinator' row — that component and its follow-up send were deleted with the Activity redesign; no send path replaces it in the list (the session-detail composer row remains)."},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"activity-list fix round: task-first-home now reaches Delegate subtask through the Activity row menu instead of the removed coordinator card; the matrix row (continuation, deep links, mobile geometry) is still accurate."},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"activity-list: task-first-home's mobile delegate test was renamed to what it asserts (Delegate subtask from the row menu, touch targets, then detail); the matrix row is unchanged and accurate."},
+
+    {"path":"docs/reference/contracts.md","note":"activity-list: child-work.ts changed only in a comment (the peer Stop rule now cites the Activity row menu instead of the deleted coordinator card); no contract change."},
+
+    {"path":"packages/contracts/README.md","note":"activity-list: child-work.ts comment-only change (peer Stop rule reference); README claims unaffected."}
+  ]
+}

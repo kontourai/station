@@ -12,7 +12,7 @@ describe('repo docs hygiene', () => {
       ['docs/new.md'],
       read({
         'docs/new.md':
-          'Deploy on brian-media under /Users/brian/dev and mail me at someone.private@gmail.com',
+          'Deploy on brian-media under /Users/me/dev and mail me at someone.private@gmail.com',
       }),
     );
     const { failures } = evaluate({ byFile, grandfathered: [] });

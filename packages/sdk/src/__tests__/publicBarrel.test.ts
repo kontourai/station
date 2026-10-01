@@ -57,6 +57,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'sshEnvironments',
   'systemRuntime',
   'taskGraph',
+  'taskRoomWork',
   'trustBundles',
   'veritasReadiness',
   'workflowTasks',

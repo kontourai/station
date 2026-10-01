@@ -10,7 +10,7 @@ import {
 
 const EFFECTIVE_CONFIG = `
 hostname brian-media.internal
-user brian
+user casey
 port 22
 identityagent none
 proxyjump none
@@ -528,8 +528,8 @@ describe('OpenSSH tunnel lifecycle', () => {
       nodeVersion: 'v24.18.0',
       platform: 'linux',
       arch: 'x64',
-      remoteHome: '/home/brian',
-      remoteProjectPath: '/home/brian/dev/github/kontourai/station',
+      remoteHome: '/home/user',
+      remoteProjectPath: '/home/user/dev/github/kontourai/station',
       environmentId: '11111111-1111-4111-8111-111111111111',
       instanceId: 'brian-media-managed',
       sha: 'a'.repeat(40),

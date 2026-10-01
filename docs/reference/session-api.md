@@ -6,13 +6,18 @@ no UI in the loop. It is the API-parity contract for the composer: every action 
 takes in the chat dock has a documented, scriptable equivalent here
 (`docs/design/chat-composer.md` §4).
 
-There is one execution surface: `POST /api/orchestration/chat` accepts an
+For foreground chat, the canonical execution surface is
+`POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
 model, and workspace binding on the target Environment. A bound continuation
 uses `POST /api/orchestration/chat/:conversationId/continue`; it preserves the
 Environment, workspace and current Agent/engine binding. Supported per-turn model
 overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
+
+Independent [Task room agent requests](../design/task-room-agent-requests.md)
+use the existing delegation route with a separate durable request journal.
+They do not replace foreground chat or the Task's current-session association.
 
 ---
 
@@ -182,10 +187,11 @@ this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
 `ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
 ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
-call or `ExitPlanMode`), which mints no grant and selects the agent's
-allow-once option (#2933). So an agent's `allow_always` option for a plan
-exit, such as "yes, and auto-accept edits", is not reachable from a session
-answer, as with Claude's own plan exit (#2916).
+call or `ExitPlanMode`), which mints no Station session grant (#2933).
+The ACP response mapper prefers the agent's `allow_once` option. If the
+agent offers only `allow_always`, it falls back to that option; Station's
+one-call decision therefore does not guarantee one-call behavior in the
+agent. Claude's own plan exit uses its separate response mapping (#2916).
 
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox

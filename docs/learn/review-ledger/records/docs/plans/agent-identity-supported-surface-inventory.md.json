@@ -12,9 +12,9 @@
   "document": {"digest":"ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"b38e8fff2feac60a53ce342236e2063edfc6f79edefbd87d0e59cebec3f53fcc","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
+    {"path":"docs/architecture/module-map.md","digest":"a84436030c272a4578b7a6593497b78b10587c6b969f715bad413a5d884815f8","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
-    {"path":"docs/guides/agents.md","digest":"bde837b118f96215ce6db2ff4e81e9e53586cbe6ff66c1cd08f13299532add29","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
+    {"path":"docs/guides/agents.md","digest":"b28d533268d33758318539723a00a9259b904c777690a4c947c71e3be7a7f8c7","revision":"5148a05e2089e41546cfed52b0046ed64f938af5"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

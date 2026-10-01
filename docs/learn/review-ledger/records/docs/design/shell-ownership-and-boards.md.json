@@ -9,7 +9,7 @@
 
   "limits": "Personal route/service/view/sidebar lineage checked. Shared Boards, all promotion rules, Review placement, presence, plugin visibility, and cross-device persistence not comprehensively audited.",
 
-  "document": {"digest":"d1cb726c803bad2f5ccb50ad104de6c5906f96e03aa749cfd7ab22231d40850d","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+  "document": {"digest":"dcc2b9157d8a4fc2a8aec7a5fea6ec6618931bb2dfab1a403f5acf76daad24e5","revision":"335893e0b2f5e87d0ccd02115fd0cfa760b215c1"},
 
   "sources": [
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},

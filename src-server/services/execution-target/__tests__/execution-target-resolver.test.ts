@@ -386,10 +386,10 @@ describe('resolveExecutionTarget', () => {
       ['~/data', '/mnt/backup/data'],
       ['/home/user/work2', '/home/user/work'],
       ['/home/user/work', '/home/user/work2'],
-      ['~/../work', '/home/brian/work'],
-      ['~/./work', '/home/brian/work'],
-      ['~//work', '/home/brian/work'],
-      ['~/Work', '/home/brian/work'],
+      ['~/../work', '/home/user/work'],
+      ['~/./work', '/home/user/work'],
+      ['~//work', '/home/user/work'],
+      ['~/Work', '/home/user/work'],
     ])(
       'rejects %s against %s',
       async (workingDirectory, verifiedProjectPath) => {
@@ -400,7 +400,7 @@ describe('resolveExecutionTarget', () => {
               resolveEnvironmentAccess: async () => ({
                 ...access,
                 kind: 'ssh',
-                remoteHome: '/home/brian',
+                remoteHome: '/home/user',
                 verifiedProjectPath,
               }),
               getProject: async () => ({ workingDirectory }),
@@ -427,9 +427,9 @@ describe('resolveExecutionTarget', () => {
     });
 
     test.each([
-      ['~/work', '/home/brian/work'],
-      ['/home/brian/work', '/home/brian/work/'],
-      ['/home/brian//work', '/home/brian/work'],
+      ['~/work', '/home/user/work'],
+      ['/home/user/work', '/home/user/work/'],
+      ['/home/user//work', '/home/user/work'],
     ])(
       'accepts exact remote identity %s and %s',
       async (workingDirectory, verifiedProjectPath) => {
@@ -440,7 +440,7 @@ describe('resolveExecutionTarget', () => {
               resolveEnvironmentAccess: async () => ({
                 ...access,
                 kind: 'ssh',
-                remoteHome: '/home/brian',
+                remoteHome: '/home/user',
                 verifiedProjectPath,
               }),
               getProject: async () => ({ workingDirectory }),
@@ -458,7 +458,7 @@ describe('resolveExecutionTarget', () => {
             resolveEnvironmentAccess: async () => ({
               ...access,
               kind: 'ssh',
-              remoteHome: '/home/brian',
+              remoteHome: '/home/user',
               verifiedProjectPath: 'srv/work',
             }),
             getProject: async () => ({ workingDirectory: '/srv/work' }),

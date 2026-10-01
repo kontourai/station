@@ -71,7 +71,7 @@ function harness() {
 
 async function addHost(
   h: ReturnType<typeof harness>,
-  sshTarget = 'brian@mac-mini',
+  sshTarget = 'casey@mac-mini',
 ) {
   const response = await h.call('POST', '/device-hosts', 'operator', {
     label: 'Mac mini',
@@ -93,7 +93,7 @@ describe('SSH device host routes', () => {
       {
         hostId: host.hostId,
         label: 'Mac mini',
-        sshTarget: 'brian@mac-mini',
+        sshTarget: 'casey@mac-mini',
         hubEnabled: false,
         hub: { state: 'stopped' },
         install: { state: 'unknown' },
@@ -150,7 +150,7 @@ describe('SSH device host routes', () => {
     for (const sshTarget of [
       '-oProxyCommand=touch /tmp/pwned',
       'host -oProxyCommand=x',
-      'brian@-oProxyCommand=x',
+      'casey@-oProxyCommand=x',
       'host;id',
       '$(id)',
       'a@b@c',
@@ -172,7 +172,7 @@ describe('SSH device host routes', () => {
         })
       ).status,
     ).toBe(400);
-    expect(h.registry.view(host.hostId)?.sshTarget).toBe('brian@mac-mini');
+    expect(h.registry.view(host.hostId)?.sshTarget).toBe('casey@mac-mini');
     // Unknown keys, bad ids and bad JSON.
     expect(
       (

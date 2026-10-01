@@ -608,3 +608,9 @@ install Station's theme.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+The source-only additive `engine-accounts` entry provides authority-partitioned
+account, quota, sign-in and engine-activity hooks. See the
+[engine account query contract](../../docs/reference/sdk.md#engine-account-queries)
+and use a package release that contains these exports.
