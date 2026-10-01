@@ -5835,6 +5835,16 @@ export async function executeExecutionTargetMessage(
         requested,
       );
     },
+    retireSession: async (_access: EnvironmentAccess, sessionId: string) => {
+      await orchestrationService.dispatchWithReceipt(
+        { type: 'stopSession', threadId: sessionId },
+        dispatchContextForAuthority(
+          readAuthority,
+          input.clientOrigin,
+          input.principal,
+        ),
+      );
+    },
     prepareConversationHandoff: async (access: EnvironmentAccess, handoff) => {
       // The target was resolved by the foreground seam immediately before
       // this call, so configured-agent/engine readiness is proven before the

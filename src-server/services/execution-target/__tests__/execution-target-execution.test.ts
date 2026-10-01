@@ -254,6 +254,88 @@ describe('executeForegroundMessage', () => {
     expect(order[3]).toBe('turn');
   });
 
+  describe('retiring a never-used predecessor after a model change', () => {
+    function restartDependencies() {
+      const deps = dependencies();
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+        retirePredecessorSessionId: 'conversation:test',
+      }));
+      return deps;
+    }
+    const send = (deps: ReturnType<typeof dependencies>) =>
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'hello',
+        },
+        deps,
+      );
+
+    test('stops the predecessor only after the successor has started', async () => {
+      const deps = restartDependencies();
+      const order: string[] = [];
+      deps.startSession = vi.fn(async (_access, input) => {
+        order.push(`start:${input.threadId}`);
+        return undefined as never;
+      });
+      deps.retireSession = vi.fn(async (_access, sessionId) => {
+        order.push(`retire:${sessionId}`);
+      });
+      await send(deps);
+      expect(order).toEqual([
+        'start:conversation:test:successor',
+        'retire:conversation:test',
+      ]);
+    });
+
+    test('a failed successor start stops nothing', async () => {
+      const deps = restartDependencies();
+      deps.startSession = vi.fn(async () => {
+        throw new Error('engine would not start');
+      });
+      deps.retireSession = vi.fn(async () => undefined);
+      await expect(send(deps)).rejects.toThrow('engine would not start');
+      expect(deps.retireSession).not.toHaveBeenCalled();
+    });
+
+    test('a failed stop does not fail the send', async () => {
+      const deps = restartDependencies();
+      deps.retireSession = vi.fn(async () => {
+        throw new Error('stop timed out');
+      });
+      deps.warn = vi.fn();
+      await send(deps);
+      expect(deps.retireSession).toHaveBeenCalledOnce();
+      expect(deps.sendTurn).toHaveBeenCalledOnce();
+      expect(deps.warn).toHaveBeenCalledWith(
+        expect.stringContaining('stop timed out'),
+        expect.anything(),
+      );
+    });
+
+    test('a continuation that names no predecessor stops nothing', async () => {
+      const deps = restartDependencies();
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+      }));
+      deps.retireSession = vi.fn(async () => undefined);
+      await send(deps);
+      expect(deps.retireSession).not.toHaveBeenCalled();
+    });
+  });
+
   test('fences a claimed boundary when accepted-start settlement is indeterminate', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({

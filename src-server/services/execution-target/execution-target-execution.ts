@@ -373,7 +373,14 @@ export interface ExecutionTargetExecutionDependencies
     transcriptSeed?: string;
     /** Explicit one-shot context policy, never inferred from a restart. */
     contextBoundary?: ConversationContextBoundaryProjection;
+    /** A never-ran predecessor to stop once this start succeeds. */
+    retirePredecessorSessionId?: string;
   }>;
+  /** Best-effort teardown of a retired predecessor's engine process. */
+  retireSession?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+  ) => Promise<void>;
   claimConversationContextBoundaryColdStart?: (
     access: EnvironmentAccess,
     boundaryId: string,
@@ -957,6 +964,24 @@ export async function executeForegroundMessage(
         }
       }
       throw error;
+    }
+    if (continuation?.retirePredecessorSessionId) {
+      try {
+        await deps.retireSession?.(
+          resolved.access,
+          continuation.retirePredecessorSessionId,
+        );
+      } catch (error) {
+        // The successor is running; a predecessor that stays resident until
+        // the idle park is a cost, not a reason to fail the user's send.
+        const message = `Could not stop the never-used predecessor session: ${errorMessage(error)}`;
+        logger.warn(message, {
+          sessionId: continuation.retirePredecessorSessionId,
+        });
+        deps.warn?.(message, {
+          sessionId: continuation.retirePredecessorSessionId,
+        });
+      }
     }
   }
   const effectiveClientTurnId = requestedHandoff
