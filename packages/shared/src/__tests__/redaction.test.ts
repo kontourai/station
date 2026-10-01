@@ -115,19 +115,19 @@ describe('shared free-text and Error sanitization', () => {
 
   test('removes quoted Node ENOENT and module-load paths without touching delimiters', () => {
     const sanitized = sanitizeFreeText(
-      'ENOENT: no such file or directory, open \'/Users/brian/station/private/config.json\'; Cannot find module "C:\\Station Data\\private\\module.js"',
+      'ENOENT: no such file or directory, open \'/Users/me/station/private/config.json\'; Cannot find module "C:\\Station Data\\private\\module.js"',
     );
 
     expect(sanitized).toContain("open '[REDACTED_PATH]'");
     expect(sanitized).toContain('module "[REDACTED_PATH]"');
-    expect(sanitized).not.toContain('/Users/brian');
+    expect(sanitized).not.toContain('/Users/me');
     expect(sanitized).not.toContain('C:\\Station Data');
     expect(sanitized).not.toContain('private\\module.js');
   });
 
   test('removes unquoted V8 source locations with spaces without swallowing labels', () => {
     const sanitized = sanitizeFreeText(
-      'at loadProvider (/Users/brian/Station Data/private/provider.ts:42:7)\n' +
+      'at loadProvider (/Users/me/Station Data/private/provider.ts:42:7)\n' +
         'at executeEngine (C:\\Station Data\\private\\engine.ts:19:2)\n' +
         'at nextFrame (node:internal/process/task_queues:95:5)',
     );
@@ -137,7 +137,7 @@ describe('shared free-text and Error sanitization', () => {
     expect(sanitized).toContain(
       'at nextFrame (node:internal/process/task_queues:95:5)',
     );
-    expect(sanitized).not.toContain('/Users/brian/Station Data');
+    expect(sanitized).not.toContain('/Users/me/Station Data');
     expect(sanitized).not.toContain('C:\\Station Data\\private\\engine.ts');
   });
 
@@ -165,7 +165,7 @@ describe('shared free-text and Error sanitization', () => {
     const error = new Error('engine failed');
     error.stack = [
       'Error: engine failed',
-      '    at loadProvider (/Users/brian/Station Data/private/provider.ts:42:7)',
+      '    at loadProvider (/Users/me/Station Data/private/provider.ts:42:7)',
       '    at executeEngine (C:\\Station Data\\private\\engine.ts:19:2)',
     ].join('\n');
 
@@ -173,7 +173,7 @@ describe('shared free-text and Error sanitization', () => {
 
     expect(sanitized.stack).toContain('loadProvider');
     expect(sanitized.stack).toContain('executeEngine');
-    expect(sanitized.stack).not.toContain('/Users/brian');
+    expect(sanitized.stack).not.toContain('/Users/me');
     expect(sanitized.stack).not.toContain('C:\\Station Data');
     expect(sanitized.stack).toContain('[REDACTED_PATH]');
   });

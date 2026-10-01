@@ -86,7 +86,7 @@
 
     {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/ssh/__tests__/device-pairing-service.test.ts","digest":"56525fe51123dfcfe5751f5819d1e659a76ccbd450104cfa2131edaaaba2513e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/ssh/__tests__/device-pairing-service.test.ts","digest":"d9417fd3a48a060c1e476524cbeb821761835ad5ff0fd05f6613ba865c615208","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
 
     {"path":"src-server/services/ssh/__tests__/environment-security-service.test.ts","digest":"3acd02c84c52ece61e2c16a3c4564e0c7bd72b0aeedec1abca8b9ce582e9c8a2","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
