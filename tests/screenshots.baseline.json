@@ -77,13 +77,13 @@
       "name": "mobile-access-request-error-320",
       "width": 320,
       "height": 844,
-      "sha256": "6dca9aece5bfd8bc2fd359c16b24f24e1fcfcbf7613a7dc6a69c0d8fdaf54610"
+      "sha256": "a8e9282f4fb000ba7c5bb01ea3e17e6faf0f0d86f35df3eed8d4eb48a0122f7f"
     },
     {
       "name": "mobile-access-request-error-390",
       "width": 390,
       "height": 844,
-      "sha256": "6835dc1bbd7d6df2b159a07762a758d3f1fc89f83a2a9bc2a8d9fcaaa5a2d38e"
+      "sha256": "6d378925084df41702ba8e3daf39da64f7680532815528650f2513474d0ea29f"
     },
     {
       "name": "mobile-activity-compact",
@@ -137,13 +137,13 @@
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "ce68f61939f12fedf8b9a8a1507626e9fd64117227dc54c0a54ddb08100845e8"
+      "sha256": "23fd13aad7f8214e19e6d98d150aeae70a53f731ae4723d0a0c3e79b356c333b"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "338a5d03c5341676201875d3f63898924d97e9246a94d73b910a7463a331b238"
+      "sha256": "35edc200a1e3d704e3563509683294faf512d70e0e83d9219e15b81f30406d55"
     },
     {
       "name": "mobile-onboarding-setup",
@@ -155,7 +155,7 @@
       "name": "mobile-settings-overview",
       "width": 390,
       "height": 844,
-      "sha256": "bb068001972750a72acf42be91f4e64819bc72a89c519e1aed3cd7121c908520"
+      "sha256": "593c2b12fd071489cf01310adbe0df46c66ab8d1247b13e1353ddfb73c1616c8"
     },
     {
       "name": "motion-reduced-mobile-chat",
@@ -215,7 +215,7 @@
       "name": "overlay-connection-banner",
       "width": 390,
       "height": 844,
-      "sha256": "b5d690a9efb8de8295532353e959f85043b533d331e55a121c2444be29942adb"
+      "sha256": "86b637d067c6a5f2408f3a2c0a5e8891751f9de9edb7f7372c63f59a951e6efb"
     },
     {
       "name": "overlay-dock-project-bound",
@@ -311,13 +311,13 @@
       "name": "settings",
       "width": 1440,
       "height": 900,
-      "sha256": "abe82ffd77e17044b61e4c49eb35027d7a9ed396d390d943dc54b5f18f547f97"
+      "sha256": "6c7bda1afcce95daba168db2be6e5d1b3d339970e7abde6e53f6b98f7ce769dc"
     },
     {
       "name": "settings-info-tip",
       "width": 1440,
       "height": 900,
-      "sha256": "9ccee42dacc368637fdfaff4f370a2b011368af0aa2b38bb2d66c4760f398bd3"
+      "sha256": "38718fc8ab72956b39c37c31cdace10cf752d833f6d9e63fa2eb6792e3bf4aae"
     },
     {
       "name": "skills",

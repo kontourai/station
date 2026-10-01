@@ -60,7 +60,7 @@
 
     {"path":"src-server/services/notifications/web-push-service.ts","digest":"8029e96b806624cdbbb2a3d12bcbd285dee94b8e4cfbdd9ecc06a77138c10e05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"8b0f0788f8dd275d4d14344f6a8a51e535744fc859958b06ef11bbda29253faa","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
 
     {"path":"src-server/services/ssh/client-connection-presence.ts","digest":"b325fd2ef3e349d46d9dadec9631eef93cb6d895bd3a483cd823ca588b1d793d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
