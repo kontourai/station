@@ -46,7 +46,7 @@
 
     {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"57aa853ab758d299d83b7e783816f9930d9a191faef8122dbc19ee0a8934c817","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
-    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"7670e9f2992e4fb14650e5a93db1f6499358930f03772ab6ee7a006d7780a4cd","revision":"b21b81a4caef3a1563f591714b029ab79c7cc839"},
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"6370bd7230546da9cbfd128a220f038edf054018a02c48e5123f6748e6600779","revision":"51020660739f7f1d4345719eb2068fd5abe099bd"},
 
     {"path":"src-ui/src/components/chat/FileMentionAutocomplete.tsx","digest":"3f210b8a3c44c3e73efdba233f0763cebf8bfc1256bf97d0b76ac98a2e49be1d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

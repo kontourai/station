@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"dc8e1155b3021a6132143bc548f75384dde94c0549bdc452d6478810a9114c8b","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
+  "document": {"digest":"dc8e1155b3021a6132143bc548f75384dde94c0549bdc452d6478810a9114c8b","revision":"66848daadfd8c5cea2ee606d24fe162468cc25f9"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"14e8f416f2fdf1bb0ddf8ba6dcebd73b45e40231cc358473251ed405f094c89f","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"515d7831255027c9d1588283eba09df28fcce604039a75df5b2166ce8cef9c8d","revision":"51020660739f7f1d4345719eb2068fd5abe099bd"},
 
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
