@@ -26,13 +26,13 @@
 
     {"path":"docs/guides/workspace-packages.md","digest":"01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"docs/reference/api.md","digest":"039de106ab5828de0a4002a739e6dbea7d0116445f0e4c2e244ead82f428bf8a","revision":"c97d3d392e3093961d41f070e96bcb941ac6ab89"},
+    {"path":"docs/reference/api.md","digest":"0003eeae9b82f6dbda9fbeca597895b20da8d67cdccc5a356bffc99b1697b149","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"docs/reference/cli.md","digest":"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee","revision":"4a1fc2197028ded07d0e389e98a30042ab7cadb5"},
 
-    {"path":"docs/reference/contracts.md","digest":"1e06c4d2ab884910199b6a0926f4d34806eff1ec180b778593c3c07cc559ad55","revision":"a320658a37b9537b814c0acb8460e7bf1b6018ea"},
+    {"path":"docs/reference/contracts.md","digest":"fa9a365a583cd2682034df73ce8be3b8d05f15333c688df3ad98b2a56011a47a","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
-    {"path":"docs/reference/sdk.md","digest":"c6566404f60690eec25c5c96e689fd94f3f58d811cd54a7930e25d75278fe0ce","revision":"2280a4a98729ba5c06887b2a4a6e738735052c24"},
+    {"path":"docs/reference/sdk.md","digest":"dff5cf11c39a099675900d07e8486c23bba4ec15a428217aa3cb150d4bcc29d2","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"e4665bfa103bf73250bf5d06776ed48fde193b57adfdfec91634568024745050","revision":"6c81ee1abdc1d8bbb91eb0c1565fa280d232c65e"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"}
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"}
   ],
 
   "checks": [

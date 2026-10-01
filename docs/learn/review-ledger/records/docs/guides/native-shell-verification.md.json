@@ -80,9 +80,9 @@
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"914c5856fdec89f7f8afaa9939539f9ff6f84b7e83153b04ca2d76cbe366c839","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"12da49500aff281dfb3a5fe539b2686ba1bfce2a19885861f469066e55af63be","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"0377eebaf2a501caf8c94dada34823bbe241675632276f3210c51cb04270e94a","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"535aef748882a065460f1eb54dae0e9375a74c5c30d219052856ea39e9551a9b","revision":"016c2cf3d95dffefc32265e37fca1e745b320c0c"},
 
     {"path":"tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts","digest":"cb255bdf8a7a0d869688c4d1bd3d2fddab8be6e7005279897e2fd4cef3db5efe","revision":"7923470413a32b1a4d4223a6390f0708fc7beaee"},
 
@@ -118,7 +118,7 @@
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 
-    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"bb89924c9be15b4837d21a1a23204455d8d78497d5ca0704a4853dac8c0144b5","revision":"45f47546db95c798a0333e8e164c8ddc4378daf4"},
+    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"a397168af1a45efe2e46ee963b3222397f71ef6db2974da4524a8c268c25ffcd","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"8b340b4d12eb59e585b99d9b834e3a3e1d97b9aaca35e063b29374f692694a9b","revision":"d5eb7744278abf8bdc6d62b416e857c6321919a2"}
   ],

@@ -12,7 +12,7 @@
   "document": {"digest":"8b340b4d12eb59e585b99d9b834e3a3e1d97b9aaca35e063b29374f692694a9b","revision":"d5eb7744278abf8bdc6d62b416e857c6321919a2"},
 
   "sources": [
-    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"bb89924c9be15b4837d21a1a23204455d8d78497d5ca0704a4853dac8c0144b5","revision":"45f47546db95c798a0333e8e164c8ddc4378daf4"},
+    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"a397168af1a45efe2e46ee963b3222397f71ef6db2974da4524a8c268c25ffcd","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
 
     {"path":"scripts/native-fresh-relay-fixture.ts","digest":"18675ae9809376e059e1bf44499e0a2bad32eccfa45178af8e216594dc3fd77b","revision":"fc1298f7bac4dd9f42786551ea5f4761f631ac56"},
 

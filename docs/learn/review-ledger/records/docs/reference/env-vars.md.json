@@ -50,9 +50,9 @@
 
     {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

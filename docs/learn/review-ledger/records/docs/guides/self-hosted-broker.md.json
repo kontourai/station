@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"531ad6208755dc723e632d2405099689ff32b94fc99beb2e5fcd918957d8f7ef","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"914c5856fdec89f7f8afaa9939539f9ff6f84b7e83153b04ca2d76cbe366c839","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"12da49500aff281dfb3a5fe539b2686ba1bfce2a19885861f469066e55af63be","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
 
     {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

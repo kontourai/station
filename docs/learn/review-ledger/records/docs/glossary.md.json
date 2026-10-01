@@ -12,11 +12,11 @@
   "document": {"digest":"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957","revision":"801b6662aff67a25eff4927c1c50e92f4c9b4e53"},
+    {"path":"docs/architecture/module-map.md","digest":"86bb5976a82027a8df17c98ec91b9fafdd3672922152bf7459939708d0177647","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"docs/reference/connect.md","digest":"ad846f392757bb43cd6e8a6ca3dc3f5b08cf0734908ad3b9fdc0775615fea04e","revision":"7a327814d48d76faaca497206b6529d781d111dd"},
 
-    {"path":"docs/reference/contracts.md","digest":"1e06c4d2ab884910199b6a0926f4d34806eff1ec180b778593c3c07cc559ad55","revision":"a320658a37b9537b814c0acb8460e7bf1b6018ea"},
+    {"path":"docs/reference/contracts.md","digest":"fa9a365a583cd2682034df73ce8be3b8d05f15333c688df3ad98b2a56011a47a","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

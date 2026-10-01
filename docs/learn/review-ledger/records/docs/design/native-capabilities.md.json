@@ -82,7 +82,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"914c5856fdec89f7f8afaa9939539f9ff6f84b7e83153b04ca2d76cbe366c839","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"12da49500aff281dfb3a5fe539b2686ba1bfce2a19885861f469066e55af63be","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"}
   ],

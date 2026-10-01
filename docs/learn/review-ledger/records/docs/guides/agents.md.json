@@ -88,7 +88,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-startup.ts","digest":"80cf34735ed30ab3bf64a9be2f23b724189266d74e5eb5073c3ebf60af1a0a4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -162,7 +162,7 @@
 
     {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"f5df4b3706df44a90bf6babbb73952515bb1d84fb313aab97f13de7952b42b56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","digest":"c1350a4c05e6b64cfe609a2cb3ff6103269a17769743e59e38837d4e395796aa","revision":"76d584a1463b8b8f45e244e8eb479b0e01fc289e"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","digest":"fadead7985fcc120ad3b06a900e85ba4e9bc0f9ae0f95bbb06e8a7dd2baa4138","revision":"2c7f2728b1fd08511fb356c55a4ee211919e6304"},
 
     {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"e98d62efbf392040c5a52522440698e6d285fd23d9563ee1c1ce4106c81f18f0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
