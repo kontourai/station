@@ -53,7 +53,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         target.searchParams.get('surface') === 'chat' ||
         params?.surface === 'chat';
       const revealPage =
-        target.pathname !== navigationStore.getSnapshot().pathname &&
         !explicitChat &&
         !target.searchParams.has('maximize') &&
         params?.maximize === undefined;

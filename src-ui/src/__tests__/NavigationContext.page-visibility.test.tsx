@@ -32,18 +32,22 @@ beforeEach(() => {
   screenSize.mobile = false;
   navigationStore.navigate('/', { dock: 'open', maximize: 'true' });
 });
-test('opening a page on a phone closes the full-height chat while remembering its size', () => {
-  screenSize.mobile = true;
-  render(
-    <NavigationProvider>
-      <Controls />
-    </NavigationProvider>,
-  );
-  fireEvent.click(screen.getByText('Settings'));
-  expect(window.location.pathname).toBe('/settings');
-  expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
-  expect(navigationStore.lastDockMaximized).toBe(true);
-});
+test.each(['/', '/settings'])(
+  'opening a page from %s on a phone closes the full-height chat while remembering its size',
+  (origin) => {
+    screenSize.mobile = true;
+    navigationStore.navigate(origin, { dock: 'open', maximize: 'true' });
+    render(
+      <NavigationProvider>
+        <Controls />
+      </NavigationProvider>,
+    );
+    fireEvent.click(screen.getByText('Settings'));
+    expect(window.location.pathname).toBe('/settings');
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+    expect(navigationStore.lastDockMaximized).toBe(true);
+  },
+);
 afterEach(() => {
   navigationStore.navigate('/', { dock: null, maximize: null });
 });

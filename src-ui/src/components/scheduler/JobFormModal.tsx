@@ -192,8 +192,10 @@ export function JobFormModal({
   // answered, and never after the person has chosen: an auto-correction that
   // overrides a deliberate pick is worse than a bad default.
   const agentPickedRef = useRef(false);
+  const canChooseDefaultAgent =
+    !isEdit && !init.agent && !agentPickedRef.current;
   useEffect(() => {
-    if (isEdit || init.agent || agentPickedRef.current || !agentsLoaded) return;
+    if (!canChooseDefaultAgent || !agentsLoaded) return;
     const runnableDefault = agentOptions.defaultSlug;
     if (!runnableDefault) return;
     setForm((current) =>
@@ -201,7 +203,7 @@ export function JobFormModal({
         ? current
         : { ...current, agent: runnableDefault },
     );
-  }, [agents, agentOptions.defaultSlug, agentsLoaded, init.agent, isEdit]);
+  }, [agents, agentOptions.defaultSlug, agentsLoaded, canChooseDefaultAgent]);
 
   const jobAgentRunnability = schedulerAgentRunnability(agents, form.agent);
   const monitorAgentRunnability = schedulerAgentRunnability(
@@ -225,7 +227,7 @@ export function JobFormModal({
 
   const repairCandidate =
     agentOptions.eligible.find((agent) => agent.slug === form.agent) ??
-    agentOptions.eligible[0];
+    (canChooseDefaultAgent ? agentOptions.eligible[0] : undefined);
   const repairRoute = repairCandidate
     ? agentFixRoute(repairCandidate)
     : undefined;
@@ -235,22 +237,23 @@ export function JobFormModal({
       : repairRoute === 'edit'
         ? `/agents/${encodeURIComponent(repairCandidate.slug)}`
         : undefined
-    : '/agents/new';
+    : needsAgentSetup
+      ? '/agents/new'
+      : undefined;
   useEffect(() => {
     onReadinessChange?.(
       agentRunnabilityKnown &&
         !checkingSetup &&
         (namedAgentRunnability.runnable ||
           (form.monitorType === 'none' &&
-            !agentPickedRef.current &&
-            !init.agent &&
+            canChooseDefaultAgent &&
             Boolean(agentOptions.defaultSlug))),
     );
   }, [
     agentRunnabilityKnown,
     checkingSetup,
     namedAgentRunnability.runnable,
-    init.agent,
+    canChooseDefaultAgent,
     agentOptions.defaultSlug,
     form.monitorType,
     onReadinessChange,

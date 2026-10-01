@@ -1,5 +1,9 @@
 /** @vitest-environment jsdom */
 
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -92,6 +96,48 @@ describe('JobFormModal schedule compatibility', () => {
     agentCatalog.retry = () => {};
     agentCatalog.useRealPicker = false;
   });
+
+  test.each(['missing', 'external'])(
+    'does not offer to repair another agent when an edited job names %s',
+    (slug) => {
+      agentCatalog.agents = [
+        {
+          slug: agentId('station'),
+          name: 'Station',
+          available: false,
+          unavailableReason: 'Connect a model.',
+          unavailableFix: { kind: 'model-connection' },
+        },
+        {
+          slug: agentId('external'),
+          name: 'External',
+          available: true,
+          execution: { agentConnectionId: engineConnectionId('codex') },
+        },
+      ];
+      render(
+        <JobFormModal
+          job={{
+            name: 'existing-check',
+            provider: 'built-in',
+            schedule: { kind: 'every', everyMs: 60_000 },
+            prompt: 'Check my service',
+            agent: slug,
+            enabled: true,
+          }}
+          onClose={vi.fn()}
+          onSetupAgent={vi.fn()}
+        />,
+      );
+      expect(screen.getByLabelText('Agent')).toHaveProperty('value', slug);
+      expect(
+        screen.queryByRole('button', { name: 'Repair this agent’s setup' }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Set up a scheduled-job agent' }),
+      ).toBeNull();
+    },
+  );
 
   test('opens an exact-interval job without converting its schedule to text', () => {
     const job = {
