@@ -28,7 +28,7 @@
 
     {"path":"src-server/runtime/frameworks/conduit-framework-adapter.ts","digest":"0610d24cef08bfa87d0ddec5c833d359940bed07045ccbceea5f30725f4cf330","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"ef04cefe6b81a84570095ae3639ed663e53222f345cbf343b54d2e642925148f","revision":"80dd5a1440a3e2855aac04c988481e258e0b04b4"},
 
     {"path":"src-server/runtime/frameworks/strands-agent-hooks.ts","digest":"491f93e51fb022603ae2b45af1a350c9f758c3dc5c45823c8ff53e10269009df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
