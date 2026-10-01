@@ -706,6 +706,18 @@ describe.skipIf(process.platform === 'win32')(
           ),
       ],
       [
+        "a loose object in a real fan-out directory linked to another repository's",
+        (other: string) => {
+          const object = plain(other, ['rev-parse', 'HEAD']);
+          const path = join('objects', object.slice(0, 2), object.slice(2));
+          mkdirSync(join(project, '.git', path, '..'), { recursive: true });
+          symlinkSync(join(other, '.git', path), join(project, '.git', path));
+          // Live: plain git in the Project now reads the other repository's
+          // commit through the link.
+          expect(plain(project, ['cat-file', '-t', object])).toBe('commit');
+        },
+      ],
+      [
         'a legacy symbolic-link HEAD (core.preferSymlinkRefs) into its own refs',
         () => swapForLink(join(project, '.git', 'HEAD'), 'refs/heads/main'),
       ],
