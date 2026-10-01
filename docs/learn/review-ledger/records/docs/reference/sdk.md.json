@@ -460,7 +460,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"14089e12abd8361ec48f5afdee827d5d5daba2a9116bc4c410fef8c8b3a90c29","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"ba834cfbb80f42b1742554455e2159f790f0149dba41039d68c6c91a1b5ff478","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

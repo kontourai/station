@@ -350,7 +350,7 @@
 
     {"path":"src-ui/src/contexts/ModelCapabilitiesContext.tsx","digest":"0bf421cd476c032a2743dc14598920c61b269433bf5e33b1d72343e3577fcdd1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/useToolApproval.ts","digest":"c9199dea9d4b69084fc11e64ac2036673b2c4274d269fe3575d4521f69ac4a13","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/useToolApproval.ts","digest":"11be4475e5331588d0a2e0a41998634574a695915b88d6fad92d4aaa65f0bd17","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
