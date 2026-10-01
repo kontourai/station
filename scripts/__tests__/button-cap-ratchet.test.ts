@@ -195,6 +195,62 @@ describe('button-cap scan', () => {
     expect(count(`${TWO}{canExport && <Button>Export</Button>}`)).toBe(3);
   });
 
+  test('&& guards the text proves exclusive are not summed', () => {
+    // x against !x.
+    expect(
+      count(
+        `${TWO}{busy && <Button>Stop</Button>}{!busy && <Button>Start</Button>}`,
+      ),
+    ).toBe(3);
+    expect(
+      count(
+        `<Button>Close</Button>{busy && <Button>Stop</Button>}{!busy && <Button>Start</Button>}`,
+      ),
+    ).toBe(0);
+    // One expression against two literals, with other conjuncts alongside.
+    expect(
+      count(`
+        {kind === 'reserve' && <Button>Reserve</Button>}
+        {kind === 'stop' && !done && <Button>Stop session</Button>}
+        {canCancel && <Button>Cancel</Button>}`),
+    ).toBe(0);
+    // === against !== on the same literal.
+    expect(
+      count(`
+        {mode === 'sign-in' && <Button>Create account</Button>}
+        {mode !== 'sign-in' && <Button>Back to sign in</Button>}
+        {mode === 'sign-in' && <Button>Forgot password</Button>}`),
+    ).toBe(0);
+  });
+
+  test('guards that are merely different are assumed compatible', () => {
+    expect(
+      count(`
+        {canSave && <Button>Save</Button>}
+        {canExport && <Button>Export</Button>}
+        {canShare && <Button>Share</Button>}`),
+    ).toBe(3);
+    expect(
+      count(`
+        {kind === 'a' && <Button>One</Button>}
+        {other === 'b' && <Button>Two</Button>}
+        {kind !== 'c' && <Button>Three</Button>}`),
+    ).toBe(3);
+  });
+
+  test('a title-and-description tile is a card, not a labelled action', () => {
+    expect(
+      count(`
+        <button><strong>Run on Station</strong><small>Uses a model you choose.</small></button>
+        <button><strong>Run elsewhere</strong><small>Another engine.</small></button>
+        <button><strong>Copy an agent</strong><small>Start from yours.</small></button>`),
+    ).toBe(0);
+    // One text block beside a glyph is still an ordinary labelled button.
+    expect(
+      count(`${TWO}<button><PlusGlyph /><span>Add another</span></button>`),
+    ).toBe(3);
+  });
+
   test('a button inside a single-child wrapper is still in the row', () => {
     expect(
       count(`${TWO}<Tooltip label="x"><Button>Export</Button></Tooltip>`),
@@ -309,6 +365,17 @@ describe('button-cap baseline comparison', () => {
       { row: 'other', labelledActions: 3 },
     ]);
     expect(groupBaselineEntries(stored)).toEqual({ k: [4, 3], other: [3] });
+  });
+
+  test('a recorded reason survives a rewrite of the baseline', () => {
+    const previous = [
+      { row: 'k', labelledActions: 4, reason: 'stacked list, not a row' },
+      { row: 'other', labelledActions: 3 },
+    ];
+    expect(flattenBaselineRows({ k: [3], other: [3] }, previous)).toEqual([
+      { row: 'k', labelledActions: 3, reason: 'stacked list, not a row' },
+      { row: 'other', labelledActions: 3 },
+    ]);
   });
 
   test('lowering never raises an entry and never adds one', () => {

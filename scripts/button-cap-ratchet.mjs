@@ -24,7 +24,13 @@
 //     into the overflow as width shrinks" is a runtime claim; this gate says
 //     nothing about it.
 //   - Mutually exclusive branches count as the larger arm, not the sum:
-//     `{editing ? <Save/> : <Edit/>}` is one action. `cond && <X/>` counts X.
+//     `{editing ? <Save/> : <Edit/>}` is one action. `cond && <X/>` counts X,
+//     except that `&&` guards the TEXT proves exclusive are not summed:
+//     `x && <A/>` beside `!x && <B/>`, or `kind === 'a' && <A/>` beside
+//     `kind === 'b' && <B/>`. Exclusivity that needs reasoning about values
+//     (two different booleans that never coincide) is not seen and overcounts.
+//   - A button holding several text blocks (title over description) is a
+//     card, not a labelled action.
 //   - A control that picks a value rather than performing an action — a tab,
 //     a menu item, an option, a pressed/selected/checked toggle — is a choice,
 //     not an action, and is not counted (CHOICE_ROLES, CHOICE_STATE_ATTRS).
@@ -264,7 +270,8 @@ function jsxShowsText(node) {
 /**
  * `labelled` — shows text; `icon` — shows no text and carries an accessible
  * name; `choice` — a tab/menu item/toggle, not an action; `menu-trigger` —
- * opens a menu (`aria-haspopup`); `undefined` — not an action element at all.
+ * opens a menu (`aria-haspopup`); `card` — a title-and-description tile;
+ * `undefined` — not an action element at all.
  *
  * An icon-only button WITHOUT an accessible name earns no exemption and is
  * counted as labelled: the allowance is for a named icon, not for any button
@@ -282,6 +289,14 @@ export function classifyAction(node) {
   // not, it is the remedy and never counts against the row.
   if (findAttribute(node, 'aria-haspopup')) return 'menu-trigger';
   const children = ts.isJsxElement(node) ? node.children : [];
+  // A button built from several text blocks — a title over a description —
+  // is a card someone picks, not a labelled action in a row.
+  const textBlocks = children.filter(
+    (child) =>
+      (ts.isJsxElement(child) || ts.isJsxFragment(child)) &&
+      jsxShowsText(child),
+  );
+  if (textBlocks.length > 1) return 'card';
   if (childrenShowText(children)) return 'labelled';
   const named =
     hasSpread(node) ||
@@ -307,14 +322,86 @@ function meaningfulChildren(node) {
 // triggers and self-closing elements neither count nor break.
 const BREAK = Symbol('break');
 
+/** `a && b && <X/>` guards X with `a` and `b`, compared as normalised text. */
+function conjunctsOf(expression) {
+  const node = unwrap(expression);
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+  ) {
+    return [...conjunctsOf(node.left), ...conjunctsOf(node.right)];
+  }
+  return [node.getText().replaceAll(/\s+/g, ' ')];
+}
+
+const COMPARES_LITERAL_PATTERN =
+  /^(.+?) ?([!=]==) ?('[^']*'|"[^"]*"|-?\d+(?:\.\d+)?|true|false|null)$/;
+
+function negationOf(guard) {
+  return guard.startsWith('!') ? guard.slice(1) : `!${guard}`;
+}
+
+/**
+ * Two guards that cannot both hold: `x` against `!x`, one expression compared
+ * with two different literals (`kind === 'a'` / `kind === 'b'`), or with the
+ * same literal both ways (`mode === 'a'` / `mode !== 'a'`).
+ * Only what is provable from the text; anything else is assumed compatible,
+ * which overcounts rather than hides a row.
+ */
+function guardsExclude(first, second) {
+  if (first === negationOf(second) || `!(${first})` === second) return true;
+  if (`!(${second})` === first) return true;
+  const left = COMPARES_LITERAL_PATTERN.exec(first);
+  const right = COMPARES_LITERAL_PATTERN.exec(second);
+  if (!left || !right || left[1] !== right[1]) return false;
+  const sameLiteral = left[3] === right[3];
+  // `=== 'a'` with `=== 'b'`, or `=== 'a'` with `!== 'a'`.
+  if (left[2] === '===' && right[2] === '===') return !sameLiteral;
+  return left[2] !== right[2] && sameLiteral;
+}
+
+function tokensExclude(first, second) {
+  return first.guards.some((guard) =>
+    second.guards.some((other) => guardsExclude(guard, other)),
+  );
+}
+
+/** The largest set of actions in `run` that can all be on screen at once. */
+function largestCompatible(run) {
+  if (run.length > 12) return run; // never seen; do not search 2^n for it
+  let best = [];
+  const extend = (index, chosen) => {
+    if (chosen.length + (run.length - index) <= best.length) return;
+    if (index === run.length) {
+      best = chosen;
+      return;
+    }
+    const candidate = run[index];
+    if (!chosen.some((token) => tokensExclude(token, candidate))) {
+      extend(index + 1, [...chosen, candidate]);
+    }
+    extend(index + 1, chosen);
+  };
+  extend(0, []);
+  return best;
+}
+
 function longestRun(tokens) {
   let best = [];
   let run = [];
+  const settle = () => {
+    const visible = largestCompatible(run);
+    if (visible.length > best.length) best = visible;
+  };
   for (const token of tokens) {
-    if (token === BREAK) run = [];
-    else run.push(token);
-    if (run.length > best.length) best = run;
+    if (token === BREAK) {
+      settle();
+      run = [];
+    } else {
+      run.push(token);
+    }
   }
+  settle();
   return best;
 }
 
@@ -323,14 +410,14 @@ function labelOf(node) {
   return text.replaceAll(/\s+/g, ' ').trim().slice(0, 40);
 }
 
-function tokensInExpression(expression) {
+function tokensInExpression(expression, guards) {
   const node = unwrap(expression);
   if (!node) return [];
-  if (isJsxNode(node)) return tokensInChild(node);
+  if (isJsxNode(node)) return tokensInChild(node, guards);
   if (ts.isConditionalExpression(node)) {
     // Mutually exclusive arms: the arm with the longer run stands for both.
-    const whenTrue = tokensInExpression(node.whenTrue);
-    const whenFalse = tokensInExpression(node.whenFalse);
+    const whenTrue = tokensInExpression(node.whenTrue, guards);
+    const whenFalse = tokensInExpression(node.whenFalse, guards);
     return longestRun(whenFalse).length > longestRun(whenTrue).length
       ? whenFalse
       : whenTrue;
@@ -338,14 +425,17 @@ function tokensInExpression(expression) {
   if (ts.isBinaryExpression(node)) {
     const operator = node.operatorToken.kind;
     if (operator === ts.SyntaxKind.AmpersandAmpersandToken) {
-      return tokensInExpression(node.right);
+      return tokensInExpression(node.right, [
+        ...guards,
+        ...conjunctsOf(node.left),
+      ]);
     }
     if (
       operator === ts.SyntaxKind.BarBarToken ||
       operator === ts.SyntaxKind.QuestionQuestionToken
     ) {
-      const left = tokensInExpression(node.left);
-      const right = tokensInExpression(node.right);
+      const left = tokensInExpression(node.left, guards);
+      const right = tokensInExpression(node.right, guards);
       return longestRun(right).length > longestRun(left).length ? right : left;
     }
   }
@@ -353,21 +443,24 @@ function tokensInExpression(expression) {
   return [];
 }
 
-function tokensInChild(child) {
+function tokensInChild(child, guards = []) {
   if (ts.isJsxText(child)) return [];
   if (ts.isJsxExpression(child)) {
-    return child.expression ? tokensInExpression(child.expression) : [];
+    return child.expression ? tokensInExpression(child.expression, guards) : [];
   }
   if (ts.isJsxFragment(child)) {
-    return child.children.flatMap((inner) => tokensInChild(inner));
+    return child.children.flatMap((inner) => tokensInChild(inner, guards));
   }
   const kind = classifyAction(child);
   if (kind !== undefined) {
     if (kind !== 'labelled') return [];
     return [
-      ts.isJsxElement(child)
-        ? child.children.map(labelOf).join(' ').trim() || '(unnamed icon)'
-        : '(unnamed icon)',
+      {
+        guards,
+        label: ts.isJsxElement(child)
+          ? child.children.map(labelOf).join(' ').trim() || '(unnamed icon)'
+          : '(unnamed icon)',
+      },
     ];
   }
   // A wrapper around exactly one button (`<Tooltip><Button/></Tooltip>`) is
@@ -382,7 +475,7 @@ function tokensInChild(child) {
       const innerIsWrapper =
         ts.isJsxElement(inner[0]) && meaningfulChildren(inner[0]).length === 1;
       if (ACTION_TAGS.has(tagNameOf(inner[0])) || innerIsWrapper) {
-        return tokensInChild(inner[0]);
+        return tokensInChild(inner[0], guards);
       }
     }
   }
@@ -496,7 +589,7 @@ export function scanSource(file, content) {
     ) {
       const labels = longestRun(
         node.children.flatMap((child) => tokensInChild(child)),
-      );
+      ).map((token) => token.label);
       const count = labels.length;
       if (count > LABELLED_ACTION_CAP) {
         const component = enclosingComponentName(node);
@@ -590,10 +683,15 @@ export function loweredBaseline(rows, baselineRows) {
 }
 
 /**
- * The baseline file stores one `{ row, labelledActions }` object per recorded
- * row — rows sharing an identity are simply repeated — so the file is plain
- * objects and numbers that `JSON.stringify` and the formatter print the same
- * way. These two convert to and from the grouped shape the comparison uses.
+ * The baseline file stores one `{ row, labelledActions, reason? }` object per
+ * recorded row — rows sharing an identity are simply repeated — so the file is
+ * plain objects and numbers that `JSON.stringify` and the formatter print the
+ * same way. These two convert to and from the grouped shape the comparison
+ * uses.
+ *
+ * `reason` is for a row that is recorded because the scan is WRONG about it
+ * (a stacked list it reads as a row), as opposed to debt waiting to be folded.
+ * It is kept per identity across `--record`.
  */
 export function groupBaselineEntries(entries) {
   return groupRows(
@@ -601,9 +699,18 @@ export function groupBaselineEntries(entries) {
   );
 }
 
-export function flattenBaselineRows(grouped) {
+export function flattenBaselineRows(grouped, previousEntries = []) {
+  const reasons = new Map(
+    previousEntries
+      .filter((entry) => entry.reason)
+      .map((entry) => [entry.row, entry.reason]),
+  );
   return Object.entries(grouped).flatMap(([row, counts]) =>
-    counts.map((labelledActions) => ({ row, labelledActions })),
+    counts.map((labelledActions) => ({
+      row,
+      labelledActions,
+      ...(reasons.has(row) ? { reason: reasons.get(row) } : {}),
+    })),
   );
 }
 
@@ -718,7 +825,7 @@ function main() {
     const lowered = loweredBaseline(rows, baselineRows);
     writeFileSync(
       baselinePath,
-      `${JSON.stringify({ ...baseline, rows: flattenBaselineRows(lowered) }, null, 2)}\n`,
+      `${JSON.stringify({ ...baseline, rows: flattenBaselineRows(lowered, baseline.rows ?? []) }, null, 2)}\n`,
     );
     console.log(
       `Recorded ${Object.keys(lowered).length} baseline row identity(ies) in ${baselinePath}.`,

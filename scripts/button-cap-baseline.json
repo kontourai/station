@@ -1,24 +1,17 @@
 {
-  "reason": "Rows that already showed more than two labelled actions when #3045 introduced the cap. Each is debt to fold into an overflow menu, not an approved exception. Keyed by file :: component :: element; values are labelled-action counts, descending. Lower with: node scripts/button-cap-ratchet.mjs --record",
+  "description": "Rows that showed more than two labelled actions when #3045 introduced the cap, keyed by file :: component :: element (never a line). An entry without a reason is debt: fold its extra actions into ActionRow's overflow menu. An entry with a reason is one the scan misreads. Lower with: node scripts/button-cap-ratchet.mjs --record",
   "rows": [
     {
       "row": "src-ui/src/components/GuidedConnect.tsx :: GuidedConnect :: div.guided-connect__alternatives",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/components/acp-connections/ACPConnectionCard.tsx :: ACPConnectionCard :: div.acp-connection-card__actions",
-      "labelledActions": 4
+      "labelledActions": 3,
+      "reason": "Not a row: each .guided-connect__action is width: 100%, so these are three stacked ways to connect on first run, read top to bottom."
     },
     {
       "row": "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx :: ACPConnectionSetupCompletionActions :: <>",
-      "labelledActions": 4
+      "labelledActions": 3
     },
     {
       "row": "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx :: ACPConnectionSetupEntryActions :: <>",
-      "labelledActions": 5
-    },
-    {
-      "row": "src-ui/src/components/chat-dock/ConversationContextResetDialog.tsx :: ConversationContextResetDialog :: div.responsive-dialog__body",
       "labelledActions": 3
     },
     {
@@ -30,20 +23,8 @@
       "labelledActions": 3
     },
     {
-      "row": "src-ui/src/components/chat/ChatSettingsPanel.tsx :: ChatSettingsPanel :: div.chat-settings-modal__control",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/components/chat/ConversationTimeline.tsx :: ConversationTimeline :: div.conversation-timeline__actions",
-      "labelledActions": 4
-    },
-    {
       "row": "src-ui/src/components/chat/OutboundQueuedMessages.tsx :: OutboundQueuedMessages :: div.queued-message",
       "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/components/chat/ReplayTransport.tsx :: ReplayTransport :: div.replay-transport__bar",
-      "labelledActions": 4
     },
     {
       "row": "src-ui/src/components/chat/ToolCallDisplay.tsx :: ToolApprovalButtons :: <>",
@@ -55,10 +36,6 @@
     },
     {
       "row": "src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx :: ReviewOwner :: ResponsiveSurfaceActions.pull-request-review__actions",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/components/flow/WorkflowPlanPanel.tsx :: WorkflowPlanPanel :: div.workflow-plan-panel__actions",
       "labelledActions": 3
     },
     {
@@ -79,22 +56,10 @@
     },
     {
       "row": "src-ui/src/components/session-detail/DelegatedTaskCoordinator.tsx :: DelegatedTaskCoordinator :: div.sessions-coordinator__actions",
-      "labelledActions": 4
+      "labelledActions": 3
     },
     {
       "row": "src-ui/src/components/usage-stats/UsageRollupPanel.tsx :: UsageRollupPanel :: div.usage-rollup__footer",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/views/account/AccountEntryView.tsx :: AccountEntryView :: div.account-entry__links",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/views/agent-editor/AgentEditorStateViews.tsx :: AgentEditorStartingPoints :: div.template-grid",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/views/connections-hub/BrowserRelayEnrollmentDialog.tsx :: BrowserRelayEnrollmentDialog :: <>",
       "labelledActions": 3
     },
     {
@@ -103,10 +68,6 @@
     },
     {
       "row": "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx :: BrowserRelayRoutes :: PageRow.connections-computers__row",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx :: RelayRouteKeyApproval :: section.relay-route-key-approval__surface",
       "labelledActions": 3
     },
     {
@@ -138,10 +99,6 @@
       "labelledActions": 3
     },
     {
-      "row": "src-ui/src/views/settings/LocalAccountsSection.tsx :: AccountControls :: ResponsiveSurfaceActions.local-accounts__actions",
-      "labelledActions": 3
-    },
-    {
       "row": "src-ui/src/workspace-panes/FilePreviewPane.tsx :: FilePreviewPane :: div",
       "labelledActions": 3
     },
@@ -151,10 +108,6 @@
     },
     {
       "row": "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx :: TaskRoomEditorPane :: section.task-room-editor",
-      "labelledActions": 3
-    },
-    {
-      "row": "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx :: WorkspacePaneAvailabilityCard :: div.workspace-pane-availability-list__actions",
       "labelledActions": 3
     },
     {
