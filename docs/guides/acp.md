@@ -290,7 +290,7 @@ When the runtime invokes a tool, the adapter translates the ACP `tool_call` sess
 
 ### Tool Approval (Runtime → User)
 
-When the runtime needs permission before running a tool, it calls back via `requestPermission`. The adapter emits a `request.opened` canonical event (`requestType: 'permission'`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the ACP `allow_once`/`reject_once` outcome.
+When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the ACP `allow_once`/`reject_once` outcome.
 
 ### File System and Terminal Tools (Station → Runtime)
 
