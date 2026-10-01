@@ -17,7 +17,8 @@
 > [#2451](https://github.com/kontourai/station/pull/2451); native client delivery,
 > remote/physical proof and production enablement remain separate.
 > [#1963](https://github.com/kontourai/station/issues/1963) owns the full
-> implementation. No internet-facing deployment is delivered by this decision.
+> implementation. This decision did not itself deliver an internet-facing deployment.
+> The later operator-approved test deployment is recorded separately below.
 
 ## Implementation target — September 20, 2026
 
@@ -31,10 +32,11 @@ qualify independently. The Node UDP backend remains useful diagnostic evidence;
 it does not acquire TURN/TCP support from Pion's results.
 
 Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
-but the ordinary saved-route client does not yet use a grant to connect. The
-opt-in `/native-application` Connect library and `nativeClient` server connector
-now provide a distinct application lane; they do not wire that user-facing
-activation. The browser protocol binds
+and a host-owned Device enrollment ceremony. The ordinary saved-route owner
+now composes `/native-application`, fresh ICE, Device proof and a separate
+account continuation for bounded health and member Project reads. Operator
+Workspace features, contribution writes and physical iOS qualification remain
+separate. See [native enrollment](native-relay-enrollment.md). The browser protocol binds
 `browserOrigin` to a canonical HTTP(S) page Origin and the broker checks that
 same Origin on signaling. Packaged Tauri WebViews use different platform
 schemes, so a saved native grant cannot be activated by pretending its WebView
@@ -91,6 +93,24 @@ those boundaries fail. [#1985](https://github.com/kontourai/station/issues/1985)
 retains integrated lab acceptance, and [#497](https://github.com/kontourai/station/issues/497)
 retains the real two-person/device journey. Separate code, local-runtime,
 remote/native and hostile-tenant isolation receipts throughout delivery.
+
+## Public test deployment — October 1, 2026
+
+The operator-approved test broker runs as a separate loopback-bound process on
+brian-media, reached through the named Cloudflare Tunnel at
+`https://relay-test.kontourai.com`. The tunnel exposes broker signaling only;
+Station application HTTP is not published through it. Cloudflare TURN supplies
+short-lived ICE credentials. Application traffic remains encrypted to the
+independently approved Station peer.
+
+Executed setup checks establish public TLS, authenticated scoped ICE issuance,
+credential reuse and rejection of unauthenticated/foreign Station requests,
+a TURN allocation, and broker service restart/SQLite backup restoration. These
+checks do not establish native application traffic or Zach's physical iPhone
+journey. The approved $0 subscription includes metered overage and has no hard
+spending cap; this is a limited monitored test, not unlimited free hosting.
+The [operator guide](../guides/self-hosted-broker.md) owns issuer configuration,
+rate limits and the distinction between issuance limits and byte/spending caps.
 
 ## Purpose and boundaries
 
