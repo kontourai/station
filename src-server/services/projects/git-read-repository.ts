@@ -24,7 +24,7 @@
  * atomic with the read. Instead {@link readProjectRepository} checks again
  * AFTER the read and discards the output unless the `.git` entry, every
  * directory the check listed, and the `commondir` pointer have the same
- * identity and change times as before (the guard's `fingerprint`). A rename
+ * identity and change times as before (the guard's `unchanged`). A rename
  * changes the renamed entry's change time and its directory's, and a change
  * time cannot be set back, so swap-and-restore is noticed too. What that
  * leaves:
@@ -143,9 +143,11 @@ async function confined(
   projectRoot: string,
   alsoMemberWritable: readonly string[],
 ): Promise<ProjectRepositoryForRead> {
-  const check = () =>
-    gitDirectoryInsideProject(found.top, projectRoot, alsoMemberWritable);
-  const verdict = await check();
+  const verdict = await gitDirectoryInsideProject(
+    found.top,
+    projectRoot,
+    alsoMemberWritable,
+  );
   if (verdict.verdict === 'outside') return refused(verdict.reason);
   if (verdict.gitDir !== found.gitDir) {
     return refused('.git changed while Station was checking it');
@@ -154,15 +156,7 @@ async function confined(
     ok: true,
     top: found.top,
     repoArgs: [`--git-dir=${found.gitDir}`, `--work-tree=${found.top}`],
-    unchanged: async () => {
-      const after = await check();
-      return (
-        after.verdict === verdict.verdict &&
-        after.gitDir === verdict.gitDir &&
-        after.commonDir === verdict.commonDir &&
-        after.fingerprint === verdict.fingerprint
-      );
-    },
+    unchanged: verdict.unchanged,
   };
 }
 

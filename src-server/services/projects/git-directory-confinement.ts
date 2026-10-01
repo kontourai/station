@@ -31,11 +31,13 @@ export function repositoryArgs(root: string): string[] {
  * one counts as inside, and is walked the same way.
  *
  * An accepting verdict carries the git directory and common directory it
- * checked, and a `fingerprint` of everything the check looked at: the `.git`
- * entry, every directory it listed, and the `commondir` pointer. A caller
- * that runs git afterwards asks again and compares, so a `.git` swapped (or
- * an entry planted and removed) while git ran is noticed. See
- * `fingerprint`'s limits in `git-read-repository.ts`.
+ * checked, and `unchanged`, which says whether everything the check looked
+ * at (the `.git` entry, every directory it listed, and the `commondir`
+ * pointer) still has the identity and change times it had. A caller that
+ * runs git afterwards asks, so a `.git` swapped (or an entry planted and
+ * removed) while git ran is noticed. It costs one `lstat` per directory and
+ * lists nothing again: adding, removing or renaming an entry changes its
+ * directory's times. Its limits are in `git-read-repository.ts`.
  */
 export type GitDirectoryVerdict =
   | {
@@ -44,13 +46,40 @@ export type GitDirectoryVerdict =
       gitDir: string;
       /** Symlink-resolved. */
       commonDir: string;
-      fingerprint: string;
+      unchanged: () => Promise<boolean>;
     }
   | { verdict: 'outside'; reason: string };
 
 /** Identity and change times of one path, by `lstat` (a link is a link). */
-function stampOf(path: string, stats: BigIntStats): string {
-  return `${path}\0${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
+function stampOf(stats: BigIntStats): string {
+  return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
+}
+
+const ABSENT = 'absent';
+
+/** The stamp `path` has now. */
+async function currentStamp(path: string): Promise<string> {
+  try {
+    return stampOf(await lstat(path, { bigint: true }));
+  } catch {
+    return ABSENT;
+  }
+}
+
+/** Paths stamped at once when checking them again. */
+const STAMP_BATCH = 64;
+
+async function stampsUnchanged(stamps: Map<string, string>): Promise<boolean> {
+  const all = [...stamps];
+  for (let start = 0; start < all.length; start += STAMP_BATCH) {
+    const same = await Promise.all(
+      all
+        .slice(start, start + STAMP_BATCH)
+        .map(async ([path, stamp]) => (await currentStamp(path)) === stamp),
+    );
+    if (same.includes(false)) return false;
+  }
+  return true;
 }
 
 export async function gitDirectoryInsideProject(
@@ -63,13 +92,13 @@ export async function gitDirectoryInsideProject(
     reason,
   });
   const dotGit = join(target, '.git');
-  const stamps: string[] = [];
+  const stamps = new Map<string, string>();
   try {
     const stats = await lstat(dotGit, { bigint: true });
     if (stats.isSymbolicLink()) {
       return outside('.git is a symbolic link');
     }
-    stamps.push(stampOf(dotGit, stats));
+    stamps.set(dotGit, stampOf(stats));
   } catch {
     return outside('.git is missing');
   }
@@ -109,7 +138,7 @@ export async function gitDirectoryInsideProject(
     verdict,
     gitDir,
     commonDir,
-    fingerprint: stamps.join('\n'),
+    unchanged: () => stampsUnchanged(stamps),
   });
   if (inside(gitDir) && inside(commonDir)) return accepted('inside');
   if (inside(gitDir) || dirname(dirname(gitDir)) !== commonDir) {
@@ -172,7 +201,7 @@ class WalkLimitExceeded extends Error {}
 async function redirectedGitEntry(
   gitDir: string,
   insideProject: (path: string) => boolean,
-  stamps: string[],
+  stamps: Map<string, string>,
 ): Promise<string | null> {
   let walked = 0;
   let limit = MAX_WALKED_ENTRIES;
@@ -180,10 +209,11 @@ async function redirectedGitEntry(
   const entries = async (dir: string) => {
     let list: Dirent[];
     try {
-      stamps.push(stampOf(dir, await lstat(dir, { bigint: true })));
+      stamps.set(dir, stampOf(await lstat(dir, { bigint: true })));
       list = await readdir(dir, { withFileTypes: true });
     } catch {
-      stamps.push(`${dir}\0absent`);
+      // Missing, or not a directory: nothing to list, and it must stay so.
+      stamps.set(dir, await currentStamp(dir));
       return [];
     }
     walked += list.length;
@@ -192,15 +222,16 @@ async function redirectedGitEntry(
   };
   const named = (path: string) => `.git/${relative(gitDir, path)}`;
   const linkBelow = async (dir: string): Promise<string | null> => {
-    for (const entry of await entries(dir)) {
-      const path = join(dir, entry.name);
-      if (entry.isSymbolicLink()) return path;
-      if (entry.isDirectory()) {
-        const found = await linkBelow(path);
-        if (found) return found;
-      }
-    }
-    return null;
+    const list = await entries(dir);
+    const link = list.find((entry) => entry.isSymbolicLink());
+    if (link) return join(dir, link.name);
+    // Subdirectories side by side: `objects/` has up to 256 of them.
+    const below = await Promise.all(
+      list
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => linkBelow(join(dir, entry.name))),
+    );
+    return below.find((found) => found !== null) ?? null;
   };
   const linkIn = async (
     dir: string,
@@ -244,13 +275,7 @@ async function redirectedGitEntry(
   // `commondir` names where this git directory's objects and refs live; its
   // content can be rewritten in place, which no directory's times record.
   const commonPointer = join(gitDir, 'commondir');
-  try {
-    stamps.push(
-      stampOf(commonPointer, await lstat(commonPointer, { bigint: true })),
-    );
-  } catch {
-    stamps.push(`${commonPointer}\0absent`);
-  }
+  stamps.set(commonPointer, await currentStamp(commonPointer));
   for (const alternates of ['alternates', 'http-alternates']) {
     try {
       await lstat(join(gitDir, 'objects', 'info', alternates));
