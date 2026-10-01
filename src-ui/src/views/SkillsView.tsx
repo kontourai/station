@@ -17,6 +17,7 @@ import {
   useUpdateLocalSkillMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EngineGlyph } from '../components/icons/Glyph';
@@ -547,63 +548,73 @@ export function SkillsView({
                   : undefined
               }
             >
-              {!isCreating && selected && editableLocal && (
-                <Button
-                  size="sm"
-                  onClick={() => void handleDuplicate()}
-                  disabled={savePending || detailBusy}
-                >
-                  Duplicate
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  onClick={handleExport}
-                  disabled={detailBusy || !form.body.trim()}
-                >
-                  Export .md
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowRunModal(true)}
-                  disabled={detailBusy || !form.body.trim()}
-                >
-                  ▶ Test
-                </Button>
-              )}
-              {!isCreating && selected && (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={detailBusy}
-                  onClick={() =>
-                    uninstallMutation.mutate(selected.name, {
-                      onSuccess: () => {
-                        showToast('Skill removed');
-                        deselect();
-                      },
-                      onError: () => showToast('Failed to remove skill'),
-                    })
-                  }
-                >
-                  Remove
-                </Button>
-              )}
-              {editableLocal && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={handleSaveLocalSkill}
-                  disabled={savePending || detailBusy}
-                  pending={savePending}
-                  pendingLabel="Saving…"
-                >
-                  {isCreating ? 'Create' : 'Save'}
-                </Button>
-              )}
+              {/* #3045: Test and Save are the two actions this header is for;
+                  the rest fold into the menu. */}
+              <ActionRow
+                overflowLabel="More skill actions"
+                secondary={
+                  !isCreating && selected ? (
+                    <Button
+                      size="sm"
+                      onClick={() => setShowRunModal(true)}
+                      disabled={detailBusy || !form.body.trim()}
+                    >
+                      ▶ Test
+                    </Button>
+                  ) : null
+                }
+                primary={
+                  editableLocal ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={handleSaveLocalSkill}
+                      disabled={savePending || detailBusy}
+                      pending={savePending}
+                      pendingLabel="Saving…"
+                    >
+                      {isCreating ? 'Create' : 'Save'}
+                    </Button>
+                  ) : null
+                }
+                overflow={
+                  !isCreating && selected
+                    ? [
+                        ...(editableLocal
+                          ? [
+                              {
+                                key: 'duplicate',
+                                label: 'Duplicate',
+                                disabled: savePending || detailBusy,
+                                onSelect: () => void handleDuplicate(),
+                              },
+                            ]
+                          : []),
+                        {
+                          key: 'export',
+                          label: 'Export .md',
+                          disabled: detailBusy || !form.body.trim(),
+                          onSelect: handleExport,
+                        },
+                        {
+                          key: 'remove',
+                          label: 'Remove',
+                          tone: 'danger' as const,
+                          disabled: detailBusy,
+                          onSelect: () =>
+                            uninstallMutation.mutate(selected.name, {
+                              onSuccess: () => {
+                                showToast('Skill removed');
+                                deselect();
+                              },
+                              onError: () =>
+                                showToast('Failed to remove skill'),
+                            }),
+                        },
+                      ]
+                    : []
+                }
+              />
             </DetailHeader>
 
             {detailFailed ? (

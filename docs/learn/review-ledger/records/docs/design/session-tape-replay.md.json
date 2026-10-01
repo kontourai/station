@@ -18,7 +18,7 @@
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"b3e72cbd7dfc41d54569b368f80db1ea6294dc2d70f99572194abb93b605f040","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"15b1e2490e7c8a652bffaf3a16a297d9df3de75f6d8c61c00fc8f8a993f68c6a","revision":"e7bb11891396b509d47e7c0ba3ba9066a74a03db"},
 
     {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"c516313992221258d93e42c79e982dae296afe29658b4d387b17d4c486ec284e","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
