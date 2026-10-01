@@ -39,8 +39,9 @@ export function createNativeFreshRelayAcceptance(input: {
         .find((value) => value.name === input.profileName);
       if (!profile?.relayRoute || profile.configurationState !== 'configured')
         throw new Error('native_fixture_owned_activation_required');
-      const connectionId = storage.selectProfileForProcess(input.profileName);
-      if (!connectionId) throw new Error('native_fixture_selection_refused');
+      const connectionId = `station-profile:${profile.name.toLowerCase()}`;
+      if (!(await storage.authorizeActiveConnection(connectionId, true)))
+        throw new Error('native_fixture_selection_refused');
       const binding = storage.captureNativeRequestBinding(
         connectionId,
         input.stationAudience,

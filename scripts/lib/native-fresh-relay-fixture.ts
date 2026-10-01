@@ -94,6 +94,10 @@ export function readNativeFreshPrivateJson(path: string): unknown {
     assert(
       opened.dev === link.dev &&
         opened.ino === link.ino &&
+        opened.isFile() &&
+        opened.nlink === 1 &&
+        opened.uid === process.getuid?.() &&
+        (opened.mode & 0o077) === 0 &&
         opened.size <= 65536,
       'fixture_private_file_changed',
     );
