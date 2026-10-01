@@ -7836,7 +7836,8 @@ describe('lifecycle build + restart ergonomics', () => {
       // start() hands the server child's liveness to the TCP waits (#2964):
       // with it, the terminal port is probed again after the base deadline;
       // without it, the first refused probe would be the only one.
-      const terminalProbes = tcpConnect.mock.calls.filter(
+      // The mock declares no parameters, so its calls are read as unknowns.
+      const terminalProbes = (tcpConnect.mock.calls as unknown[][]).filter(
         ([target]) => (target as { port?: number } | undefined)?.port === 3243,
       );
       expect(terminalProbes.length).toBeGreaterThan(1);
