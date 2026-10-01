@@ -17,13 +17,11 @@ mod local_access_watch;
 mod login_shell;
 #[cfg(not(mobile))]
 mod notification_feed;
-// Foundation only: this module owns native proof-key custody and signing but
-// is intentionally not registered as renderer IPC or wired to app traffic.
-// Host account proof-key custody, distinct from routing and Device keys.
+// Proof keys remain host-only; bounded account and Device operations are IPC.
 mod native_account_operations;
 pub(crate) mod native_account_proof_key;
 mod native_application_peer;
-// Desktop-only Device identity custody metadata (station#2893): the versioned
+// Device identity custody metadata (station#2893): the versioned
 // keyring companion for paired credentials and the current-identity resolver.
 pub(crate) mod native_device_binding_candidate;
 pub(crate) mod native_device_custody;
@@ -1307,7 +1305,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     }
 }
 
-#[cfg(any(mobile, test))]
+#[cfg(test)]
 fn invalidate_active_profile_receipt_after_credential_delete(
     authority: &mut NativeProfileAuthorityState,
     reference: &NativeCredentialReference,
@@ -2471,24 +2469,6 @@ fn authorized_profile_context_in_store(
         binding_id: selected.binding_id,
         profile_revision: store.revision,
     })
-}
-
-#[cfg(mobile)]
-fn authorized_credential_reference(
-    app: &AppHandle,
-    authority: &NativeProfileAuthority,
-) -> Result<NativeCredentialReference, NativeCommandError> {
-    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
-    // read takes `profiles.json.lock`, and the writer holds that lock while it
-    // takes this mutex; taking them in the other order here would let a
-    // concurrent write and this read stall each other until the lock wait
-    // expires (the commands run off the main thread since #2469).
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
-    Ok(authorized_profile_context_in_store(&state, &store)?.reference)
 }
 
 /// The host-authorized active Station's exact origin, when there is one.

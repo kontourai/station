@@ -3500,14 +3500,17 @@ mod tests {
     }
 
     #[test]
-    fn device_candidate_ipc_is_desktop_registered_and_keeps_the_main_window_guard() {
+    fn device_candidate_ipc_is_native_registered_and_keeps_the_main_window_guard() {
         let lib = include_str!("lib.rs");
         assert!(lib.contains("native_relay_redemption::station_native_device_binding_candidate,"));
         let mobile_handlers = lib
             .split("#[cfg(mobile)]\n    let builder = builder.invoke_handler")
             .nth(1)
-            .expect("the mobile handler exists");
-        assert!(!mobile_handlers.contains("station_native_device_binding_candidate"));
+            .expect("the mobile handler exists")
+            .split("]);")
+            .next()
+            .expect("the mobile handler is bounded");
+        assert!(mobile_handlers.contains("station_native_device_binding_candidate"));
 
         let command_file = include_str!("native_relay_redemption.rs");
         let command_start = command_file
@@ -3522,7 +3525,7 @@ mod tests {
     }
 
     #[test]
-    fn device_receipt_ipc_is_desktop_only_and_cached_status_is_not_fresh() {
+    fn device_receipt_ipc_is_native_registered_and_cached_status_is_not_fresh() {
         let lib = include_str!("lib.rs");
         assert!(
             lib.contains("native_relay_redemption::station_native_device_binding_self_receipt,")
@@ -3530,8 +3533,11 @@ mod tests {
         let mobile_handlers = lib
             .split("#[cfg(mobile)]\n    let builder = builder.invoke_handler")
             .nth(1)
-            .expect("the mobile handler exists");
-        assert!(!mobile_handlers.contains("station_native_device_binding_self_receipt"));
+            .expect("the mobile handler exists")
+            .split("]);")
+            .next()
+            .expect("the mobile handler is bounded");
+        assert!(mobile_handlers.contains("station_native_device_binding_self_receipt"));
 
         let status = cached_receipt_status(Some(
             crate::native_device_binding_candidate::NativeDeviceReceiptObservationV1 {
