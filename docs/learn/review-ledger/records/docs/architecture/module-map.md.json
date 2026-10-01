@@ -410,7 +410,7 @@
 
     {"path":"src-server/services/browser/url-policy.ts","digest":"46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"252a314587f773a6215329b59c6044a9d34c3bd49cbbae33cef1ed02d5655d88","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
 
     {"path":"src-server/services/checkpoints/turn-checkpoint-capture.ts","digest":"160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -452,7 +452,7 @@
 
     {"path":"src-server/services/evidence/flow-review-evidence-attachment.ts","digest":"fdf69a07795e515b08017d845c0471b30984e42f7b11460abae3e9aea48053b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/evidence/git-review-workspace-source.ts","digest":"aa7391c138b438905150699d0309941754abd39049fdfe81033bc98d0ae9683e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/evidence/git-review-workspace-source.ts","digest":"ead18a3385c8fcc47bc4e56ba91eb24dfe9bfbf78d255519a049948fde8b3fa7","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
 
     {"path":"src-server/services/evidence/orchestration-review-executor.ts","digest":"fff6e2cc5bceadcbab8a0e068412758c8cb2dfe9fc33e2f5ea642d88aff6c08d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -554,7 +554,7 @@
 
     {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"530f61de27ec07453f2343ed61091ff9c23f2df8280b64759fa8c7869d5dc139","revision":"819bdc965ae4e055d43609f4680c1900293b8796"},
+    {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"d0ef999a7e0d22a508f999f611ae44e673bed445c9f2bdda814e779c1d8f0aaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/conversation-session-lineage.ts","digest":"d93b1e9fcace4cd71dc02b2292eae908f42d7533235d68aa8abf22654bb912de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -562,7 +562,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -572,7 +572,7 @@
 
     {"path":"src-server/services/orchestration/native-invocation-runs.ts","digest":"f60bd1aa1d935d571749b4fe620a754360022df65dc3c10459ecf25ed4ac44eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
     {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -608,7 +608,7 @@
 
     {"path":"src-server/services/orchestration/session-lifecycle-module.ts","digest":"15ad2baa1b461a7dc4f462062bddb458ad08d538c78811cc78b4865563a09bc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/session-query-module.ts","digest":"561d25babceae640528aac6e593827c894ed38442e21ed23d36f98f5dfe6f0a2","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
+    {"path":"src-server/services/orchestration/session-query-module.ts","digest":"0b17b642ff8dcdb358d967236abf4d9b19097d58f5631b927cbd1b1cb437c56f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/session-recovery-coordinator.ts","digest":"26cbeda4c68c96b6cb955ce69279dc68379d287dba3363cbfb2182297f868c56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -810,7 +810,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/observe.ts","digest":"edbe10fd612c9a33d91709961c6e86886950edacf14d51b2dfac760fdcb848a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"64d6bd975aad5c65afcb356fa9e0694e3cbbbf090e54b5a743d9bbcd5c760211","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"3916044ff0e68b07aad464f652c60ed73db0b3cc07a13b59b0fdff365096950e","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

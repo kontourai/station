@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readdir, realpath, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import type {
@@ -9,6 +9,12 @@ import type {
 } from '@kontourai/station-contracts/review-evidence';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { execGit } from '../../utils/git-exec.js';
+import {
+  type LiveRepository,
+  ownRepositoryGitArgs,
+  RepositoryConfigRefusedError,
+  requireLiveRepository,
+} from '../projects/git-read-repository.js';
 import type {
   ReadOnlyReviewWorkspace,
   ReviewWorkspaceSource,
@@ -66,14 +72,15 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
     if (!configuredWorkspace) {
       throw new Error(`Project workspace not found: ${input.projectSlug}`);
     }
-    const repoRoot = (
-      await execGit(
-        ['-C', configuredWorkspace, 'rev-parse', '--show-toplevel'],
-        { timeout: GIT_INSPECTION_TIMEOUT_MS },
-      )
-    ).stdout.trim();
-    if (!repoRoot) throw new Error('Review target is not a Git repository.');
-    const canonicalRepoRoot = await realpath(repoRoot);
+    // The Project's folder is member-writable: a `.git` file there can name
+    // any repository on this computer, and a review checks out and reads
+    // whichever one git finds. Only the Project's own is reviewed, and it
+    // is named on every call rather than discovered again.
+    const repository = await ownRepositoryGitArgs(
+      configuredWorkspace,
+      configuredWorkspace,
+    );
+    const canonicalRepoRoot = repository.top;
     const inspection = await inspectGitReviewRange(canonicalRepoRoot, input);
     const { target } = inspection;
 
@@ -92,22 +99,52 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
           'Review workspace capacity is exhausted by protected workspaces.',
         );
       }
+      // `worktree add` checks the head out, which runs a smudge filter the
+      // repository's own config defines, as the operator. Refused by the
+      // rule worktree provisioning applies (`git-repository-config.ts`),
+      // judged on Station's copy of the config, which is the only config
+      // git reads for the checkout (`git-read-repository.ts`); and the
+      // repository must still be the one that was checked when the
+      // checkout starts.
+      let live: LiveRepository;
       try {
-        await execGit(
-          [
-            '-C',
-            canonicalRepoRoot,
-            'worktree',
-            'add',
-            '--detach',
-            workspaceRoot,
-            target.headSha,
-          ],
-          { timeout: GIT_MUTATION_TIMEOUT_MS },
+        live = await requireLiveRepository(
+          configuredWorkspace,
+          configuredWorkspace,
+          { newWorktree: true },
         );
       } catch (error) {
-        await rm(workspaceRoot, { recursive: true, force: true });
-        throw error;
+        if (!(error instanceof RepositoryConfigRefusedError)) throw error;
+        throw new Error(
+          error.keys.length > 0
+            ? `Review target repository's own git configuration sets ${error.keys.join(', ')}, which Station does not check out with.`
+            : "Review target repository's git configuration could not be read.",
+        );
+      }
+      try {
+        if (live.top !== canonicalRepoRoot || !(await live.unchanged())) {
+          throw new Error(
+            'Review target repository changed while it was checked.',
+          );
+        }
+        try {
+          await execGit(
+            [
+              ...live.repoArgs,
+              'worktree',
+              'add',
+              '--detach',
+              workspaceRoot,
+              target.headSha,
+            ],
+            { cwd: live.top, env: live.env, timeout: GIT_MUTATION_TIMEOUT_MS },
+          );
+        } catch (error) {
+          await rm(workspaceRoot, { recursive: true, force: true });
+          throw error;
+        }
+      } finally {
+        await live.dispose();
       }
     } finally {
       await releaseAdmission();
@@ -117,7 +154,7 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
       root: workspaceRoot,
       target,
       validateLocation: (location) =>
-        validateLocation(canonicalRepoRoot, target.headSha, location),
+        validateLocation(repository.args, target.headSha, location),
       close: async () => {
         if (closed) return;
         const releaseCleanup = await acquireFileMutationLockAsync(lockPath);
@@ -127,8 +164,7 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
           try {
             await execGit(
               [
-                '-C',
-                canonicalRepoRoot,
+                ...repository.args,
                 'worktree',
                 'remove',
                 '--force',
@@ -155,15 +191,17 @@ export async function inspectGitReviewRange(
   repositoryRoot: string,
   input: IndependentReviewRequest['target'],
 ): Promise<GitReviewRangeInspection> {
-  const baseSha = await resolveCommit(repositoryRoot, input.baseRevision);
-  const headSha = await resolveCommit(repositoryRoot, input.headRevision);
+  // Callers pass a Project's folder or its repository's root; either way
+  // the repository must be that folder's own (see `open`).
+  const repository = await ownRepositoryGitArgs(repositoryRoot, repositoryRoot);
+  const baseSha = await resolveCommit(repository.args, input.baseRevision);
+  const headSha = await resolveCommit(repository.args, input.headRevision);
   if (baseSha === headSha)
     throw new Error('Review target range has no revision change.');
   const diff = (
     await execGit(
       [
-        '-C',
-        repositoryRoot,
+        ...repository.args,
         'diff',
         '--no-ext-diff',
         '--binary',
@@ -177,8 +215,7 @@ export async function inspectGitReviewRange(
   const nameStatus = (
     await execGit(
       [
-        '-C',
-        repositoryRoot,
+        ...repository.args,
         'diff',
         '--name-status',
         '-z',
@@ -191,7 +228,7 @@ export async function inspectGitReviewRange(
     )
   ).stdout;
   const origin = await execGit(
-    ['-C', repositoryRoot, 'config', '--get', 'remote.origin.url'],
+    [...repository.args, 'config', '--get', 'remote.origin.url'],
     { encoding: 'utf8', timeout: GIT_INSPECTION_TIMEOUT_MS },
   ).catch(() => ({ stdout: '', stderr: '' }));
   return {
@@ -210,29 +247,28 @@ export async function inspectGitReviewRange(
 }
 
 async function resolveCommit(
-  repoRoot: string,
+  repo: readonly string[],
   revision: string,
 ): Promise<string> {
   const value = (
-    await execGit(
-      ['-C', repoRoot, 'rev-parse', '--verify', `${revision}^{commit}`],
-      { timeout: GIT_INSPECTION_TIMEOUT_MS },
-    )
+    await execGit([...repo, 'rev-parse', '--verify', `${revision}^{commit}`], {
+      timeout: GIT_INSPECTION_TIMEOUT_MS,
+    })
   ).stdout.trim();
   if (!GIT_SHA.test(value)) throw new Error('Review revision is invalid.');
   return value;
 }
 
 async function validateLocation(
-  repoRoot: string,
+  repo: readonly string[],
   headSha: string,
   location: ReviewFindingLocation,
 ): Promise<void> {
   const treeEntry = (
-    await execGit(
-      ['-C', repoRoot, 'ls-tree', '-z', headSha, '--', location.file],
-      { timeout: GIT_INSPECTION_TIMEOUT_MS, maxBuffer: 64 * 1024 },
-    )
+    await execGit([...repo, 'ls-tree', '-z', headSha, '--', location.file], {
+      timeout: GIT_INSPECTION_TIMEOUT_MS,
+      maxBuffer: 64 * 1024,
+    })
   ).stdout;
   const match = /^(100644|100755) blob [0-9a-f]{40}\t([^\0]+)\0$/.exec(
     treeEntry,
@@ -243,7 +279,7 @@ async function validateLocation(
     );
   }
   const content = (
-    await execGit(['-C', repoRoot, 'show', `${headSha}:${location.file}`], {
+    await execGit([...repo, 'show', `${headSha}:${location.file}`], {
       encoding: 'utf8',
       timeout: GIT_INSPECTION_TIMEOUT_MS,
       maxBuffer: MAX_REVIEWED_FILE_BYTES + 1,

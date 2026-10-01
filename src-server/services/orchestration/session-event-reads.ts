@@ -9,6 +9,7 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
@@ -16,6 +17,7 @@ import {
   type RequestReplayOutcome,
   replayRequestOutcome,
   type SessionAnswerabilityObservation,
+  TURN_ABORT_SETTLED_REQUEST_STATUS,
 } from './open-requests.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -140,12 +142,26 @@ export class SessionEventReads {
     const eventStore = this.deps.eventStore;
     if (!eventStore) return { state: 'undetermined' };
     try {
-      return replayRequestOutcome(
+      const outcome = replayRequestOutcome(
         eventStore
           .listEventsForRequest(threadId, requestId)
           .map((event) => event.payload),
         requestId,
       );
+      if (outcome.state !== 'open') return outcome;
+      // #3071: the request's own events cannot say its turn was aborted.
+      // The session projection carries the latest turn's start and terminal
+      // beside every unresolved request, which is the turn context the
+      // shared settle rule needs. A log written before recovery resolved
+      // such a request itself reads settled here, so the approval inbox's
+      // convergence sweep expires its notification.
+      return requestIdsSettledByTurnAbort(
+        eventStore
+          .listSessionProjectionEvents(threadId)
+          .map((event) => event.payload),
+      ).has(requestId)
+        ? { state: 'resolved', status: TURN_ABORT_SETTLED_REQUEST_STATUS }
+        : outcome;
     } catch (error) {
       this.deps.logger.warn(
         'Could not read the persisted log for a request outcome',

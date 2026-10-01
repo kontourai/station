@@ -18,7 +18,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"db188f8f473b5b5b112b3dcce279e70136e2d1261b4ef823aac1f846daa2f32d","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"f067309e3b7dfcef792abb03dc59ca2d688b4072c15b56e8f5df66b73de9ad5b","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/services/orchestration/project-task-room-history-worker.ts","digest":"6c8f8684aadb16162fdf999f692e82b554773e9edbf17d0b4b36a00aba0d1736","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
