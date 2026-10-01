@@ -372,7 +372,7 @@
 
     {"path":"src-server/services/orchestration/run-projection.ts","digest":"aa85a3e0831f81286e77598fe2498d27751b497fab9e824e7d38b4d08fc82dac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/session-query-module.ts","digest":"0b17b642ff8dcdb358d967236abf4d9b19097d58f5631b927cbd1b1cb437c56f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/session-query-module.ts","digest":"561d25babceae640528aac6e593827c894ed38442e21ed23d36f98f5dfe6f0a2","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
 
     {"path":"src-server/services/orchestration/transcript-search-queries.ts","digest":"230ce0667d882f151f105fa3eacf624f3622aff31134b50e4e10af3ddc141311","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

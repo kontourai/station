@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/chat/CheckpointRestoreButton.tsx","digest":"a17fed2fc8f712386a4eb64756b500c32a1a712721c65b3f5dab1ee0ea033bab","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat/MessageBubble.tsx","digest":"6b3cef36e6c640992af76fd1062f5210cd24542dd6f7c0c8c63450681efda47b","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/components/chat/MessageBubble.tsx","digest":"c6d57078b78597d358ca9778118b3c897944e0974d343c0652035802a4c65e20","revision":"fca2a95fccfe317f6246b8482a15529a4925d2ad"}
   ],
 
   "checks": [

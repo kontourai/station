@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/index.css","digest":"4724f6c8a36d4a8136b0b75140ccbce81c61c3421487118835e0215e10090619","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    {"path":"src-ui/src/index.css","digest":"fd083a585f9461967e08427c9157fda5dbf38acc7368df5e4081ed022df1c348","revision":"5709d8b4ca722477dd326b7806c12ce7bdd6bbf3"},
 
     {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

@@ -60,9 +60,9 @@
 
     {"path":"tests/default-agent-workflow.spec.ts","digest":"2dca267ed3cfe8b8283ae38ff62436b2620d258491b7c3fff4993eb0151ccc7f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/e2e-manifest.mjs","digest":"02ca1cff34b3c747c12504343c32ca176026151e85c9d97c8e03a97b34eff1aa","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
-    {"path":"tests/mobile-chat-composer.spec.ts","digest":"42e42bc7fefe1cb8b25f5ff7086bffbdb68466be37b916a4b072328e6df196c9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"tests/mobile-chat-composer.spec.ts","digest":"017ee48084e98e7fc2d6d23fd9c5e3649aa5ddabd9a99dde6dc064c37d87bafd","revision":"57b23561ee5a7620ca594adb8834f53d80c1c17e"},
 
     {"path":"tests/monitoring.spec.ts","digest":"2e6c15a60934379f643596a29d2e11b277fbd76046c1a0608878f7ee4dec980e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

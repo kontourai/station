@@ -48,7 +48,7 @@
 
     {"path":"src-ui/src/workspace-panes/InertRenderedMarkdown.tsx","digest":"28d702eb860f567e6b006aededad7801f315a462e07ca755d8cff20e6fc87fc6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"7aeaffe0ca0c199563ebe34302646533558871d69914b365810ced54e74f4ed4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"6bebef5e8aaae046ffc950b9539faf38e131164ea1242f9d2e9216678e12119d","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
 
     {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
