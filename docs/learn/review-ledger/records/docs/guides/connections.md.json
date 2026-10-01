@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"92bd04e682958bfad0d1f1689ddebd5b05907c0888f9f2ee3208dc67aa865482","revision":"84ed23307041981e18b353f7183f41374a3ad504"},
+  "document": {"digest":"bf558a7cb1049871677922fc0a9970604922b51e3d4b519f1e0b934a475b7531","revision":"2b860862c3597fd2b9d7b1bc3b96b62f16022102"},
 
   "sources": [
     {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
@@ -250,7 +250,7 @@
 
     {"path":"docs/learn/media.json#/captures/5","digest":"3d639254e9f1906a9576d957ae7770da87bcc6851a4e74d311d1c19af99c7598","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"d19380063e8dd6c0ace0eb12a88b7cbcd64ee8528ca2be96c5e143685e897498","revision":"84ed23307041981e18b353f7183f41374a3ad504"},
+    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"9f307e10488450a80bc11c3fbfbadd45b6bcd689da5c30169af15c47506024a8","revision":"a5618ff63f6feaccc8471d5f802b8f7a78cbd505"},
 
     {"path":"src-server/services/connections/browser-code-login.ts","digest":"12d79b1b4d412be8ab19cccfeed4eadfb872a7bbc5b03febd487a11df662b9d6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
@@ -258,7 +258,7 @@
 
     {"path":"packages/sdk/src/engine-accounts.ts","digest":"616f25c83b780930f4297acd840a549a63a547189f83d6be087aae925d40dbc6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 
-    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"2a34dc50659287dfb50f938e9582830736054a9b3530e00c508b54237216c2ad","revision":"84ed23307041981e18b353f7183f41374a3ad504"}
+    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"b3a56e286c29d5d8ea623a7c9016494d4e6281543639c88762fc74d388d16fa0","revision":"a5618ff63f6feaccc8471d5f802b8f7a78cbd505"}
   ],
 
   "checks": [
