@@ -4,6 +4,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createProject } from '@kontourai/station-sdk/client';
 import { changeProjectAccess } from '@kontourai/station-sdk/project-access-client';
+import {
+  readProjectSharedTaskDocument,
+  shareProjectTask,
+} from '@kontourai/station-sdk/project-shared-tasks';
 import { stationConnectionKeyConfirmationCode } from '@kontourai/station-shared/connection-proof';
 import { z } from 'zod';
 import { loadSelfHostedBrokerConnectorConfig } from '../src-server/runtime/bootstrap/self-hosted-connector-config.js';
@@ -158,12 +162,19 @@ async function main() {
       process.once('SIGINT', resolveStop);
       process.once('SIGTERM', resolveStop);
     });
+    let primaryFailure: unknown;
+    let childOutcome: unknown;
+    const failures: unknown[] = [];
+    let receipt: unknown;
     try {
       const finished = await Promise.race([
         execution.completion,
         stopped.then(() => undefined),
       ]);
+      childOutcome = finished ?? { interrupted: true };
       if (finished) assert.equal(finished.status, 0, 'fixture_runtime_failed');
+    } catch (error) {
+      primaryFailure = error;
     } finally {
       clearTimeout(deadline!);
       let cleanup: unknown;
@@ -178,26 +189,56 @@ async function main() {
         terminationGraceMs: 5000,
         terminationForceMs: 5000,
         processLabel: 'fresh native public fixture',
+      }).catch((error) => {
+        failures.push(error);
+        return { settled: false, errors: [error] };
       });
-      const receipt = {
+      const runtimeOutput = capture.finish();
+      try {
+        privateOutput(
+          join(plan.directory, 'runtime-output.json'),
+          plan.directory,
+          {
+            runId: plan.runId,
+            outcome: childOutcome ?? null,
+            primaryFailure:
+              primaryFailure instanceof Error
+                ? { name: primaryFailure.name, message: primaryFailure.message }
+                : (primaryFailure ?? null),
+            ...runtimeOutput,
+          },
+        );
+      } catch (error) {
+        failures.push(error);
+      }
+      receipt = {
         runId: plan.runId,
+        primaryRuntimeFailed: primaryFailure !== undefined,
+        outputTruncated: runtimeOutput.truncated,
+        outputInvalidUtf8: runtimeOutput.invalidUtf8,
         processGroupSettled: terminated.settled,
         brokerCleanup: cleanup ?? null,
         brokerCleanupConfirmed: !brokerError,
       };
-      privateOutput(
-        join(plan.directory, 'cleanup.json'),
-        plan.directory,
-        receipt,
-      );
-      assert(
-        terminated.settled && terminated.errors.length === 0 && !brokerError,
-        'fixture_cleanup_unconfirmed',
-      );
-      output(receipt);
-      // The bounded process capture is intentionally not printed: it may contain application diagnostics.
-      void capture;
+      try {
+        privateOutput(
+          join(plan.directory, 'cleanup.json'),
+          plan.directory,
+          receipt,
+        );
+      } catch (error) {
+        failures.push(error);
+      }
+      if (primaryFailure !== undefined) failures.push(primaryFailure);
+      if (brokerError !== undefined) failures.push(brokerError);
+      if (!terminated.settled || terminated.errors.length)
+        failures.push(new Error('fixture_process_cleanup_unconfirmed'));
+      if (runtimeOutput.truncated || runtimeOutput.invalidUtf8)
+        failures.push(new Error('fixture_runtime_output_incomplete'));
     }
+    if (failures.length)
+      throw new AggregateError(failures, 'fixture_runtime_or_cleanup_failed');
+    output(receipt);
     return;
   }
   if (mode === 'pending') {
@@ -297,6 +338,111 @@ async function main() {
       options,
     );
     assert(enabled.kind === 'enabled');
+    const task = z
+      .object({
+        success: z.literal(true),
+        data: z
+          .object({
+            id: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
+            createdAt: z.string().datetime(),
+            status: z.literal('todo'),
+          })
+          .passthrough(),
+      })
+      .passthrough()
+      .parse(
+        await nativeFreshOperatorRequest(plan, '/api/tasks', 'POST', {
+          projectId: project.slug,
+          title: `Native shared task ${plan.runId.slice(0, 8)}`,
+        }),
+      ).data;
+    const room = `/api/tasks/${task.id}/room`;
+    z.object({
+      success: z.literal(true),
+      data: z.object({ kind: z.enum(['opened', 'existing']) }).passthrough(),
+    })
+      .passthrough()
+      .parse(await nativeFreshOperatorRequest(plan, room, 'GET'));
+    const message = `Native fixed human message ${plan.runId}`;
+    const documentText = `Native fixed shared document ${plan.runId}`;
+    z.object({
+      success: z.literal(true),
+      data: z.object({ kind: z.literal('committed') }).passthrough(),
+    })
+      .passthrough()
+      .parse(
+        await nativeFreshOperatorRequest(plan, `${room}/messages`, 'POST', {
+          proposalId: `native-message-${plan.runId}`,
+          text: message,
+        }),
+      );
+    const edit = z
+      .object({
+        success: z.literal(true),
+        data: z
+          .object({
+            kind: z.literal('planned'),
+            intentId: z.string().min(1).max(256),
+            digest: z.string().regex(/^[a-f0-9]{64}$/u),
+          })
+          .passthrough(),
+      })
+      .passthrough()
+      .parse(
+        await nativeFreshOperatorRequest(plan, `${room}/edit-plan`, 'POST', {
+          intentId: `native-document-${plan.runId}`,
+          desiredText: documentText,
+          selection: { anchor: 0, focus: 0 },
+        }),
+      ).data;
+    z.object({
+      success: z.literal(true),
+      data: z.object({ kind: z.literal('committed') }).passthrough(),
+    })
+      .passthrough()
+      .parse(
+        await nativeFreshOperatorRequest(plan, `${room}/batches`, 'POST', {
+          intentId: edit.intentId,
+          intentDigest: edit.digest,
+        }),
+      );
+    const publication = await shareProjectTask(
+      base,
+      project.slug,
+      {
+        project: enabled.view.scope,
+        task: { id: task.id, createdAt: task.createdAt },
+      },
+      options,
+    );
+    assert(publication.kind === 'shared', 'fixture_shared_task_not_published');
+    const document = await readProjectSharedTaskDocument(
+      base,
+      project.slug,
+      task.id,
+      options,
+    );
+    assert(
+      document.kind === 'snapshot' &&
+        document.text === documentText &&
+        document.task.id === task.id &&
+        document.task.createdAt === task.createdAt,
+      'fixture_published_document_mismatch',
+    );
+    const privateProject = z
+      .object({ slug: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u) })
+      .passthrough()
+      .parse(
+        await createProject(
+          base,
+          {
+            name: `Native private ${plan.runId.slice(0, 8)}`,
+            description: 'Unshared negative control.',
+          },
+          options,
+        ),
+      );
+
     const invitation = await changeProjectAccess(
       base,
       project.slug,
@@ -312,6 +458,14 @@ async function main() {
     assert(invitation.kind === 'invited');
     privateOutput(argument, plan.directory, {
       projectSlug: project.slug,
+      privateProjectSlug: privateProject.slug,
+      sharedTask: {
+        id: task.id,
+        createdAt: task.createdAt,
+        message,
+        documentText,
+        shareId: publication.publication.shareId,
+      },
       scope: enabled.view.scope,
       invitation: invitation.token,
       grantsDeviceAccess: false,
