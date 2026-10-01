@@ -126,10 +126,10 @@ export function useAgentsViewModel({
   const [copyPicking, setCopyPicking] = useState(false);
   /**
    * §4's "one-line success notice" lives in the URL, not in state. Navigating
-   * from `/agents/new` to `/agents/<slug>` re-mounts this hook, so a
-   * `useState` notice was set and then discarded before it could render
-   * (`notice: false` in this lane's live capture, on a create that otherwise
-   * worked end to end). `?created=1` survives the remount and is cleared for
+   * from `/agents/new` to `/agents/<slug>` resets this hook's per-record
+   * state, so a `useState` notice was set and then discarded before it could
+   * render (`notice: false` in this lane's live capture, on a create that
+   * otherwise worked end to end). `?created=1` survives that and is cleared for
    * free: `navigationStore` strips non-shell params on any route change, so
    * selecting another agent drops it without anyone remembering to.
    */
@@ -168,6 +168,7 @@ export function useAgentsViewModel({
   const [isSaving, setIsSaving] = useState(false);
   const [isLocked, setIsLocked] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [enableError, setEnableError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
   >({});
@@ -383,7 +384,21 @@ export function useAgentsViewModel({
 
     previousUrlSlugRef.current = urlSlug;
     if (urlSlug !== 'new') {
+      // The hook outlives a selection now that Agents keeps one surface
+      // across its routes (#2992), so what belonged to the previous record
+      // is dropped here — for Back/Forward as well as a row click.
+      // Until #2992 a remount did this, so it mirrors a fresh mount: an
+      // unsaved edit that Back walked away from must not keep the discard
+      // guard armed for a form nobody can see.
+      const blank = createEmptyAgentForm(defaultManagedRuntimeId);
       setIsCreating(false);
+      setEngineKindOverride(null);
+      setForm(blank);
+      setSavedForm(blank);
+      setIsLocked(true);
+      setActionError(null);
+      setValidationErrors({});
+      setEnableError(null);
       return;
     }
 
@@ -736,8 +751,6 @@ export function useAgentsViewModel({
   const selectedIsUnmaterializedEngine =
     !isCreating && selectedAgent?.engineDefault === true;
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
-  const [enableError, setEnableError] = useState<string | null>(null);
-
   async function handleEnableSelected() {
     const enable =
       selectedRunnability && !selectedRunnability.runnable

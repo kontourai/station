@@ -845,6 +845,30 @@ describe('persisted detail remains authoritative while the collection reconciles
     expect(result.current.isLoading).toBe(true);
   });
 
+  test('leaving a record by URL drops its unsaved edit and its errors', () => {
+    // #2992: Agents keeps one surface across its routes, so this hook now
+    // outlives a selection. Back/Forward does not pass the discard guard, and
+    // an edit left dirty kept the guard armed for a form nobody could see.
+    state.selectedId = 'agent-a';
+    state.detail = agent({ slug: 'agent-a', name: 'Agent A' });
+    const { result, rerender } = render();
+    act(() => {
+      result.current.setIsLocked(false);
+      result.current.setForm((current) => ({ ...current, name: 'Edited' }));
+    });
+    expect(result.current.dirty).toBe(true);
+
+    act(() => {
+      state.selectedId = null;
+      state.detail = undefined;
+      rerender();
+    });
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.form.name).toBe('');
+    expect(result.current.isLocked).toBe(true);
+    expect(result.current.validationErrors).toEqual({});
+  });
+
   test('a successful mismatched detail revokes established authority', () => {
     state.selectedId = 'writer';
     state.detail = agent({ slug: 'writer', name: 'Writer' });

@@ -347,6 +347,8 @@ describe.skipIf(!chromiumAvailable)(
               height: narrowCollapse.height,
             },
             toggleHeight: toggle.height,
+            searchHeight: box('.list-filter-input').height,
+            narrowSearchHeight: box('#narrow .list-filter-input').height,
             rowHeight: box('.split-pane__item').height,
             trailing: hitsAbove(
               '[data-probe="solo-pill-with-a-long-label"]',
@@ -371,6 +373,9 @@ describe.skipIf(!chromiumAvailable)(
       expect(result.narrowCollapse.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(result.toggleHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
       expect(result.rowHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
+      // #3061: the search box measured 40px on a phone.
+      expect(result.searchHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
+      expect(result.narrowSearchHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
     });
 
     test('coarse: a 20px trailing or summary control is reachable 21px from its centre', async () => {
@@ -411,6 +416,7 @@ describe.skipIf(!chromiumAvailable)(
       expect(result.coarse).toBe(false);
       expect(result.collapse.height).toBe(24);
       expect(result.rowHeight).toBeLessThan(TOUCH_TARGET);
+      expect(result.searchHeight).toBeLessThan(TOUCH_TARGET);
       expect(result.trailing.reached).toBe(false);
     });
   },
