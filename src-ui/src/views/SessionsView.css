@@ -193,13 +193,6 @@
   color: var(--text-muted);
 }
 
-.split-pane__item--selected
-  .session-member-status
-  > span:not(:last-child)::after,
-.split-pane__item--selected .status-glyph {
-  color: var(--text-on-accent);
-}
-
 /*
  * The delegation card moved out of the list intro into the pinned footer
  * (archive#3027). `.split-pane__add` supplies the footer padding, so the card

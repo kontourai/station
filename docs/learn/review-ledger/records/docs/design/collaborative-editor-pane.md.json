@@ -18,7 +18,7 @@
 
     {"path":"src-ui/src/index.css","digest":"45c69c808b57d3a085f3122ec363c6f63e276a84cc16b988f574a2e6ab733afb","revision":"221320bceb1299b6f951afdfd77730df09332301"},
 
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"e0253e43f856a8c3f25a80e617c4cba1a6692a996ceb2446d954a4bc4f0d315b","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
     {"path":"src-ui/src/workspace-panes/TaskRoomEditorPane.tsx","digest":"aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
   ],

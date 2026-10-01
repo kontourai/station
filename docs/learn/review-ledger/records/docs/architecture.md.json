@@ -52,7 +52,7 @@
 
     {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"6f3e988212180c5e594b84e9f394ad1d566b1189107f71d8908f49244ff3cfea","revision":"a612b6df46e494c7905cfcb2579d402922db9246"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -62,11 +62,11 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"631cd108f28ca17190a9a8fed8f36eda83d4695ceb8766de438f0e21c148a83f","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"7fc42bc4728646375044efd3b85bc5341f828dbbca0bbed63cdb3cef997451f3","revision":"b3e03916cee441245a015ac51c5b06bf44165fc9"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a11a1c6354b732e118427ef902bb15fac25b3a81de26b22ed2e6bee97c76f9e4","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"b50913f3510b5a00de6d3873efe05db039815cb89c6f495b76adbc1020631511","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
     {"path":"src-server/runtime/streaming/InjectableStream.ts","digest":"a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
