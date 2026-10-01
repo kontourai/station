@@ -38,7 +38,11 @@
 
     "scripts/record-documentation-review.mjs",
 
-    "scripts/lib/review-ledger-store.mjs"
+    "scripts/lib/review-ledger-store.mjs",
+
+    "scripts/lib/review-history.mjs",
+
+    "scripts/lib/review-git.mjs"
   ],
 
   "checks": [

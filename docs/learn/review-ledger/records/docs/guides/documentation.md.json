@@ -32,7 +32,11 @@
 
     "scripts/lib/review-binding.mjs",
 
-    "scripts/migrate-review-ledger.mjs"
+    "scripts/migrate-review-ledger.mjs",
+
+    "scripts/lib/review-history.mjs",
+
+    "scripts/lib/review-git.mjs"
   ],
 
   "checks": [
