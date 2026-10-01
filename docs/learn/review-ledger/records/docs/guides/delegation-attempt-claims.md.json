@@ -12,7 +12,7 @@
   "document": {"digest":"34c8d048c03a6f1c6baf4382ccd8f45e30bcec42e8f82a32b503e86223e4e07d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

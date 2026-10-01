@@ -12,9 +12,9 @@
   "document": {"digest":"2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":"scripts/__tests__/e2e-coverage.test.ts","digest":"f62d79ceaa3fd83f136477158e595af8a6aa44f5125a314f1a69a2d7fee385dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -24,9 +24,9 @@
 
     {"path":"scripts/critical-browser-reporter.mjs","digest":"fa41f65ec79861edeb1cec7d9b9874f561af1912d4b2ef5bbde3841843baf2b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/fast-checks-shard.mjs","digest":"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/fast-checks-shard.mjs","digest":"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"24cd263738669b2fb3dcddf07049bd8be101fd47a59fc9c247d14ad63c358d78","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":"scripts/run-e2e-suite.mjs","digest":"6a11a2a611efee2a6ea5aee135d7ea1a8fffcf9bc9c73f0936508ba1e4bde4dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -38,7 +38,7 @@
 
     {"path":"tests/csp-shell.spec.ts","digest":"d970b0c1d9081b74d24dccd4faa3a8a4d87f97b38c6c05074ed0824ba1b287b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f","revision":"426153191586e330abfdfca99debbeab43855d09"},
+    {"path":"tests/e2e-manifest.mjs","digest":"f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f","revision":"66848daadfd8c5cea2ee606d24fe162468cc25f9"},
 
     {"path":"tests/helpers/browser-health.ts","digest":"67b5cf9fe4f17a137bea6daeffc4a3cd81433f2058938f9d0bcf90a91efc3921","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
