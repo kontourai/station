@@ -610,9 +610,7 @@ test.each(['cancel', 'authority loss'] as const)(
 test('a written goal returns from setup automatically when its selected agent is ready', async () => {
   const goal = 'Keep the original goal';
   const view = harness({ startWithDefault: true, initialPrompt: goal });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Connect this agent', exact: true }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Connect this agent' }));
   await waitFor(() =>
     expect(navigationStore.getSnapshot().pathname).toMatch(/^\/connections/),
   );

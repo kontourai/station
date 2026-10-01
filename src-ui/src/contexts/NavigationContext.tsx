@@ -7,6 +7,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { DockMode } from '../types';
 import { isShallowEqual } from '../utils/isShallowEqual';
 import type { OpenFilePreviewIntent } from '../workspace-panes/openFilePreviewIntent';
@@ -42,6 +43,7 @@ export type NavigationActions = {
 const NavigationContext = createContext<NavigationActions | null>(null);
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
+  const isMobile = useIsMobile();
   const navigate = useCallback(
     (pathname: string, params?: Record<string, string | null>) => {
       const target = parseNavigationTarget(pathname, window.location.href);
@@ -57,10 +59,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         params?.maximize === undefined;
       navigationStore.navigate(
         pathname,
-        revealPage ? { ...params, maximize: null } : params,
+        revealPage
+          ? { ...params, maximize: null, ...(isMobile ? { dock: null } : {}) }
+          : params,
       );
     },
-    [],
+    [isMobile],
   );
 
   const updateParams = useCallback((params: Record<string, string | null>) => {
