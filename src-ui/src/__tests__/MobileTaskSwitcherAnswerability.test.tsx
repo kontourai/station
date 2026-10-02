@@ -115,12 +115,11 @@ describe('MobileTaskSwitcher answerability basis', () => {
       }),
     ]);
     expect(screen.queryByTestId('inbox-row-answerability')).toBeNull();
-    // The shared row renders the lifecycle CHIP, not a bare status string
-    // (#3312 richness parity). The chip's word is the lane's word, "Running"
-    // (never "Active"), and it appears once, inside the chip.
+    // The shared row renders ONE status line (#3043). Its word is the lane's
+    // word, "Running" (never "Active"), and it appears once.
     const row = screen.getByTestId('inbox-row');
     expect(
-      within(row).getByText('Running', { selector: '.lifecycle-chip' }),
+      within(row).getByText('Running', { selector: '.inbox-row__word' }),
     ).toBeTruthy();
     expect(within(row).getAllByText('Running')).toHaveLength(1);
     expect(within(row).queryByText('Active')).toBeNull();

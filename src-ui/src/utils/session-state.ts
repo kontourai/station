@@ -173,8 +173,11 @@ export function orchestrationLifecycleLabel(
   // A completed or stopped parent turn may leave reported children running.
   // Keep the attention fold unchanged: background work is not a request to
   // the user. A closed or failed session retains its terminal outcome.
+  // `idle` is how an ordinary turn ends since #2540; without it a session
+  // whose turn finished while its sub-agents kept running read Completed.
   if (
-    (session.lifecycleState === 'completed' ||
+    (session.lifecycleState === 'idle' ||
+      session.lifecycleState === 'completed' ||
       session.lifecycleState === 'canceled') &&
     session.status !== 'closed' &&
     currentChildWork &&
@@ -204,6 +207,42 @@ export function orchestrationLifecycleLabel(
       if (session.hasActiveTurn || currentChildWork) return 'Running';
       return session.draft === true ? 'Draft' : 'Ready';
   }
+}
+
+/**
+ * WHAT an awaiting session is waiting on (#3042), read off the same shared
+ * fold `orchestrationLifecycleLabel` uses plus the summary's own transition
+ * facts. Meaningful only for a session that fold calls `Needs attention`.
+ *
+ * - `review_pending` is the server's fold of every open request that is not
+ *   an `input` request (approval, permission, confirmation), and of the
+ *   `pendingReview` flag: an approval.
+ * - `needs_input` reached through `input_requested` is an open question.
+ * - `needs_input` stamped by interrupted-turn recovery carries
+ *   `transitionReason: 'runtime_exit'`: the turn was cut short.
+ * - any other `needs_input` says only that the session waits on the user.
+ *
+ * A turn interrupted by a restart while an approval was open reads
+ * Interrupted: recovery's abort settles the request the dead turn opened
+ * (#3071), so the server no longer reports it `review_pending`.
+ */
+export function sessionAttentionKind(
+  session: Pick<
+    OrchestrationSessionSummary,
+    | 'lifecycleState'
+    | 'status'
+    | 'pendingReview'
+    | 'terminalAttribution'
+    | 'transitionReason'
+  >,
+): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
+  const disposition = sessionAttentionDisposition(session);
+  if (disposition.state !== 'awaiting') return 'waiting';
+  if (disposition.via === 'review_pending') return 'approval';
+  if (disposition.via === 'blocked') return 'blocked';
+  if (session.transitionReason === 'input_requested') return 'answer';
+  if (session.transitionReason === 'runtime_exit') return 'interrupted';
+  return 'waiting';
 }
 
 /**
