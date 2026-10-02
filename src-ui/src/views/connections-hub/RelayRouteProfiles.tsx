@@ -712,15 +712,24 @@ function NativeRelayGrantSummary({ state }: { state: NativeRelayGrantState }) {
   if (!grant) return <p>Connection invitation needed.</p>;
   const expired = grant.expired || grant.metadata.expiresAt <= Date.now();
   return (
-    <p>
-      {expired
-        ? 'Connection invitation expired'
-        : 'Connection invitation accepted'}{' '}
-      · expires{' '}
-      <time dateTime={new Date(grant.metadata.expiresAt).toISOString()}>
-        {new Date(grant.metadata.expiresAt).toLocaleString()}
-      </time>
-    </p>
+    <section aria-label="Saved connection status">
+      <p>
+        {expired
+          ? 'Saved invitation expired on this device.'
+          : 'Invitation saved on this device.'}{' '}
+        This does not confirm a live connection or current Station access.
+      </p>
+      <details>
+        <summary>Expiry details</summary>
+        <p>
+          This saved credential expires{' '}
+          <time dateTime={new Date(grant.metadata.expiresAt).toISOString()}>
+            {new Date(grant.metadata.expiresAt).toLocaleString()}
+          </time>
+          . This is its local expiry, not a live check of Station availability.
+        </p>
+      </details>
+    </section>
   );
 }
 

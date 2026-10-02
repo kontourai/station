@@ -247,6 +247,10 @@ Project membership are still separate. Opening or cancelling a link does not
 select a Station or retire an existing account session. Cold intake precedes
 the operator and member roots; warm intake covers their mounted owners.
 
+The saved Station card shows that the connection invitation is stored on this
+device. Its collapsed expiry details describe the local credential; they do not
+show whether the Station is online or the connection will work.
+
 These links use separate iOS schemes for each installed channel. Android
 secret-link intake is unsupported. The d956 development simulator observed
 nonsecret public cold and warm intake, cancellation, unchanged saved profiles

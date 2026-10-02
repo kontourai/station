@@ -917,7 +917,18 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Redeem routing grant' }),
     );
 
-    await screen.findByText(/Connection invitation accepted · expires/);
+    await screen.findByText(
+      'Invitation saved on this device. This does not confirm a live connection or current Station access.',
+    );
+    const expiryDetails = screen
+      .getByText('Expiry details')
+      .closest('details') as HTMLDetailsElement;
+    expect(expiryDetails.open).toBe(false);
+    fireEvent.click(screen.getByText('Expiry details'));
+    expect(expiryDetails.open).toBe(true);
+    expect(expiryDetails.textContent).toContain(
+      'This is its local expiry, not a live check of Station availability.',
+    );
     expect(mocks.grantInvoke).toHaveBeenCalledWith(
       'station_native_relay_grant_redeem',
       expect.objectContaining({
