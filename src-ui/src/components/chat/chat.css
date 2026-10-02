@@ -181,41 +181,6 @@
    by #2143: the toolbar is per REGION again, and a surface's placement is
    its tab's own menu (`.region-tabs__move-menu`, index.css). */
 
-@media (max-width: 480px) {
-  /* station#1630: two declarations lived here that never applied — an
-     `.app-toolbar__icon-btn` padding/font-size pair and an
-     `.app-toolbar__workspace-btn { display: none }` — because the base rules
-     redeclare the same properties LATER at equal specificity, and source
-     order decides a tie. They stated an intent that computed nothing.
-
-     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
-     hiding it was never a change anyone could see and its whole rule set went
-     with it.
-
-     The icon-button pair was deleted rather than moved after the base, and
-     the two halves are not alike. `font-size` only shrinks the glyph, which
-     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
-     min-width FLOOR, and two controls in this row are content-sized past it —
-     the connection chip and the notifications button when it carries a badge.
-     Trimming 8px to 6px gives each of those back 4px, so 8px of a
-     `flex-shrink: 0` row.
-
-     station#1401 has since TAKEN that padding half — the trim lives in the
-     mobile touch block below, where it applies, and it moved the label
-     breakpoint from 382 to 374. The font-size half stayed deleted: it only
-     shrinks the glyph, which is a visible cost with nothing to show for it.
-     So this block's two declarations are still correctly gone, and the row
-     they described is 8px narrower than when they were written.
-
-     This rule is the block's live one: its base sits EARLIER in this sheet,
-     so it wins the tie. A finger needs the same 44px floor the composer
-     controls get; the glyph does not grow. */
-  .app-toolbar__region-btn {
-    width: 44px;
-    height: 44px;
-  }
-}
-
 /* Mobile: overflow menu for secondary actions */
 .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
   display: none;
@@ -1142,23 +1107,6 @@
    the same 44px floor its composer siblings do (WCAG 2.5.5) — a 20px target
    between a thumbnail and the next chip is a mis-tap waiting to happen. The
    button grows; the glyph does not. */
-@media (max-width: 768px), (pointer: coarse) {
-  .composer-attachments__chip {
-    min-height: 44px;
-  }
-  .composer-attachments__remove {
-    width: 44px;
-    height: 44px;
-  }
-  .composer-attachments__action {
-    min-height: 44px;
-    padding-inline: var(--space-2);
-  }
-  /* Two chips per row on a phone, so two screenshots take one row. */
-  .composer-attachments__chip {
-    max-width: calc(50% - var(--space-1));
-  }
-}
 
 /* #1552 D4: `.menu-row` is now EVERY menu's row — the dock's placement and More
    menus, the header's overflow, help and profile menus, the Layout picker and
@@ -1178,6 +1126,22 @@
    The class is DOUBLED so this beats index.css's single-class base rule on
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
+  .composer-attachments__chip {
+    min-height: 44px;
+  }
+  .composer-attachments__remove {
+    width: 44px;
+    height: 44px;
+  }
+  .composer-attachments__action {
+    min-height: 44px;
+    padding-inline: var(--space-2);
+  }
+  /* Two chips per row on a phone, so two screenshots take one row. */
+  .composer-attachments__chip {
+    max-width: calc(50% - var(--space-1));
+  }
+
   .menu-row.menu-row {
     min-height: 44px;
   }
@@ -1522,6 +1486,39 @@
 }
 
 @media (max-width: 480px) {
+  /* station#1630: two declarations lived here that never applied — an
+     `.app-toolbar__icon-btn` padding/font-size pair and an
+     `.app-toolbar__workspace-btn { display: none }` — because the base rules
+     redeclare the same properties LATER at equal specificity, and source
+     order decides a tie. They stated an intent that computed nothing.
+
+     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
+     hiding it was never a change anyone could see and its whole rule set went
+     with it.
+
+     The icon-button pair was deleted rather than moved after the base, and
+     the two halves are not alike. `font-size` only shrinks the glyph, which
+     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
+     min-width FLOOR, and two controls in this row are content-sized past it —
+     the connection chip and the notifications button when it carries a badge.
+     Trimming 8px to 6px gives each of those back 4px, so 8px of a
+     `flex-shrink: 0` row.
+
+     station#1401 has since TAKEN that padding half — the trim lives in the
+     mobile touch block below, where it applies, and it moved the label
+     breakpoint from 382 to 374. The font-size half stayed deleted: it only
+     shrinks the glyph, which is a visible cost with nothing to show for it.
+     So this block's two declarations are still correctly gone, and the row
+     they described is 8px narrower than when they were written.
+
+     This rule is the block's live one: its base sits EARLIER in this sheet,
+     so it wins the tie. A finger needs the same 44px floor the composer
+     controls get; the glyph does not grow. */
+  .app-toolbar__region-btn {
+    width: 44px;
+    height: 44px;
+  }
+
   /* The footer is a column now, so the narrow-screen decision that these
      controls sit at the reading edge is expressed on the cross axis. It was
      `justify-content: flex-start` while the footer was a row. */
@@ -2562,6 +2559,12 @@
     min-width: 44px;
     min-height: 44px;
   }
+
+  .chat-status-pill__details {
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
+  }
 }
 
 @media (max-height: 540px) and (pointer: coarse) {
@@ -2623,13 +2626,6 @@
 :root[data-page-hidden] .tool-call__line::after,
 :root[data-page-hidden] .tool-call-batch__summary::after {
   animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tool-call__line:has(.tool-call__pulse)::after,
-  .tool-call-batch__summary:has(.tool-call-batch__pulse)::after {
-    display: none;
-  }
 }
 
 .chat-input__activity .chat-scroll-to-bottom:hover {
