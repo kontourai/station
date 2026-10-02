@@ -732,7 +732,8 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Copy public iOS setup link' }),
     );
-    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    // iOS requires the clipboard write in the original tap activation.
+    expect(writeText).toHaveBeenCalledOnce();
     const link = String(writeText.mock.calls[0]?.[0]);
     const decoded = parseNativeRelayLink(link, {
       channel: 'nightly',

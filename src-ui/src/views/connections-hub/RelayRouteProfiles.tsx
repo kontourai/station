@@ -2,6 +2,7 @@ import {
   type RequestCredentialEvidence,
   useConnections,
 } from '@kontourai/station-connect';
+import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import type { StationProfile } from '@kontourai/station-contracts';
 import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -835,9 +836,6 @@ export function RelayRouteProfiles({
   async function copyPublicSetupLink(profile: StationProfile) {
     if (!profile.relayRoute || !channel) return;
     try {
-      const { encodeNativeRelayLink } = await import(
-        '@kontourai/station-connect/native-relay-link'
-      );
       const link = encodeNativeRelayLink(
         {
           version: 'station-native-relay-link/v1',
