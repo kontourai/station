@@ -128,15 +128,15 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/SkillsView.tsx","digest":"3f73f751e0b4c20286c9eef9bf0b2033bea9aa2748684afe86e2eb9f9bd12d2c","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"},
+    {"path":"src-ui/src/views/SkillsView.tsx","digest":"01b46a8aa9580a4dfa9a3f9f6fc062ff4069d13d7f27d192f93a143385f36c60","revision":"2dceb46beab0a18aa5c649875406491b1ff57dec"},
 
     {"path":"src-ui/src/components/modals/SkillRunModal.tsx","digest":"d8e938a9a5a8306c4cf41afdda2e1e068e22050a5f189debbd59da8ba2a68c28","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"},
 
     {"path":"src-ui/src/components/modals/ImportSkillsModal.tsx","digest":"65dae4a6ca3633c3109dac6efee0cf43823fec76402f6c927796be3f4949ac19","revision":"224e1f29005a8afc5495fe69e55445e8d0d4e12c"},
 
-    {"path":"src-ui/src/__tests__/SkillsView.test.tsx","digest":"1d1fd8412c55378f509090a0a58ae81b318e99aa7d279b1b4528cbecb408eebd","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"},
+    {"path":"src-ui/src/__tests__/SkillsView.test.tsx","digest":"b11dee605fd132ca7e483d630ce458ea877febd1b5f551f12b78d5c2d38c99bf","revision":"2dceb46beab0a18aa5c649875406491b1ff57dec"},
 
-    {"path":"src-ui/src/__tests__/SkillsView.navigation.test.tsx","digest":"6fc172de75229b65713691022a538097a1a6d9741a6de2aac57382afa7e1bea9","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"}
+    {"path":"src-ui/src/__tests__/SkillsView.navigation.test.tsx","digest":"d8df0c0302ca63d49d30894b4c66b321108d87fe89fc3957d0831669a9846c9b","revision":"2dceb46beab0a18aa5c649875406491b1ff57dec"}
   ],
 
   "checks": [
