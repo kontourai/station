@@ -138,9 +138,9 @@
 
     {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 
-    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 

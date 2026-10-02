@@ -111,3 +111,13 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* A row's keyboard shortcut, at its end (see `OverflowAction.shortcut`).
+   Rendered on a fine pointer only; the row announces it either way. */
+.action-overflow__shortcut {
+  margin-left: auto;
+  padding-left: var(--space-6);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}

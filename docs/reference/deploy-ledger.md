@@ -28,6 +28,12 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-02T15:39:03Z | nightly-desktop | 0.1.11-nightly.2466.3 | `e7fb9b3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/37021990417) |
+| 2026-10-02T15:38:59Z | nightly-android | 0.1.11-nightly.2466.3 | `e7fb9b3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/37021990417) |
+| 2026-10-02T15:36:40Z | nightly-npm | 0.7.0-nightly.2466.37021990417 | `e7fb9b3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/37021990417) |
+| 2026-10-02T13:20:33Z | nightly-desktop | 0.1.11-nightly.2466.2 | `1c46287` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/37006002202) |
+| 2026-10-02T13:20:31Z | nightly-android | 0.1.11-nightly.2466.2 | `1c46287` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/37006002202) |
+| 2026-10-02T13:16:04Z | nightly-npm | 0.7.0-nightly.2466.37006002202 | `1c46287` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/37006002202) |
 | 2026-10-02T06:39:22Z | nightly-desktop | 0.1.11-nightly.2466.1 | `2ed63fc` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36968209089) |
 | 2026-10-02T06:39:20Z | nightly-android | 0.1.11-nightly.2466.1 | `2ed63fc` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36968209089) |
 | 2026-10-02T06:29:08Z | nightly-npm | 0.7.0-nightly.2466.36968209089 | `2ed63fc` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36968209089) |
@@ -217,6 +223,129 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-02T15:39:03Z · nightly-desktop · 0.1.11-nightly.2466.3
+
+- Ship SHA: `e7fb9b3161de5d6a3e006ad9760ced9c862130c8`
+- Artifact built at: `2026-10-02T14:55:33.962Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 37021990417)
+
+### Changelog
+
+Commits since `1c46287` ([full sha](https://github.com/kontourai/station/commit/1c46287e3d2c12adf752e0c8ba9027560a6845ce)):
+
+**Features**
+
+- [#3115](https://github.com/kontourai/station/pull/3115) feat(file-preview): highlighted source and a per-file Changes view
+- [#3082](https://github.com/kontourai/station/pull/3082) feat(ui): start with the task and simplify Station switching
+
+## 2026-10-02T15:38:59Z · nightly-android · 0.1.11-nightly.2466.3
+
+- Ship SHA: `e7fb9b3161de5d6a3e006ad9760ced9c862130c8`
+- Artifact built at: `2026-10-02T14:55:25.707Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 37021990417)
+
+### Changelog
+
+Commits since `1c46287` ([full sha](https://github.com/kontourai/station/commit/1c46287e3d2c12adf752e0c8ba9027560a6845ce)):
+
+**Features**
+
+- [#3115](https://github.com/kontourai/station/pull/3115) feat(file-preview): highlighted source and a per-file Changes view
+- [#3082](https://github.com/kontourai/station/pull/3082) feat(ui): start with the task and simplify Station switching
+
+## 2026-10-02T15:36:40Z · nightly-npm · 0.7.0-nightly.2466.37021990417
+
+- Ship SHA: `e7fb9b3161de5d6a3e006ad9760ced9c862130c8`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2466.37021990417 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `1c46287` ([full sha](https://github.com/kontourai/station/commit/1c46287e3d2c12adf752e0c8ba9027560a6845ce)):
+
+**Features**
+
+- [#3115](https://github.com/kontourai/station/pull/3115) feat(file-preview): highlighted source and a per-file Changes view
+- [#3082](https://github.com/kontourai/station/pull/3082) feat(ui): start with the task and simplify Station switching
+
+## 2026-10-02T13:20:33Z · nightly-desktop · 0.1.11-nightly.2466.2
+
+- Ship SHA: `1c46287e3d2c12adf752e0c8ba9027560a6845ce`
+- Artifact built at: `2026-10-02T12:30:06.250Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 37006002202)
+
+### Changelog
+
+Commits since `2ed63fc` ([full sha](https://github.com/kontourai/station/commit/2ed63fc9e7f6c73ef9c7a20cbdc742975dfaf1a9)):
+
+**Features**
+
+- [#3111](https://github.com/kontourai/station/pull/3111) feat(ci): measure merge-queue and runner health over time (#3101 H)
+- [#3100](https://github.com/kontourai/station/pull/3100) feat(claude): read the engine's structured ask reasons so grants never answer safety checks or ask rules (#2932)
+- [#2974](https://github.com/kontourai/station/pull/2974) feat(install): install.ps1 stages Windows archives through a shared installer core (#2675 W1)
+
+**Fixes**
+
+- [#3108](https://github.com/kontourai/station/pull/3108) fix(chat): phone chat fixes — tool rows and approvals, pane layout, send and attachments
+
+**CI / workflow**
+
+- [#3107](https://github.com/kontourai/station/pull/3107) ci: right-size fast-checks shards for the hosted runner pool (#3101 D)
+
+## 2026-10-02T13:20:31Z · nightly-android · 0.1.11-nightly.2466.2
+
+- Ship SHA: `1c46287e3d2c12adf752e0c8ba9027560a6845ce`
+- Artifact built at: `2026-10-02T12:29:43.600Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 37006002202)
+
+### Changelog
+
+Commits since `2ed63fc` ([full sha](https://github.com/kontourai/station/commit/2ed63fc9e7f6c73ef9c7a20cbdc742975dfaf1a9)):
+
+**Features**
+
+- [#3111](https://github.com/kontourai/station/pull/3111) feat(ci): measure merge-queue and runner health over time (#3101 H)
+- [#3100](https://github.com/kontourai/station/pull/3100) feat(claude): read the engine's structured ask reasons so grants never answer safety checks or ask rules (#2932)
+- [#2974](https://github.com/kontourai/station/pull/2974) feat(install): install.ps1 stages Windows archives through a shared installer core (#2675 W1)
+
+**Fixes**
+
+- [#3108](https://github.com/kontourai/station/pull/3108) fix(chat): phone chat fixes — tool rows and approvals, pane layout, send and attachments
+
+**CI / workflow**
+
+- [#3107](https://github.com/kontourai/station/pull/3107) ci: right-size fast-checks shards for the hosted runner pool (#3101 D)
+
+## 2026-10-02T13:16:04Z · nightly-npm · 0.7.0-nightly.2466.37006002202
+
+- Ship SHA: `1c46287e3d2c12adf752e0c8ba9027560a6845ce`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2466.37006002202 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `2ed63fc` ([full sha](https://github.com/kontourai/station/commit/2ed63fc9e7f6c73ef9c7a20cbdc742975dfaf1a9)):
+
+**Features**
+
+- [#3111](https://github.com/kontourai/station/pull/3111) feat(ci): measure merge-queue and runner health over time (#3101 H)
+- [#3100](https://github.com/kontourai/station/pull/3100) feat(claude): read the engine's structured ask reasons so grants never answer safety checks or ask rules (#2932)
+- [#2974](https://github.com/kontourai/station/pull/2974) feat(install): install.ps1 stages Windows archives through a shared installer core (#2675 W1)
+
+**Fixes**
+
+- [#3108](https://github.com/kontourai/station/pull/3108) fix(chat): phone chat fixes — tool rows and approvals, pane layout, send and attachments
+
+**CI / workflow**
+
+- [#3107](https://github.com/kontourai/station/pull/3107) ci: right-size fast-checks shards for the hosted runner pool (#3101 D)
 
 ## 2026-10-02T06:39:22Z · nightly-desktop · 0.1.11-nightly.2466.1
 

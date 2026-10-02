@@ -16,7 +16,7 @@
 
     {"path":"docs/guides/testing.md","digest":"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925","revision":"1c13dd90939769cd3ca557a36649aa25823194db"},
 
-    {"path":"src-ui/src/components/Button.tsx","digest":"b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
+    {"path":"src-ui/src/components/Button.tsx","digest":"b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
