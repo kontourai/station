@@ -1,6 +1,7 @@
 import {
   captureNativeEnrollmentFailure,
   type NativeEnrollmentFailureDiagnostic,
+  type NativeEnrollmentFailureStage,
   nativeEnrollmentFailureDiagnostic,
 } from '@kontourai/station-connect/native-enrollment';
 import type { StationProfile } from '@kontourai/station-contracts';
@@ -139,46 +140,53 @@ export function NativeRelayEnrollmentWizard({
   async function validatedProfileRevision(
     signal: AbortSignal,
   ): Promise<number> {
-    const grantStatus = await refreshGrantStatus();
-    signal.throwIfAborted();
-    const grant = grantStatus.grants[0];
-    const cleanupPending = grantStatus.cleanups.some(
-      (cleanup) =>
-        !cleanup.brokerRetired ||
-        (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
-    );
-    if (
-      grantStatus.profileName !== profile.name ||
-      grantStatus.stationId !== selection.stationId ||
-      grantStatus.enrollmentId !== selection.enrollmentId ||
-      !grant ||
-      grant.expired ||
-      grant.metadata.expiresAt <= Date.now() ||
-      cleanupPending
-    )
-      throw new Error('staleProfile');
-    await nativeRelayGrantAdapter.assertCurrentRoute({
-      profileName: profile.name,
-      expectedProfileRevision: grantStatus.profileRevision,
-      expectedUpdatedAt: profile.updatedAt,
-      expectedRoute: selection,
-    });
-    signal.throwIfAborted();
-    const trust = await queryClient.fetchQuery({
-      queryKey: ['native-relay-key-approval', profile.name, 'status'],
-      queryFn: () => nativeRelayKeyApproval.status(profile.name),
-      staleTime: 0,
-    });
-    signal.throwIfAborted();
-    if (
-      trust.status !== 'approved' ||
-      trust.profileName !== profile.name ||
-      trust.brokerOrigin !== route.brokerOrigin ||
-      trust.stationId !== route.stationId ||
-      trust.enrollmentId !== route.enrollmentId
-    )
-      throw new Error('stationTrustRequired');
-    return grantStatus.profileRevision;
+    let stage: NativeEnrollmentFailureStage = 'route-status';
+    try {
+      const grantStatus = await refreshGrantStatus();
+      signal.throwIfAborted();
+      const grant = grantStatus.grants[0];
+      const cleanupPending = grantStatus.cleanups.some(
+        (cleanup) =>
+          !cleanup.brokerRetired ||
+          (cleanup.localCleanupRequired && !cleanup.localCleanupComplete),
+      );
+      if (
+        grantStatus.profileName !== profile.name ||
+        grantStatus.stationId !== selection.stationId ||
+        grantStatus.enrollmentId !== selection.enrollmentId ||
+        !grant ||
+        grant.expired ||
+        grant.metadata.expiresAt <= Date.now() ||
+        cleanupPending
+      )
+        throw new Error('staleProfile');
+      stage = 'route-currentness';
+      await nativeRelayGrantAdapter.assertCurrentRoute({
+        profileName: profile.name,
+        expectedProfileRevision: grantStatus.profileRevision,
+        expectedUpdatedAt: profile.updatedAt,
+        expectedRoute: selection,
+      });
+      signal.throwIfAborted();
+      stage = 'station-trust';
+      const trust = await queryClient.fetchQuery({
+        queryKey: ['native-relay-key-approval', profile.name, 'status'],
+        queryFn: () => nativeRelayKeyApproval.status(profile.name),
+        staleTime: 0,
+      });
+      signal.throwIfAborted();
+      if (
+        trust.status !== 'approved' ||
+        trust.profileName !== profile.name ||
+        trust.brokerOrigin !== route.brokerOrigin ||
+        trust.stationId !== route.stationId ||
+        trust.enrollmentId !== route.enrollmentId
+      )
+        throw new Error('stationTrustRequired');
+      return grantStatus.profileRevision;
+    } catch (cause) {
+      throw captureNativeEnrollmentFailure(cause, stage);
+    }
   }
 
   const recoveryKey = [
@@ -252,6 +260,13 @@ export function NativeRelayEnrollmentWizard({
       void queryClient.invalidateQueries({ queryKey: recoveryKey });
     },
   });
+
+  const setupDiagnostic =
+    phase === 'idle' && recovery.isError
+      ? nativeEnrollmentFailureDiagnostic(recovery.error)
+      : error
+        ? beginDiagnostic
+        : undefined;
 
   const resume = useMutation({
     mutationFn: async (selectedHandle: string) => {
@@ -751,16 +766,16 @@ export function NativeRelayEnrollmentWizard({
       ) : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
-      {error && beginDiagnostic ? (
+      {setupDiagnostic ? (
         <details>
           <summary>Device setup troubleshooting</summary>
           <p>
-            Stage: {beginDiagnostic.stage}. Code: {beginDiagnostic.code}.
+            Stage: {setupDiagnostic.stage}. Code: {setupDiagnostic.code}.
           </p>
-          {beginDiagnostic.httpStatus === undefined ? null : (
-            <p>HTTP status: {beginDiagnostic.httpStatus}</p>
+          {setupDiagnostic.httpStatus === undefined ? null : (
+            <p>HTTP status: {setupDiagnostic.httpStatus}</p>
           )}
-          {beginDiagnostic.cleanup?.map((failure) => (
+          {setupDiagnostic.cleanup?.map((failure) => (
             <p key={failure.stage}>
               Cleanup: {failure.stage}. Code: {failure.code}.
             </p>

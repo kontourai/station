@@ -1,5 +1,8 @@
 export type NativeEnrollmentFailureStage =
   | 'begin-preflight'
+  | 'route-status'
+  | 'route-currentness'
+  | 'station-trust'
   | 'recovery'
   | 'peer-open'
   | 'currentness'
@@ -17,6 +20,8 @@ const SAFE_CODES = new Set([
   'native_enrollment_peer_expired',
   'native_enrollment_peer_refused',
   'native_enrollment_operation_refused',
+  'native_enrollment_route_refused',
+  'stationTrustRequired',
   'native_enrollment_peer_capacity_reached',
   'native_enrollment_peer_invalid',
   'native_enrollment_peer_binding_mismatch',

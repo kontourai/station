@@ -48,6 +48,12 @@ stage, an allowlisted code (or `unknown`), an integer HTTP status when a respons
 was received, and at most two cleanup stage/code entries. It displays no raw
 error text, response body, URL, proof, credential or owner identifier.
 
+The automatic saved-setup recovery check uses the same disclosure, including
+failures before client construction: route status, saved-route currentness and
+Station trust have distinct fixed stages. Host resume refusals retain their
+existing fixed code at the `recovery` boundary; no protocol call is repeated to
+obtain diagnostics.
+
 These fields identify the local failing boundary, not a verified server cause.
 `peer-open` includes binding, ICE and peer admission; a missing HTTP status does
 not establish whether the server received an earlier request. This diagnostic

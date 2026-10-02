@@ -23,6 +23,7 @@ import {
 export {
   captureNativeEnrollmentFailure,
   type NativeEnrollmentFailureDiagnostic,
+  type NativeEnrollmentFailureStage,
   nativeEnrollmentFailureDiagnostic,
 } from './nativeEnrollmentFailure.js';
 

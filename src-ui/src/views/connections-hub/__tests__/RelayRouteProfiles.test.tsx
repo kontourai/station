@@ -1108,6 +1108,56 @@ describe('RelayRouteProfiles', () => {
     ).toBe(false);
   });
 
+  test('automatic saved setup check exposes the allowlisted host resume refusal without Begin or retries', async () => {
+    configureEnrollmentReadyRoute();
+    const original = mocks.enrollmentInvoke.getMockImplementation()!;
+    mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_enrollment_resume')
+        throw 'native_enrollment_route_refused';
+      return original(command, args);
+    });
+    renderRoutes();
+    await screen.findByText(/Saved Device setup could not be checked/);
+    expect(
+      screen.getByText(
+        /Stage: recovery. Code: native_enrollment_route_refused/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Request device access' }),
+    ).toBeNull();
+    expect(
+      mocks.enrollmentInvoke.mock.calls.filter(
+        ([command]) => command === 'station_native_enrollment_resume',
+      ),
+    ).toHaveLength(1);
+    expect(
+      mocks.enrollmentInvoke.mock.calls.some(
+        ([command]) => command === 'station_native_enrollment_begin_prepare',
+      ),
+    ).toBe(false);
+  });
+
+  test('automatic recovery diagnostics cover route validation before client construction and exclude secret traps', async () => {
+    configureEnrollmentReadyRoute();
+    const original = mocks.grantInvoke.getMockImplementation()!;
+    const trap = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    mocks.grantInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_profile_store_read') throw new Error(trap);
+      return original(command, args);
+    });
+    renderRoutes();
+    await screen.findByText(/Saved Device setup could not be checked/);
+    expect(
+      screen.getByText(/Stage: route-currentness. Code: unknown/),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain(trap);
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Request device access' }),
+    ).toBeNull();
+  });
+
   test('Device Begin troubleshooting excludes raw host error text and does not show a candidate', async () => {
     configureEnrollmentReadyRoute();
     const original = mocks.enrollmentInvoke.getMockImplementation()!;
