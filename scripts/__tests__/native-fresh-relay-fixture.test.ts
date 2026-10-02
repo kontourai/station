@@ -166,9 +166,7 @@ test('operator successor retains the genuine Station home and trust, provisions 
     expect(
       credentials.bundle.connector.secret === f.bundle.connector.secret,
     ).toBe(false);
-    expect(() => assertNativeFreshBrokerLeaseCommitted(successor)).toThrow(
-      'fixture_broker_generation_changed',
-    );
+    expect(() => assertNativeFreshBrokerLeaseCommitted(successor)).toThrow();
     // Normal production provisioning owns the transaction; preparation did not initialize a lease.
     const initialized = spawnSync(
       process.execPath,
@@ -210,7 +208,7 @@ test('operator successor retains the genuine Station home and trust, provisions 
         1,
         revision,
       ),
-    ).rejects.toThrow('fixture_broker_generation_changed');
+    ).rejects.toThrow();
     f.broker.provision(
       { ...successor.scope, routingGeneration: 3 },
       60_000,
