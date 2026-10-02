@@ -70,7 +70,7 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/index.css","digest":"9b0f73c59e84688e32fcaff618a290e4fad31a51ace52e2ab6aa7ef2e714aa23","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    {"path":"src-ui/src/index.css","digest":"d65804ed9f4ae74a434ee49ee133cf43f1f88156fff336c2219e1a007ff2ed3a","revision":"0653a461551761371d15a53b37db51d7d0068bfb"},
 
     {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
