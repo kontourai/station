@@ -722,6 +722,113 @@ describe.runIf(process.platform !== 'win32')(
       ).toThrow('broker_credential_refused');
       restarted.close();
     });
+    test('expired connector withdrawal retires only its authenticated current scope without reviving it', async () => {
+      const root = mkdtempSync(
+        join(tmpdir(), 'station-broker-expired-withdraw-'),
+      );
+      const path = join(root, 'broker.sqlite');
+      let now = 10_000;
+      const service = new SelfHostedBrokerService(path, () => now);
+      const database = new DatabaseSync(path);
+      const app = createSelfHostedBrokerRoutes(service);
+      try {
+        const issued = service.provision(scope, 10_000);
+        service.open(scope, issued.routing, {
+          clientId: 'client-expired-owner',
+          nonce: 'nonce-expired-owner',
+          offerSdp: 'offer',
+        });
+        const foreignScope = { ...scope, stationId: 'station-foreign123' };
+        const foreign = service.provision(foreignScope, 60_000);
+        service.open(foreignScope, foreign.routing, {
+          clientId: 'client-foreign-owner',
+          nonce: 'nonce-foreign-owner',
+          offerSdp: 'offer',
+        });
+        const withdraw = (targetScope = scope, credential = issued.connector) =>
+          app.request('/leases/withdraw', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              origin: targetScope.browserOrigin,
+              authorization: `Bearer ${credential.secret}`,
+              'x-broker-credential-id': credential.id,
+            },
+            body: JSON.stringify({ scope: targetScope }),
+          });
+        now = 20_000;
+        for (const [targetScope, credential] of [
+          [scope, issued.routing],
+          [scope, foreign.connector],
+          [scope, { ...issued.connector, secret: foreign.connector.secret }],
+          [{ ...scope, enrollmentId: 'enroll-foreign123' }, issued.connector],
+          [
+            { ...scope, browserOrigin: 'https://foreign.example' },
+            issued.connector,
+          ],
+          [{ ...scope, routingGeneration: 2 }, issued.connector],
+          [foreignScope, issued.connector],
+        ] as const) {
+          expect((await withdraw(targetScope, credential)).status).toBe(401);
+        }
+        const row = () =>
+          database
+            .prepare(
+              'SELECT expires_at,lease_revision,withdrawn_at FROM broker_leases WHERE station_id=?',
+            )
+            .get(scope.stationId);
+        expect(row()).toEqual({
+          expires_at: 20_000,
+          lease_revision: 0,
+          withdrawn_at: null,
+        });
+        const response = await withdraw();
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ withdrawn: true });
+        expect(row()).toEqual({
+          expires_at: 20_000,
+          lease_revision: 0,
+          withdrawn_at: now,
+        });
+        expect(
+          database
+            .prepare(
+              'SELECT count(*) n FROM broker_connections WHERE station_id=?',
+            )
+            .get(scope.stationId),
+        ).toEqual({ n: 0 });
+        expect(service.offers(foreignScope, foreign.connector)).toHaveLength(1);
+        expect(() => service.register(scope, issued.connector)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.renew(scope, issued.connector, 0)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.status(scope, issued.routing)).toThrow(
+          'broker_credential_refused',
+        );
+
+        const nextScope = { ...scope, routingGeneration: 2 };
+        const next = service.provision(nextScope, 60_000);
+        service.open(nextScope, next.routing, {
+          clientId: 'client-new-generation',
+          nonce: 'nonce-new-generation',
+          offerSdp: 'offer',
+        });
+        expect((await withdraw()).status).toBe(401);
+        expect((await withdraw(nextScope)).status).toBe(401);
+        expect(service.offers(nextScope, next.connector)).toHaveLength(1);
+        expect(row()).toEqual({
+          expires_at: 80_000,
+          lease_revision: 0,
+          withdrawn_at: null,
+        });
+      } finally {
+        database.close();
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
     test('binds credential direction, generation, expiry and renewal revision', () => {
       const path = join(
         mkdtempSync(join(tmpdir(), 'station-broker-')),
