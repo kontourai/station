@@ -92,6 +92,11 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -784,7 +789,7 @@ export interface ClaudeAdapterOptions {
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -1139,9 +1144,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         input.threadId,
         input.agent,
       );
-    const appHomeEnv = sourceCursor
+    const resolvedHome = sourceCursor
       ? undefined
       : await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = resolvedHome?.env;
     // station#2072: the connection env's routing keys apply to every SDK
     // spawn, but its config-home key must NOT apply where the app-home env
     // is deliberately absent (adoption and source-affinity resume —
@@ -1166,6 +1172,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       augmentedEnv,
       preToolPolicy,
       claudeExecutable,
+      resolvedHome
+        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+        : undefined,
     );
   }
 
@@ -1355,6 +1364,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
+    usageAccountKey?: string,
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -1437,10 +1447,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       method: 'session.started',
       sessionId: input.threadId,
       initialState: 'created',
-      metadata: { ...input.metadata, cwd: input.cwd },
+      metadata: {
+        ...input.metadata,
+        cwd: input.cwd,
+        usageAccountKey,
+      },
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
       // Explicit resolved values (not just the raw modelOptions spread
       // above) so the durable record reflects what the adapter actually
@@ -3326,14 +3341,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,

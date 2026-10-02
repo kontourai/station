@@ -16,7 +16,7 @@
 
     {"path":"src-server/providers/adapters/acp-steer.ts","digest":"df5aea2d6a0c2d6f8aace66a72bb8b748511b0221d8ee00cb6cc9a5ed98461dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"4e08fb0068feeaec3a958a0fd5be443a9695d8719d81110c48f848dda3b56aea","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
     {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"15b1e2490e7c8a652bffaf3a16a297d9df3de75f6d8c61c00fc8f8a993f68c6a","revision":"e7bb11891396b509d47e7c0ba3ba9066a74a03db"},
 

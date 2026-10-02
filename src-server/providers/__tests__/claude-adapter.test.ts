@@ -12,6 +12,10 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
+  CredentialProfileEnvironmentError,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
+import {
   deriveConfigHomeAffinity,
   resolveConfigHomeAffinity,
 } from '../sessions/transcript-file-io.js';
@@ -349,7 +353,8 @@ describe('ClaudeAdapter', () => {
     try {
       const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
       const getAppHomeEnv = vi.fn(async () => ({
-        CLAUDE_CONFIG_DIR: '/unused-profile-home',
+        env: { CLAUDE_CONFIG_DIR: '/unused-profile-home' },
+        profileRef: null,
       }));
       const options = {
         getAppHomeEnv,
@@ -7719,7 +7724,8 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         getAppHomeEnv: async () => ({
-          CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
+          env: { CLAUDE_CONFIG_DIR: '/station/app-homes/claude' },
+          profileRef: null,
         }),
       });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -7767,7 +7773,8 @@ describe('ClaudeAdapter', () => {
     test('uses a server-only profile ref for one spawn without publishing the ref', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const getAppHomeEnv = vi.fn().mockResolvedValue({
-        CLAUDE_CONFIG_DIR: '/station/app-homes/opaque',
+        env: { CLAUDE_CONFIG_DIR: '/station/app-homes/opaque' },
+        profileRef: 'applied-profile',
       });
       const adapter = new ClaudeAdapter({ getAppHomeEnv });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -7784,6 +7791,33 @@ describe('ClaudeAdapter', () => {
       expect(JSON.stringify([started.value, configured.value])).not.toContain(
         'canary-profile-ref',
       );
+      expect(configured.value.metadata.usageAccountKey).toBe(
+        usageCredentialAccountKey('claude', 'applied-profile'),
+      );
+      expect(mockQuery.mock.calls.at(-1)?.[0]?.options.env).toMatchObject({
+        CLAUDE_CONFIG_DIR: '/station/app-homes/opaque',
+      });
+    });
+
+    test('a configured-profile preparation failure blocks a start with no explicit ref', async () => {
+      const warn = vi.fn();
+      const priorQueries = mockQuery.mock.calls.length;
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => {
+          throw new CredentialProfileEnvironmentError();
+        },
+        logger: { warn },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'configured-profile-failure',
+        }),
+      ).rejects.toThrow(
+        'Credential profile environment could not be prepared.',
+      );
+      expect(mockQuery.mock.calls.length).toBe(priorQueries);
+      expect(warn).not.toHaveBeenCalled();
     });
 
     test('fails closed without logging a profile resolver error', async () => {
@@ -7984,7 +8018,8 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         getAppHomeEnv: async () => ({
-          CLAUDE_CONFIG_DIR: '/station/app-homes/claude-profile',
+          env: { CLAUDE_CONFIG_DIR: '/station/app-homes/claude-profile' },
+          profileRef: null,
         }),
         getConnectionEnv: async () => ({
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
@@ -8264,7 +8299,8 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         getAppHomeEnv: async () => ({
-          CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
+          env: { CLAUDE_CONFIG_DIR: '/station/app-homes/claude' },
+          profileRef: null,
         }),
       });
 
@@ -8369,7 +8405,7 @@ describe('ClaudeAdapter', () => {
           mockQuery.mockReturnValue(createMockQuery([]));
           const adapter = new ClaudeAdapter({
             getAppHomeEnv: scenario.appHomeEnv
-              ? async () => scenario.appHomeEnv!
+              ? async () => ({ env: scenario.appHomeEnv!, profileRef: null })
               : undefined,
           });
 
