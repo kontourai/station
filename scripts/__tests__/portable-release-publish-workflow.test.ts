@@ -19,6 +19,8 @@ import {
   checkArchives,
   compareRingVersions,
   createDryRunKeys,
+  isStaleRollingManifest,
+  ManifestMismatchError,
   PORTABLE_LAUNCHER_PROTOCOL,
   parseRingVersion,
   publicationLocations,
@@ -667,6 +669,30 @@ describe('publication checks for stable and preview', () => {
       other.output,
     ]);
     expect(stable.status).toBe(1);
+  });
+
+  it('retries a re-verify only while the served manifest is an older version (#3013)', () => {
+    const older = new ManifestMismatchError('1.2.2', '1.2.3');
+    expect(isStaleRollingManifest('stable', older, { version: '1.2.3' })).toBe(
+      true,
+    );
+    for (const error of [
+      new ManifestMismatchError('1.2.3', '1.2.3'),
+      new ManifestMismatchError('1.2.4', '1.2.3'),
+      new ManifestMismatchError('1.2.3-preview.1', '1.2.3'),
+      new Error('manifest signature did not verify'),
+    ])
+      expect(
+        isStaleRollingManifest('stable', error, { version: '1.2.3' }),
+        error.message,
+      ).toBe(false);
+    expect(
+      isStaleRollingManifest(
+        'preview',
+        new ManifestMismatchError('1.2.3-preview.3', '1.2.3-preview.4'),
+        { version: '1.2.3-preview.4' },
+      ),
+    ).toBe(true);
   });
 
   it("binds the payload to this release's versioned assets under the BASE_URL", () => {
