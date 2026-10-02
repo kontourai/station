@@ -234,7 +234,7 @@ for (const scenario of [
     const badge = page.locator('.chat-dock__project-badge');
     await expect(badge).toBeVisible({ timeout: 15_000 });
     // The row names the project, and only the project.
-    await expect(badge).toHaveText(scenario.name);
+    await expect(badge).toHaveAccessibleName(scenario.name);
     await expect(page.locator('.chat-dock__project-context')).toHaveText(
       scenario.name,
     );
@@ -277,7 +277,7 @@ test('project-context clicks do not toggle the dock (#1064)', async ({
   await page.waitForTimeout(500);
   expect((await dock.boundingBox())?.height ?? 0).toBe(before);
   // The click did what it is for, so this is not passing on an inert element.
-  await expect(
-    page.getByRole('dialog', { name: 'Switch project' }),
-  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('dialog', { name: 'Projects' })).toBeVisible({
+    timeout: 10_000,
+  });
 });

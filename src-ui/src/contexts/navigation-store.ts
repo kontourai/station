@@ -905,7 +905,16 @@ class NavigationStore {
     // A push discards every forward entry the browser held.
     for (const index of [...this.entryLocations.keys()])
       if (index > nextIndex) this.entryLocations.delete(index);
-    this.commitState(this.parseUrl(), true);
+    const next = this.parseUrl();
+    const previousProject = this.state.selectedProject;
+    this.commitState(next, true);
+    if (
+      next.selectedProject &&
+      (next.selectedProject !== previousProject ||
+        target.pathname === `/projects/${next.selectedProject}`)
+    ) {
+      deviceSettingsStore.set('chatDockProjectSlug', next.selectedProject);
+    }
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;

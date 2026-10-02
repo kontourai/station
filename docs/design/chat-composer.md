@@ -204,9 +204,34 @@ Owner-directed revision (clarified 2026-09-05): project switching and
 conversation switching are primary phone-header actions. Both stay directly
 reachable with readable current context and 44px touch targets at 320px,
 390px, and 412px widths. Neither requires opening Chat actions first.
-New chat, Activity, connection management, and dock sizing remain explicit
-actions in Chat actions. The collapsed dock also keeps a direct Expand chat control. No
-resize or navigation action requires a gesture.
+The **Chats and tasks** picker keeps a circular **+** action at the lower
+right, outside the scrolling list. Its accessible name and hover label are
+**New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
+opening it sends no message. Rows show the catalog's Agent icon, conversation
+title, Project, and a right-aligned status/time. Unresolved Agents retain their
+name. **Input** and **Approval** are compact presentations of the existing
+answer/approval states. Running time uses the recorded open-turn start; without
+one, the displayed time is labelled as last activity. One ellipsis opens the
+existing details/actions sheet, including Git and PR reads on demand.
+
+The **Projects** picker uses the same **+** component, named **New project**,
+and opens the canonical `/projects/new` flow. Its empty state explains the
+next action. Project icons and accent fallback match the sidebar; a checkmark
+identifies the selected project. Selecting an existing row changes the dock's
+binding, and its separate Open action shows the workspace.
+
+Selecting a workspace through the sidebar also sets the default project for
+new chats after navigation guards admit the route. It preserves the active
+chat and its original project. Opening an existing conversation also preserves
+this default. Choosing a different project in the chat bar
+overrides that default until the next explicit workspace selection. Both bars
+caption this value **New chats**; desktop also names the current chat's project
+when it differs. This revises the earlier independent-sidebar/default behavior.
+
+Chat actions retains conversation history, background tasks, connection
+management where needed, and chat settings. Its geometry action is **Full screen**
+or **Exit full screen**. Collapse stays on the header control. No resize or
+navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
 error state. A separate 44px actions button opens attribution, model facts,

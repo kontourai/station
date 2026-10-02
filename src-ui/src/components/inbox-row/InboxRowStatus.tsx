@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react';
+import { relativeTime } from '../../utils/relativeTime';
 import {
   formatElapsed,
   type WorkStatus,
@@ -114,12 +115,22 @@ export function InboxRowStatusLine({
   status,
   now,
   id,
+  lastActivityAt,
+  compact = false,
 }: {
+  lastActivityAt?: number;
+  compact?: boolean;
   status: WorkStatus;
   now: number;
   id: string;
 }) {
   const wraps = REASON_RUNGS.has(status.rung) && Boolean(status.detail);
+  const word =
+    compact && status.rung === 'answer'
+      ? 'Input'
+      : compact && status.rung === 'approval'
+        ? 'Approval'
+        : status.word;
   return (
     <span
       id={id}
@@ -128,7 +139,7 @@ export function InboxRowStatusLine({
       data-testid="inbox-row-status"
     >
       <InboxRowStatusGlyph rung={status.rung} />
-      <span className="inbox-row__word">{status.word}</span>
+      <span className="inbox-row__word">{word}</span>
       {status.detail && (
         <>
           <span className="inbox-row__sep">{' · '}</span>
@@ -156,6 +167,14 @@ export function InboxRowStatusLine({
             {`, ${coarseDuration(now - status.since)}`}
           </span>
         </>
+      )}
+      {status.since === undefined && lastActivityAt !== undefined && (
+        <span className="inbox-row__recency" title="Last activity">
+          <span aria-hidden="true"> · {relativeTime(lastActivityAt, now)}</span>
+          <span className="sr-only">
+            , last activity {relativeTime(lastActivityAt, now)}
+          </span>
+        </span>
       )}
     </span>
   );

@@ -147,6 +147,15 @@ connection errors, or setup actions when a choice is not ready. Opening it does
 not send a message. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
+On a phone, tap the current chat title to open **Chats and tasks**, then use
+**+** at the lower right to start a chat. **Projects** has the same add control
+for creating a project, including a short first-project prompt when empty.
+
+Selecting a project in the sidebar opens its workspace and makes it the default
+for new chats. An existing chat stays with its original project. The chat bar's
+**New chats** value lets you choose another default without leaving the workspace.
+The next sidebar project selection updates that default again.
+
 ### Finish setup and return
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up

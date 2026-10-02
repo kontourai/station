@@ -1,5 +1,9 @@
 import type { RefObject } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { CheckGlyph } from '../icons/Glyph';
+import { LayoutIcon } from '../icons/LayoutIcon';
+import { PickerCreateAction } from '../PickerCreateAction';
+import { projectAccents } from '../project-sidebar/projectAccent';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -10,11 +14,12 @@ export interface ChatDockProjectSwitcherSheetProps {
   anchorRef: RefObject<HTMLElement | null>;
   returnFocusTarget?: HTMLElement | null;
   /** The dock's own bound project (the chat's project), not the workspace
-   * currently being viewed — see the row-level "Current" flag below. */
+   * currently being viewed — see the row-level selection check below. */
   boundProjectSlug: string;
   projects: ProjectMetadata[];
   onOpenProject: (projectSlug: string) => void;
   onSwitchProject: (projectSlug: string, projectName: string) => void;
+  onNewProject?: () => void;
   onClose: () => void;
 }
 
@@ -63,7 +68,7 @@ function OpenProjectGlyph() {
  * "Open <name>") that navigates to the project's own page and collapses the
  * dock at the `onOpenProject` call site (`ChatDock.handleSelectProject`) so
  * the destination is visible. The bound row is still flagged with
- * `aria-current` and a decorative visual "Current" label, never disabled.
+ * `aria-current` and a decorative selection check, never disabled.
  *
  * No row or button here creates, opens, or moves a chat — starting one in
  * the just-switched project is the New Chat modal's own job (it defaults to
@@ -78,8 +83,10 @@ export function ChatDockProjectSwitcherSheet({
   projects,
   onOpenProject,
   onSwitchProject,
+  onNewProject,
   onClose,
 }: ChatDockProjectSwitcherSheetProps) {
+  const accents = projectAccents(projects.map((project) => project.slug));
   const run = (action: () => void) => {
     onClose();
     action();
@@ -88,7 +95,7 @@ export function ChatDockProjectSwitcherSheet({
   return (
     <ResponsiveDialogSurface
       layer="popover"
-      ariaLabel="Switch project"
+      ariaLabel="Projects"
       onClose={onClose}
       historyMode="entry"
       anchorRef={anchorRef}
@@ -97,15 +104,15 @@ export function ChatDockProjectSwitcherSheet({
       panelClassName="composer-popover-panel chat-dock__project-switcher-panel"
     >
       <ResponsiveDialogHeader
-        title="Switch project"
+        title="Projects"
         closeLabel="Close project switcher"
         onClose={onClose}
       />
       {projects.length === 0 ? (
         <Empty
           variant="compact"
-          label="Nothing here yet"
-          description="This Station has no projects to switch to."
+          label="No projects yet"
+          description="Use + to create your first project."
         />
       ) : (
         <ul className="chat-dock__project-switcher-list">
@@ -124,25 +131,33 @@ export function ChatDockProjectSwitcherSheet({
                   aria-label={`Switch to ${name}`}
                   onClick={() => run(() => onSwitchProject(project.slug, name))}
                 >
+                  <span
+                    className="chat-dock__project-switcher-icon"
+                    aria-hidden="true"
+                  >
+                    {project.icon ? (
+                      <LayoutIcon layout={project} size={28} />
+                    ) : (
+                      <span
+                        className="chat-dock__project-switcher-accent"
+                        style={{ backgroundColor: accents.get(project.slug) }}
+                      />
+                    )}
+                  </span>
                   <span className="chat-dock__project-switcher-name">
                     <span className="chat-dock__project-switcher-label">
                       {name}
                     </span>
-                    {isBound && (
-                      <span
-                        className="chat-dock__project-switcher-current"
-                        aria-hidden="true"
-                      >
-                        Current
-                      </span>
-                    )}
                   </span>
-                  <span
-                    className="chat-dock__project-switcher-hint"
-                    aria-hidden="true"
-                  >
-                    Switch the dock to this project
-                  </span>
+                  {isBound && (
+                    <span
+                      className="chat-dock__project-switcher-current"
+                      title="Selected project"
+                      aria-hidden="true"
+                    >
+                      <CheckGlyph />
+                    </span>
+                  )}
                 </button>
                 <div className="chat-dock__project-switcher-actions">
                   <button
@@ -166,6 +181,12 @@ export function ChatDockProjectSwitcherSheet({
             );
           })}
         </ul>
+      )}
+      {onNewProject && (
+        <PickerCreateAction
+          label="New project"
+          onClick={() => run(onNewProject)}
+        />
       )}
     </ResponsiveDialogSurface>
   );

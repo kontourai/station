@@ -160,13 +160,7 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onRestoreDock)}
           >
-            Restore chat
-            <span
-              className="composer-actions-menu__item-hint"
-              aria-hidden="true"
-            >
-              Or drag this bar down
-            </span>
+            Exit full screen
           </button>
         ) : overflow.dockControls !== false ? (
           <button
@@ -175,25 +169,9 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onExpandDock)}
           >
-            Expand chat
-            <span
-              className="composer-actions-menu__item-hint"
-              aria-hidden="true"
-            >
-              Or drag this bar up
-            </span>
+            Full screen
           </button>
         ) : null}
-        {overflow.dockControls !== false && (
-          <button
-            type="button"
-            role="menuitem"
-            className="composer-actions-menu__item"
-            onClick={() => run(overflow.onCollapseDock)}
-          >
-            Collapse chat
-          </button>
-        )}
         {/* #2046 2b: the region's other panes. No tab strip on a coarse
             device, so this row is how a pane sharing Chat's region is
             switched to from Chat; the toolbar's `⋯` region rows are the

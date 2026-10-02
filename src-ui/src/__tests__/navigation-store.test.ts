@@ -19,6 +19,36 @@ import { handleUiNavigate } from '../hooks/useServerEvents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { normalizeDockMode } from '../types';
 
+describe('workspace project selection and new chats', () => {
+  afterEach(() => deviceSettingsStore.reset('chatDockProjectSlug'));
+
+  test('follows a selected workspace without changing the open chat', () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'chat-from-alpha' });
+    navigationStore.setProject('beta');
+    expect(navigationStore.getSnapshot().selectedProject).toBe('beta');
+    expect(navigationStore.getSnapshot().activeChat).toBe('chat-from-alpha');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
+    deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+    navigationStore.setProject('beta');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
+  });
+
+  test('a cancelled workspace navigation keeps the previous chat default', () => {
+    navigationStore.navigate('/projects/alpha');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-project'),
+      (_proceed, cancel) => cancel?.(),
+    );
+    try {
+      navigationStore.setProject('beta');
+      expect(window.location.pathname).toBe('/projects/alpha');
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('alpha');
+    } finally {
+      unregister();
+    }
+  });
+});
+
 describe('parseProjectSelectionFromPath', () => {
   test.each(['navigate', 'popstate', 'aba'] as const)(
     'intervening %s supersedes delayed precommit',

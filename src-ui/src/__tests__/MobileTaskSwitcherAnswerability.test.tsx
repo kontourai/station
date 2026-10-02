@@ -35,11 +35,20 @@ function task(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
-function renderSheet(tasks: HomeWorkItem[], pending = false) {
+function renderSheet(
+  tasks: HomeWorkItem[],
+  pending = false,
+  attention?: 'answer' | 'approval',
+) {
   return render(
     <MobileTaskSwitcher
       open
       tasks={tasks}
+      workFacts={
+        attention
+          ? new Map(tasks.map((item) => [item.id, { attention }]))
+          : undefined
+      }
       pending={pending}
       activeChatSessionId={null}
       visualViewportStyle={{}}
@@ -54,6 +63,55 @@ function renderSheet(tasks: HomeWorkItem[], pending = false) {
 }
 
 describe('MobileTaskSwitcher answerability basis', () => {
+  test.each([
+    { items: [] },
+    {
+      items: [
+        task({ lifecycleLabel: 'Running', unanswerableNotice: undefined }),
+      ],
+    },
+  ])('can start a new chat from the empty or populated picker', ({ items }) => {
+    const calls: string[] = [];
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={items}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={() => calls.push('close')}
+        onNewChat={() => calls.push('new')}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(calls).toEqual(['close', 'new']);
+  });
+
+  test.each([
+    { attention: 'answer' as const, label: 'Input' },
+    { attention: 'approval' as const, label: 'Approval' },
+  ])(
+    'shows $label only for its recorded attention kind',
+    ({ attention, label }) => {
+      renderSheet(
+        [
+          task({
+            lifecycleLabel: 'Needs attention',
+            unanswerableNotice: undefined,
+          }),
+        ],
+        false,
+        attention,
+      );
+      expect(
+        screen.getByText(label, { selector: '.inbox-row__word' }),
+      ).toBeTruthy();
+    },
+  );
+
   test('reports pending reads instead of claiming there are no chats', () => {
     renderSheet([], true);
     expect(
