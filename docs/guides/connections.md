@@ -180,6 +180,8 @@ Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 switch the active connection. Switching respects unsaved-work decisions.
 Each address wraps on narrow screens so its port stays visible. The row's
 **More actions** menu provides **Copy address** and **Check reachability**.
+Expand the row's details to select its address text, or use **Copy address**
+to copy the full address directly.
 For the current saved Station, **Reconnect** opens its access-request flow
 even when this device is already paired, so you can request fresh approval.
 It is not offered for an inactive Station or a connection managed by the
