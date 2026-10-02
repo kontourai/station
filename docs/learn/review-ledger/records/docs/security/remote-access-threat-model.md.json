@@ -24,7 +24,7 @@
 
     {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

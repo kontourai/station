@@ -36,7 +36,7 @@
 
     {"path":"scripts/self-hosted-connector-identity.ts","digest":"ee28b6effe541e06b4cce903e44fcbd2c3452649b0620e0a23391eb22cda977d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
@@ -124,7 +124,7 @@
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"c154d6ada8665dc2a7aa27222da75c8719a41684c70cae52dfec8c06f48a87f5","revision":"20d703d387612f032748b56eae2b17a60d1e6984"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"5bd8f2166eab7af6e9e8526f0e550dc5b0ebaa5da75d3becf6b98e0616a80d0f","revision":"7da1d75947a4cd3022a9d3c822b83db85b41cd79"},
 
     {"path":"src-desktop/src/native_application_peer.rs","digest":"5a339eb489bc0381ba25041849ae27c5a97b65b9d418123b38cba7e7d3ebfd36","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 

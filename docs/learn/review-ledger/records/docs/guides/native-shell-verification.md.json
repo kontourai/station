@@ -9,7 +9,7 @@
 
   "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): document ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged document bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"c154d6ada8665dc2a7aa27222da75c8719a41684c70cae52dfec8c06f48a87f5","revision":"20d703d387612f032748b56eae2b17a60d1e6984"},
+  "document": {"digest":"5bd8f2166eab7af6e9e8526f0e550dc5b0ebaa5da75d3becf6b98e0616a80d0f","revision":"7da1d75947a4cd3022a9d3c822b83db85b41cd79"},
 
   "sources": [
     {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -50,7 +50,7 @@
 
     {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 

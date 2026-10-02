@@ -168,7 +168,7 @@
 
     {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"c590f935a579a9cf6c14a6110587a7fb223b5c91e6def12c9d13e2082186a8ab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

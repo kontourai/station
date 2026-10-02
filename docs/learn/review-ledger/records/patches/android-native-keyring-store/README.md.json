@@ -28,7 +28,7 @@
 
     {"path":"src-desktop/Cargo.toml","digest":"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"}
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"}
   ],
 
   "checks": [

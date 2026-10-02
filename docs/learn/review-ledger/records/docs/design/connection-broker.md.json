@@ -52,7 +52,7 @@
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
@@ -72,7 +72,7 @@
 
     {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"c154d6ada8665dc2a7aa27222da75c8719a41684c70cae52dfec8c06f48a87f5","revision":"20d703d387612f032748b56eae2b17a60d1e6984"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"5bd8f2166eab7af6e9e8526f0e550dc5b0ebaa5da75d3becf6b98e0616a80d0f","revision":"7da1d75947a4cd3022a9d3c822b83db85b41cd79"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

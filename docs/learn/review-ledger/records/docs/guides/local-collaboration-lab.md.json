@@ -12,7 +12,7 @@
   "document": {"digest":"667938d21f9e691eea1b0531cd0996efce2d8916a8c1711a0c7a3f060cb66b15","revision":"945505f9df57f45f971c2413e4fff9b0dcd86e6c"},
 
   "sources": [
-    {"path":"docs/guides/native-shell-verification.md","digest":"c154d6ada8665dc2a7aa27222da75c8719a41684c70cae52dfec8c06f48a87f5","revision":"20d703d387612f032748b56eae2b17a60d1e6984"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"5bd8f2166eab7af6e9e8526f0e550dc5b0ebaa5da75d3becf6b98e0616a80d0f","revision":"7da1d75947a4cd3022a9d3c822b83db85b41cd79"},
 
     {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
 
@@ -60,7 +60,7 @@
 
     {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"scripts/browser-transport-lab.ts","digest":"b3866740371e611d96fe882c982946d55f9ba02c8dc29252e116c3e75a148d25","revision":"363462bb4b6ebc1a46303a31187d2996e8e57579"},
+    {"path":"scripts/browser-transport-lab.ts","digest":"2fa5407b06384231ab1eaf30768e23e5a2fbd9a601c3ed9db59fa4d4c3663b2b","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"scripts/connection-key.ts","digest":"d21d2c52fa8fb316669f3dacf21bc89140cf6d09691c8b5d3cb168de66b97b33","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -98,7 +98,7 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 

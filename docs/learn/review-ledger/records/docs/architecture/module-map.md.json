@@ -154,7 +154,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
