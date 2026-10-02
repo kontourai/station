@@ -22,7 +22,7 @@
 
     {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/vitest-resource-manifest.mjs","digest":"d8d4354bbb65707090964345350677734571093a77b8b46cbe62ecd0d57dcce5","revision":"9a92a7b471088cf6f151d39799ff16c7ef19ead2"}
+    {"path":"scripts/vitest-resource-manifest.mjs","digest":"32990e48b4fde3bec3e125af153f7bc116934f97f1e81ea31d932821b8e0f07f","revision":"f089fdbb3a79c154d3d69ad72154aefcaafc3776"}
   ],
 
   "checks": [
