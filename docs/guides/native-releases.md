@@ -74,13 +74,16 @@ alias or release-visibility effect.
 Draft assembly copies producer files into `release-assets` only from the
 explicit artifact allowlist in
 [`release-admit-producer-assets.mjs`](../../scripts/release-admit-producer-assets.mjs):
-both macOS desktop artifacts, Windows, Linux, portable, Android, and the
-container descriptor, plus, for Stable only, the iOS simulator archive and the
+both macOS desktop artifacts, Windows, Linux, portable, the host stream
+(`station-host-stream`: the five server archives and the manifest payload),
+Android, and the container descriptor, plus, for Stable only, the iOS simulator archive and the
 `release-assets/` directory of the staged TestFlight artifact. It refuses a
 missing or empty allowlisted artifact, a nested entry, a symlink, and two
 producers that emit one file name. Build-provenance descriptors, scanner
-scratch, TestFlight receipts, and test artifacts in the same download root are
-never copied. A new producer artifact needs one allowlist entry there.
+scratch, TestFlight receipts, the per-target `station-server-<target>` build
+artifacts, and test artifacts in the same download root are never copied. An
+unexpected flat file inside an allowlisted artifact is copied here and then
+refused by the inventory that runs next. A new producer artifact needs one allowlist entry there.
 
 The simulator archive is deliberately `verification-only` and unsigned. It is
 not an installable distribution or a readiness claim. The earlier recorded local probe

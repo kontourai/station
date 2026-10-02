@@ -116,7 +116,9 @@ version. It then re-downloads the versioned archives and manifest
 anonymously, compares them with the payload, and plans the pointer again:
 
 - **Newer version:** it saves the served manifest, replaces it, and
-  re-verifies it with the pinned key. If the upload or the re-verification
+  re-verifies it with the pinned key. The re-verification waits up to five
+  minutes while the asset host still serves the older manifest, and fails at
+  once on anything else. If the upload or the re-verification
   fails, it restores the saved manifest (or removes a bootstrap one) and
   fails.
 - **Same version, same bytes:** the pointer already moved (a rerun), so it
