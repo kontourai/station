@@ -25,6 +25,13 @@ Xcode project is regenerated. The native app build owner adds the separate
 `station-relay-dev-instance` association to iOS; Android does not register that
 relay-secret receiver.
 
+XcodeGen can regenerate Info.plist without URL associations while Cargo reuses
+the deep-link plugin's cached build script. Station's Rust build script reads
+the active Tauri deep-link channel, restores its exact pairing scheme when
+missing, rejects a mismatched or ambiguous association, then adds the matching
+relay scheme. The hosted stable iOS build and each TestFlight channel must
+verify the generated pairing and relay associations independently.
+
 The build embeds the simulator's application and private keychain group in
 the executable's `__TEXT,__entitlements` section using simulator-only linker
 settings. These iOS rights must not be put in the macOS code signature of the
