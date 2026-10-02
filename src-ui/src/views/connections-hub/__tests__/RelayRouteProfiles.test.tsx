@@ -450,6 +450,7 @@ function configureEnrollmentHost() {
           enrollmentHandle,
           candidate: enrollmentCandidate,
           registrationAvailable: true,
+          expiresAt: Date.now() + 300_000,
         };
       if (
         command === 'station_native_enrollment_pending_accept' ||
@@ -1389,6 +1390,71 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByRole('alert');
     expect(screen.queryByText('Device configured')).toBeNull();
+  });
+
+  test('expired saved setup offers cleanup and never account submission', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'candidate',
+      profileRevision: 12,
+      expiresAt: Date.now() - 1,
+      registrationAvailable: true,
+      candidate: enrollmentCandidate,
+      transition: null,
+    });
+    renderRoutes();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Close expired Device 44444444-4444-4444-8444-444444444444',
+      }),
+    );
+    await screen.findByRole('button', {
+      name: 'Confirm Device setup cancellation',
+    });
+    expect(
+      screen.queryByRole('button', {
+        name: 'Sign in and request Device approval',
+      }),
+    ).toBeNull();
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_login_prepare',
+      expect.anything(),
+    );
+  });
+
+  test('challenge expiry clears account fields and offers closing the expired request', async () => {
+    configureEnrollmentReadyRoute();
+    const original = mocks.enrollmentInvoke.getMockImplementation()!;
+    let finishChallenge!: () => void;
+    const challengeReady = new Promise<void>((resolve) => {
+      finishChallenge = resolve;
+    });
+    mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      const result = await original(command, args);
+      if (command === 'station_native_enrollment_challenge_accept') {
+        finishChallenge();
+        return { ...result, expiresAt: Date.now() + 200 };
+      }
+      return result;
+    });
+    renderRoutes();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Request device access' }),
+    );
+    await challengeReady;
+    fireEvent.change(await screen.findByLabelText('Station account username'), {
+      target: { value: 'member' },
+    });
+    fireEvent.change(screen.getByLabelText('Station account password'), {
+      target: { value: 'private-password' },
+    });
+    await screen.findByRole('button', { name: 'Close expired request' });
+    expect(screen.queryByLabelText('Station account password')).toBeNull();
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_login_prepare',
+      expect.anything(),
+    );
   });
 
   test('resumes staged delivery without automatically activating it', async () => {

@@ -164,6 +164,7 @@ export interface NativeRelayEnrollmentHostChallengeAccepted {
   readonly enrollmentHandle: string;
   readonly candidate: NativeDeviceBindingCandidateV1;
   readonly registrationAvailable: boolean;
+  readonly expiresAt: number;
 }
 export interface NativeRelayEnrollmentHostDeliveryAccepted {
   readonly version: typeof NATIVE_RELAY_ENROLLMENT_VERSION;

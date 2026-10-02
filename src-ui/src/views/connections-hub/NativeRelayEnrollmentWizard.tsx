@@ -23,6 +23,7 @@ type EnrollmentAttempt = NativeRelayEnrollmentHostResumeAttempt;
 type EnrollmentPhase =
   | 'idle'
   | 'challenge'
+  | 'expired'
   | 'pending'
   | 'staged'
   | 'verifying'
@@ -55,6 +56,11 @@ function enrollmentFailureCopy(cause: unknown): string {
     cause.message === 'native_enrollment_recovery_required'
   )
     return 'A previous device setup needs attention. Resume it before starting another.';
+  if (
+    (cause instanceof Error && cause.message === 'native_enrollment_expired') ||
+    nativeEnrollmentFailureDiagnostic(cause)?.httpStatus === 410
+  )
+    return 'This device setup expired. Close the expired request, then request device access again.';
   return 'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station owner what to do next.';
 }
 
@@ -100,6 +106,7 @@ export function NativeRelayEnrollmentWizard({
     EnrollmentAttempt['candidate']
   > | null>(null);
   const [registrationAvailable, setRegistrationAvailable] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<number>();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [invitation, setInvitation] = useState('');
@@ -137,6 +144,33 @@ export function NativeRelayEnrollmentWizard({
     },
     [],
   );
+
+  useEffect(() => {
+    if (phase !== 'challenge' || expiresAt === undefined) return;
+    const timer = setTimeout(
+      () => {
+        setPhase('expired');
+        credentialsRef.current = null;
+        setUsername('');
+        setPassword('');
+        setInvitation('');
+        setNotice(null);
+      },
+      Math.max(0, expiresAt - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [phase, expiresAt]);
+
+  function reportStepFailure(cause: unknown) {
+    setBeginDiagnostic(nativeEnrollmentFailureDiagnostic(cause));
+    if (
+      (cause instanceof Error &&
+        cause.message === 'native_enrollment_expired') ||
+      nativeEnrollmentFailureDiagnostic(cause)?.httpStatus === 410
+    )
+      setPhase('expired');
+    reportEnrollmentFailure(cause, setError);
+  }
 
   async function validatedProfileRevision(
     signal: AbortSignal,
@@ -258,6 +292,7 @@ export function NativeRelayEnrollmentWizard({
     onSuccess: (result) => {
       setCandidate(result.candidate);
       setRegistrationAvailable(result.registrationAvailable);
+      setExpiresAt(result.expiresAt);
       setPhase('challenge');
       void queryClient.invalidateQueries({ queryKey: recoveryKey });
     },
@@ -302,10 +337,12 @@ export function NativeRelayEnrollmentWizard({
     onSuccess: async ({ client, attempt }) => {
       setCandidate(attempt.candidate);
       setRegistrationAvailable(attempt.registrationAvailable);
+      setExpiresAt(attempt.expiresAt);
       if (attempt.phase === 'begin-required') {
         const result = await client.begin();
         setCandidate(result.candidate);
         setRegistrationAvailable(result.registrationAvailable);
+        setExpiresAt(result.expiresAt);
         setPhase('challenge');
         setNotice(
           'Resumed the saved Device setup. Continue with Station account sign-in.',
@@ -336,7 +373,7 @@ export function NativeRelayEnrollmentWizard({
       }
       await queryClient.invalidateQueries({ queryKey: recoveryKey });
     },
-    onError: (cause) => reportEnrollmentFailure(cause, setError),
+    onError: reportStepFailure,
   });
 
   const cancelRecovered = useMutation({
@@ -347,8 +384,15 @@ export function NativeRelayEnrollmentWizard({
         result.state === 'expired' ||
         result.state === 'revoked'
       ) {
+        terminalRef.current = true;
         setPhase('idle');
-        setNotice('Station confirmed this Device setup is no longer active.');
+        setCandidate(null);
+        setError(null);
+        setBeginDiagnostic(undefined);
+        setNotice(
+          'The previous request is closed. Request device access again to start a fresh setup.',
+        );
+        onEnrollmentCancel();
         attemptStartedRef.current = false;
         clientRef.current = null;
         controllerRef.current?.abort();
@@ -360,7 +404,7 @@ export function NativeRelayEnrollmentWizard({
         );
       }
     },
-    onError: (cause) => reportEnrollmentFailure(cause, setError),
+    onError: reportStepFailure,
   });
 
   const login = useMutation({
@@ -391,7 +435,7 @@ export function NativeRelayEnrollmentWizard({
         setError('Station did not accept this enrollment request.');
       }
     },
-    onError: (cause) => reportEnrollmentFailure(cause, setError),
+    onError: reportStepFailure,
   });
 
   const checkStatus = useMutation({
@@ -412,7 +456,7 @@ export function NativeRelayEnrollmentWizard({
     },
     onError: (cause) => {
       if (!retainUnknownActivation(cause, setPhase, setNotice, setError))
-        reportEnrollmentFailure(cause, setError);
+        reportStepFailure(cause);
     },
   });
 
@@ -435,7 +479,7 @@ export function NativeRelayEnrollmentWizard({
         );
       }
     },
-    onError: (cause) => reportEnrollmentFailure(cause, setError),
+    onError: reportStepFailure,
   });
 
   const activate = useMutation({
@@ -455,7 +499,7 @@ export function NativeRelayEnrollmentWizard({
     },
     onError: (cause) => {
       if (!retainUnknownActivation(cause, setPhase, setNotice, setError))
-        reportEnrollmentFailure(cause, setError);
+        reportStepFailure(cause);
     },
   });
 
@@ -504,6 +548,13 @@ export function NativeRelayEnrollmentWizard({
   }
 
   function submitLogin() {
+    if (expiresAt !== undefined && expiresAt <= Date.now()) {
+      setPhase('expired');
+      setUsername('');
+      setPassword('');
+      setInvitation('');
+      return;
+    }
     credentialsRef.current = {
       username,
       password,
@@ -569,7 +620,11 @@ export function NativeRelayEnrollmentWizard({
                   }
                   onClick={() => resume.mutate(attempt.enrollmentHandle)}
                 >
-                  Resume{' '}
+                  {attempt.phase !== 'active' &&
+                  attempt.phase !== 'activation-unknown' &&
+                  attempt.expiresAt <= Date.now()
+                    ? 'Close expired'
+                    : 'Resume'}{' '}
                   {attempt.candidate
                     ? `Device ${attempt.candidate.deviceId}`
                     : `saved setup ${index + 1}`}
@@ -627,6 +682,10 @@ export function NativeRelayEnrollmentWizard({
 
       {phase === 'challenge' ? (
         <section aria-label="Station account enrollment">
+          <p>
+            This request lasts up to five minutes. Submit your account details
+            before it expires.
+          </p>
           <label className="editor-field">
             <span className="editor-label">Station account username</span>
             <input
@@ -696,6 +755,23 @@ export function NativeRelayEnrollmentWizard({
             {registerAccount
               ? 'Register and request Device approval'
               : 'Sign in and request Device approval'}
+          </Button>
+        </section>
+      ) : null}
+
+      {phase === 'expired' ? (
+        <section aria-label="Device setup expired">
+          <p>
+            This device setup expired. Close this request, then request device
+            access again.
+          </p>
+          <Button
+            variant="primary"
+            disabled={busy}
+            pending={cancelRecovered.isPending}
+            onClick={() => cancelRecovered.mutate()}
+          >
+            Close expired request
           </Button>
         </section>
       ) : null}
@@ -798,7 +874,8 @@ export function NativeRelayEnrollmentWizard({
       {(attemptStartedRef.current &&
         phase !== 'configured' &&
         phase !== 'verifying' &&
-        phase !== 'cancel-required') ||
+        phase !== 'cancel-required' &&
+        phase !== 'expired') ||
       begin.isPending ? (
         <Button variant="ghost" onClick={() => void cancelSetup()}>
           Cancel Device setup

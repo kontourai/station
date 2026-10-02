@@ -127,6 +127,7 @@ function fixture(
           version: VERSION,
           enrollmentHandle: ENROLLMENT,
           registrationAvailable: true,
+          expiresAt: Date.now() + 300_000,
           candidate: {
             version: 'station-native-device-binding-candidate/v1',
             stationId: 'station-a',
@@ -354,4 +355,45 @@ test('Device Begin retains HTTP status and allowlisted host refusal from the rea
   expect(
     f.calls.some((call) => call.command === 'station_native_enrollment_abort'),
   ).toBe(true);
+});
+
+test('expired saved candidate permits terminal cleanup without resuming login', async () => {
+  const f = fixture();
+  const candidateResult = await f.client.begin();
+  transport.open.mockClear();
+  // The host owns the expired attempt and its public candidate projection.
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'station_native_enrollment_resume')
+      return {
+        version: VERSION,
+        attempts: [
+          {
+            enrollmentHandle: ENROLLMENT,
+            phase: 'candidate',
+            profileRevision: 7,
+            expiresAt: Date.now() - 1,
+            registrationAvailable: true,
+            candidate: candidateResult.candidate,
+            transition: null,
+          },
+        ],
+      };
+    throw new Error('unexpected_operation');
+  });
+  const client = createNativeRelayEnrollmentClient({
+    profileName: 'Pilot',
+    expectedProfileRevision: 7,
+    stationAudience: ORIGIN,
+    signal: new AbortController().signal,
+    invoke: { invoke },
+  });
+  const restored = await client.resume(ENROLLMENT);
+  expect(restored.phase).toBe('cancel-required');
+  await expect(
+    client.login({ username: 'zach', password: 'must not leave client' }),
+  ).rejects.toThrow('native_enrollment_expired');
+  expect(transport.open).not.toHaveBeenCalled();
+  expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+    'station_native_enrollment_resume',
+  ]);
 });

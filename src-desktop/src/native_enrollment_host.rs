@@ -566,6 +566,9 @@ fn sign_payload(
 ) -> Result<NativeEnrollmentPreparedRequest> {
     let (route, nonce, _) = capture_peer(app, peer)?;
     let attempt = load_owned(app, attempt_id)?;
+    if purpose != "cancel" && purpose != "status" && attempt.expires_at <= time() {
+        return Err("native_enrollment_expired".into());
+    }
     if !matches(&attempt, &route) {
         return Err(REFUSED.into());
     }
@@ -638,6 +641,7 @@ pub(crate) struct NativeEnrollmentAcceptedChallenge {
     enrollment_handle: String,
     candidate: NativeEnrollmentCandidate,
     registration_available: bool,
+    expires_at: u64,
 }
 #[tauri::command(rename_all = "camelCase")]
 pub(crate) async fn station_native_enrollment_challenge_accept(
@@ -744,6 +748,7 @@ pub(crate) async fn station_native_enrollment_challenge_accept(
             enrollment_handle: capture.attempt,
             candidate,
             registration_available: challenge.registration_available,
+            expires_at: challenge.expires_at,
         })
     })
     .await
@@ -830,7 +835,7 @@ pub(crate) async fn station_native_enrollment_status_prepare(
             &peer_handle,
             &enrollment_handle,
             "status",
-            serde_json::json!({"enrollmentId":id}),
+            serde_json::json!({"enrollmentId":id,"candidate":attempt.candidate}),
         )
     })
     .await
@@ -1234,7 +1239,7 @@ pub(crate) async fn station_native_enrollment_cancel_prepare(
             &peer_handle,
             &enrollment_handle,
             "cancel",
-            serde_json::json!({"enrollmentId":id}),
+            serde_json::json!({"enrollmentId":id,"candidate":attempt.candidate}),
         )
     })
     .await

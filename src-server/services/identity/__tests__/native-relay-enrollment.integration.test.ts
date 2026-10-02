@@ -663,3 +663,47 @@ test('Device revocation during actual Station receipt crypto blocks a stale ACTI
   expect(status.response.status, status.raw).toBe(200);
   expect(status.data.state).toBe('revoked');
 });
+
+test('expired before registration can confirm owned cancellation without account or Device authority', async () => {
+  let now = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const h = await fixture();
+  now = h.challenge.expiresAt + 1;
+  const rejected = await h.proved('register', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+    credentials: { username: 'zach', password: 'never submitted registration' },
+    invitation: h.invite.token,
+  });
+  expect(rejected.response.status, rejected.raw).toBe(410);
+  expect(
+    h.journal.get(h.challenge.enrollmentId)?.providerSessionId,
+  ).toBeUndefined();
+  expect(h.journal.get(h.challenge.enrollmentId)?.candidate).toBeUndefined();
+  const mismatched = await h.proved('cancel', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: { ...h.candidate, deviceId: randomUUID() },
+  });
+  expect(mismatched.response.status).toBe(400);
+  const cancelled = await h.proved('cancel', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+  });
+  expect(cancelled.response.status, cancelled.raw).toBe(200);
+  expect(cancelled.data.state).toBe('cancelled');
+  expect(cancelled.data.candidate).toEqual(h.candidate);
+  expect(cancelled.data.responsePeerNonce).toBe(cancelled.nonce);
+  expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('cancelled');
+  expect(await h.membership.previewInvitation(h.invite.token)).toMatchObject({
+    projectName: 'Shared Example',
+  });
+  expect(
+    h.journal.get(h.challenge.enrollmentId)?.providerSessionId,
+  ).toBeUndefined();
+  expect(
+    h.pairing.resolveActiveRelayEnrollmentDevice(
+      h.candidate.deviceId,
+      h.challenge.enrollmentId,
+    ),
+  ).toBeNull();
+});

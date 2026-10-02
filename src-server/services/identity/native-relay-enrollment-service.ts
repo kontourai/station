@@ -74,6 +74,9 @@ const registerSchema = loginSchema
 const purposeSchema = z
   .object({ enrollmentId: nativeEnrollmentOpaque, proof })
   .strict();
+const statusSchema = purposeSchema
+  .extend({ candidate: nativeEnrollmentCandidateSchema.optional() })
+  .strict();
 const activateSchema = purposeSchema
   .extend({
     deviceId: z.string().uuid(),
@@ -246,6 +249,27 @@ export class NativeRelayEnrollmentService {
     cap.assertCurrent();
     return result;
   }
+  #candidateMatches(
+    record: NativeEnrollmentRecord,
+    candidate: NonNullable<NativeEnrollmentRecord['candidate']>,
+  ): void {
+    const key = candidate.deviceProofJwk;
+    const point = Buffer.concat([
+      Buffer.from([4]),
+      Buffer.from(key.x, 'base64url'),
+      Buffer.from(key.y, 'base64url'),
+    ]).toString('base64url');
+    if (
+      candidate.stationId !== record.binding.stationId ||
+      candidate.deviceId !== record.binding.reservedDeviceId ||
+      nativeEnrollmentCanonical(candidate.surface) !==
+        nativeEnrollmentCanonical(record.binding.surface) ||
+      point === record.binding.recipient.publicKey ||
+      (!record.candidate &&
+        this.options.bindings.bindingById({ bindingId: candidate.bindingId }))
+    )
+      throw new NativeRelayEnrollmentRefusal('invalid');
+  }
   async #verify(
     cap: NativeEnrollmentCapability,
     record: NativeEnrollmentRecord,
@@ -348,22 +372,7 @@ export class NativeRelayEnrollmentService {
     )
       throw new NativeRelayEnrollmentRefusal('expired');
     const candidate = body.candidate;
-    const key = candidate.deviceProofJwk;
-    const point = Buffer.concat([
-      Buffer.from([4]),
-      Buffer.from(key.x, 'base64url'),
-      Buffer.from(key.y, 'base64url'),
-    ]).toString('base64url');
-    if (
-      candidate.stationId !== record.binding.stationId ||
-      candidate.deviceId !== record.binding.reservedDeviceId ||
-      nativeEnrollmentCanonical(candidate.surface) !==
-        nativeEnrollmentCanonical(record.binding.surface) ||
-      point === record.binding.recipient.publicKey ||
-      (record.state === 'challenge' &&
-        this.options.bindings.bindingById({ bindingId: candidate.bindingId }))
-    )
-      throw new NativeRelayEnrollmentRefusal('invalid');
+    this.#candidateMatches(record, candidate);
     await this.#verify(
       cap,
       record,
@@ -926,10 +935,36 @@ export class NativeRelayEnrollmentService {
     cap: NativeEnrollmentCapability,
     cancel = false,
   ): Promise<NativeRelayEnrollmentStatus> {
-    const body = await this.#body(cap, purposeSchema);
+    const body = await this.#body(cap, statusSchema);
     let record = this.options.journal.get(body.enrollmentId);
-    if (!record?.candidate) throw new NativeRelayEnrollmentRefusal('invalid');
-    await this.#verify(cap, record, body, cancel ? 'cancel' : 'status');
+    if (!record) throw new NativeRelayEnrollmentRefusal('invalid');
+    if (!record.candidate && !cancel && record.expiresAt > this.#now())
+      throw new NativeRelayEnrollmentRefusal('invalid');
+    const candidate = record.candidate ?? body.candidate;
+    if (
+      !candidate ||
+      (record.candidate &&
+        body.candidate &&
+        nativeEnrollmentCanonical(record.candidate) !==
+          nativeEnrollmentCanonical(body.candidate))
+    )
+      throw new NativeRelayEnrollmentRefusal('invalid');
+    this.#candidateMatches(record, candidate);
+    await this.#verify(
+      cap,
+      record,
+      body,
+      cancel ? 'cancel' : 'status',
+      candidate,
+    );
+    // A pre-login candidate can authorize only signed status and terminal cleanup.
+    if (!record.candidate)
+      record = this.options.journal.transition(
+        body.enrollmentId,
+        [record.state],
+        record.state,
+        { candidate },
+      );
     if (cancel) {
       if (record.state === 'committed')
         record = this.options.journal.transition(

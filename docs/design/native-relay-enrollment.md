@@ -130,6 +130,22 @@ not require a still-open RTC connection. Status/recovery signs a new current
 peer nonce while preserving the original owner, recipient and candidate.
 Network cleanup is distinct from explicit user cancellation.
 
+Device setup has a five-minute deadline, clipped to the routing grant and
+recipient deadline. The accepted host challenge exposes only that public expiry
+alongside its candidate. The account form closes when the deadline passes and
+clears entered credentials. Expired login/registration cannot create an account,
+consume its person invitation or authorize a Device.
+
+An expired saved candidate remains in native custody until Station confirms a
+terminal state. Recovery permits only status or cancellation; it never retries
+account submission. Status/cancel may carry the retained public candidate when
+registration never reached the server. Station checks the reserved Device,
+installation surface, distinct proof key and purpose-bound signature before
+signing a terminal response. Native custody is cleaned only after accepting
+that response. Then the user can request a fresh challenge with the existing
+routing grant and enter account details again. A lost activation result still
+requires a status check before cancellation or a new setup.
+
 The [service](../../src-server/services/identity/native-relay-enrollment-service.ts)
 uses the supported provider's private pending session owner. The local username
 provider adds invitation-gated registration using its maintained signup and

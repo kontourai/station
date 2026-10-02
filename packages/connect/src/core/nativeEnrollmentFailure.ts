@@ -37,6 +37,7 @@ const SAFE_CODES = new Set([
   'native_enrollment_attempt_changed',
   'native_enrollment_transition_retired',
   'native_enrollment_recovery_invalid',
+  'native_enrollment_expired',
   'native_enrollment_recovery_required',
   'native_enrollment_operation_pending',
   'staleProfile',

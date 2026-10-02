@@ -49,6 +49,7 @@ const challenge = z
     enrollmentHandle: handle,
     candidate,
     registrationAvailable: z.boolean(),
+    expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   })
   .strict();
 const inactive = z
@@ -134,6 +135,8 @@ export function createNativeRelayEnrollmentClient(
   let enrollmentHandle: string | undefined;
   let busy = false;
   let completed = false;
+  let enrollmentExpiresAt: number | undefined;
+  let cleanupRequired = false;
   let pendingPublication:
     | NativeRelayEnrollmentHostActivationAccepted
     | undefined;
@@ -173,6 +176,17 @@ export function createNativeRelayEnrollmentClient(
     accept: (requestHandle: string, response: unknown) => Promise<T>,
   ): Promise<T> => {
     signal.throwIfAborted();
+    if (
+      prepareCommand !== 'station_native_enrollment_cancel_prepare' &&
+      prepareCommand !== 'station_native_enrollment_status_prepare' &&
+      (cleanupRequired ||
+        (enrollmentExpiresAt !== undefined &&
+          enrollmentExpiresAt <= Date.now()))
+    )
+      throw captureNativeEnrollmentFailure(
+        new Error('native_enrollment_expired'),
+        'host-prepare',
+      );
     if (busy) throw new Error('native_enrollment_operation_pending');
     busy = true;
     let publication: NativeRelayEnrollmentHostActivationAccepted | undefined;
@@ -302,14 +316,14 @@ export function createNativeRelayEnrollmentClient(
         const attempt = projection.attempts.find(
           (value) => value.enrollmentHandle === selectedHandle,
         );
-        if (
-          !attempt ||
-          (attempt.phase !== 'active' && attempt.expiresAt <= Date.now())
-        )
-          throw new Error('native_enrollment_recovery_invalid');
+        if (!attempt) throw new Error('native_enrollment_recovery_invalid');
         if (enrollmentHandle && enrollmentHandle !== attempt.enrollmentHandle)
           throw new Error('native_enrollment_attempt_changed');
         enrollmentHandle = attempt.enrollmentHandle;
+        enrollmentExpiresAt = attempt.expiresAt;
+        cleanupRequired =
+          attempt.phase === 'cancel-required' ||
+          (attempt.phase !== 'active' && attempt.expiresAt <= Date.now());
         if (attempt.transition) {
           pendingPublication = attempt.transition;
           await assertTransition(attempt.transition);
@@ -318,7 +332,11 @@ export function createNativeRelayEnrollmentClient(
           profileRevision = attempt.transition.profileRevision;
           pendingPublication = undefined;
         }
-        return attempt;
+        return cleanupRequired && attempt.phase !== 'activation-unknown'
+          ? { ...attempt, phase: 'cancel-required' as const }
+          : attempt;
+      } catch (cause) {
+        throw captureNativeEnrollmentFailure(cause, 'recovery');
       } finally {
         busy = false;
       }
@@ -336,6 +354,7 @@ export function createNativeRelayEnrollmentClient(
           );
           if (result.enrollmentHandle !== requireHandle())
             throw new Error('native_enrollment_attempt_changed');
+          enrollmentExpiresAt = result.expiresAt;
           return result;
         },
       ),
