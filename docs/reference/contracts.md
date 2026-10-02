@@ -22,7 +22,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 | Module | Owns |
 |---|---|
-| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota and provider-owned login projections; runtime validation stays in SDK consumers |
+| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
@@ -553,3 +553,12 @@ operator-configured browser identity choices, their declared POST begin-login
 paths and availability. These are presentation/capability facts, not identity
 claims, Device grants or Project membership. Secret references and provider
 configuration remain private to Station's operator composition.
+
+### Engine account observation history
+
+`EngineAccountUsage.history` optionally exposes 30 days of hourly allowance
+observations, including unknown readings as gaps. It stores no raw responses,
+identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
+engine/profile observation from the applied process environment. Its absence
+means account attribution is unknown; consumers must not infer the current
+active account. These fields are observations, never billing or routing authority.
