@@ -36,6 +36,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while a native renderer is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
 | [Native relay enrollment](#native-relay-enrollment) | Enroll one explicitly approved Device without exposing its credential to the WebView. | `src-desktop/src/native_enrollment_host.rs` |
+| [Native relay link intake](#native-relay-link-intake) | Review untrusted routing intent and keep bound invitation secrets in native custody. | `src-desktop/src/native_relay_link_intake.rs` |
 | [Native relay account and requests](#native-relay-account-and-requests) | Compose selected Device transport with separate person sessions and bounded member reads. | `src-ui/src/platform/native/nativeRelayConnectionOwner.ts` |
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
@@ -850,6 +851,31 @@ nor Project membership. The [native enrollment record](../design/native-relay-en
 traces cryptography, journals, revocation and the evidence boundaries. Combined
 Rust tests and mounted frontend/server composition pass; fresh packaged iOS,
 actual process recovery and two-person public delivery remain unqualified.
+
+## Native relay link intake
+
+The [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded
+invitation custody, public pending handles, cancellation and expiry. The
+[typed envelope](../../packages/contracts/src/native-relay-link.ts) separates a
+public first-contact route intent from an invitation bound to an already
+approved native installation. The application address is an untrusted routing
+hint. Opening a link grants no trust, Device, account, Project or execution
+authority and does not select a Station.
+
+iOS uses a distinct relay scheme and a
+[Station-owned delivery boundary](../../src-desktop/src/native_relay_ios_launch.rs)
+instead of the generic deep-link runtime, which retains its last raw URL. The
+owned boundary captures cold launch options and consumes relay URLs before
+the upstream warm URL parser. Pairing remains a separate journey. Android
+does not register these relay schemes. Existing native candidate comparison,
+explicit trust approval and grant redemption remain the authorization owners;
+cancelled late grants use exact-grant retirement and durable cleanup.
+
+Host and codec tests qualify their recorded source boundaries. The iOS-specific
+callback ABI, installed cold/warm delivery, secret-log inspection and physical
+collaborator journey require separate evidence. See the
+[enrollment design](../design/native-relay-enrollment.md#native-link-intake)
+for those limits.
 
 ## Native relay account and requests
 

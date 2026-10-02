@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '345789a18ea45959253ca3e3f4b3db41a666f493c675d1cca539efbe5f82e662';
+  'df6e42b8860c97148bfb3d3d2f691f2d234d46fb2e041b51b3b82db499c05ad3';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -722,7 +722,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Identity, Devices, and connection paths',
     summary:
       'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.',
-    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-nativeapplicationsignaling: NativeApplicationSignaling\n- architecture-native-relay-enrollment: Native relay enrollment\n- architecture-native-relay-account-and-requests: Native relay account and requests\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
+    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-nativeapplicationsignaling: NativeApplicationSignaling\n- architecture-native-relay-enrollment: Native relay enrollment\n- architecture-native-relay-link-intake: Native relay link intake\n- architecture-native-relay-account-and-requests: Native relay account and requests\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
     tags: ['architecture', 'connections'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -782,6 +782,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-connections',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'native-relay-enrollment',
+  },
+  {
+    id: 'architecture-native-relay-link-intake',
+    title: 'Native relay link intake',
+    summary:
+      'Interface, composition, invariants, and documented evidence for Native relay link intake.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Native relay link intake\n\nThe [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded\ninvitation custody, public pending handles, cancellation and expiry. The\n[typed envelope](../../packages/contracts/src/native-relay-link.ts) separates a\npublic first-contact route intent from an invitation bound to an already\napproved native installation. The application address is an untrusted routing\nhint. Opening a link grants no trust, Device, account, Project or execution\nauthority and does not select a Station.\n\niOS uses a distinct relay scheme and a\n[Station-owned delivery boundary](../../src-desktop/src/native_relay_ios_launch.rs)\ninstead of the generic deep-link runtime, which retains its last raw URL. The\nowned boundary captures cold launch options and consumes relay URLs before\nthe upstream warm URL parser. Pairing remains a separate journey. Android\ndoes not register these relay schemes. Existing native candidate comparison,\nexplicit trust approval and grant redemption remain the authorization owners;\ncancelled late grants use exact-grant retirement and durable cleanup.\n\nHost and codec tests qualify their recorded source boundaries. The iOS-specific\ncallback ABI, installed cold/warm delivery, secret-log inspection and physical\ncollaborator journey require separate evidence. See the\n[enrollment design](../design/native-relay-enrollment.md#native-link-intake)\nfor those limits.',
+    tags: ['architecture', 'connections', 'Native relay link intake'],
+    parentId: 'architecture-connections',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'native-relay-link-intake',
   },
   {
     id: 'architecture-native-relay-account-and-requests',

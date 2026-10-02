@@ -35,6 +35,53 @@ peer's private provenance. Connector configuration accepts either the existing
 fixed native surface or `nativeClient: { kind: 'station-native-registry' }`; the
 registry mode polls only exact operator-approved surfaces.
 
+## Native link intake
+
+The [link contract](../../packages/contracts/src/native-relay-link.ts) has two
+forms. Public route intent carries the Station application address, broker
+address and Station/enrollment identifiers. The receiver reviews that
+untrusted metadata before saving a route and preparing its public installation
+proof. A bound invitation adds the unchanged native v2 invitation for that
+exact installation. The operator's surface approval and independent Station
+key comparison remain mandatory. Neither form grants account, Device, Project
+or compute authority merely by being opened.
+
+The [sender codec](../../packages/connect/src/core/nativeRelayLink.ts) encodes
+the envelope in a fragment under a distinct `station-relay-*` scheme. Production
+links require canonical HTTPS origins. Only development links allow exact
+numeric loopback HTTP origins. The host checks its installed channel and
+development scheme, closed envelope, size, expiry and surface. The browser's
+same-origin v1 invitation parser is a different contract.
+
+The [iOS delivery owner](../../src-desktop/src/native_relay_ios_launch.rs)
+captures application launch options and public scene/application URL callbacks.
+It verifies the pinned app-owned delegate boundary and forwards unrelated
+delivery to its original owner. Relay URLs are consumed before the upstream
+warm parser; the generic deep-link runtime is not initialized on iOS. That
+plugin retains its raw last URL, so a React-state clear alone would not satisfy
+this custody contract. Android relay associations remain unregistered until
+its native Intent boundary is qualified.
+
+The [intake state](../../src-desktop/src/native_relay_link_intake.rs) retains
+the bound secret in bounded native memory and emits only public metadata and
+an opaque pending handle. Discovery and explicit redemption consume that
+handle, not invitation JSON in renderer mutation variables. Cancellation and
+supersession fence in-flight work; an issued late grant is retired by exact
+identity or retained in durable cleanup. Independently approved Station trust
+is not revoked by cancelling routing intake. Cancellation before its trust
+write must prevent the write. No claim is made that OS-owned or every transient
+URL-parser allocation is erased.
+
+The existing [secure-entry adapter](../../src-desktop/src/native_secure_entry.rs)
+is also the mobile grant backend: it preserves absence versus locked-store
+errors and iOS device-only access. A desktop-only default keyring entry cannot
+substitute for the maintained mobile store.
+
+Source-level intake, cancellation, exact-grant compensation and codec checks
+do not establish the iOS callback ABI, installed cold/warm delivery, pairing
+parity or the real two-person journey. Those remain **NOT_VERIFIED** until their
+own build, installed-runtime and physical receipts exist.
+
 ## Credential delivery
 
 The [Station sealer](../../src-server/services/identity/native-relay-envelope.ts)
