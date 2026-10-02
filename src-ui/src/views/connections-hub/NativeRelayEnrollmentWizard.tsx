@@ -55,7 +55,7 @@ function enrollmentFailureCopy(cause: unknown): string {
     cause instanceof Error &&
     cause.message === 'native_enrollment_recovery_required'
   )
-    return 'A previous device setup needs attention. Resume it before starting another.';
+    return 'Finish or close the saved setup before starting another.';
   if (
     (cause instanceof Error && cause.message === 'native_enrollment_expired') ||
     nativeEnrollmentFailureDiagnostic(cause)?.httpStatus === 410
