@@ -117,6 +117,25 @@ changed scope, a newer broker generation, unsafe private files, and incomplete
 cleanup refuse preparation. Initial `prepare` still creates a genuine fresh
 Station at generation 1.
 
+If the wrapper settled without a runtime or output failure but broker cleanup
+failed, preserve its original `cleanup.json`. After the operator completes
+normal authenticated withdrawal of that exact generation, record the separate
+recovery observation:
+
+```sh
+node --import tsx scripts/native-fresh-relay-fixture.ts confirm-recovered-cleanup /absolute/old-run/plan.json 1
+```
+
+This command checks that the declared child is gone, the original receipt is
+otherwise clean, and the actual broker row is withdrawn with matching scope and
+connector/routing credential hashes. It also checks retained signing-key trust
+and operator ownership. It writes a new private `recovered-cleanup.json` once;
+it never withdraws a lease or rewrites the failed receipt. Successor preparation
+accepts this receipt only for a previously unconfirmed broker cleanup, then
+rechecks the actual PID, broker row, credentials and retained ownership. A
+changed generation, withdrawal observation or receipt refuses preparation.
+The receipt is an observation by the local owner, not new broker authority.
+
 The successor owns a new run directory, listener block, runtime process receipts,
 and private connector/routing credential bundle. Its plan records the predecessor
 and retained Station home. The existing operator credential stays in the private

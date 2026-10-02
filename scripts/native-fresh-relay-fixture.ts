@@ -18,6 +18,7 @@ import {
 import {
   assertNativeFreshBrokerLeaseCommitted,
   cleanupNativeFreshBrokerGrants,
+  confirmNativeFreshRecoveredCleanup,
   installNativeFreshNodeNetworkGuard,
   loadNativeFreshFixturePlan,
   nativeFreshFixtureEnvironment,
@@ -46,6 +47,18 @@ const privateOutput = (path: string, directory: string, value: unknown) => {
 async function main() {
   const [mode, path, argument, extra] = process.argv.slice(2);
   assert(mode && path, 'fixture_usage');
+  if (mode === 'confirm-recovered-cleanup') {
+    assert(
+      argument && !extra && /^[1-9][0-9]*$/u.test(argument),
+      'fixture_usage',
+    );
+    const receiptPath = confirmNativeFreshRecoveredCleanup(
+      path,
+      Number(argument),
+    );
+    output({ status: 'recovered_cleanup_confirmed', receiptPath });
+    return;
+  }
   if (mode === 'prepare' || mode === 'prepare-successor') {
     assert(
       mode === 'prepare'

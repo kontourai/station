@@ -302,6 +302,9 @@ function brokerOwnerSnapshot(plan: NativeFreshFixturePlan) {
     }
     return {
       config,
+      credentialsSha256: createHash('sha256')
+        .update(JSON.stringify(credentials))
+        .digest('hex'),
       expiresAt: Number(row.expires_at),
       withdrawnAt: row.withdrawn_at,
     };
@@ -321,13 +324,26 @@ export function assertNativeFreshBrokerLeaseCommitted(
   );
 }
 
-export async function prepareNativeFreshFixtureSuccessor(
-  priorPath: string,
-  directory: string,
+const recoveredCleanupSchema = z
+  .object({
+    version: z.literal('station-native-recovered-cleanup/v1'),
+    runId: z.string().uuid(),
+    scope,
+    ownerPid: z.number().int().positive().max(2_147_483_647),
+    cleanupSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    ownerSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    credentialsSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    brokerDatabasePath: z.string(),
+    expiresAt: z.number().int().positive(),
+    withdrawnAt: z.number().int().positive(),
+    observedAt: z.number().int().positive(),
+  })
+  .strict();
+
+function settledFixtureSnapshot(
+  prior: NativeFreshFixturePlan,
   expectedGeneration: number,
-  sourceRevision: string,
 ) {
-  const prior = loadNativeFreshFixturePlan(priorPath);
   assert(
     Number.isSafeInteger(expectedGeneration) &&
       expectedGeneration > 0 &&
@@ -335,14 +351,15 @@ export async function prepareNativeFreshFixtureSuccessor(
       expectedGeneration === prior.scope.routingGeneration,
     'fixture_expected_generation_mismatch',
   );
-  z.object({
-    runId: z.literal(prior.runId),
-    primaryRuntimeFailed: z.literal(false),
-    outputTruncated: z.literal(false),
-    outputInvalidUtf8: z.literal(false),
-    processGroupSettled: z.literal(true),
-    brokerCleanupConfirmed: z.literal(true),
-  })
+  const cleanup = z
+    .object({
+      runId: z.literal(prior.runId),
+      primaryRuntimeFailed: z.literal(false),
+      outputTruncated: z.literal(false),
+      outputInvalidUtf8: z.literal(false),
+      processGroupSettled: z.literal(true),
+      brokerCleanupConfirmed: z.boolean(),
+    })
     .passthrough()
     .parse(readNativeFreshPrivateJson(join(prior.directory, 'cleanup.json')));
   const owner = z
@@ -383,6 +400,77 @@ export async function prepareNativeFreshFixtureSuccessor(
     ),
     'fixture_operator_owner_mismatch',
   );
+  return {
+    cleanup,
+    row,
+    home,
+    operator,
+    recovery: {
+      version: 'station-native-recovered-cleanup/v1' as const,
+      runId: prior.runId,
+      scope: prior.scope,
+      ownerPid: owner.pid,
+      cleanupSha256: createHash('sha256')
+        .update(JSON.stringify(cleanup))
+        .digest('hex'),
+      ownerSha256: createHash('sha256')
+        .update(JSON.stringify(owner))
+        .digest('hex'),
+      credentialsSha256: row.credentialsSha256,
+      brokerDatabasePath: row.config.databasePath,
+      expiresAt: row.expiresAt,
+      withdrawnAt: Number(row.withdrawnAt),
+    },
+  };
+}
+
+/** Records observations only; this command never changes broker authority. */
+export function confirmNativeFreshRecoveredCleanup(
+  priorPath: string,
+  expectedGeneration: number,
+) {
+  const prior = loadNativeFreshFixturePlan(priorPath);
+  const snapshot = settledFixtureSnapshot(prior, expectedGeneration);
+  assert(
+    !snapshot.cleanup.brokerCleanupConfirmed,
+    'fixture_recovery_not_required',
+  );
+  const receipt = recoveredCleanupSchema.parse({
+    ...snapshot.recovery,
+    observedAt: Date.now(),
+  });
+  assert(
+    receipt.withdrawnAt <= receipt.observedAt,
+    'fixture_withdrawal_observation_invalid',
+  );
+  const path = join(prior.directory, 'recovered-cleanup.json');
+  writeFileSync(path, JSON.stringify(receipt), { mode: 0o600, flag: 'wx' });
+  return path;
+}
+
+export async function prepareNativeFreshFixtureSuccessor(
+  priorPath: string,
+  directory: string,
+  expectedGeneration: number,
+  sourceRevision: string,
+) {
+  const prior = loadNativeFreshFixturePlan(priorPath);
+  const { cleanup, row, recovery, home, operator } = settledFixtureSnapshot(
+    prior,
+    expectedGeneration,
+  );
+  if (!cleanup.brokerCleanupConfirmed) {
+    const { observedAt, ...recorded } = recoveredCleanupSchema.parse(
+      readNativeFreshPrivateJson(
+        join(prior.directory, 'recovered-cleanup.json'),
+      ),
+    );
+    assert(
+      observedAt >= recorded.withdrawnAt && observedAt <= Date.now(),
+      'fixture_withdrawal_observation_invalid',
+    );
+    assert.deepEqual(recorded, recovery, 'fixture_recovered_cleanup_changed');
+  }
   assert(
     isAbsolute(directory) &&
       resolve(directory) === directory &&
