@@ -186,9 +186,6 @@
   outline-offset: var(--k-focus-ring-offset);
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .queued-messages--pending .queued-messages--pending {
-    padding: var(--k-space-2);
-  }
   .queued-messages--pending .queued-messages__list {
     max-height: min(35dvh, 24rem);
   }
@@ -220,7 +217,7 @@
   }
 }
 
-.queued-messages--pending .queued-messages--pending {
+.queued-messages--pending {
   padding: 0;
   border: none;
   background: transparent;
