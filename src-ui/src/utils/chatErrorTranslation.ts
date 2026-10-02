@@ -516,9 +516,9 @@ export function translateChatError(
   switch (code) {
     case 'transport_capacity':
       return {
-        title: 'Station is handling too many requests',
+        title: 'Station connection is busy',
         body: text || 'This Station has too many concurrent requests.',
-        hint: 'Retry your request in a moment.',
+        hint: 'Wait for current requests to finish, then Retry.',
       };
     case 'transport_timeout':
       return {

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { createConnectionServiceForTest } from '../../../services/connections/__tests__/connection-service-test-helper.js';
 import { ModelSelectionRequiredError } from '../../../services/connections/connection-service.js';
 import { createConnectionRoutes } from '../connections.js';
 
@@ -428,6 +429,80 @@ describe('Connection Routes', () => {
     expect(service.smokeConnection).toHaveBeenCalledWith('claude', {
       confirmed: true,
       timeoutMs: 30_000,
+    });
+  });
+
+  test('POST / refuses to overwrite an existing model connection, secrets included', async () => {
+    // A stateful provider store behind the real ConnectionService, so the
+    // refusal is proven where the record is written, not at a mocked service.
+    const stored: any[] = [];
+    const providerService = {
+      listProviderConnections: vi.fn(() => stored),
+      saveProviderConnection: vi.fn((connection: any) => {
+        const index = stored.findIndex((entry) => entry.id === connection.id);
+        if (index >= 0) stored[index] = connection;
+        else stored.push(connection);
+      }),
+      deleteProviderConnection: vi.fn(),
+      checkHealth: vi.fn().mockResolvedValue(true),
+    };
+    const service = createConnectionServiceForTest(
+      providerService as any,
+      () => [],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(async (updates: any) => updates),
+    );
+    const app = createConnectionRoutes(service);
+    const create = (name: string, apiKey: string) =>
+      app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'proxy',
+          kind: 'model',
+          type: 'openai-compat',
+          name,
+          enabled: true,
+          config: { baseUrl: 'http://127.0.0.1:9/v1', apiKey },
+          capabilities: ['llm'],
+        }),
+      });
+
+    expect((await create('Original', 'original-key')).status).toBe(201);
+    const duplicate = await create('Intruder', 'intruder-key');
+    const body = await json(duplicate);
+
+    expect(duplicate.status).toBe(409);
+    expect(body).toEqual({
+      success: false,
+      error:
+        "Connection 'proxy' already exists; update it instead of creating it again.",
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      name: 'Original',
+      config: { apiKey: 'original-key' },
+    });
+
+    const update = await app.request('/proxy', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'model',
+        type: 'openai-compat',
+        name: 'Renamed',
+        enabled: true,
+        // What a client echoes back after reading the redacted record.
+        config: { baseUrl: 'http://127.0.0.1:9/v1', apiKeyConfigured: true },
+        capabilities: ['llm'],
+      }),
+    });
+    expect(update.status).toBe(200);
+    expect(stored[0]).toMatchObject({
+      name: 'Renamed',
+      config: { apiKey: 'original-key' },
     });
   });
 });

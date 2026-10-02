@@ -16,7 +16,7 @@
 
     {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
