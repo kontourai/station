@@ -653,7 +653,7 @@ describe('self-hosted broker runtime lifecycle', () => {
     });
     const runtime = new SelfHostedBrokerRuntime({
       ...f.options,
-      heartbeatMs: 1_000,
+      heartbeatMs: 5_000,
       renewMs: 10_000,
     });
     try {
