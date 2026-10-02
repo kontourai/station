@@ -95,7 +95,7 @@ function AccountPage({
   const [name, setName] = useState('');
   const [notice, setNotice] = useState('');
   const [activityScope, setActivityScope] = useState<'account' | 'engine'>(
-    'account',
+    'engine',
   );
   const [days, setDays] = useState<7 | 30>(7);
   const [now, setNow] = useState(() => Date.now());
@@ -278,13 +278,13 @@ function AccountPage({
               <div className="engine-account-overview__limit" key={window.id}>
                 <div>
                   <span>{window.label}</span>
-                  <strong>{Math.max(0, 100 - window.usedPercent)}% left</strong>
+                  <strong>{remainingPercent(window.usedPercent)}% left</strong>
                 </div>
                 <meter
                   min={0}
                   max={100}
                   value={100 - window.usedPercent}
-                  aria-label={`${window.label}: ${100 - window.usedPercent}% remaining`}
+                  aria-label={`${window.label}: ${remainingPercent(window.usedPercent)}% remaining`}
                 />
                 {window.resetsAt && (
                   <small>
@@ -883,6 +883,24 @@ function AccountMetadata({
   );
 }
 
+const percentFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+});
+function remainingPercent(usedPercent: number): string {
+  const remaining = 100 - usedPercent;
+  return remaining > 0 && remaining < 0.1
+    ? '<0.1'
+    : percentFormatter.format(remaining);
+}
+function historyWindowKey(
+  window: EngineAccountUsageHistory['observations'][number]['windows'][number],
+): string {
+  return JSON.stringify([
+    window.id,
+    window.label,
+    window.durationSeconds ?? null,
+  ]);
+}
 function AllowanceHistory({
   history,
   days,
@@ -899,16 +917,20 @@ function AllowanceHistory({
     (point) => Date.parse(point.fetchedAt) >= now - days * 86400000,
   );
   const windows = new Map(
-    points.flatMap((point) =>
-      point.windows.map((window) => [window.id, window.label] as const),
-    ),
+    [...points]
+      .reverse()
+      .flatMap((point) =>
+        point.windows.map(
+          (window) => [historyWindowKey(window), window.label] as const,
+        ),
+      ),
   );
   const id = windows.has(selected) ? selected : windows.keys().next().value;
   const observations = points.map((point) => ({
     fetchedAt: point.fetchedAt,
     window:
       point.status === 'ok'
-        ? point.windows.find((window) => window.id === id)
+        ? point.windows.find((window) => historyWindowKey(window) === id)
         : undefined,
   }));
   return (
@@ -971,7 +993,7 @@ function AllowanceHistory({
                     height={Math.max(2, remaining)}
                     data-unreported={!point.window || undefined}
                   >
-                    <title>{`${new Date(point.fetchedAt).toLocaleString()}: ${point.window ? `${remaining}% remaining` : 'Not reported'}`}</title>
+                    <title>{`${new Date(point.fetchedAt).toLocaleString()}: ${point.window ? `${remainingPercent(point.window.usedPercent)}% remaining` : 'Not reported'}`}</title>
                   </rect>
                 );
               })}
@@ -1010,7 +1032,7 @@ function AllowanceHistory({
                           <td>{new Date(point.fetchedAt).toLocaleString()}</td>
                           <td>
                             {point.window
-                              ? `${100 - point.window.usedPercent}%`
+                              ? `${remainingPercent(point.window.usedPercent)}%`
                               : 'Not reported'}
                           </td>
                           <td>

@@ -175,6 +175,7 @@ describe('UsageRollupService (station#4135)', () => {
   });
 
   test('uses the configured bearer only after an exact Station handshake and folds a remote replay once', async () => {
+    let accountKey: unknown = usageCredentialAccountKey('claude', 'work');
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const source = new RemoteStationUsageReceiptSource(
       'peer-a',
@@ -208,6 +209,7 @@ describe('UsageRollupService (station#4135)', () => {
                   stationId: 'peer-a',
                   provider: 'claude',
                   inputTokens: 9,
+                  accountKey,
                   observedAt: '2026-08-20T00:00:00.000Z',
                 },
                 {
@@ -215,6 +217,7 @@ describe('UsageRollupService (station#4135)', () => {
                   stationId: 'peer-a',
                   provider: 'claude',
                   inputTokens: 9,
+                  accountKey,
                   observedAt: '2026-08-20T00:00:00.000Z',
                 },
               ],
@@ -236,6 +239,14 @@ describe('UsageRollupService (station#4135)', () => {
       Authorization: 'Bearer peer-bearer-credential-0123456789abcdef',
     });
     expect(calls[1]?.url).toContain('localOnly=1');
+    expect(result.receipts[0]?.accountKey).toBe(accountKey);
+    accountKey = null;
+    const malformed = await new UsageRollupService([source]).read(
+      request,
+      authority,
+    );
+    expect(malformed.rows).toHaveLength(0);
+    expect(malformed.coverage[0]?.state).toBe('offline');
   });
 
   test('keeps cursors source-owned and rejects a malformed or mismatched peer body', async () => {

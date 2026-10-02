@@ -106,7 +106,8 @@ and cannot detect an external sign-in to a different account in the same home.
 Unknown readings remain gaps. No history is backfilled or captured while the
 page is closed. A failed history write leaves live limits readable and shows
 that history is unavailable. **View observations** exposes timestamps and resets,
-with older rows loaded on request. Usage receipts are persisted separately.
+with older rows loaded on request. History keeps a reused window ID separate
+when its label or duration changes, so different allowance periods are not blended. Usage receipts are persisted separately.
 
 The current projection inventory is:
 
@@ -133,7 +134,8 @@ precedence, both readers reported no unmapped non-null field paths or audit
 truncation for those account responses. Claude spending, breakdown, active-limit
 and extra-usage shapes are live-observed as well as fixture-validated. Other plans and provider endpoints remain outside this observation.
 
-**Activity** shows 7 or 30 days of runs on this Station. **Activity for** switches
+**Activity** initially shows 7 or 30 days of all engine runs on this Station, so
+older activity remains visible. **Activity for** switches
 between the selected credential profile and all accounts of this engine. New
 Claude and Codex sessions record an opaque account key from the profile actually
 resolved for the process. Raw profile references are not published in runtime

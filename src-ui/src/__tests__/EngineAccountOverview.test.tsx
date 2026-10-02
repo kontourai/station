@@ -107,6 +107,18 @@ test.each([
                 retentionDays: 30,
                 observations: [
                   {
+                    fetchedAt: new Date(Date.now() - 7200000).toISOString(),
+                    status: 'ok',
+                    windows: [
+                      {
+                        id: 'five-hour',
+                        label: 'Weekly',
+                        durationSeconds: 604800,
+                        usedPercent: 50,
+                      },
+                    ],
+                  },
+                  {
                     fetchedAt: new Date(Date.now() - 3600000).toISOString(),
                     status: 'ok',
                     windows: [
@@ -183,7 +195,7 @@ test.each([
                 {
                   id: 'five-hour',
                   label: '5 hour',
-                  usedPercent: u.searchParams.has('profileRef') ? 80 : 20,
+                  usedPercent: u.searchParams.has('profileRef') ? 80 : 73.2,
                   resetsAt: '2026-10-01T18:00:00Z',
                 },
               ],
@@ -267,8 +279,19 @@ test.each([
                       }
                     : engine === 'claude'
                       ? { reportedCost: { amount: 2, currency: 'USD' } }
-                      : { estimatedCost: { amount: 2, currency: 'USD' } }),
-                  pricingStatus: 'unpriced',
+                      : {
+                          estimatedCost: {
+                            amount: 2,
+                            currency: 'USD',
+                            pricingSnapshotId: 'fixture-snapshot',
+                            pricingSnapshotObservedAt: '2026-09-30T00:00:00Z',
+                            pricingSnapshotSource: 'fixture-catalog',
+                          },
+                        }),
+                  pricingStatus:
+                    !mixedCurrencies && engine === 'codex'
+                      ? 'partial'
+                      : 'unpriced',
                   receiptCount: 1,
                 },
               ],
@@ -284,7 +307,7 @@ test.each([
       </QueryClientProvider>,
     );
     if (management) {
-      await screen.findByText('80% left');
+      await screen.findByText('26.8% left');
       expect(screen.getByText('viewer@example.test')).toBeTruthy();
       fireEvent.click(screen.getByText('Account & credits'));
       expect(screen.getByText('12.5')).toBeTruthy();
@@ -313,6 +336,25 @@ test.each([
       fireEvent.click(screen.getByText('View observations'));
       expect((await screen.findByRole('table')).textContent).toContain('90%');
       expect(screen.getByRole('table').textContent).toContain('Not reported');
+      expect(screen.getByRole('table').textContent).not.toContain('50%');
+      const limit = screen.getByRole('combobox', { name: 'Limit' });
+      fireEvent.change(limit, {
+        target: {
+          value: screen
+            .getByRole('option', { name: 'Weekly' })
+            .getAttribute('value'),
+        },
+      });
+      expect(screen.getByRole('table').textContent).toContain('50%');
+      expect(screen.getByRole('table').textContent).not.toContain('90%');
+      fireEvent.change(limit, {
+        target: {
+          value: screen
+            .getByRole('option', { name: '5 hour' })
+            .getAttribute('value'),
+        },
+      });
+
       fireEvent.click(screen.getByText('Token breakdown & capture coverage'));
       expect(screen.getByText('40')).toBeTruthy();
       expect(screen.getAllByText('Not reported').length).toBeGreaterThan(0);
@@ -320,6 +362,12 @@ test.each([
       await screen.findByText(
         'Limit access requires credential-management permission.',
       );
+    expect(
+      screen.getByText('This Station · this engine · all accounts'),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Activity for' }), {
+      target: { value: 'account' },
+    });
     fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
       target: { value: 'work' },
     });
@@ -400,7 +448,7 @@ test.each([
     if (management) {
       workExists = false;
       fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-      await screen.findByText('80% left');
+      await screen.findByText('26.8% left');
       manageAccess = false;
       await client.invalidateQueries({
         queryKey: ['engine-account-authority'],

@@ -548,7 +548,14 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
   // Older paired Stations cannot make a current row appear priced. Preserve
   // their omission as an explicit unpriced receipt instead of trusting a
   // caller-side catalog lookup.
-  for (const key of ['model', 'threadId', 'turnId', 'conversationId', 'taskId'])
+  for (const key of [
+    'model',
+    'threadId',
+    'turnId',
+    'conversationId',
+    'taskId',
+    'accountKey',
+  ])
     if (receipt[key] !== undefined && typeof receipt[key] !== 'string')
       throw new Error('invalid usage receipt field');
   return {
