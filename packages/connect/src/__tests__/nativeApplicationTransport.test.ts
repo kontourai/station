@@ -357,7 +357,7 @@ describe('native application transport client', () => {
   test('uses one exact relay offer snapshot when gathering stalls, including lost-open read recovery', async () => {
     const f = await fixture({ iceTransportPolicy: 'relay' });
     f.peer.iceGatheringState = 'gathering';
-    const relayOffer = `${OFFER_SDP}a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay raddr 0.0.0.0 rport 0\r\n`;
+    const relayOffer = `${OFFER_SDP}a=candidate:3131234567 1 udp 16777215 192.0.2.10 49152 typ relay raddr 0.0.0.0 rport 0 generation 0 ufrag testOnly network-cost 999\r\n`;
     f.peer.setLocalDescription = async () => {
       f.peer.localDescription = { type: 'offer', sdp: relayOffer };
     };
@@ -412,6 +412,11 @@ describe('native application transport client', () => {
       candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ host\r\n',
     },
     {
+      name: 'mixed relay and host candidates under relay-only policy',
+      candidate:
+        'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\na=candidate:2 1 udp 16777214 192.0.2.11 49153 typ host\r\n',
+    },
+    {
       name: 'malformed relay address',
       candidate: 'a=candidate:1 1 udp 16777215 999.0.2.10 49152 typ relay\r\n',
     },
@@ -449,6 +454,21 @@ describe('native application transport client', () => {
       candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
       retire: 'trust',
     },
+    {
+      name: 'abort during authoritative recheck',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'late-abort',
+    },
+    {
+      name: 'failure during authoritative recheck',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'late-failed',
+    },
+    {
+      name: 'trust retirement during authoritative recheck',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'late-trust',
+    },
   ])(
     'does not submit a stalled offer with $name',
     async ({ candidate, policy, retire }) => {
@@ -456,6 +476,17 @@ describe('native application transport client', () => {
       f.peer.iceGatheringState = 'gathering';
       f.peer.setLocalDescription = async () => {
         f.peer.localDescription = { type: 'offer', sdp: OFFER_SDP + candidate };
+      };
+      let retireAtRecheck = false;
+      const recheck = f.input.trust.recheck;
+      f.input.trust.recheck = async (...args: Parameters<typeof recheck>) => {
+        const current = await recheck(...args);
+        if (retireAtRecheck) {
+          if (retire === 'late-abort') f.controller.abort();
+          if (retire === 'late-failed') f.peer.connectionState = 'failed';
+          if (retire === 'late-trust') f.revokeTrust();
+        }
+        return current;
       };
       vi.useFakeTimers();
       try {
@@ -472,6 +503,7 @@ describe('native application transport client', () => {
         if (retire === 'failed') f.peer.iceConnectionState = 'failed';
         if (retire === 'closed') f.peer.connectionState = 'closed';
         if (retire === 'trust') f.revokeTrust();
+        retireAtRecheck = true;
         await vi.advanceTimersByTimeAsync(10_000);
         expect(await result).toHaveProperty('error');
         expect(f.signaling.open).not.toHaveBeenCalled();

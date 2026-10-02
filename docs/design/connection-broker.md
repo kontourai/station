@@ -408,8 +408,12 @@ The closed version-1 binding names the Station, enrollment, positive generation,
 connection ID, client nonce, client and Station certificate fingerprints, and
 SHA-256 digests of the exact offer and answer bytes. The nonce and connection
 ID originate in the Device. Binding expectations and signing-key trust come
-from their local owners, never from decoded broker claims. Full gathering
-precedes signing; extra unsigned candidate updates are refused. A future
+from their local owners, never from decoded broker claims. Browser gathering
+precedes signing. The native client also permits a bounded relay-only local
+offer snapshot when gathering stalls after valid UDP relay candidates arrive;
+the exact snapshot remains bound to signaling and proof digests. See the
+[native transport contract](../reference/connect.md#optional-native-application-transport).
+Extra unsigned candidate updates are refused. A future
 trickle-ICE protocol needs its own authenticated update contract.
 
 Proofs use integer-second `iat`, `nbf` and `exp`, with `nbf = iat` and an exact

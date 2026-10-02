@@ -14,6 +14,8 @@ export type NativeEnrollmentFailureStage =
   | 'peer-close';
 
 const SAFE_CODES = new Set([
+  'browser_transport_timeout',
+  'browser_transport_failed',
   'native_enrollment_request_invalid',
   'native_enrollment_response_missing',
   'native_enrollment_response_too_large',

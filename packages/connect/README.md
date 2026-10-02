@@ -76,6 +76,12 @@ host to sign the exact bounded request for the approved Device; it refuses
 caller-supplied Authorization, Cookie or Device-proof headers. It has no direct
 HTTP fallback and does not read the routing-grant bearer or signing key.
 
+When relay-only ICE gathering stalls, a bounded offer snapshot can proceed
+with validated UDP relay candidates. Trust, cancellation and transport failure
+checks still apply, and signaling and proof verification retain the same exact
+SDP bytes. See the [native transport contract](../../docs/reference/connect.md#optional-native-application-transport)
+for the fallback's candidate and deadline conditions.
+
 The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station now composes it in its native saved-route owner
 for a configured host-owned Device binding. Each peer obtains fresh ICE, and

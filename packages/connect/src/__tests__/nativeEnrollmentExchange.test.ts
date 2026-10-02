@@ -96,6 +96,33 @@ function prepared(): NativeRelayEnrollmentPreparedRequest {
 }
 
 describe('native enrollment one-request exchange', () => {
+  test.each([
+    ['browser_transport_timeout', 'browser_transport_timeout'],
+    ['browser_transport_failed', 'browser_transport_failed'],
+    ['raw browser failure with a private URL', 'unknown'],
+  ])(
+    'reports safe peer-open diagnostics for %s without preparing a request',
+    async (message, code) => {
+      const f = fixture();
+      f.open.mockRejectedValue(new Error(message));
+      const prepare = vi.fn(async () => prepared());
+      const accept = vi.fn();
+      let failure: unknown;
+      try {
+        await f.exchange(prepare, accept);
+      } catch (error) {
+        failure = error;
+      }
+      expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
+        stage: 'peer-open',
+        code,
+      });
+      expect(prepare).not.toHaveBeenCalled();
+      expect(accept).not.toHaveBeenCalled();
+      expect(f.dispatched).not.toHaveBeenCalled();
+    },
+  );
+
   test('prepares using the opened owner handle and forwards the retained request to host acceptance after EOF', async () => {
     const f = fixture();
     const prepare = vi.fn(async (handle: string) => {

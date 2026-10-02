@@ -62,6 +62,9 @@ exercise rejection and cleanup through application channels and the mounted
 setup UI; they do not diagnose an earlier installed attempt or prove a successful
 Device enrollment.
 
+Fixed `browser_transport_timeout` and `browser_transport_failed` codes identify
+local transport timing or failure without exposing the browser's raw error.
+
 ## Application channel request preparation
 
 The `/application-channel` entry exports `ApplicationChannel`,
@@ -107,6 +110,16 @@ body and returns only the native Device-proof header. Caller-supplied
 Authorization, Cookie and Device-proof headers are refused. Abort, failed
 preparation or retired trust closes owned work. There is no direct HTTP
 fallback, grant-bearer exposure or signing-key exposure.
+
+ICE gathering has a 10-second bound. If gathering stalls on a relay-only peer,
+the client can submit its current local offer only when its active application
+media contains a valid UDP relay candidate. Missing, malformed, non-relay or
+unusable candidates do not enable this fallback; every candidate in the snapshot
+must be a valid UDP relay candidate, even under relay-only policy. Cancellation, failed or closed
+transport, and retired Station trust still prevent submission. The one captured
+SDP string is used for signaling, its digest and Station proof verification;
+later candidates never cause a second offer. These source-level conditions do
+not establish connectivity or installed iOS enrollment success.
 
 Host transcripts and browser RTC connectivity are separate observations. The
 host permits one Device proof per handle; account proofs come from the separate

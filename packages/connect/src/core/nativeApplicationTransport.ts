@@ -95,6 +95,53 @@ const NATIVE_APPLICATION_STATION_PROOF_LIMIT_BYTES =
 const NATIVE_APPLICATION_PATH_LIMIT_BYTES = 2048;
 const NATIVE_APPLICATION_BODY_LIMIT_BYTES = 16 * 1024;
 
+function candidateAddress(value: string): boolean {
+  if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/u.test(value))
+    return (
+      value.split('.').every((part) => Number(part) <= 255) &&
+      value !== '0.0.0.0'
+    );
+  if (!/^[0-9a-f:]+$/iu.test(value) || !value.includes(':')) return false;
+  try {
+    return new URL(`http://[${value}]`).hostname !== '[::]';
+  } catch {
+    return false;
+  }
+}
+
+/** A bounded local UDP relay snapshot; no trickle or synthetic SDP attributes. */
+function hasApplicationRelayCandidate(sdp: string): boolean {
+  if (sdp.length > NATIVE_APPLICATION_SDP_LIMIT_BYTES) return false;
+  let application = false;
+  let relay = false;
+  for (const line of sdp.split(/\r?\n/u)) {
+    if (line.startsWith('m=')) {
+      const media =
+        /^m=application ([1-9][0-9]{0,4}) UDP\/DTLS\/SCTP webrtc-datachannel$/u.exec(
+          line,
+        );
+      application = !!media && Number(media[1]) <= 65535;
+    }
+    if (!line.startsWith('a=candidate:')) continue;
+    const candidate =
+      /^a=candidate:[a-z0-9+/]{1,32} 1 udp ([0-9]{1,10}) ([0-9a-f:.]+) ([0-9]{1,5}) typ relay(?: ([\x21-\x7e]+(?: [\x21-\x7e]+)*))?$/iu.exec(
+        line,
+      );
+    if (
+      !candidate ||
+      Number(candidate[1]) === 0 ||
+      Number(candidate[1]) > 0xffff_ffff ||
+      !candidateAddress(candidate[2]!) ||
+      Number(candidate[3]) === 0 ||
+      Number(candidate[3]) > 65535 ||
+      (candidate[4]?.split(' ').length ?? 0) % 2 !== 0
+    )
+      return false;
+    if (application) relay = true;
+  }
+  return relay;
+}
+
 function peerHandleFrom(value: unknown): string | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const handle = (value as { peerHandle?: unknown }).peerHandle;
@@ -379,27 +426,63 @@ export function createNativeVerifiedPeerTransport(
       await assertCurrent(authority, 'checkpoint', owned);
       await raceOwnedLifetime(peer.setLocalDescription(offer), owned);
       await assertCurrent(authority, 'checkpoint', owned);
-      await waitForBrowserTransport(
-        owned,
-        (finish, fail) => {
-          const changed = () => {
-            if (peerOwner.iceGatheringState === 'complete') finish();
-            else if (peerOwner.connectionState === 'failed') fail();
-          };
-          peerOwner.addEventListener('icegatheringstatechange', changed);
-          peerOwner.addEventListener('connectionstatechange', changed);
-          changed();
-          return () => {
-            peerOwner.removeEventListener('icegatheringstatechange', changed);
-            peerOwner.removeEventListener('connectionstatechange', changed);
-          };
-        },
-        10_000,
-      );
+      const assertPeerAvailable = () => {
+        owned.throwIfAborted();
+        if (
+          peerOwner.connectionState === 'failed' ||
+          peerOwner.connectionState === 'closed' ||
+          peerOwner.iceConnectionState === 'failed' ||
+          peerOwner.iceConnectionState === 'closed'
+        )
+          throw new Error('browser_transport_failed');
+      };
+      let offerSdp: string | undefined;
+      try {
+        await waitForBrowserTransport(
+          owned,
+          (finish, fail) => {
+            const changed = () => {
+              try {
+                assertPeerAvailable();
+                if (peerOwner.iceGatheringState === 'complete') finish();
+              } catch {
+                fail();
+              }
+            };
+            peerOwner.addEventListener('icegatheringstatechange', changed);
+            peerOwner.addEventListener('connectionstatechange', changed);
+            peerOwner.addEventListener('iceconnectionstatechange', changed);
+            changed();
+            return () => {
+              peerOwner.removeEventListener('icegatheringstatechange', changed);
+              peerOwner.removeEventListener('connectionstatechange', changed);
+              peerOwner.removeEventListener(
+                'iceconnectionstatechange',
+                changed,
+              );
+            };
+          },
+          10_000,
+        );
+        offerSdp = peer.localDescription?.sdp;
+      } catch (error) {
+        assertPeerAvailable();
+        // WKWebView can retain gathering after usable TURN candidates arrive.
+        // Keep one exact snapshot for the offer and signed transcript; do not
+        // submit a second offer or extend the owned connection deadline.
+        const snapshot = peer.localDescription?.sdp;
+        if (
+          !isErrorCode(error, 'browser_transport_timeout') ||
+          configuration.iceTransportPolicy !== 'relay' ||
+          !snapshot ||
+          !hasApplicationRelayCandidate(snapshot)
+        )
+          throw error;
+        offerSdp = snapshot;
+      }
       await assertCurrent(authority, 'checkpoint', owned);
-      if (!peer.localDescription?.sdp)
-        throw new Error('native_application_offer_unavailable');
-      const offerSdp = peer.localDescription.sdp;
+      assertPeerAvailable();
+      if (!offerSdp) throw new Error('native_application_offer_unavailable');
       const clientFingerprint = fingerprint(offerSdp);
       const activeHostPeer = hostPeer;
       const activePeerHandle = hostPeerHandle;
