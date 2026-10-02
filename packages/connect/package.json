@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./native-relay-link": "./src/core/nativeRelayLink.ts",
     "./relay-ice": "./src/core/relayIceConfiguration.ts",
     ".": {
       "types": "./dist/index.d.ts",

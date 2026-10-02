@@ -32,6 +32,9 @@ pub(crate) mod native_device_custody;
 pub(crate) mod native_device_proof_key;
 pub(crate) mod native_proof_key_core;
 mod native_relay_key_approval;
+mod native_relay_link_intake;
+#[cfg(target_os = "ios")]
+mod native_relay_ios_launch;
 pub(crate) mod native_relay_proof_key;
 mod native_relay_redemption;
 mod native_secure_entry;
@@ -11811,8 +11814,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         .plugin(tauri_plugin_notification::init())
         // Native OS dialogs for the consent broker (station#3677 PR 3): the
         // approval surface must be chrome webview JS cannot script.
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_dialog::init());
+    #[cfg(not(target_os = "ios"))]
+    let builder = builder.plugin(tauri_plugin_deep_link::init());
     // Mobile-only haptic feedback (station#1954). Capability report marks
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
@@ -11828,6 +11832,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativeHttpCancellation::default())
         .manage(NativePairingExchangeCancellation::default())
         .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
+        .manage(native_relay_link_intake::NativeRelayLinkState::default())
         .manage(native_application_peer::NativeApplicationPeers::default())
         .manage(native_enrollment_peer::NativeEnrollmentPeers::default())
         .manage(native_enrollment_host::NativeEnrollmentHost::default())
@@ -11867,6 +11872,12 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_request_headers,
         native_account_operations::station_native_account_accept_invitation_prepare,
         native_account_operations::station_native_account_revoke_prepare,
+        native_relay_link_intake::station_native_link_delivery_mode,
+        native_relay_link_intake::station_native_pairing_link_take,
+        native_relay_link_intake::station_native_relay_link_take,
+        native_relay_link_intake::station_native_relay_link_cancel,
+        native_relay_link_intake::station_native_relay_link_begin,
+        native_relay_link_intake::station_native_relay_link_redeem,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -11961,6 +11972,12 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_request_headers,
         native_account_operations::station_native_account_accept_invitation_prepare,
         native_account_operations::station_native_account_revoke_prepare,
+        native_relay_link_intake::station_native_link_delivery_mode,
+        native_relay_link_intake::station_native_pairing_link_take,
+        native_relay_link_intake::station_native_relay_link_take,
+        native_relay_link_intake::station_native_relay_link_cancel,
+        native_relay_link_intake::station_native_relay_link_begin,
+        native_relay_link_intake::station_native_relay_link_redeem,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -12015,7 +12032,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_profile_store_write
     ]);
 
-    builder
+    let app = builder
         .setup(move |app| {
             {
                 let app = app.handle().clone();
@@ -12223,8 +12240,24 @@ If a stable instance is running, this launch will focus its window and exit.",
             Ok(())
         })
         .build(context)
-        .expect("error while building tauri application")
-        .run(|app, event| {
+        .expect("error while building tauri application");
+    #[cfg(target_os = "ios")]
+    {
+        let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
+        state.start_expiry_worker();
+        if native_relay_ios_launch::install(app.handle().clone()).is_err() {
+            state.unavailable();
+            log::error!("Station native relay URL launch delivery is unavailable.");
+        }
+    }
+    app.run(|app, event| {
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                native_relay_link_intake::receive_opened(app, urls);
+            }
+            if let tauri::RunEvent::Exit = &event {
+                app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
+            }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
                 if code.is_none() || *code == Some(0) {

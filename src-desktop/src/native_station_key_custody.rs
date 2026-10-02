@@ -734,6 +734,29 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         operator_full_key_id: &str,
         operator_deadline_ms: u64,
     ) -> CandidateResult<StationTrustMutationReceipt> {
+        self.approve_until_with_precommit(
+            provider,
+            candidate,
+            operator_code,
+            operator_full_key_id,
+            operator_deadline_ms,
+            || Ok(()),
+        )
+    }
+
+    pub(crate) fn approve_until_with_precommit<P, F>(
+        &mut self,
+        provider: &P,
+        candidate: VerifiedStationKeyCandidate,
+        operator_code: &str,
+        operator_full_key_id: &str,
+        operator_deadline_ms: u64,
+        precommit: F,
+    ) -> CandidateResult<StationTrustMutationReceipt>
+    where
+        P: LockedTrustProfileProvider,
+        F: FnOnce() -> CandidateResult<()>,
+    {
         let confirmed = candidate.confirm_operator(operator_code, operator_full_key_id)?;
         let candidate = confirmed.candidate;
         let binding = candidate.profile_binding.clone();
@@ -789,6 +812,7 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
             // immediately before committing the OS-keyring record.
             ensure_candidate_fresh(&candidate.claims, self.clock.now_seconds()?)?;
             ensure_operator_deadline(self.clock.now_millis()?, operator_deadline_ms)?;
+            precommit()?;
             self.write_record(&account, &stored)?;
             Ok(receipt)
         })
@@ -1689,6 +1713,105 @@ mod tests {
         assert_eq!(
             store.current_revision(&locked_profile(&binding()), &trust_binding, 7),
             Err(CandidateError::TrustStore)
+        );
+    }
+
+    #[test]
+    fn linked_approval_cancelled_at_precommit_never_writes_station_trust() {
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let mut store = NativeStationTrustStore::with_backend(backend.clone());
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let deadline = candidate.expires_at() * 1000;
+        assert_eq!(
+            store.approve_until_with_precommit(
+                &profile,
+                candidate,
+                &code,
+                &key_id,
+                deadline,
+                || Err(CandidateError::ProfileStale)
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        assert!(backend.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn routing_supersession_during_explicit_trust_write_does_not_revoke_committed_approval() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc;
+        use std::time::Duration;
+        struct BlockedTrustWrite {
+            inner: MemoryTrustBackend,
+            started: mpsc::Sender<()>,
+            resume: mpsc::Receiver<()>,
+        }
+        impl StationTrustBackend for BlockedTrustWrite {
+            fn read(&mut self, account: &str) -> CandidateResult<Option<Zeroizing<String>>> {
+                self.inner.read(account)
+            }
+            fn write(&mut self, account: &str, value: &str) -> CandidateResult<()> {
+                self.started
+                    .send(())
+                    .map_err(|_| CandidateError::TrustStore)?;
+                self.resume
+                    .recv_timeout(Duration::from_secs(2))
+                    .map_err(|_| CandidateError::TrustStore)?;
+                self.inner.write(account, value)
+            }
+        }
+        let backend = MemoryTrustBackend::default();
+        let profile = locked_profile(&binding());
+        let (started_tx, started_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let blocked = BlockedTrustWrite {
+            inner: backend.clone(),
+            started: started_tx,
+            resume: resume_rx,
+        };
+        let mut store = NativeStationTrustStore::with_backend(blocked);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let deadline = candidate.expires_at() * 1000;
+        let cancelled = AtomicBool::new(false);
+        let receipt = std::thread::scope(|scope| {
+            let write = scope.spawn(|| {
+                store.approve_until_with_precommit(
+                    &profile,
+                    candidate,
+                    &code,
+                    &key_id,
+                    deadline,
+                    || {
+                        if cancelled.load(Ordering::Acquire) {
+                            Err(CandidateError::ProfileStale)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+            });
+            started_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("explicit approval entered the actual trust backend write");
+            cancelled.store(true, Ordering::Release);
+            resume_tx.send(()).unwrap();
+            write.join().unwrap().unwrap()
+        });
+        assert_eq!(receipt.status, StationTrustStatus::Approved);
+        assert!(cancelled.load(Ordering::Acquire));
+        assert_eq!(backend.0.lock().unwrap().len(), 1);
+        let mut readback = NativeStationTrustStore::with_backend(backend);
+        assert_eq!(
+            readback
+                .current_state(&profile, &trust_binding(&binding()), 7)
+                .unwrap()
+                .status,
+            Some(StationTrustStatus::Approved)
         );
     }
 
