@@ -4506,6 +4506,7 @@ export class EventStore {
     taskId?: string;
     model?: string;
     processEpoch: number;
+    accountKey?: string;
   }> {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
@@ -4530,6 +4531,15 @@ export class EventStore {
                     AND (json_type(config.payload, '$.metadata.effectiveModel') = 'text'
                       OR json_type(config.payload, '$.model') = 'text')
                   ORDER BY config.sequence DESC LIMIT 1) AS model,
+                (SELECT json_quote(json_extract(config.payload, '$.metadata.usageAccountKey'))
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method IN ('session.started', 'session.configured')
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.usageAccountKey') = 'text'
+                    AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
+                  ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json,
                 (SELECT COUNT(*) FROM orchestration_events epoch
                   WHERE epoch.thread_id = e.thread_id
                     AND epoch.method = 'session.started'
@@ -4557,13 +4567,20 @@ export class EventStore {
         options.after?.eventId ?? null,
         options.limit + 1,
       ) as any[];
-    return rows.map((row) => ({
-      event: this.mapEventRow(row),
-      conversationId: row.conversation_id,
-      ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
-      ...(typeof row.model === 'string' ? { model: row.model } : {}),
-      processEpoch: Number(row.process_epoch),
-    }));
+    return rows.map((row) => {
+      const accountKey: unknown =
+        typeof row.credential_profile_json === 'string'
+          ? JSON.parse(row.credential_profile_json)
+          : undefined;
+      return {
+        event: this.mapEventRow(row),
+        conversationId: row.conversation_id,
+        ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
+        ...(typeof row.model === 'string' ? { model: row.model } : {}),
+        ...(typeof accountKey === 'string' ? { accountKey } : {}),
+        processEpoch: Number(row.process_epoch),
+      };
+    });
   }
 
   /**

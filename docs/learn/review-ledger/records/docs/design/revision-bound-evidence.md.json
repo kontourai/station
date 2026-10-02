@@ -16,7 +16,7 @@
 
     {"path":"src-server/domain/revision-bound-evidence.ts","digest":"cb297f8375790f638ce0f0097de0e5f4ec13d72b16cc60fb4209cbb8ec723787","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"2882894c3033e2d22c21a884511c53c705c3f723e1db54bf5611ea088ca25bba","revision":"6b6f1e040d11023dfca2afb14e6ffcfc9b673df0"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ae995492b9db14e8c947fe979735d58fe881879cfe6f57b0da1a4725d4509bb2","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
     {"path":"src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts","digest":"b15475ea8e06e179b98493884ce70f4eca5bc98ce1911aa9bb8537be0265217e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -56,7 +56,7 @@
 
     {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"89ae5a79b61e17ed7994f6fe8d8015bd740297b0fb16744cc5f35686e80f637d","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
     {"path":"src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","digest":"daa53aa09454d47668d3084ad4c6c13c2bfc1ece9fc7c49e0473d2ff346675fb","revision":"97a988b2e9da6ea439e816b89400762aeb93c4d6"}
   ],
