@@ -94,6 +94,10 @@ makes the current routing generation `online` for 30 seconds. `online` describes
 recent connector registration, not application readiness or permission.
 Registration is the presence heartbeat; lease renewal is separate. A composed
 supervisor must refresh both.
+The composed runtime schedules renewal before the observed lease expiry, using
+half the remaining lifetime when that is sooner than its normal renewal interval.
+Renewal takes priority when a heartbeat is also due. An already expired lease
+still refuses renewal; this scheduling does not revive it or change its TTL.
 
 Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
