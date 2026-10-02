@@ -169,9 +169,17 @@ exchange, every provider plan or Windows secure-store behavior.
 
 ## Saved Station addresses
 
-Open **Manage Stations** in the header to inspect the computers this client
-connects to. Each address wraps on narrow screens so its port stays visible.
-The row's **More actions** menu provides **Copy address** and **Edit Station**.
+Tap the connection dot on a phone, or the connection name on desktop, to
+choose a Station. The current Station is checked; inactive Stations say
+**Not checked** until a reachability check has completed. Holding the phone's
+dot shows its saved name without switching or opening the manager.
+
+Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
+**Switch to this Station** and **Edit Station**; inspecting a row does not
+switch the active connection. Switching respects unsaved-work decisions.
+Each address wraps on narrow screens so its port stays visible. The row's
+**More actions** menu provides **Copy address** and **Check reachability**.
+Already paired connections do not prompt for another access request.
 
 Use an HTTPS address when connecting another device. An HTTP address requires
 **Allow an unencrypted connection** before requesting access, including a

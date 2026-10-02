@@ -62,6 +62,7 @@ function renderPanel(
   onSelect = vi.fn(),
   {
     connections = [connection],
+    activeConnectionId = connection.id,
     onRestartInjectedConnection,
     localStationOwnerId,
     onMakeDefaultProfile,
@@ -72,6 +73,7 @@ function renderPanel(
     onRemove = () => {},
   }: {
     connections?: SavedConnection[];
+    activeConnectionId?: string;
     onRestartInjectedConnection?: (connection: SavedConnection) => void;
     localStationOwnerId?: string;
     onMakeDefaultProfile?: (connection: SavedConnection) => void;
@@ -85,7 +87,7 @@ function renderPanel(
   render(
     <ConnectionListPanel
       connections={connections}
-      activeConnectionId={connection.id}
+      activeConnectionId={activeConnectionId}
       onRestartInjectedConnection={onRestartInjectedConnection}
       localStationOwnerId={localStationOwnerId}
       canEditSharedProfiles={canEditSharedProfiles}
@@ -241,7 +243,7 @@ describe('ConnectionListPanel', () => {
   it('keeps every connection method visible without an advanced disclosure', () => {
     renderPanel();
 
-    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Add a Station address' }),
     ).toBeTruthy();
@@ -290,7 +292,7 @@ describe('ConnectionListPanel', () => {
     expect(screen.queryByRole('button', { name: 'Paired devices' })).toBeNull();
     // The client-side sections stay: joining another Station and requesting
     // access to one are the phone's real capabilities (station#2205).
-    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Enter a pairing code' }),
     ).toBeTruthy();
@@ -304,30 +306,30 @@ describe('ConnectionListPanel', () => {
     expect(screen.getByRole('button', { name: 'Paired devices' })).toBeTruthy();
   });
 
-  it('uses a dedicated native selection button beside the row actions', () => {
-    const onSelect = renderPanel();
-    const selectButton = screen.getByRole('button', {
-      name: 'Select Station One',
+  it('opens row details without switching, then switches only from its explicit action', () => {
+    const onSelect = renderPanel(vi.fn(), {
+      activeConnectionId: 'another-station',
     });
-
-    selectButton.focus();
-    fireEvent.click(selectButton);
-
-    expect(selectButton.tagName).toBe('BUTTON');
-    expect(document.activeElement).toBe(selectButton);
-    expect(selectButton.getAttribute('aria-pressed')).toBe('true');
-    expect(selectButton.querySelector('button')).toBeNull();
-    const row = selectButton.closest('.station-connect-row');
-    const siblingActionButtons = row
-      ? Array.from(row.querySelectorAll('button')).filter(
-          (button) => button !== selectButton,
-        )
-      : [];
-    expect(siblingActionButtons.length).toBeGreaterThan(0);
-    expect(
-      siblingActionButtons.every((button) => !selectButton.contains(button)),
-    ).toBe(true);
+    const details = screen.getByRole('button', {
+      name: 'View details for Station One',
+    });
+    fireEvent.click(details);
+    expect(details.getAttribute('aria-expanded')).toBe('true');
+    expect(onSelect).not.toHaveBeenCalled();
+    const change = screen.getByRole('button', {
+      name: 'Switch to Station One',
+    });
+    fireEvent.click(change);
+    expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect).toHaveBeenCalledWith(connection);
+  });
+
+  it('does not offer an access request for an already usable connection', () => {
+    renderPanel();
+    expect(
+      screen.queryByRole('region', { name: 'Connect this device' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
   });
 
   it('keeps the active Station name visible and reserves row width for its identity', () => {
@@ -441,9 +443,12 @@ describe('ConnectionListPanel', () => {
     });
 
     const selectButton = screen.getByRole('button', {
-      name: 'Select Local Server',
+      name: 'View details for Local Server',
     });
     fireEvent.click(selectButton);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to Local Server' }),
+    );
     expect(onSelect).toHaveBeenCalledOnce();
   });
 
