@@ -193,7 +193,7 @@ test('operator successor retains the genuine Station home and trust, provisions 
     f.broker.provision(
       { ...successor.scope, routingGeneration: 3 },
       60_000,
-      createBrokerCredentialBundle(),
+      credentials.bundle,
     );
     expect(() => assertNativeFreshBrokerLeaseCommitted(successor)).toThrow(
       'fixture_broker_generation_changed',
