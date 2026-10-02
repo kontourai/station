@@ -40,7 +40,11 @@
 
     {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
-    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"0b328f9cf537be6395c1f5eec936924ec806194c673e71c15fcbcfa5b4b87973","revision":"8f54568ace0014007eee673a58f3d26d3588e282"}
+    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"0b328f9cf537be6395c1f5eec936924ec806194c673e71c15fcbcfa5b4b87973","revision":"8f54568ace0014007eee673a58f3d26d3588e282"},
+
+    {"path":"src-ui/src/components/chat/chat.css","digest":"d4fa94b3e6bf1a339a005f79684b0d1cdf5c6e22b688fcaf094e03712f31ed43","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"},
+
+    {"path":"src-ui/src/components/chat/QueuedMessages.css","digest":"a24d97fa21ac0aaba1eab7d2d273ed54d34e5cad41f9a94cafeebc429ef25ebe","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"}
   ],
 
   "checks": [
