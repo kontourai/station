@@ -36,7 +36,7 @@
 
     {"path":"src-ui/src/components/status/chatStatus.ts","digest":"934dcb7ea0f4bbd9b8449fd2cd0277978f84cb37742fceee75cd96973921ebc4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"747b162c8314bb84b5cd3541ece7a270a603b484a8a4925406b244956d668f23","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"1ea0958938d8834be0de3694e34491f63c2e3db7863bd44147ed8572257e7cd8","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
 
     {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
