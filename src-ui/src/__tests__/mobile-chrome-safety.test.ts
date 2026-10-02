@@ -349,22 +349,34 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
     );
   });
 
-  it('insets only the full-screen mobile dock header by the top safe area', () => {
+  it('counts the top safe area once for the full-screen mobile dock', () => {
     // The toolbar is the only element that carries padding-top: var(--safe-top).
-    // Hiding it without moving the inset to whatever replaces it puts the
-    // eyebrow and title under the status bar on edge-to-edge Android
-    // (archive#2287).
+    // Hiding it must not put the eyebrow and title under the status bar on
+    // edge-to-edge Android (archive#2287) — and it must not count the inset
+    // twice either. The dock itself starts below the inset (its `top` adds
+    // `--app-toolbar-total-height`, reduced to `--safe-top` in this mode), so
+    // a header that ALSO pads by it leaves a status-bar-tall empty band. The
+    // geometry is proven by the browser journey in
+    // tests/mobile-chat-composer.spec.ts; this pins the two declarations it
+    // measures.
+    expect(css).toMatch(
+      /\.app__main--mobile-dock-fullscreen\s*\{[^}]*--app-toolbar-total-height:\s*var\(--safe-top\)/,
+    );
+    const [maximized] = ruleBodies(css, '.app__main > .chat-dock.is-maximized');
+    expect(maximized, 'mobile maximized dock rule not found').toBeDefined();
+    expect(maximized).toMatch(/top:\s*calc\([^;]*--app-toolbar-total-height/);
+
     const [body] = ruleBodies(css, '.chat-dock__mobile-header');
     expect(body, '.chat-dock__mobile-header rule not found').toBeDefined();
     const padding = /(^|[;{\s])padding:\s*([^;]+);/.exec(body)?.[2];
     expect(padding, 'the header must declare its own padding').toBeDefined();
     expect(padding).not.toContain('--safe-top');
-
-    const [fullscreenBody] = ruleBodies(
-      css,
-      '.app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header',
-    );
-    expect(fullscreenBody).toContain('--safe-top');
+    expect(
+      ruleBodies(
+        css,
+        '.app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header',
+      ).join(''),
+    ).not.toContain('--safe-top');
   });
 
   it('pads a workspace tab strip if fullscreen chrome is ever applied to it', () => {

@@ -14,9 +14,9 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
 
-    {"path":"docs/guides/development.md","digest":"dd6933dc12b9e5d7ecb93b433fcf1cb00a7a564293976839b332448236208799","revision":"c8f80c629fca13479b0010de84094ad0a13332c1"},
+    {"path":"docs/guides/development.md","digest":"4ff9d0090aeb85b74d4a98f233f9184706b0c36f374cdb955ce446663ea06509","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"docs/guides/testing.md","digest":"359e6da63d714a785b4fb7d74b3b37084830a0a9ad7599e86414c1424395973c","revision":"7e8519008b556d901570139123f56890cf07a113"},
+    {"path":"docs/guides/testing.md","digest":"3e4789296b942680c646505eec49db5b87f7cbe2eb160ee719c580022dc27950","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":"src-server/services/evidence/workflow-sidecar-service.ts","digest":"bb07d659390bf7acd2e30eae827fdbfb33b4e1b908e7ff0d92394f1b2bda6896","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 

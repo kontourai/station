@@ -12,7 +12,7 @@
   "document": {"digest":"a20eaba5f0f2d0701e85a50da690ff0f39167db2a9df95181b6c9c3e2eec77c7","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":".github/workflows/dependency-advisory.yml","digest":"e24f516a6b3344160eccacbe494bb0f975a31f225c63301924de5fa91440b851","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
