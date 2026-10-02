@@ -915,3 +915,58 @@ it.each([false, true])(
     ).toBe(false);
   },
 );
+
+it.each([
+  { step: 'grant-status', fixed: false },
+  { step: 'host-redemption', fixed: false },
+  { step: 'grant-status', fixed: true },
+])(
+  'link review reports only the fixed $step step for a host rejection (fixed: $fixed)',
+  async ({ step, fixed }) => {
+    await configureBoundFlow(true);
+    const trap = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    const ordinaryInvoke = host.invoke.getMockImplementation();
+    host.invoke.mockImplementation(async (command, args) => {
+      if (
+        command ===
+        (step === 'grant-status'
+          ? 'station_native_relay_grant_status'
+          : 'station_native_relay_link_redeem')
+      )
+        throw fixed
+          ? 'Station could not read native relay grant status.'
+          : new Error(trap);
+      return ordinaryInvoke?.(command, args);
+    });
+    render(
+      <NativeRelayLinkIntake>
+        <ProtectedRoot />
+      </NativeRelayLinkIntake>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Continue to device approval',
+      }),
+    );
+    await screen.findByText(/The connection wasn’t confirmed/);
+    expect(screen.getByText(`Connection step: ${step}`)).toBeTruthy();
+    if (fixed)
+      expect(
+        screen.getByText('Connection error: grant-status-unavailable'),
+      ).toBeTruthy();
+    expect(document.body.textContent).not.toContain(trap);
+    expect(screen.queryByText(/Connection invitation accepted/)).toBeNull();
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_enrollment_resume' ||
+          command === 'station_native_enrollment_begin_prepare',
+      ),
+    ).toBe(false);
+    expect(
+      host.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_relay_link_redeem',
+      ),
+    ).toHaveLength(step === 'grant-status' ? 0 : 1);
+  },
+);

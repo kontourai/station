@@ -26,6 +26,30 @@ import {
 import { nativeRelayKeyApproval } from './relayKeyApproval';
 import '../../views/connections-hub/ComputersSection.css';
 
+type ConnectionStep =
+  | 'saved-profile'
+  | 'station-trust'
+  | 'grant-status'
+  | 'host-redemption'
+  | 'grant-refresh';
+const LOCAL_FAILURE_CODES = new Map([
+  ['expired', 'invitation-expired'],
+  ['changed', 'saved-profile-changed'],
+  ['trust', 'station-trust-required'],
+  ['staleProfile', 'saved-profile-changed'],
+  [
+    'Station could not read native relay grant status.',
+    'grant-status-unavailable',
+  ],
+  [
+    'This relay invitation is no longer available. Reopen a current invitation.',
+    'invitation-unavailable',
+  ],
+  [
+    'Station could not receive this native relay link. Use manual route setup.',
+    'link-unavailable',
+  ],
+]);
 type PendingDelivery = Exclude<NativeRelayLinkDelivery, { kind: 'rejected' }>;
 function matches(profile: StationProfile, delivery: PendingDelivery) {
   return (
@@ -84,6 +108,10 @@ function Review({
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [redeemed, setRedeemed] = useState(false);
+  const [connectionFailure, setConnectionFailure] = useState<{
+    step: ConnectionStep;
+    code?: string;
+  }>();
   const [routingFailure, setRoutingFailure] =
     useState<NativeRelayGrantRedemptionFailureCode>();
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +135,8 @@ function Review({
     setBusy(true);
     setError(null);
     setRoutingFailure(undefined);
+    setConnectionFailure(undefined);
+    let step: ConnectionStep = 'saved-profile';
     try {
       if (delivery.invitation.expiresAt <= Date.now())
         throw new Error('expired');
@@ -119,6 +149,7 @@ function Review({
         !matches(current, delivery)
       )
         throw new Error('changed');
+      step = 'station-trust';
       const trust = await nativeRelayKeyApproval.status(profile.name);
       if (
         trust.status !== 'approved' ||
@@ -129,8 +160,10 @@ function Review({
         trust.generation !== delivery.invitation.stationSigningGeneration
       )
         throw new Error('trust');
+      step = 'grant-status';
       const status = await nativeRelayGrantAdapter.status(selection);
       if (!active.current) return;
+      step = 'host-redemption';
       const result = await nativeRelayGrantAdapter.redeemLinked({
         pendingId: delivery.pendingId,
         profileName: profile.name,
@@ -145,12 +178,22 @@ function Review({
       }
       onRedemptionConfirmed(delivery.pendingId);
       setRedeemed(true);
+      step = 'grant-refresh';
       await queryClient.invalidateQueries({ queryKey: ['native-relay-grant'] });
-    } catch {
-      if (active.current)
+    } catch (cause) {
+      if (active.current) {
+        const code = LOCAL_FAILURE_CODES.get(
+          cause instanceof Error
+            ? cause.message
+            : typeof cause === 'string'
+              ? cause
+              : '',
+        );
+        setConnectionFailure({ step, ...(code ? { code } : {}) });
         setError(
           'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
         );
+      }
     } finally {
       if (active.current) setBusy(false);
     }
@@ -279,10 +322,14 @@ function Review({
           </>
         )}
         {error ? <p role="alert">{error}</p> : null}
-        {error && routingFailure ? (
+        {error && connectionFailure ? (
           <details>
             <summary>Connection troubleshooting</summary>
-            <p>Routing failure: {routingFailure}</p>
+            <p>Connection step: {connectionFailure.step}</p>
+            {connectionFailure.code ? (
+              <p>Connection error: {connectionFailure.code}</p>
+            ) : null}
+            {routingFailure ? <p>Routing failure: {routingFailure}</p> : null}
           </details>
         ) : null}
       </Dialog>
