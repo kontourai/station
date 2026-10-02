@@ -168,15 +168,9 @@ function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
 }
 
 /**
- * #1536 F: the gallery seeds exactly ONE Station and reaches it, which is the
- * state whose chip collapsed to its status dot — a fact that does not change
- * while you work, in the row that runs out of width first. So the state and the
- * identity are no longer visible text HERE; they are the accessible name and
- * the tooltip, which is the only channel a dot leaves for the identity.
- *
- * Both are asserted, not just one: the name is what the product's own E2E
- * selectors key on (`/^Manage Stations/`), and the title is what a pointer user
- * can actually read. A chip that dropped either would still pass a class check.
+ * The gallery seeds one connected profile. Pin its visible saved name and
+ * accessible status before capturing so broken connection chrome cannot
+ * become a baseline.
  */
 async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   const chip = page.getByTestId('app-toolbar-connection');
@@ -184,10 +178,8 @@ async function assertGalleryConnectionChrome(page: Page): Promise<void> {
     timeout: 10_000,
   });
   await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
-  // Since #2426 the healthy compact chip shows a short visible Station label
-  // (`Station · <name>`), and the accessible name carries that visible text
-  // after the state (WCAG 2.5.3).
-  const visible = `Station · ${GALLERY_CONNECTION_NAME}`;
+  // The accessible name contains the visible saved name (WCAG 2.5.3).
+  const visible = GALLERY_CONNECTION_NAME;
   const named = `Manage Stations — Connected · ${visible}`;
   await expect(chip).toHaveAttribute('aria-label', named);
   await expect(chip).toHaveAttribute('title', named);
