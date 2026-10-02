@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/merge-queue-regression.yml","digest":"f803f8df52480932b1b69b1e623f31ac0f1128596f034ab0b0babca1fd46bbb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -52,7 +52,7 @@
 
     {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
@@ -78,7 +78,7 @@
 
     {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

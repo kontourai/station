@@ -14,7 +14,7 @@
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/guides/release-channel-ports.md","digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"docs/guides/release-channel-ports.md","digest":"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156","revision":"332b227345684d098aaaf3191ac0e9d927ac9401"},
 
     {"path":"docs/guides/starter-work.md","digest":"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
