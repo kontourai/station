@@ -22,7 +22,7 @@
 
     {"path":"packages/shared/src/runtime-event-projection.ts","digest":"30844f3ebb0ddd1b51089aa16c1edb39f2aa668d1088bf3e3e5a00e7cc6bd2e9","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
-    {"path":"packages/shared/src/tool-request-preview.ts","digest":"b955ea32cee2ede2db61d468f372c687d4adf22412fe9bc03f761f4a8c23374a","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    {"path":"packages/shared/src/tool-request-preview.ts","digest":"b97e5705a45c2299f4661cc70ea845473b37765cd5405d0028a4d9d29c25685f","revision":"d28597b948558f03decf72957db69fa4510b5d93"},
 
     {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
