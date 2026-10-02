@@ -926,12 +926,14 @@ export function hydrateActiveChats(
         ),
       ],
       ...(queuedMessageFailure ? { queuedMessageFailure } : {}),
-      ...(!text(session.conversationId) && (pendingDispatch || stringList(session.queuedMessages).length)
+      ...(!text(session.conversationId) &&
+      (pendingDispatch || stringList(session.queuedMessages).length)
         ? {
             conversationOpenFailed: true,
             queuedMessageFailure: {
               code: 'unconfirmed-first-send',
-              message: 'The first turn was not confirmed. Your messages are retained; open the confirmed conversation before sending them.',
+              message:
+                'The first turn was not confirmed. Your messages are retained; open the confirmed conversation before sending them.',
               at: Date.now(),
             },
             queueDrainHeldForOpen: true,
@@ -1070,7 +1072,12 @@ export function isDurableActiveChat(chat: {
   replay?: unknown;
 }): boolean {
   if (chat.replay) return false;
-  return Boolean(chat.conversationId || chat.unsentMessages?.length || chat.queuedMessages?.length || chat.pendingQueueDispatch);
+  return Boolean(
+    chat.conversationId ||
+      chat.unsentMessages?.length ||
+      chat.queuedMessages?.length ||
+      chat.pendingQueueDispatch,
+  );
 }
 
 /**

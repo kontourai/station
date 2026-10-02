@@ -148,16 +148,28 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       queuedMessages: ['authored before first receipt'],
       queuedMessageMetadata: [{ id: 'first-receipt-pending', mode: 'queue' }],
     });
-    const { serializeActiveChats } = await import('../../../contexts/active-chats-state');
-    const saved = JSON.stringify(serializeActiveChats(activeChatsStore.getSnapshot()));
-    const { ActiveChatsStore } = await import('../../../contexts/active-chats-store');
-    const reloaded = new ActiveChatsStore({ storage: { getItem: () => saved, setItem: () => {} } });
+    const { serializeActiveChats } = await import(
+      '../../../contexts/active-chats-state'
+    );
+    const saved = JSON.stringify(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    );
+    const { ActiveChatsStore } = await import(
+      '../../../contexts/active-chats-store'
+    );
+    const reloaded = new ActiveChatsStore({
+      storage: { getItem: () => saved, setItem: () => {} },
+    });
     const recovered = reloaded.getSnapshot()[threadId];
     expect(recovered).toBeDefined();
     expect(recovered.queuedMessages).toEqual(['authored before first receipt']);
-    expect(recovered.queuedMessageMetadata).toEqual([{ id: 'first-receipt-pending', mode: 'queue' }]);
+    expect(recovered.queuedMessageMetadata).toEqual([
+      { id: 'first-receipt-pending', mode: 'queue' },
+    ]);
     expect(recovered.queuedMessageFailure?.code).toBe('unconfirmed-first-send');
-    const { conversationCanMutate } = await import('../../../contexts/conversation-open-policy');
+    const { conversationCanMutate } = await import(
+      '../../../contexts/conversation-open-policy'
+    );
     expect(conversationCanMutate(recovered)).toBe(false);
     activeChatsStore.updateChat(threadId, recovered);
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);

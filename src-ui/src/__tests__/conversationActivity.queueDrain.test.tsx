@@ -91,7 +91,10 @@ import { QueuedMessages } from '../components/chat/QueuedMessages';
 import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
-import { drainQueuedMessageOnTurnCompleted, sendPendingMessageNow } from '../hooks/orchestration/queueDrain';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  sendPendingMessageNow,
+} from '../hooks/orchestration/queueDrain';
 
 let index = 0;
 let API = '';
@@ -254,7 +257,9 @@ function Queue({ apiBase }: { apiBase: string }) {
       messages={current.queuedMessages}
       metadata={current.queuedMessageMetadata}
       sendNowPending={current.queueSendNowPending || current.queueDrainSettling}
-      onSendMessageNow={(messageId) => sendPendingMessageNow(apiBase, CONVERSATION, messageId)}
+      onSendMessageNow={(messageId) =>
+        sendPendingMessageNow(apiBase, CONVERSATION, messageId)
+      }
     />
   );
 }
@@ -268,7 +273,11 @@ beforeEach(() => {
   sequence = 0;
   mocks.dispatchForeground.mockClear();
   mocks.interruptOrchestrationTurn.mockReset();
-  mocks.interruptOrchestrationTurn.mockResolvedValue({ outcome: 'cooperative', threadId: CHILD, turnId: TURN });
+  mocks.interruptOrchestrationTurn.mockResolvedValue({
+    outcome: 'cooperative',
+    threadId: CHILD,
+    turnId: TURN,
+  });
   vi.useFakeTimers();
 });
 
@@ -625,21 +634,35 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
     connect(API, open(60));
     render(<Queue apiBase={API} />);
     fireEvent.click(screen.getByRole('button', { name: /pending messages?/ }));
-    act(() => activeChatsStore.applyConversationActivity(open(60, {
-      progressSilence: {
-        detectedAt: '2026-09-22T19:10:00.000Z', windowMs: 600_000,
-        silentSinceEventAt: '2026-09-22T19:00:00.000Z', provider: 'claude',
-      },
-    })));
+    act(() =>
+      activeChatsStore.applyConversationActivity(
+        open(60, {
+          progressSilence: {
+            detectedAt: '2026-09-22T19:10:00.000Z',
+            windowMs: 600_000,
+            silentSinceEventAt: '2026-09-22T19:00:00.000Z',
+            provider: 'claude',
+          },
+        }),
+      ),
+    );
     expect(mocks.interruptOrchestrationTurn).not.toHaveBeenCalled();
     expect(mocks.dispatchForeground).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Send pending message 1 now' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send pending message 1 now' }),
+      );
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(mocks.interruptOrchestrationTurn).toHaveBeenCalledExactlyOnceWith({ threadId: CHILD, turnId: TURN, apiBase: API });
+    expect(mocks.interruptOrchestrationTurn).toHaveBeenCalledExactlyOnceWith({
+      threadId: CHILD,
+      turnId: TURN,
+      apiBase: API,
+    });
     expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
-    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({ message: 'waiting' });
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'waiting',
+    });
   });
 
   test('a silent turn, then Stop: once the turn has ended "Send now" is offered, and one click sends exactly one', async () => {

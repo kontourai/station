@@ -132,18 +132,29 @@ vi.mock('../components/chat/QueuedMessages', () => ({
   }) => {
     const messageId = props.metadata?.[0]?.id;
     return (
-    <div data-testid="queued-messages">
-      {props.onSendMessageNow && messageId ? (
-        <button type="button" onClick={() => props.onSendMessageNow?.(messageId)}>Send now</button>
-      ) : null}
-      {props.onRetry ? <button type="button" onClick={props.onRetry}>Retry</button> : null}
-    </div>
+      <div data-testid="queued-messages">
+        {props.onSendMessageNow && messageId ? (
+          <button
+            type="button"
+            onClick={() => props.onSendMessageNow?.(messageId)}
+          >
+            Send now
+          </button>
+        ) : null}
+        {props.onRetry ? (
+          <button type="button" onClick={props.onRetry}>
+            Retry
+          </button>
+        ) : null}
+      </div>
     );
   },
 }));
 
 const drainQueuedMessageOnTurnCompleted = vi.hoisted(() => vi.fn());
-const sendPendingMessageNow = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const sendPendingMessageNow = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
 vi.mock('../hooks/orchestration/queueDrain', () => ({
   drainQueuedMessageOnTurnCompleted,
   sendPendingMessageNow,
@@ -519,7 +530,9 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     renderDock(session, stalledOrchestrationSession(), chatInput);
 
     expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
-    expect(screen.getByText(/No response from Claude Code for .*Still waiting\./i)).toBeTruthy();
+    expect(
+      screen.getByText(/No response from Claude Code for .*Still waiting\./i),
+    ).toBeTruthy();
     expect(screen.queryByText(/retrying/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /stop this turn/i }));
     expect(chatInput.handleCancel).toHaveBeenCalledTimes(1);
@@ -621,7 +634,9 @@ describe('#2309 the dock queue: "Send now" and Retry are explicit sends', () => 
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Send now' }));
     expect(sendPendingMessageNow).toHaveBeenCalledWith(
-      expect.any(String), 'failure-ownership-session', 'pending-id',
+      expect.any(String),
+      'failure-ownership-session',
+      'pending-id',
     );
   });
 
