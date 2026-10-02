@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"c112f831517ab8df9af25fba576016ccdc41f3fdb711660418566bd9342cca3c","revision":"e403554362186ebc38993487e46a7c4acf1004f8"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"43465cad8574e10c84dcfec5cee8ca87951ca4e442a0b0b4b6da55f7b2b4884e","revision":"a819feb08e2f70150d73643e1c0a03e1e6f9137d"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
