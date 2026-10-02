@@ -2016,11 +2016,27 @@ error is currently caught, so success is not proof that local cleanup completed.
 `GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
 keeping the first occurrence. No registered providers gives an empty list.
 
+The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
+resolves its configured branch to a commit and reads that commit's tree and immutable
+blobs. It discovers complete nested Skill directories by their declared names and
+refuses duplicate names, truncated trees, unreadable Skill files, and refresh failures.
+A successful catalog snapshot is cached for five minutes; an expired snapshot is not
+returned as successful when refresh fails. Such failures currently fail the catalog
+request; independent source status and partial results are not exposed yet.
+
 ### Install Skill from Registry
 
 `POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
 result. It attempts a Skill reload after success; a caught reload failure does
 not change the install result.
+
+For a GitHub Skill, the provider copies the selected directory's files from one
+catalog snapshot, including binary assets and executable files, through SkillService's
+validated staging/publication path. Blob integrity or acquisition failure prevents
+publication. Only files inside that directory are acquired; references to other Skills
+do not install those Skills automatically. This does not bind an old UI selection to a
+revision after a catalog refresh, and the route's bare ID does not distinguish
+equal-name entries across providers. Those source-selection contracts remain pending.
 
 ### Uninstall Skill from Registry
 

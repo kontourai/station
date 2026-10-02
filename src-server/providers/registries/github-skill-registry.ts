@@ -1,27 +1,43 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
-import { createLogger } from '../../utils/logger.js';
+import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { assertSafeSkillName } from '../../domain/skill-paths.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
-
-const logger = createLogger({ name: 'skill-registry' });
 
 interface GitHubTreeItem {
   path: string;
-  type: 'blob' | 'tree';
-  url?: string;
+  type: 'blob' | 'tree' | 'commit';
+  sha: string;
+  mode: string;
+}
+
+interface SkillPackage {
+  item: RegistryItem;
+  directory: string;
+  markdown: string;
+}
+
+interface CatalogSnapshot {
+  commit: string;
+  tree: GitHubTreeItem[];
+  packages: Map<string, SkillPackage>;
+  ts: number;
 }
 
 export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
-  private owner: string;
-  private repo: string;
-  private skillsPath: string;
-  private branch: string;
-  private cache: { items: RegistryItem[]; ts: number } | null = null;
-  private readonly TTL = 5 * 60 * 1000; // 5 min
+  private readonly owner: string;
+  private readonly repo: string;
+  private readonly skillsPath: string;
+  private readonly branch: string;
+  private cache: CatalogSnapshot | null = null;
+  private pending: Promise<CatalogSnapshot> | null = null;
+  private readonly TTL = 5 * 60 * 1000;
 
   constructor(opts?: {
     owner?: string;
@@ -33,145 +49,216 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
     this.repo = opts?.repo || 'skills';
     this.skillsPath = opts?.path || 'skills';
     this.branch = opts?.branch || 'main';
+    this.assertRelativePath(this.skillsPath);
   }
 
-  private async fetchTree(): Promise<GitHubTreeItem[]> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/git/trees/${this.branch}?recursive=1`;
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'station',
-      },
-    });
-    if (!res.ok) throw new Error(`GitHub API ${res.status}: ${res.statusText}`);
-    const data = (await res.json()) as { tree: GitHubTreeItem[] };
-    return data.tree;
-  }
-
-  private async fetchFileContent(path: string): Promise<string> {
-    const url = `https://raw.githubusercontent.com/${this.owner}/${this.repo}/${this.branch}/${path}`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'station' } });
-    if (!res.ok) throw new Error(`Failed to fetch ${path}: ${res.status}`);
-    return res.text();
-  }
-
-  async listAvailable(): Promise<RegistryItem[]> {
-    if (this.cache && Date.now() - this.cache.ts < this.TTL)
-      return this.cache.items;
-
-    try {
-      const tree = await this.fetchTree();
-      const prefix = `${this.skillsPath}/`;
-      // Find directories that contain SKILL.md
-      const skillDirs = new Set<string>();
-      for (const item of tree) {
-        if (
-          item.path.startsWith(prefix) &&
-          item.path.endsWith('/SKILL.md') &&
-          item.type === 'blob'
-        ) {
-          const dir = item.path.slice(prefix.length).split('/')[0];
-          skillDirs.add(dir);
-        }
-      }
-
-      const items: RegistryItem[] = [];
-      // Fetch SKILL.md for each to get name/description from frontmatter
-      const { parseFrontmatter } = await import('agent-skills-ts-sdk');
-      await Promise.all(
-        Array.from(skillDirs).map(async (dir) => {
-          try {
-            const content = await this.fetchFileContent(
-              `${this.skillsPath}/${dir}/SKILL.md`,
-            );
-            const { metadata } = parseFrontmatter(content);
-            items.push({
-              id: metadata.name || dir,
-              displayName: metadata.name || dir,
-              description: metadata.description || '',
-              version: metadata.metadata?.version || undefined,
-              installed: false,
-              source: 'GitHub',
-            });
-          } catch (e) {
-            logger.warn('Failed to parse remote skill', { dir, error: e });
-            items.push({
-              id: dir,
-              displayName: dir,
-              description: '',
-              installed: false,
-              source: 'GitHub',
-            });
-          }
-        }),
-      );
-
-      this.cache = { items, ts: Date.now() };
-      return items;
-    } catch (e) {
-      logger.error('Failed to fetch skill registry', { error: e });
-      return this.cache?.items || [];
+  private assertRelativePath(path: string): void {
+    if (
+      path.includes('\\') ||
+      path.includes('\0') ||
+      path.split('/').some((part) => !part || part === '.' || part === '..')
+    ) {
+      throw new Error('GitHub skill registry contains an unsafe path');
     }
   }
 
+  private async request(path: string): Promise<Response> {
+    const url = `https://api.github.com/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/${path}`;
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'station',
+      },
+    });
+    if (!response.ok) throw new Error(`GitHub API ${response.status}`);
+    return response;
+  }
+
+  private assertSha(sha: string): void {
+    if (!/^[0-9a-f]{40}$/.test(sha)) {
+      throw new Error(
+        'GitHub skill registry returned an invalid object identity',
+      );
+    }
+  }
+
+  private async fetchBlob(
+    entry: GitHubTreeItem,
+    commit: string,
+  ): Promise<Buffer> {
+    this.assertSha(entry.sha);
+    const url = `https://raw.githubusercontent.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/${commit}/${entry.path.split('/').map(encodeURIComponent).join('/')}`;
+    const response = await fetch(url, { headers: { 'User-Agent': 'station' } });
+    if (!response.ok)
+      throw new Error(
+        `GitHub skill blob acquisition failed: ${response.status}`,
+      );
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const digest = createHash('sha1')
+      .update(`blob ${bytes.length}\0`)
+      .update(bytes)
+      .digest('hex');
+    if (digest !== entry.sha) {
+      throw new Error('GitHub skill registry blob integrity mismatch');
+    }
+    return bytes;
+  }
+
+  private async readSnapshot(): Promise<CatalogSnapshot> {
+    const response = await this.request(
+      `commits/${encodeURIComponent(this.branch)}`,
+    );
+    const commit = (await response.json()) as {
+      sha: string;
+      commit: { tree: { sha: string } };
+    };
+    this.assertSha(commit.sha);
+    this.assertSha(commit.commit.tree.sha);
+    const treeResponse = await this.request(
+      `git/trees/${commit.commit.tree.sha}?recursive=1`,
+    );
+    const result = (await treeResponse.json()) as {
+      sha: string;
+      truncated: boolean;
+      tree: GitHubTreeItem[];
+    };
+    if (
+      result.sha !== commit.commit.tree.sha ||
+      result.truncated !== false ||
+      !Array.isArray(result.tree)
+    ) {
+      throw new Error('GitHub skill registry returned an incomplete tree');
+    }
+    const prefix = `${this.skillsPath}/`;
+    const tree = result.tree.filter((entry) => entry.path.startsWith(prefix));
+    for (const entry of tree) {
+      this.assertRelativePath(entry.path);
+      this.assertSha(entry.sha);
+      if (
+        entry.type === 'commit' ||
+        (entry.type === 'blob' && !['100644', '100755'].includes(entry.mode))
+      ) {
+        throw new Error(
+          'GitHub skill registry contains a linked package entry',
+        );
+      }
+    }
+    const discovered = await Promise.all(
+      tree
+        .filter(
+          (entry) => entry.type === 'blob' && entry.path.endsWith('/SKILL.md'),
+        )
+        .map(async (entry): Promise<SkillPackage> => {
+          const directory = entry.path.slice(0, -'/SKILL.md'.length);
+          const markdown = (await this.fetchBlob(entry, commit.sha)).toString(
+            'utf-8',
+          );
+          const { metadata } = parseFrontmatter(markdown);
+          const id = metadata.name || basename(directory);
+          assertSafeSkillName(id);
+          return {
+            directory,
+            markdown,
+            item: {
+              id,
+              displayName: id,
+              description: metadata.description || '',
+              version: metadata.metadata?.version || undefined,
+              installed: false,
+              source: `https://github.com/${this.owner}/${this.repo}/tree/${commit.sha}/${directory}`,
+            },
+          };
+        }),
+    );
+    const packages = new Map<string, SkillPackage>();
+    // Resolve every name before publishing the snapshot: partial discovery can
+    // hide a duplicate name and turn an ambiguous install into a first match.
+    for (const skill of discovered) {
+      if (packages.has(skill.item.id)) {
+        throw new Error(
+          `GitHub skill registry has ambiguous skill name '${skill.item.id}'`,
+        );
+      }
+      packages.set(skill.item.id, skill);
+    }
+    return { commit: commit.sha, tree, packages, ts: Date.now() };
+  }
+
+  private async snapshot(): Promise<CatalogSnapshot> {
+    if (this.cache && Date.now() - this.cache.ts < this.TTL) return this.cache;
+    if (!this.pending) {
+      this.pending = this.readSnapshot();
+    }
+    try {
+      const snapshot = await this.pending;
+      this.cache = snapshot;
+      return snapshot;
+    } finally {
+      this.pending = null;
+    }
+  }
+
+  async listAvailable(): Promise<RegistryItem[]> {
+    return Array.from(
+      (await this.snapshot()).packages.values(),
+      (entry) => entry.item,
+    );
+  }
+
   async listInstalled(): Promise<RegistryItem[]> {
-    return []; // Installed skills are tracked by the local skill service
+    return []; // Installed skills are tracked by the local skill service.
   }
 
   async install(id: string, targetDir: string): Promise<InstallResult> {
     try {
-      const tree = await this.fetchTree();
-      const prefix = `${this.skillsPath}/${id}/`;
-      const files = tree.filter(
-        (item) => item.path.startsWith(prefix) && item.type === 'blob',
-      );
-
-      if (files.length === 0)
+      assertSafeSkillName(id);
+      const snapshot = await this.snapshot();
+      const skill = snapshot.packages.get(id);
+      if (!skill)
         return {
           success: false,
           message: `Skill '${id}' not found in registry`,
         };
-
+      const prefix = `${skill.directory}/`;
+      const files = snapshot.tree.filter(
+        (entry) => entry.type === 'blob' && entry.path.startsWith(prefix),
+      );
       const skillDir = join(targetDir, id);
-      mkdirSync(skillDir, { recursive: true });
-
       for (const file of files) {
-        const relativePath = file.path.slice(prefix.length);
-        const filePath = join(skillDir, relativePath);
-        const dir = filePath.substring(0, filePath.lastIndexOf('/'));
-        if (dir !== skillDir) mkdirSync(dir, { recursive: true });
-        const content = await this.fetchFileContent(file.path);
-        writeFileSync(filePath, content, 'utf-8');
+        const filePath = join(skillDir, file.path.slice(prefix.length));
+        const bytes = await this.fetchBlob(file, snapshot.commit);
+        await mkdir(dirname(filePath), { recursive: true });
+        await writeFile(filePath, bytes, {
+          mode: file.mode === '100755' ? 0o755 : 0o644,
+        });
       }
-
-      logger.info('Skill installed from registry', { id, files: files.length });
       return {
         success: true,
-        message: `Installed ${id} (${files.length} files)`,
+        message: `Installed ${id} (${files.length} files, commit ${snapshot.commit})`,
       };
-    } catch (e: any) {
-      return { success: false, message: e.message };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'GitHub skill acquisition failed',
+      };
     }
   }
 
   async uninstall(id: string, targetDir: string): Promise<InstallResult> {
+    assertSafeSkillName(id);
     const skillDir = join(targetDir, id);
     if (!existsSync(skillDir))
       return { success: false, message: `Skill '${id}' not found locally` };
-    rmSync(skillDir, { recursive: true, force: true });
+    await rm(skillDir, { recursive: true, force: true });
     return { success: true, message: `Removed ${id}` };
   }
 
   async getContent(id: string): Promise<string | null> {
-    try {
-      const content = await this.fetchFileContent(
-        `${this.skillsPath}/${id}/SKILL.md`,
-      );
-      const { parseFrontmatter } = await import('agent-skills-ts-sdk');
-      const { body } = parseFrontmatter(content);
-      return body || content;
-    } catch {
-      return null;
-    }
+    const skill = (await this.snapshot()).packages.get(id);
+    if (!skill) return null;
+    return parseFrontmatter(skill.markdown).body || skill.markdown;
   }
 }
