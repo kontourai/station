@@ -1312,6 +1312,9 @@ const SCREENS: Screen[] = [
       waitFor: '[data-testid="app-toolbar-connection"]',
       afterGoto: async (page) => {
         await page.getByTestId('app-toolbar-connection').click();
+        await page
+          .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+          .click();
         const dialog = page.getByRole('dialog');
         await dialog
           .getByRole('button', { name: 'Add a Station address', exact: true })
@@ -1348,9 +1351,17 @@ const SCREENS: Screen[] = [
         );
         try {
           await page.getByTestId('app-toolbar-connection').click();
+          await page
+            .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+            .click();
           const dialog = page.getByRole('dialog');
           await dialog
-            .getByRole('button', { name: 'Request access', exact: true })
+            .getByRole('button', {
+              name: `More actions for ${GALLERY_CONNECTION_NAME}`,
+            })
+            .click();
+          await dialog
+            .getByRole('menuitem', { name: 'Reconnect', exact: true })
             .click();
           await dialog
             .getByRole('button', { name: 'Request access', exact: true })

@@ -71,6 +71,7 @@ function renderPanel(
     sharedProfilesVisibleToCli,
     onStartEdit = vi.fn(),
     onRemove = () => {},
+    onRequestAccess = vi.fn(),
   }: {
     connections?: SavedConnection[];
     activeConnectionId?: string;
@@ -82,6 +83,7 @@ function renderPanel(
     sharedProfilesVisibleToCli?: boolean;
     onStartEdit?: (connection: SavedConnection) => void;
     onRemove?: (connectionId: string) => void;
+    onRequestAccess?: (connection?: SavedConnection) => void;
   } = {},
 ) {
   render(
@@ -110,7 +112,7 @@ function renderPanel(
       onSaveEdit={() => {}}
       onCancelEdit={() => {}}
       onAddManual={() => {}}
-      onRequestAccess={() => {}}
+      onRequestAccess={onRequestAccess}
       onMakeDefaultProfile={onMakeDefaultProfile}
       onScanQr={() => {}}
       onEnterPairingCode={() => {}}
@@ -322,6 +324,16 @@ describe('ConnectionListPanel', () => {
     fireEvent.click(change);
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect).toHaveBeenCalledWith(connection);
+  });
+
+  it('keeps reconnect explicit in the saved Station actions', () => {
+    const requestAccess = vi.fn();
+    renderPanel(vi.fn(), { onRequestAccess: requestAccess });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More actions for Station One' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reconnect' }));
+    expect(requestAccess).toHaveBeenCalledExactlyOnceWith(connection);
   });
 
   it('does not offer an access request for an already usable connection', () => {

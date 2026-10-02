@@ -493,6 +493,16 @@ function ConnectionRow({
                   type="button"
                   role="menuitem"
                   onClick={() => {
+                    closeActions();
+                    onRequestAccess(connection);
+                  }}
+                >
+                  Reconnect
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
                     closeActions(true);
                     void navigator.clipboard?.writeText(connection.url).then(
                       () => setCopyStatus('Address copied'),
