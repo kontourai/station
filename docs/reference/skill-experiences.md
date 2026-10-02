@@ -94,7 +94,10 @@ grant access or identify the currently installed revision.
 the [author validator](../../packages/shared/src/skill-experience-author.ts)
 before bundling. Definitions are limited to 64 KiB; each referenced Skill to
 1 MiB. Regular files must stay physically inside the package, including after
-symlink resolution. Invalid JSON/schema, escaping or missing files, identity
+symlink resolution. The shared regular-file opener refuses FIFOs and other
+nonregular inputs without a blocking open; size/type checks still use the open
+descriptor. POSIX FIFO cases run in bounded build children; they are skipped
+on Windows, where this does not establish named-pipe behavior. Invalid JSON/schema, escaping or missing files, identity
 conflicts, invalid defaults, unknown Skill references, and source changes
 produce file/field-specific errors. The handwritten
 [example](../../examples/visual-skill-experience/README.md) uses this same path.

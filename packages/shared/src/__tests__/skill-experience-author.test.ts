@@ -1,3 +1,4 @@
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   cpSync,
@@ -293,6 +294,65 @@ describe('visual Skill author build contract', () => {
         /file escapes plugin root/,
       );
     },
+  );
+
+  test.skipIf(process.platform === 'win32').each(['definition', 'skill'])(
+    'refuses a FIFO %s without blocking the author build',
+    async (target) => {
+      const authored = authorPackage();
+      const script = `
+        import { buildPlugin } from ${JSON.stringify(new URL('../build.ts', import.meta.url).href)};
+        try {
+          await buildPlugin(process.argv[1]);
+          process.stdout.write('validated');
+        } catch (error) {
+          process.stderr.write(String(error));
+          process.exitCode = 1;
+        }
+      `;
+      const args = [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        script,
+        authored.plugin,
+      ];
+      const started = Date.now();
+      const baseline = spawnSync(process.execPath, args, {
+        cwd: resolve(exampleRoot, '../..'),
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+      });
+      const baselineMs = Date.now() - started;
+      expect(baseline.error).toBeUndefined();
+      expect(baseline.status).toBe(0);
+      expect(baseline.stdout).toBe('validated');
+      const path =
+        target === 'definition'
+          ? definitionPath
+          : authored.definition.skills[0].path;
+      await rm(join(authored.plugin, path));
+      execFileSync('mkfifo', [join(authored.plugin, path)], {
+        windowsHide: true,
+        timeout: 10_000,
+      });
+      // Startup is observed in the same test; a hung synchronous open must
+      // fail the child instead of hanging Vitest's own worker.
+      const result = spawnSync(process.execPath, args, {
+        cwd: resolve(exampleRoot, '../..'),
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: Math.max(5_000, baselineMs * 8),
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        `Skill experience file ${target === 'definition' ? `./${definitionPath}` : path}: must be a regular file`,
+      );
+    },
+    30_000,
   );
 
   test('refuses unknown contribution versions and traversal while preserving the portable manifest boundary', async () => {

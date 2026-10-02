@@ -1,11 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  closeSync,
-  fstatSync,
-  openSync,
-  readSync,
-  realpathSync,
-} from 'node:fs';
+import { closeSync, fstatSync, readSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type {
   AgentPluginManifestV1,
@@ -18,6 +12,7 @@ import {
   validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import { validateSkillExperience } from './agent-plugin-validators.generated.mjs';
+import { openRegularFileSync } from './regular-file.js';
 
 function readAuthorFile(root: string, path: string, maxBytes: number): Buffer {
   let file: number | undefined;
@@ -26,7 +21,9 @@ function readAuthorFile(root: string, path: string, maxBytes: number): Buffer {
     const local = relative(root, actual);
     if (isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`))
       throw new Error('file escapes plugin root');
-    file = openSync(actual, 'r');
+    const opened = openRegularFileSync(actual);
+    if (opened === null) throw new Error('must be a regular file');
+    file = opened;
     const stats = fstatSync(file);
     if (!stats.isFile() || stats.size > maxBytes)
       throw new Error(`must be a regular file of at most ${maxBytes} bytes`);
