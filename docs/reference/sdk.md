@@ -3702,6 +3702,16 @@ resolves the checkout from the project alone. `QueryConfig.refetchOnWindowFocus`
 opts one read back into refetching a stale answer when the window returns;
 Station's client default leaves it off.
 
+`usePullRequestContextQuery({ project, thread }, config)` reads the Session's
+recorded checkout context. Its available result includes the local `branch` and
+optional `pushTargetOwner`, the owner selected by the branch's push-remote
+configuration and push URL. The repository identity still names the PR read
+target. Mergeability rows optionally include `sourceOwner` from GitHub's head
+repository owner; GitLab omits it. A conflict indicator matches the local branch
+and compares these owners case-insensitively when both are present. If either
+owner is absent, it matches on branch alone; the upstream branch name is never
+a substitute for the local branch.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and

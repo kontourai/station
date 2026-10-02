@@ -46,7 +46,7 @@
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"2dfca6b4c1aae914499a369879547be630bc22000a101cac765f23b556968448","revision":"6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247"},
 
     {"path":"packages/contracts/src/relay-enrollment.ts","digest":"622325708688314a4f708985de77a330c30cfe2615559fc32837f780b7932f22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

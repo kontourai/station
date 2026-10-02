@@ -49,6 +49,8 @@ export interface PullRequestRepositoryContext {
    */
   branch?: string;
   baseRef?: string;
+  /** Owner of the current branch's configured push target, when known. */
+  pushTargetOwner?: string;
   /**
    * Where a new pull request opens FROM, as the forge names it: the
    * branch the checkout's branch is pushed to (its upstream, which may be
@@ -97,6 +99,8 @@ export type PullRequestClientContext =
        * worktree; absent when it is detached or not pushed to its upstream.
        */
       branch?: string;
+      /** Owner of the local branch's configured push target, when known. */
+      pushTargetOwner?: string;
     }
   | {
       available: false;
@@ -136,6 +140,8 @@ export interface PullRequest {
 export interface PullRequestBranchMergeability {
   ref: string;
   sourceBranch: string;
+  /** Forge-observed head repository owner; absent when not reported. */
+  sourceOwner?: string;
   mergeability: PullRequest['mergeability'];
 }
 export interface PullRequestListQuery {
