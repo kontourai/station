@@ -32,7 +32,7 @@
 
     {"path":"packages/connect/src/core/devicePairing.ts","digest":"1072b18524cd5e982906263d776f3aaf94818b14fea3f83220d40596e175f4ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb","revision":"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7"},
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b810e954f0908cbad89aacfc4477d984a87f3188324f44a64084510cdcacddea","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 

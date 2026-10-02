@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"c16392bf949f09df95f9b80029678e88ee34516fa31eff347102c49151acf78e","revision":"56911ee1eada3cb56dcc1ff6a4c8edb3a566a38f"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb","revision":"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7"},
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
     {"path":"packages/connect/src/core/nativeEnrollmentExchange.ts","digest":"cdaba0e74010c7829c8d1df109d4e9c0647fb828986778b24c0fe373d8545e12","revision":"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666"},
 

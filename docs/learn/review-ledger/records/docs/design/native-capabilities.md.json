@@ -70,7 +70,7 @@
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"63d05ea979a9a335c0ded3a400d8f899b6ff5f60deb8a062c5e260d7daeecbec","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb","revision":"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7"},
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 

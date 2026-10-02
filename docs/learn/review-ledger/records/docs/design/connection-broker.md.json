@@ -9,7 +9,7 @@
 
   "limits": "Bounded native pilot source review and inspected debug macOS frozen-harness receipt; not a complete signaling/encryption/key/trust/rotation/cookie/cancellation audit, release qualification, fresh relay-only enrollment, remote deployment or external-provider proof.",
 
-  "document": {"digest":"e789219b70733cc9688a9e1406c0bb4dc312ac0098940ffa829d8f6aeb91099e","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
+  "document": {"digest":"d9430287f5711f652f31d7bf4713b85c230806f5506a9a6703cd467658746632","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
   "sources": [
     {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
@@ -22,7 +22,7 @@
 
     {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"f6ae4b287597c203369e898665b2019ee9147eb20a6da03276cc2ee33cb248fb","revision":"0c1891c8372bb2f6cf6d74f4d5ecf06e796316e7"},
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
     {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"4c2c4ce56b35cdedb57187141df0ac4d24bbb0c69da1dbe541acf54faf843dd7","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
