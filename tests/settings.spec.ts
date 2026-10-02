@@ -521,6 +521,14 @@ test.describe('Settings', () => {
     await expect(picker.locator('option', { hasText: 'Agents' })).toHaveCount(
       0,
     );
+    expect(
+      await page.evaluate(() =>
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth,
+        ),
+      ),
+    ).toBeLessThanOrEqual(page.viewportSize()!.width);
   });
 
   test('search filters sections', async ({ page }) => {
