@@ -868,7 +868,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"268af2688c9c33defe919973c66f3db74583e2784f573982ee86cf5bc590c052","revision":"f62ff6926d9335e9a2a0b7d3004b19c1a816ce39"},
+    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"86a0487a4a240d7c70d148b0095747c7e7321227651f6a2fa6ab3f5778cac946","revision":"02c129de8333d2fe937beeeb0cba61e58b5e08fa"},
 
     {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts","digest":"f10ac7b4278a67648f946bc05c717da27f9fa59fced4576e1d0df41944657e49","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -888,7 +888,7 @@
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"5da18a2d79fc0ebc6c2763832fa470655d331b101df48883711596caaaf4e871","revision":"d956082d3d2864711773914857b8098c60bdd972"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"f71aace884c81613bd1604acab1ca770a7a6b85b10c853e7a95e67fb9c47060b","revision":"4ba22e278dcfd1b86e80e491753b936ec449593b"},
 
     {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
