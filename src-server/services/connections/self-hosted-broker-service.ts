@@ -2440,6 +2440,16 @@ export class SelfHostedBrokerService {
     credential: BrokerCredential,
     kind: 'connector' | 'routing',
   ) {
+    const row = this.leaseOwner(scope, credential, kind);
+    if (row.expires_at <= this.now())
+      throw new Error('broker_credential_refused');
+    return row;
+  }
+  private leaseOwner(
+    scope: BrokerScope,
+    credential: BrokerCredential,
+    kind: 'connector' | 'routing',
+  ) {
     scope = validateBrokerScope(scope);
     assertText(credential.id, 'credential_id');
     const row = this.db
@@ -2453,7 +2463,6 @@ export class SelfHostedBrokerService {
       row.browser_origin !== scope.browserOrigin ||
       row[`${kind}_id`] !== credential.id ||
       row.withdrawn_at !== null ||
-      row.expires_at <= this.now() ||
       !hash ||
       !timingSafeEqual(Buffer.from(hash), digest(credential.secret))
     )
@@ -2610,7 +2619,8 @@ export class SelfHostedBrokerService {
   }
   withdraw(scope: BrokerScope, credential: BrokerCredential) {
     this.transaction(() => {
-      this.lease(scope, credential, 'connector');
+      // Expiry ends admission, but the exact current owner can still retire it.
+      this.leaseOwner(scope, credential, 'connector');
       const result = this.db
         .prepare(
           'UPDATE broker_leases SET withdrawn_at=? WHERE station_id=? AND generation=?',

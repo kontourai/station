@@ -98,6 +98,12 @@ The composed runtime schedules renewal before the observed lease expiry, using
 half the remaining lifetime when that is sooner than its normal renewal interval.
 Renewal takes priority when a heartbeat is also due. An already expired lease
 still refuses renewal; this scheduling does not revive it or change its TTL.
+An expired lease can still be withdrawn by its exact current connector owner.
+Withdrawal authenticates the Station, enrollment, generation, Origin and
+connector credential before deleting that Station's routing work. It leaves
+expiry and renewal revision unchanged. Old-generation or foreign credentials
+cannot withdraw a replacement lease, and registration, renewal and routing
+admission still require a live lease.
 
 Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 

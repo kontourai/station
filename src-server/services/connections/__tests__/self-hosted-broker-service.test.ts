@@ -782,6 +782,15 @@ describe.runIf(process.platform !== 'win32')(
           lease_revision: 0,
           withdrawn_at: null,
         });
+        expect(() => service.register(scope, issued.connector)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.renew(scope, issued.connector, 0)).toThrow(
+          'broker_credential_refused',
+        );
+        expect(() => service.status(scope, issued.routing)).toThrow(
+          'broker_credential_refused',
+        );
         const response = await withdraw();
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ withdrawn: true });
