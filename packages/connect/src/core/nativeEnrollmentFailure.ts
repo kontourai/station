@@ -52,7 +52,7 @@ function safeCode(cause: unknown): string {
   return typeof code === 'string' && SAFE_CODES.has(code) ? code : 'unknown';
 }
 
-/** Keep the original failure identity; only the closed projection is for display. */
+/** Preserve Error objects; normalize other failures to a safe-code Error. */
 export function captureNativeEnrollmentFailure(
   cause: unknown,
   stage: NativeEnrollmentFailureStage,

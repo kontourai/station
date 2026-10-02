@@ -40,7 +40,9 @@ does not qualify an installed native or collaborator journey.
 
 The `/native-enrollment` exchange retains the primary operation failure while
 attempting both channel and host-peer cleanup. Cleanup failures remain separate
-and a cleanup-only failure rejects the operation. The native Device setup UI
+and a cleanup-only failure rejects the operation. Existing `Error` objects retain
+their identity; primitive native rejections normalize to an `Error` containing
+an allowlisted code or `unknown`. The native Device setup UI
 can show an optional troubleshooting disclosure containing a fixed operation
 stage, an allowlisted code (or `unknown`), an integer HTTP status when a response
 was received, and at most two cleanup stage/code entries. It displays no raw
