@@ -180,7 +180,7 @@ async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
   // The accessible name contains the visible saved name (WCAG 2.5.3).
   const visible = GALLERY_CONNECTION_NAME;
-  const named = `Manage Stations — Connected · ${visible}`;
+  const named = `Choose Station — Connected · ${visible}`;
   await expect(chip).toHaveAttribute('aria-label', named);
   await expect(chip).toHaveAttribute('title', named);
   await expect(chip.locator('.app-toolbar__conn-label')).toHaveText(visible);

@@ -17,7 +17,7 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'error' | 'idle';
 
 export interface ConnectionManagerActiveHealth {
   connectionId: string;
-  status: Exclude<ConnectionStatus, 'idle'>;
+  status: ConnectionStatus;
   reason?: ConnectionFailureReason | null;
 }
 

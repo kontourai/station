@@ -598,7 +598,7 @@ export function ConnectionListPanel({
   const showAccessRequest =
     needsAccess &&
     selected.id !== pendingConnectionId &&
-    !connectionCardMeta(selected, false).actionLabel;
+    !connectionCardMeta(selected, false)?.actionLabel;
 
   return (
     <>

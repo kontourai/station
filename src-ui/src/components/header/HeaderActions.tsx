@@ -454,7 +454,7 @@ export function HeaderActions({
       {connectionMenuOpen && connectionButtonRef.current && (
         <LazyBoundary
           load={loadStationSwitcher}
-          props={{
+          componentProps={{
             anchor: connectionButtonRef.current,
             connections,
             activeConnectionId: activeConnection?.id,
@@ -466,6 +466,7 @@ export function HeaderActions({
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
           }}
+          pending={null}
         />
       )}
       {connectionNameAnchor && (

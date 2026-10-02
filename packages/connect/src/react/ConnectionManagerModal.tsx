@@ -41,8 +41,8 @@ export interface ConnectionManagerModalProps {
     credential?: string,
   ) => Promise<ConnectionHealthCheckResult>;
   /**
-   * Optional client/server compatibility check, run against a host before it
-   * is saved. Omit it and the add/pairing paths behave exactly as before.
+   * Verify compatibility before adding or completing pairing with a host.
+   * An omitted checker blocks those flows with an integration error.
    */
   checkCompatibility?: (
     url: string,
