@@ -9,7 +9,7 @@
 
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
-  "document": {"digest":"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a","revision":"1b73087d156d008468234fa83d218468d21add03"},
+  "document": {"digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
 
   "sources": [
     {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
@@ -92,7 +92,7 @@
 
     {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/surfaces.ts","digest":"5813b5447084c7e0be3069d8b012d70cea0577b26a5b07e660df7c97dc740204","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/surfaces.ts","digest":"000cb910665422c91d26694ca96491e78d704b0b77405c7903b4048c479ff004","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
 
     {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

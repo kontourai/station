@@ -12,7 +12,7 @@
   "document": {"digest":"844966cbd66882d8e5ea0cf80fc00caed4f10183e6600ec8f77fcd3d9b268cc5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/cli.md","digest":"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a","revision":"1b73087d156d008468234fa83d218468d21add03"},
+    {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
 
     {"path":"packages/cli/bundle-externals.mjs","digest":"5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

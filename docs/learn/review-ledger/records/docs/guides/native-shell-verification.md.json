@@ -7,7 +7,7 @@
 
   "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
 
-  "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.",
+  "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): document ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged document bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "document": {"digest":"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
@@ -16,7 +16,7 @@
 
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
@@ -128,7 +128,15 @@
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"src-desktop/build.rs","digest":"b7d0312b9f3e16056edbe52c217dc8381f0aec8be854844e5fb603393726e7fc","revision":"e33331ee19520c8bd546c878fdd503063a682634"}
+    {"path":"src-desktop/build.rs","digest":"b7d0312b9f3e16056edbe52c217dc8381f0aec8be854844e5fb603393726e7fc","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+
+    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"9012676f5874a8bd8c33a140764d6c83abeac50fdbdb667468fb5800a6216602","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+
+    {"path":"src-ui/src/platform/native/nativeCommandError.ts","digest":"ab08d2ab71b4029623c73156de493399908a9282c4249326fa8014faa74216ff","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+
+    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"2d20c70fb3a0cb6690d377ea952a97c77aacb2162cf888ac2092a73f450fdc00","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+
+    {"path":"src-ui/src/lib/queryDefaults.ts","digest":"ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae","revision":"3fd1eca58b46371b83b05cac0fbb61560acdbb92"}
   ],
 
   "checks": [
