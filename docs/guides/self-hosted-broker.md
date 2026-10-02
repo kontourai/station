@@ -464,10 +464,45 @@ explains why a loopback HTTP 200 could coexist with an expired connector lease.
 
 ## Native routing grant foundation (v2)
 
-The broker database currently writes schema v6 and accepts the known v1–v5
+### Authenticated observation of a superseded native scope
+
+`POST /broker/v1/native/grants/observe-superseded-scope` accepts a current,
+unconsumed bound invitation bearer and ID with its installation proof key.
+The exact body uses `station-broker-native-superseded-scope-observe/v1` and
+contains current `scope`, exact `surface`, `supersededScope`, a fresh 32-byte
+base64url `requestNonce`, and `proofPublicKey`. The ES256 compact JWS uses
+`station-broker-native-invitation-request+jws`, invitation-specific claims
+version `station-broker-native-invitation-request-proof/v1`, and purpose
+`station-native-superseded-scope-observe-v1`. Its audience and broker origin
+are the pinned broker origin; it binds the fixed path, invitation ID, exact
+body hash, bearer hash, nonce, signing-key metadata, full scope and surface.
+Origin and Cookie headers refuse. Ordinary grant-request and redemption proofs
+cannot authorize this observation.
+
+After verification, one transaction rechecks invitation custody, deadlines,
+unconsumed state and the exact live lease. Only a positive safe generation
+strictly below that invitation/lease generation, in the same Station and
+enrollment, qualifies. A changed, expired or withdrawn lease refuses; the
+request cannot adopt a newer generation. The closed response uses
+`station-broker-native-superseded-scope-observed/v1`, echoes `requestNonce` and
+the requested old `scope`, and returns only disposition
+`superseded-generation-not-admitted` and the current nonnegative
+`leaseRevision`. It reveals no current generation, keys, grants or existence.
+Replay tracking is the only permitted write: no invitation consumption,
+redemption, grant creation/renewal/revocation or connection/lease mutation.
+
+This is scope inadmissibility evidence, not individual retirement evidence or
+application authority. Equal/future generations, missing history, expired
+clocks, unsupported endpoints and all failed requests remain ineligible for
+this basis. Host cleanup must persist its distinct scope-observation basis and
+retain exact owner/profile/vault fences before removing old local custody.
+The broker route tests establish HTTP, proof and SQLite behavior; they do not
+establish an installed native shell or public broker deployment.
+
+The broker database currently writes schema v7 and accepts the known v1–v6
 schemas for additive migration. Native invitation and grant metadata lives in
 separate v3 tables, connection offers in v4, consumed request proofs in v5,
-and grant-renewal receipts in v6. Existing browser v1 wire records, Origin
+and grant-renewal receipts in v6. Schema v7 adds a separate bounded invitation-request replay table; it does not reinterpret grant IDs as invitation IDs. Existing browser v1 wire records, Origin
 checks, owner tables, and signaling behavior are unchanged. A native surface is
 discriminated as `station-native` and binds the app identifier, one of the
 actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
@@ -661,6 +696,7 @@ connector's configured Origin and credential. The request body is capped at
 | `/ice/configuration` | Connector | Exact version and scope; no Origin or cookies; current connector lease checked before and after provider work |
 | `/native/connections/open` | Native grant plus ES256 PoP | Exact body bytes, request path, scope, surface, Station key/generation and one-use JTI |
 | `/native/connections/read` | Native grant plus ES256 PoP | Own attempt by nonce; same request and surface binding |
+| `/native/grants/observe-superseded-scope` | Unconsumed native invitation plus installation ES256 PoP | Closed, nonce-bound observation of a strictly older generation in the same Station/enrollment; no grant existence or lifecycle change |
 | `/native/grants/retire` | Native grant plus ES256 PoP | Retires only the caller's native grant; idempotent after revocation |
 | `/native/connections/offers` | Connector | Versioned native offers for one exact surface |
 | `/native/connections/answer` | Connector | Answer SDP and Station proof for the bound native offer |

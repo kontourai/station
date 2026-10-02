@@ -149,7 +149,7 @@ export function createSelfHostedBrokerRoutes(
       throw new Error('broker_credential_refused');
     return { body: record, credential: { id, secret } };
   };
-  const parseNativeClient = async (c: Context) => {
+  const parseNativeClient = async (c: Context, maxBodyBytes = 256 * 1024) => {
     if (
       c.req.header('origin') ||
       c.req.header('cookie') ||
@@ -160,6 +160,7 @@ export function createSelfHostedBrokerRoutes(
     let body: unknown;
     try {
       rawBody = new Uint8Array(await c.req.arrayBuffer());
+      if (rawBody.byteLength > maxBodyBytes) throw new Error('invalid_request');
       body = JSON.parse(
         new TextDecoder('utf-8', { fatal: true }).decode(rawBody),
       );
@@ -461,6 +462,22 @@ export function createSelfHostedBrokerRoutes(
             surface,
             body.nonce as string,
           ),
+      });
+    }),
+  );
+  app.post(
+    '/native/grants/observe-superseded-scope',
+    invoke(async (c) => {
+      const { body, credential, proof, rawBody } = await parseNativeClient(
+        c,
+        16384,
+      );
+      return service.observeSupersededNativeScope({
+        request: body,
+        credential,
+        compactProof: proof,
+        exactBody: rawBody,
+        brokerOrigin: brokerOrigin(c),
       });
     }),
   );

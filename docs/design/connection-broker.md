@@ -721,3 +721,15 @@ required delivery path alongside actual selected-transport acceptance, not a
 substitute for it. This proposal makes no infrastructure purchase,
 production exposure or service-level commitment. Protocol fixtures cannot prove
 actual remote delivery or a transport provider's security boundary.
+
+### Superseded native routing scope observation
+
+The [broker guide](../guides/self-hosted-broker.md#authenticated-observation-of-a-superseded-native-scope)
+owns the invitation-authenticated observation contract. A live, unconsumed
+current invitation and its bound installation key can observe only that an
+exact strictly older scope in the same Station/enrollment cannot admit a
+native grant. This observation does not prove grant existence or individual
+revocation, redeem the invitation, rotate signing trust, or authorize any
+application request. Equal-generation expiry and missing grant rows remain
+outside this recovery basis. Native local cleanup must separately retain
+explicit owner confirmation, durable basis and exact custody fences.

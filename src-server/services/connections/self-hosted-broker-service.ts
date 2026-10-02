@@ -14,9 +14,13 @@ import {
   SELF_HOSTED_BROKER_NATIVE_CONNECTION_OPENED_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RENEW_VERSION,
   SELF_HOSTED_BROKER_NATIVE_GRANT_RENEWED_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_TYPE,
+  SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_VERSION,
   SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_TYPE,
   SELF_HOSTED_BROKER_NATIVE_REQUEST_PROOF_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVE_VERSION,
+  SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVED_VERSION,
   type SelfHostedBrokerClientGrantV1,
   type SelfHostedBrokerNativeClientGrantV2,
   type SelfHostedBrokerNativeClientSurfaceV2,
@@ -26,6 +30,7 @@ import {
   type SelfHostedBrokerNativeConnectionOpenV2,
   type SelfHostedBrokerNativeGrantRenewedV2,
   type SelfHostedBrokerNativeGrantRenewV2,
+  type SelfHostedBrokerNativeInvitationObservationProofClaimsV1,
   type SelfHostedBrokerNativeKeyCandidateOfferV1,
   type SelfHostedBrokerNativeKeyCandidateProofV1,
   type SelfHostedBrokerNativeKeyCandidateResultV1,
@@ -35,6 +40,7 @@ import {
   type SelfHostedBrokerNativeScopeV2,
   type SelfHostedBrokerRouteInvitationV1,
   type SelfHostedBrokerScopeV1,
+  type SelfHostedBrokerSupersededNativeScopeObservedV1,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { calculateJwkThumbprint, compactVerify, importJWK } from 'jose';
 import type { BrokerIceAuthority } from './broker-ice-service.js';
@@ -526,7 +532,7 @@ export class SelfHostedBrokerService {
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (![0, 1, 2, 3, 4, 5, 6].includes(version.user_version)) {
+    if (![0, 1, 2, 3, 4, 5, 6, 7].includes(version.user_version)) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -555,6 +561,9 @@ export class SelfHostedBrokerService {
                 : []),
               ...(version.user_version >= 5
                 ? ['broker_native_request_proofs']
+                : []),
+              ...(version.user_version >= 7
+                ? ['broker_native_invitation_request_proofs']
                 : []),
               ...(version.user_version >= 6
                 ? ['broker_native_grant_renewals']
@@ -666,7 +675,12 @@ export class SelfHostedBrokerService {
       CREATE INDEX IF NOT EXISTS broker_native_grant_renewal_expiry
         ON broker_native_grant_renewals(receipt_expires_at);
       PRAGMA application_id=1398030930;
-      PRAGMA user_version=6;
+      CREATE TABLE IF NOT EXISTS broker_native_invitation_request_proofs(
+        invitation_id TEXT NOT NULL, jti TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        PRIMARY KEY(invitation_id,jti));
+      CREATE INDEX IF NOT EXISTS broker_native_invitation_request_proofs_expiry
+        ON broker_native_invitation_request_proofs(expires_at);
+      PRAGMA user_version=7;
       COMMIT;`);
     } catch (error) {
       try {
@@ -988,6 +1002,234 @@ export class SelfHostedBrokerService {
       );
     });
   }
+  async observeSupersededNativeScope(input: {
+    request: unknown;
+    credential: BrokerCredential;
+    compactProof: string;
+    exactBody: Uint8Array;
+    brokerOrigin: string;
+  }): Promise<SelfHostedBrokerSupersededNativeScopeObservedV1> {
+    if (
+      !input.request ||
+      typeof input.request !== 'object' ||
+      Array.isArray(input.request)
+    )
+      throw new Error('invalid_request');
+    const request = input.request as Record<string, unknown>;
+    if (
+      Object.keys(request).sort().join(',') !==
+        'proofPublicKey,requestNonce,scope,supersededScope,surface,version' ||
+      request.version !==
+        SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVE_VERSION ||
+      typeof request.requestNonce !== 'string' ||
+      !SECRET.test(request.requestNonce) ||
+      Buffer.from(request.requestNonce, 'base64url').toString('base64url') !==
+        request.requestNonce ||
+      typeof input.compactProof !== 'string' ||
+      input.compactProof.length > 8192 ||
+      input.exactBody.byteLength > 16384
+    )
+      throw new Error('invalid_request');
+    const requestNonce = request.requestNonce;
+    const scope = validateNativeScope(request.scope);
+    const surface = validateNativeSurface(request.surface);
+    const oldScope = validateNativeScope(request.supersededScope);
+    if (
+      oldScope.stationId !== scope.stationId ||
+      oldScope.enrollmentId !== scope.enrollmentId ||
+      oldScope.routingGeneration >= scope.routingGeneration
+    )
+      throw new Error('invalid_native_scope');
+    const brokerOrigin = canonicalBrokerOrigin(input.brokerOrigin);
+    if (
+      !input.credential ||
+      typeof input.credential.id !== 'string' ||
+      !ID.test(input.credential.id) ||
+      typeof input.credential.secret !== 'string' ||
+      !SECRET.test(input.credential.secret)
+    )
+      throw new Error('native_invitation_refused');
+    const invitationOwner = () => {
+      const row = this.db
+        .prepare(
+          'SELECT * FROM broker_native_route_invitations WHERE invitation_id=?',
+        )
+        .get(input.credential.id) as NativeInvitationRow | undefined;
+      if (
+        !row ||
+        row.station_id !== scope.stationId ||
+        row.enrollment_id !== scope.enrollmentId ||
+        row.generation !== scope.routingGeneration ||
+        row.broker_origin !== brokerOrigin ||
+        row.app_identifier !== surface.appIdentifier ||
+        row.channel !== surface.channel ||
+        row.client_instance_id !== surface.clientInstanceId ||
+        row.key_thumbprint !== surface.keyThumbprint ||
+        row.consumed_at !== null ||
+        row.expires_at <= this.now() ||
+        row.grant_expires_at <= this.now() ||
+        !timingSafeEqual(
+          Buffer.from(row.secret_hash),
+          nativeInvitationDigest(input.credential.secret),
+        )
+      )
+        throw new Error('native_invitation_refused');
+      const lease = this.db
+        .prepare('SELECT * FROM broker_leases WHERE station_id=?')
+        .get(scope.stationId) as LeaseRow | undefined;
+      if (
+        !lease ||
+        lease.enrollment_id !== scope.enrollmentId ||
+        lease.generation !== scope.routingGeneration ||
+        lease.withdrawn_at !== null ||
+        lease.expires_at <= this.now() ||
+        !Number.isSafeInteger(lease.lease_revision) ||
+        lease.lease_revision < 0
+      )
+        throw new Error('native_invitation_refused');
+      return { row, lease };
+    };
+    const { row } = invitationOwner();
+    const publicKey = validateNativePublicKey(request.proofPublicKey).jwk;
+    if ((await calculateJwkThumbprint(publicKey)) !== row.key_thumbprint)
+      throw new Error('invalid_native_proof');
+    const imported = await importJWK(publicKey, 'ES256');
+    let payload: Record<string, unknown>;
+    try {
+      const verified = await compactVerify(input.compactProof, imported, {
+        algorithms: ['ES256'],
+      });
+      if (
+        Object.keys(verified.protectedHeader).sort().join(',') !== 'alg,typ' ||
+        verified.protectedHeader.typ !==
+          SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_TYPE ||
+        verified.protectedHeader.alg !== 'ES256'
+      )
+        throw new Error('invalid_native_proof');
+      const parsed: unknown = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(verified.payload),
+      );
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('invalid_native_proof');
+      payload = parsed as Record<string, unknown>;
+    } catch {
+      throw new Error('invalid_native_proof');
+    }
+    const claims =
+      payload as Partial<SelfHostedBrokerNativeInvitationObservationProofClaimsV1>;
+    const expectedKeys = [
+      'ath',
+      'aud',
+      'bodySha256',
+      'brokerOrigin',
+      'exp',
+      'iat',
+      'invitationId',
+      'jti',
+      'method',
+      'path',
+      'purpose',
+      'scope',
+      'stationSigningGeneration',
+      'stationSigningKeyId',
+      'surface',
+      'version',
+    ];
+    const nowSeconds = Math.floor(this.now() / 1000);
+    if (
+      Object.keys(payload).sort().join(',') !== expectedKeys.join(',') ||
+      claims.version !==
+        SELF_HOSTED_BROKER_NATIVE_INVITATION_REQUEST_PROOF_VERSION ||
+      claims.aud !== brokerOrigin ||
+      claims.purpose !== 'station-native-superseded-scope-observe-v1' ||
+      claims.brokerOrigin !== brokerOrigin ||
+      claims.method !== 'POST' ||
+      claims.path !== '/broker/v1/native/grants/observe-superseded-scope' ||
+      claims.invitationId !== row.invitation_id ||
+      Object.keys(claims.scope ?? {})
+        .sort()
+        .join(',') !== 'enrollmentId,routingGeneration,stationId' ||
+      claims.scope?.stationId !== scope.stationId ||
+      claims.scope?.enrollmentId !== scope.enrollmentId ||
+      claims.scope?.routingGeneration !== scope.routingGeneration ||
+      Object.keys(claims.surface ?? {})
+        .sort()
+        .join(',') !==
+        'appIdentifier,channel,clientInstanceId,keyThumbprint,kind' ||
+      claims.surface?.kind !== surface.kind ||
+      claims.surface?.appIdentifier !== surface.appIdentifier ||
+      claims.surface?.channel !== surface.channel ||
+      claims.surface?.clientInstanceId !== surface.clientInstanceId ||
+      claims.surface?.keyThumbprint !== surface.keyThumbprint ||
+      claims.stationSigningKeyId !== row.signing_key_id ||
+      claims.stationSigningGeneration !== row.signing_generation ||
+      claims.bodySha256 !==
+        createHash('sha256').update(input.exactBody).digest('base64url') ||
+      claims.ath !== digest(input.credential.secret).toString('base64url') ||
+      typeof claims.jti !== 'string' ||
+      !SECRET.test(claims.jti) ||
+      claims.jti !== requestNonce ||
+      !Number.isSafeInteger(claims.iat) ||
+      !Number.isSafeInteger(claims.exp) ||
+      (claims.iat as number) > nowSeconds + 5 ||
+      (claims.iat as number) < nowSeconds - NATIVE_PROOF_MAX_AGE_SECONDS ||
+      (claims.exp as number) <= nowSeconds ||
+      (claims.exp as number) <= (claims.iat as number) ||
+      (claims.exp as number) - (claims.iat as number) >
+        NATIVE_PROOF_MAX_AGE_SECONDS
+    )
+      throw new Error('invalid_native_proof');
+    return this.transaction(() => {
+      const { row: current, lease } = invitationOwner();
+      if ((claims.exp as number) <= Math.floor(this.now() / 1000))
+        throw new Error('invalid_native_proof');
+      if (
+        current.signing_key_id !== claims.stationSigningKeyId ||
+        current.signing_generation !== claims.stationSigningGeneration
+      )
+        throw new Error('native_invitation_refused');
+      this.db
+        .prepare(
+          'DELETE FROM broker_native_invitation_request_proofs WHERE expires_at<=?',
+        )
+        .run(this.now());
+      const counts = this.db
+        .prepare(`SELECT count(*) AS total,
+        sum(CASE WHEN invitation_id=? THEN 1 ELSE 0 END) AS per_invitation
+        FROM broker_native_invitation_request_proofs`)
+        .get(current.invitation_id) as {
+        total: number;
+        per_invitation: number | null;
+      };
+      if (counts.total >= 100_000 || (counts.per_invitation ?? 0) >= 4096)
+        throw new Error('native_proof_limit');
+      if (
+        this.db
+          .prepare(
+            'SELECT 1 FROM broker_native_invitation_request_proofs WHERE invitation_id=? AND jti=?',
+          )
+          .get(current.invitation_id, claims.jti as string)
+      )
+        throw new Error('native_proof_replayed');
+      this.db
+        .prepare(
+          'INSERT INTO broker_native_invitation_request_proofs(invitation_id,jti,expires_at) VALUES(?,?,?)',
+        )
+        .run(
+          current.invitation_id,
+          claims.jti as string,
+          this.now() + NATIVE_PROOF_RETENTION_MS,
+        );
+      return {
+        version: SELF_HOSTED_BROKER_NATIVE_SUPERSEDED_SCOPE_OBSERVED_VERSION,
+        requestNonce,
+        scope: oldScope,
+        disposition: 'superseded-generation-not-admitted',
+        leaseRevision: lease.lease_revision,
+      };
+    });
+  }
+
   /** A connector must never receive or finish work after its client grant retires. */
   private retireUnavailableClientConnections() {
     const now = this.now();

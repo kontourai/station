@@ -925,7 +925,7 @@ describe.runIf(process.platform !== 'win32')(
         'broker.sqlite',
       );
       const database = new DatabaseSync(path);
-      database.exec('PRAGMA user_version=7');
+      database.exec('PRAGMA user_version=8');
       database.close();
       chmodSync(path, 0o600);
       expect(() => new SelfHostedBrokerService(path)).toThrow(
@@ -1214,6 +1214,7 @@ describe.runIf(process.platform !== 'win32')(
           DROP TABLE broker_native_connections;
           DROP TABLE broker_native_request_proofs;
           DROP TABLE broker_native_grant_renewals;
+          DROP TABLE broker_native_invitation_request_proofs;
           DROP TABLE broker_native_client_grants;
           DROP TABLE broker_native_route_invitations;
           PRAGMA user_version=1;`);
@@ -1236,7 +1237,7 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(6);
+        ).toBe(7);
         expect(
           (
             upgraded
@@ -1276,6 +1277,7 @@ describe.runIf(process.platform !== 'win32')(
         const old = new DatabaseSync(path);
         old.exec(`DROP TABLE broker_native_connections;
           DROP TABLE broker_native_grant_renewals;
+          DROP TABLE broker_native_invitation_request_proofs;
           DROP TABLE broker_native_request_proofs;
           DROP TABLE broker_native_client_grants;
           DROP TABLE broker_native_route_invitations;
@@ -1296,14 +1298,14 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(6);
+        ).toBe(7);
         migrated.close();
       } finally {
         service?.close();
         rmSync(root, { recursive: true, force: true });
       }
     });
-    test('v4 to v6 PoP and renewal migration rolls back atomically and resumes on restart', () => {
+    test('v4 to v7 PoP, renewal and invitation replay migration rolls back atomically and resumes on restart', () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-upgrade-v6-'));
       const path = join(root, 'broker.sqlite');
       let service: SelfHostedBrokerService | undefined;
@@ -1314,6 +1316,7 @@ describe.runIf(process.platform !== 'win32')(
         service = undefined;
         const legacy = new DatabaseSync(path);
         legacy.exec(`DROP TABLE broker_native_grant_renewals;
+          DROP TABLE broker_native_invitation_request_proofs;
           DROP TABLE broker_native_request_proofs;
           PRAGMA user_version=4;
           CREATE VIEW broker_native_grant_renewals AS SELECT 1 AS ignored;`);
@@ -1353,14 +1356,14 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(6);
+        ).toBe(7);
         migrated.close();
       } finally {
         service?.close();
         rmSync(root, { recursive: true, force: true });
       }
     });
-    test('v5 to v6 migration preserves PoP grants and JTI rows across restart', async () => {
+    test('v5 to v7 migration preserves PoP grants and JTI rows across restart', async () => {
       const root = mkdtempSync(
         join(tmpdir(), 'station-broker-upgrade-v5-renewal-'),
       );
@@ -1402,6 +1405,7 @@ describe.runIf(process.platform !== 'win32')(
 
         const v5 = new DatabaseSync(path);
         v5.exec(`DROP TABLE broker_native_grant_renewals;
+          DROP TABLE broker_native_invitation_request_proofs;
           PRAGMA user_version=5;`);
         expect(
           (
@@ -1427,7 +1431,7 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(6);
+        ).toBe(7);
         expect(
           (
             migrated
@@ -1507,6 +1511,7 @@ describe.runIf(process.platform !== 'win32')(
         const old = new DatabaseSync(path);
         old.exec(`DROP TABLE broker_native_connections;
           DROP TABLE broker_native_grant_renewals;
+          DROP TABLE broker_native_invitation_request_proofs;
           DROP TABLE broker_native_request_proofs;
           PRAGMA user_version=3;`);
         old.close();
@@ -1543,7 +1548,7 @@ describe.runIf(process.platform !== 'win32')(
               user_version: number;
             }
           ).user_version,
-        ).toBe(6);
+        ).toBe(7);
         migrated.close();
       } finally {
         service?.close();
@@ -3024,6 +3029,340 @@ describe.runIf(process.platform !== 'win32')(
           retired: true,
         });
       } finally {
+        service.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+    test('superseded scope observation authenticates the unconsumed invitation without changing routing authority', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-broker-scope-observe-'));
+      const path = join(root, 'broker.sqlite');
+      let now = 100_000;
+      let service = new SelfHostedBrokerService(path, () => now);
+      const db = new DatabaseSync(path);
+      try {
+        const native = await createNativeClient();
+        const first = service.provision(scope, 600_000);
+        const oldInvitation = service.issueNativeInvitation({
+          scope,
+          routingCredential: first.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: native.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        const oldGrant = await service.redeemNativeInvitation(
+          oldInvitation,
+          await createNativeProof(oldInvitation, native),
+        );
+        const nextScope = { ...scope, routingGeneration: 2 };
+        const next = service.provision(nextScope, 600_000);
+        expect(
+          db
+            .prepare(
+              'SELECT 1 FROM broker_native_client_grants WHERE grant_id=?',
+            )
+            .get(oldGrant.credential.id),
+        ).toBeUndefined();
+        const invitation = service.issueNativeInvitation({
+          scope: nextScope,
+          routingCredential: next.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: native.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        let app = new Hono();
+        app.route(
+          '/broker/v1',
+          createSelfHostedBrokerRoutes(service, {
+            brokerOrigin: 'https://broker.example',
+          }),
+        );
+        const makeRequest = async (
+          options: {
+            body?: Record<string, unknown>;
+            claims?: Record<string, unknown>;
+            secret?: string;
+            id?: string;
+            typ?: string;
+            signer?: Awaited<ReturnType<typeof createNativeClient>>;
+            rawSuffix?: string;
+            origin?: string;
+          } = {},
+        ) => {
+          const requestNonce = randomBytes(32).toString('base64url');
+          const body = {
+            version: 'station-broker-native-superseded-scope-observe/v1',
+            scope: invitation.scope,
+            surface: invitation.surface,
+            supersededScope: nativeScope,
+            requestNonce,
+            proofPublicKey: native.publicKey,
+            ...options.body,
+          };
+          const raw = JSON.stringify(body);
+          const claims = {
+            version: 'station-broker-native-invitation-request-proof/v1',
+            aud: invitation.brokerOrigin,
+            brokerOrigin: invitation.brokerOrigin,
+            purpose: 'station-native-superseded-scope-observe-v1',
+            method: 'POST',
+            path: '/broker/v1/native/grants/observe-superseded-scope',
+            invitationId: invitation.invitationId,
+            scope: invitation.scope,
+            surface: invitation.surface,
+            stationSigningKeyId: invitation.stationSigningKeyId,
+            stationSigningGeneration: invitation.stationSigningGeneration,
+            bodySha256: createHash('sha256').update(raw).digest('base64url'),
+            ath: createHash('sha256')
+              .update(options.secret ?? invitation.invitationSecret)
+              .digest('base64url'),
+            jti: requestNonce,
+            iat: Math.floor(now / 1000),
+            exp: Math.floor(now / 1000) + 30,
+            ...options.claims,
+          };
+          const proof = await new CompactSign(
+            Buffer.from(JSON.stringify(claims)),
+          )
+            .setProtectedHeader({
+              alg: 'ES256',
+              typ:
+                options.typ ?? 'station-broker-native-invitation-request+jws',
+            })
+            .sign((options.signer ?? native).privateKey);
+          const init = {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${options.secret ?? invitation.invitationSecret}`,
+              'x-broker-credential-id': options.id ?? invitation.invitationId,
+              'x-station-native-proof': proof,
+              ...(options.origin ? { origin: options.origin } : {}),
+            },
+            body: raw + (options.rawSuffix ?? ''),
+          };
+          return {
+            init,
+            body,
+            response: await app.request(
+              'https://broker.example/broker/v1/native/grants/observe-superseded-scope',
+              init,
+            ),
+          };
+        };
+        const before = {
+          lease: db.prepare('SELECT * FROM broker_leases').all(),
+          invitations: db
+            .prepare('SELECT * FROM broker_native_route_invitations')
+            .all(),
+          grants: db.prepare('SELECT * FROM broker_native_client_grants').all(),
+          connections: db
+            .prepare('SELECT * FROM broker_native_connections')
+            .all(),
+        };
+        const foreign = await createNativeClient();
+        for (const options of [
+          { secret: randomBytes(32).toString('base64url') },
+          { id: randomBytes(16).toString('base64url') },
+          { id: oldGrant.credential.id, secret: oldGrant.credential.secret },
+          { signer: foreign },
+          { body: { proofPublicKey: foreign.publicKey } },
+          { body: { supersededScope: invitation.scope } },
+          {
+            body: { supersededScope: { ...nativeScope, routingGeneration: 3 } },
+          },
+          {
+            body: {
+              supersededScope: {
+                ...nativeScope,
+                enrollmentId: 'foreign-12345678',
+              },
+            },
+          },
+          { body: { surface: { ...native.surface, channel: 'stable' } } },
+          { body: { extra: 'refuse' } },
+          { body: { requestNonce: `${'A'.repeat(42)}B` } },
+          { body: { extra: 'x'.repeat(17000) } },
+          { rawSuffix: ' ' },
+          { origin: 'https://renderer.example' },
+          { typ: 'station-broker-native-request+jws' },
+          ...[
+            { purpose: 'redeem-native-route-invitation' },
+            { path: '/broker/v1/native/grants/retire' },
+            { aud: 'https://foreign.example' },
+            { stationSigningKeyId: 'Z'.repeat(43) },
+            { stationSigningGeneration: 2 },
+            { invitationId: oldInvitation.invitationId },
+            { ath: 'Z'.repeat(43) },
+            { jti: randomBytes(32).toString('base64url') },
+            { exp: Math.floor(now / 1000) },
+            { iat: Math.floor(now / 1000) - 31 },
+            { extra: true },
+          ].map((claims) => ({ claims })),
+        ]) {
+          const result = await makeRequest(options);
+          expect(result.response.status, JSON.stringify(options)).toBe(
+            'secret' in options ||
+              'id' in options ||
+              'origin' in options ||
+              ('body' in options && options.body && 'surface' in options.body)
+              ? 401
+              : 400,
+          );
+        }
+        // Independently refuse each lifecycle prerequisite without acquiring a basis.
+        const lifecycleCases = [
+          [
+            'UPDATE broker_native_route_invitations SET expires_at=? WHERE invitation_id=?',
+            now,
+            invitation.expiresAt,
+            invitation.invitationId,
+          ],
+          [
+            'UPDATE broker_native_route_invitations SET grant_expires_at=? WHERE invitation_id=?',
+            now,
+            before.invitations.find(
+              (row) => row.invitation_id === invitation.invitationId,
+            )?.grant_expires_at,
+            invitation.invitationId,
+          ],
+          [
+            'UPDATE broker_native_route_invitations SET consumed_at=? WHERE invitation_id=?',
+            now,
+            null,
+            invitation.invitationId,
+          ],
+          [
+            'UPDATE broker_leases SET expires_at=? WHERE station_id=?',
+            now,
+            before.lease[0].expires_at,
+            scope.stationId,
+          ],
+          [
+            'UPDATE broker_leases SET withdrawn_at=? WHERE station_id=?',
+            now,
+            null,
+            scope.stationId,
+          ],
+        ] as const;
+        for (const [sql, invalidValue, restoredValue, id] of lifecycleCases) {
+          db.prepare(sql).run(invalidValue, id);
+          expect((await makeRequest()).response.status, sql).toBe(401);
+          db.prepare(sql).run(restoredValue as number | null, id);
+        }
+        const good = await makeRequest();
+        expect(good.response.status).toBe(200);
+        expect(await good.response.json()).toEqual({
+          version: 'station-broker-native-superseded-scope-observed/v1',
+          requestNonce: good.body.requestNonce,
+          scope: nativeScope,
+          disposition: 'superseded-generation-not-admitted',
+          leaseRevision: 0,
+        });
+        expect(
+          (
+            await app.request(
+              'https://broker.example/broker/v1/native/grants/observe-superseded-scope',
+              good.init,
+            )
+          ).status,
+        ).toBe(409);
+        expect({
+          lease: db.prepare('SELECT * FROM broker_leases').all(),
+          invitations: db
+            .prepare('SELECT * FROM broker_native_route_invitations')
+            .all(),
+          grants: db.prepare('SELECT * FROM broker_native_client_grants').all(),
+          connections: db
+            .prepare('SELECT * FROM broker_native_connections')
+            .all(),
+        }).toEqual(before);
+        service.close();
+        service = new SelfHostedBrokerService(path, () => now);
+        app = new Hono();
+        app.route(
+          '/broker/v1',
+          createSelfHostedBrokerRoutes(service, {
+            brokerOrigin: 'https://broker.example',
+          }),
+        );
+        expect(
+          (
+            await app.request(
+              'https://broker.example/broker/v1/native/grants/observe-superseded-scope',
+              good.init,
+            )
+          ).status,
+        ).toBe(409);
+        // The same invitation still reaches ordinary redemption after observation.
+        const currentGrant = await service.redeemNativeInvitation(
+          invitation,
+          await createNativeProof(invitation, native),
+        );
+        expect(currentGrant.scope.routingGeneration).toBe(2);
+        expect((await makeRequest()).response.status).toBe(401);
+        const fresh = service.issueNativeInvitation({
+          scope: nextScope,
+          routingCredential: next.routing,
+          brokerOrigin: 'https://broker.example',
+          surface: native.surface,
+          stationSigningKeyId: 'K'.repeat(43),
+          stationSigningGeneration: 1,
+        });
+        // Enter the real asynchronous proof verifier, then replace its selected lease.
+        const raceBody = {
+          ...good.body,
+          requestNonce: randomBytes(32).toString('base64url'),
+        };
+        const raceRaw = JSON.stringify(raceBody);
+        const raceClaims = {
+          ...JSON.parse(
+            Buffer.from(
+              good.init.headers['x-station-native-proof'].split('.')[1],
+              'base64url',
+            ).toString('utf8'),
+          ),
+          invitationId: fresh.invitationId,
+          jti: raceBody.requestNonce,
+          bodySha256: createHash('sha256').update(raceRaw).digest('base64url'),
+          ath: createHash('sha256')
+            .update(fresh.invitationSecret)
+            .digest('base64url'),
+        };
+        const raceProof = await new CompactSign(
+          Buffer.from(JSON.stringify(raceClaims)),
+        )
+          .setProtectedHeader({
+            alg: 'ES256',
+            typ: 'station-broker-native-invitation-request+jws',
+          })
+          .sign(native.privateKey);
+        const observation = service.observeSupersededNativeScope({
+          request: raceBody,
+          credential: {
+            id: fresh.invitationId,
+            secret: fresh.invitationSecret,
+          },
+          compactProof: raceProof,
+          exactBody: Buffer.from(raceRaw),
+          brokerOrigin: fresh.brokerOrigin,
+        });
+        service.provision({ ...scope, routingGeneration: 3 }, 600_000);
+        await expect(observation).rejects.toThrow('native_invitation_refused');
+        expect(
+          (
+            await makeRequest({
+              id: fresh.invitationId,
+              secret: fresh.invitationSecret,
+              claims: { invitationId: fresh.invitationId },
+            })
+          ).response.status,
+        ).toBe(401);
+        now += 600_001;
+        expect((await makeRequest()).response.status).toBe(401);
+      } finally {
+        db.close();
         service.close();
         rmSync(root, { recursive: true, force: true });
       }
