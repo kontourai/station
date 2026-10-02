@@ -138,7 +138,7 @@
 
     {"path":"packages/sdk/src/client/task-outputs.ts","digest":"193416e83847a9ccb1d3bc276cca795d8244f8e448786a2fd733d527609db87c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"57fdf0a01a7e541af361869b5c73e15e8b54f978caa5596bc9881740f82b8696","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"b1ac914584adc89df0329ea881462366ece5e424157c1732be1a6e23f64eba2d","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
 
     {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -302,7 +302,7 @@
 
     {"path":"src-server/routes/operations/notifications.ts","digest":"4d0add85259d3edb2deee0c0929891851ebccc980416b6c693b0b002cc081651","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
 
     {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

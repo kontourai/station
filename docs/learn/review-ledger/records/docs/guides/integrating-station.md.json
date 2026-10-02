@@ -12,9 +12,9 @@
   "document": {"digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
   "sources": [
-    {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
-
     {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
     {"path":"docs/guides/deployment-authentication.md","digest":"1c0a536c39a4dbc365aaea832eb2da0a0bda5440eabe66b0351108c745a048b1","revision":"fabc07873700d8d828274e62929191d01130efb7"},
 

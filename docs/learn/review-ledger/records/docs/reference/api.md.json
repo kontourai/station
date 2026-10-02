@@ -170,7 +170,7 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -317,6 +317,10 @@
     {"path":"src-server/services/plugins/plugin-visibility-service.ts","digest":"3fbbb277c5cc0b0d9c4a7f1a5e8b79913a7bfa4bb93971374aebcb6aba7ae579","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/projects/layout-service.ts","digest":"8df842d974f7df9b5d9e8e96971d15c92ba0eb4ee90b26312abb620b3c0a99e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
+
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
     {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"23e3eb7ecc40c556f8dcd05c65998ab4fe029cf330373b0f72f268ecdce6a4d4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 

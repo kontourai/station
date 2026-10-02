@@ -40,7 +40,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"651fe6809a207b9b208d056e04b1cb0a800c245271fdec9500e567151e1c16ad","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
@@ -112,19 +112,19 @@
 
     {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx","digest":"34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/workspace-panes/DeviceWorkspacePane.tsx","digest":"4aa07d6ef893ccb521e25b764cae0c71f64e8b41f1459e7a03aa5f2eabeed092","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx","digest":"5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"c03b5a74f9f2ae6dabdd4c37515189fec2e4fa9ad21e0b84913030042b28c0ab","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
+    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38","revision":"c82192d89121275a4b40400a4c110927beff4344"},
+
     {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"492c02f20784891fa92facee2287c88c429836a8d1ca2c52e25230566db75c38","revision":"c82192d89121275a4b40400a4c110927beff4344"}
+    {"path":"src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx","digest":"34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/DeviceWorkspacePane.tsx","digest":"4aa07d6ef893ccb521e25b764cae0c71f64e8b41f1459e7a03aa5f2eabeed092","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [

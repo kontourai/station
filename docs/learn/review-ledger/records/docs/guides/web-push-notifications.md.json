@@ -12,11 +12,11 @@
   "document": {"digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
   "sources": [
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"d5941fa27ac7bfd91003dbf7d23627e16daa64abd4caf0338e5008be40bd1778","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
-
     {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"f655052a713a9135d2f976f6272eb23f2db570921801863d4d43963b3a37fe5c","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"d5941fa27ac7bfd91003dbf7d23627e16daa64abd4caf0338e5008be40bd1778","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"packages/contracts/src/notification-preferences.ts","digest":"913dd3f26b26c67550aaae1914c4c8cbe850b2866d70ae40c322b62523bb9be1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

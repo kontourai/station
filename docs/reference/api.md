@@ -32,7 +32,13 @@ not mean every deployment mounts or admits it.
 request projection. A client must verify `station.task-room-work/v1` before
 sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
 That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
-the normal prompt and execution target remain outside it. This initial path
+the normal prompt and execution target remain outside it. Supporting servers
+also advertise `contextVersion: 'station.task-room-context/v1'` and an authorized
+Task/shared-document snapshot in the read response. A create can supply only its
+`context: { version, digest }` reference. The server captures and saves that exact
+brief for a new operation; an existing operation reuses its saved snapshot.
+A stale/unavailable context is refused before invocation, and changed context
+under an existing operation conflicts. This initial path
 admits current-Station execution in the exact Task Project, with the existing
 read/operate, readiness and provider-effect authority gates. A request receipt
 does not establish Task completion or result quality.
