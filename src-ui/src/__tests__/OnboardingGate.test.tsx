@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PAIRING_LINK_REMEDY } from '@kontourai/station-connect/pairing-deep-link';
 import type { SystemStatus } from '@kontourai/station-sdk';
 import {
@@ -2122,9 +2123,11 @@ describe('OnboardingGate', () => {
     currentStatus = null;
 
     render(
-      <OnboardingGate>
-        <div>Home</div>
-      </OnboardingGate>,
+      <QueryClientProvider client={new QueryClient()}>
+        <OnboardingGate>
+          <div>Home</div>
+        </OnboardingGate>
+      </QueryClientProvider>,
     );
     fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
 
@@ -2134,9 +2137,8 @@ describe('OnboardingGate', () => {
     expect(
       await screen.findByRole('region', { name: 'Saved broker routes' }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Add broker route' }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a Station' }));
+    expect(await screen.findByLabelText(/Station application address/)).toBeTruthy();
   });
 
   test('does not treat an injected host connection as a real saved host', async () => {
