@@ -56,9 +56,25 @@ export function useChatDockOverlays({
     (threadId: string) => setImportedSessionId(threadId),
     [],
   );
+  const [newChatInitialPrompt, setNewChatInitialPrompt] = useState<
+    string | undefined
+  >();
+  const newChatOnClosed = useRef<(() => void) | undefined>(undefined);
+  const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
   const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
   const setShowNewChatModal = useCallback(
-    (open: boolean) => {
+    (
+      open: boolean,
+      options?: {
+        startWithDefault?: boolean;
+        initialPrompt?: string;
+        onClosed?: () => void;
+      },
+    ) => {
+      newChatOnClosed.current?.();
+      newChatOnClosed.current = open ? options?.onClosed : undefined;
+      setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
+      setNewChatStartWithDefault(open && options?.startWithDefault === true);
       if (open) {
         setImportedSessionId(null);
         setNewChatRequestEpoch((epoch) => epoch + 1);
@@ -145,6 +161,8 @@ export function useChatDockOverlays({
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
+    newChatStartWithDefault,
+    newChatInitialPrompt,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,

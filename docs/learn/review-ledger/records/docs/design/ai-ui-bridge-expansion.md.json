@@ -16,11 +16,11 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/components/chat/ChatMessageList.tsx","digest":"a375f4aa8ad99e5e7312e08fd44d8c5021cf5daaa821adacee666ce0c40ee3b7","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-ui/src/components/chat/ChatMessageList.tsx","digest":"c50030d1ec1c394a73351b79a7d517979c0ef787a418daace1b03ee31d4c701e","revision":"787f8b0b0155641e65551ea199cb7fd11939cf15"},
 
     {"path":"src-ui/src/components/chat/UIBlockRenderer.tsx","digest":"e5f4a78399502b4e89cfa1f4c80105e7318a00668b5807bf120b936d2362cdd3","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessions.ts","digest":"16ea2d7d3f011a253b70b90e9a24b087e87a06c442090dec428c6b0ffb62330b","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

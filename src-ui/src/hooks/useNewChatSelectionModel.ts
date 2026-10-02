@@ -11,6 +11,7 @@ import {
   useModelPickerCatalogQuery,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
+import type { RefetchOptions } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   buildNewChatModalViewModel,
@@ -124,13 +125,13 @@ export function acpCatalogModelOptions(
 export function useReconcilingCatalogRefresh(
   catalogState: string | undefined,
   data: unknown,
-  refetch: () => void,
+  refetch: (options?: RefetchOptions) => void,
   delayMs = 1000,
 ): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `data` is an identity trigger, not a read — each reconciling response must re-arm exactly one delayed refetch or polling stops after the first fire.
   useEffect(() => {
     if (catalogState !== 'reconciling') return;
-    const timer = setTimeout(() => refetch(), delayMs);
+    const timer = setTimeout(() => refetch({ cancelRefetch: false }), delayMs);
     return () => clearTimeout(timer);
   }, [catalogState, data, refetch, delayMs]);
 }
@@ -184,7 +185,7 @@ export function useNewChatSelectionModel({
   const agentCatalog = useAgentsQuery();
   useReconcilingCatalogRefresh(
     agentCatalog.catalogState,
-    agentCatalog.data,
+    agentCatalog.dataUpdatedAt,
     agentCatalog.refetch,
   );
   const projectCatalog = useScopedProjectsQuery();

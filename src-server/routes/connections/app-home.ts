@@ -64,6 +64,7 @@ import {
   type DeviceCodeLoginManager,
   deviceCodeLoginManager,
 } from '../../services/connections/device-code-login.js';
+import { recordEngineAccountUsage } from '../../services/connections/engine-account-history.js';
 import {
   type EngineLoginCapabilities,
   engineLoginCapabilities,
@@ -387,6 +388,7 @@ export function createAppHomeRoutes(deps?: {
   });
   app.get('/agent/:id/account-usage', async (c) => {
     if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+    const requestStartedAt = new Date().toISOString();
     try {
       const target = await accountTarget(
         param(c, 'id'),
@@ -412,7 +414,28 @@ export function createAppHomeRoutes(deps?: {
             )
           : await readAccountUsage(target.engine.provider, target.dir);
       if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
-      return c.json({ success: true, data });
+      const history = await recordEngineAccountUsage(
+        {
+          engine: target.engine.provider,
+          connectionId: param(c, 'id'),
+          ref: target.ref ?? null,
+          dir: target.dir,
+        },
+        data,
+        {
+          requestStartedAt,
+          beforeCommit: () => {
+            if (!currentAccountRequest(c.req.raw))
+              throw new Error('Account read authority changed.');
+          },
+        },
+      ).catch(() => ({
+        status: 'unavailable' as const,
+        retentionDays: 30,
+        observations: [],
+      }));
+      if (!currentAccountRequest(c.req.raw)) return accountRefusal(c);
+      return c.json({ success: true, data: { ...data, history } });
     } catch {
       return c.json(
         { success: false, error: 'Account limits could not be loaded.' },

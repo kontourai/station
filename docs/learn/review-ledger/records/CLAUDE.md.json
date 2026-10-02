@@ -12,7 +12,7 @@
   "document": {"digest":"ca6627ac9cce6d3a94bea40f42622b34376ae20ff004cffcdb22c3981dc18847","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
   "sources": [
-    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
 
     {"path":"AGENTS.md","digest":"f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
   ],

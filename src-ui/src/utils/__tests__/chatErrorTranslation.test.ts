@@ -629,3 +629,21 @@ describe('#1796 full-access refusal', () => {
     expect(translated.hint).toBeUndefined();
   });
 });
+
+describe('attachment refusal (attachment_input_unsupported)', () => {
+  it('is deterministic: no "temporary" hint, not retryable, and names the fix', () => {
+    const translated = translateChatError({
+      status: 400,
+      // The literal the server forwards, not the constant.
+      code: 'attachment_input_unsupported',
+      message: 'This engine did not advertise image attachment support.',
+    });
+    expect(translated.title).toBe("This engine can't take these attachments");
+    expect(translated.body).toBe(
+      'This engine did not advertise image attachment support. Nothing was sent.',
+    );
+    expect(translated.hint).toContain('Remove the attachments');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+  });
+});

@@ -48,7 +48,7 @@
 
     {"path":"packages/cli/src/commands/service-run.ts","digest":"2b3560dd4f26026869b307587704c134cc63a81fe8295527131ba225d0486154","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/service-windows.ts","digest":"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/cli/src/commands/service-windows.ts","digest":"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581","revision":"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -56,7 +56,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -70,7 +70,7 @@
 
     {"path":"scripts/build-desktop.mjs","digest":"882c850640e9a350c1b48f4290b947b506e0b1ef4a6cdf447c6330a88e393c99","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/channel-ports.mjs","digest":"1f94a510faac71ad5e46dbbcb75591aa60c396aab94692eb7515afa314641138","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/channel-ports.mjs","digest":"60371dd4ece531ee30f4361f652ef21b7061bf4984fe202fa79ae4f8ca3b2b3e","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
 
     {"path":"scripts/check-android-16kb-alignment.mjs","digest":"b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

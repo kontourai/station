@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useMenuFocus } from '../hooks/useMenuFocus';
 import { hostLayerOf, OverlayLayerContext } from './overlay-layer';
 // The dismiss backdrop's button reset lives with the header's portalled menus,
@@ -71,7 +72,18 @@ export interface OverflowAction {
    * under the pointer of someone aiming at the row above.
    */
   tone?: 'danger';
+  /**
+   * The keyboard shortcut that runs this command elsewhere, e.g. "⌘G".
+   * Announced as `aria-keyshortcuts` on the row, and shown at the row's end
+   * on a fine pointer only: a keyboard hint on a touch screen is noise.
+   */
+  shortcut?: string;
   onSelect: (trigger: HTMLElement) => void;
+}
+
+/** "⌘G" → "Meta+G", the `aria-keyshortcuts` spelling; "Ctrl+G" stays. */
+function ariaShortcut(shortcut: string): string {
+  return shortcut.replace('⌘', 'Meta+');
 }
 
 const MENU_GAP_PX = 6;
@@ -168,6 +180,7 @@ export function ActionOverflowMenu({
   reserveGlyphColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const coarse = useCoarsePointer();
   const [position, setPosition] = useState<React.CSSProperties>({});
   /** The menu's z-index when its host outranks the default; see `placeMenu`. */
   const [layer, setLayer] = useState<number | null>(null);
@@ -516,6 +529,13 @@ export function ActionOverflowMenu({
                         {...(action.expanded === undefined && !action.haspopup
                           ? {}
                           : { 'aria-expanded': Boolean(action.expanded) })}
+                        {...(action.shortcut
+                          ? {
+                              'aria-keyshortcuts': ariaShortcut(
+                                action.shortcut,
+                              ),
+                            }
+                          : {})}
                         onClick={(event) => {
                           event.stopPropagation();
                           // Refused, and the menu stays open on the row that
@@ -544,6 +564,16 @@ export function ActionOverflowMenu({
                         ) : (
                           action.label
                         )}
+                        {action.shortcut && !coarse ? (
+                          // Decoration: the row's name is its label, and the
+                          // shortcut is already `aria-keyshortcuts`.
+                          <span
+                            className="action-overflow__shortcut"
+                            aria-hidden="true"
+                          >
+                            {action.shortcut}
+                          </span>
+                        ) : null}
                       </button>
                     </Fragment>
                   );

@@ -16,7 +16,7 @@
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
-    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"6d054cbb50d2e7c97f1a69464c9277d831e7fcafb6090c490d209e792166f7a7","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
     {"path":"src-server/routes/plugins/registry.ts","digest":"d2ad68bbcc5573372f17968589a0b7875ad7ba52974cd8b2a043626ca6a9ccd5","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 

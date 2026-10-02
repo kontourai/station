@@ -364,6 +364,12 @@
   --syntax-keyword: #ff7b72;
   --syntax-number: #79c0ff;
   --syntax-string: #a5d6ff;
+  /* Rungs the File Preview's grammar tokens add (entity names, markup tags,
+     variables): github-dark's own values, text-floor 4.5:1, measured by
+     theme-rung-contrast.test.ts on the page, panel and selected line. */
+  --syntax-function: #b392f0;
+  --syntax-tag: #85e89d;
+  --syntax-variable: #ffab70;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -627,6 +633,12 @@
   --syntax-keyword: #b82b3a;
   --syntax-number: #0550ae;
   --syntax-string: #0a3069;
+  /* github-light-default's entity, tag and variable hues, darkened where
+     needed to hold 4.5:1 on the selected-line tint as well as the page
+     (theme-rung-contrast.test.ts measures all three backdrops). */
+  --syntax-function: #6639ba;
+  --syntax-tag: #116329;
+  --syntax-variable: #953800;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -771,6 +783,20 @@ button:hover {
   gap: 14px;
   padding: 3px 14px;
   padding-top: var(--safe-top);
+  /* The side padding is composed HERE from three inputs, and breakpoints
+     change the inputs rather than re-declaring `padding`, so a phone rule
+     cannot drop the safe-area insets: the gutter (14px, 12px on a
+     phone), the side safe-area insets (a landscape phone's notch and rounded
+     corner), and the macOS overlay title bar's traffic-light inset (set only
+     in the single-column layout). The macOS collapsed-sidebar rules in
+     ProjectSidebar.css still set `padding-left` directly; they only apply on
+     desktop, where the side insets are 0. */
+  padding-left: max(
+    var(--app-toolbar-gutter, 14px),
+    var(--safe-left),
+    var(--app-toolbar-inset-left, 0px)
+  );
+  padding-right: max(var(--app-toolbar-gutter, 14px), var(--safe-right));
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
 }
@@ -3308,6 +3334,12 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+/* The dock's "No chat open" card keeps the dock's gutter instead of
+   drawing its dashed edge flush against the screen. */
+.chat-dock__no-chat {
+  margin: var(--k-space-4);
+}
+
 /* Header icon button (settings, collapse) */
 .chat-dock__icon-btn {
   background: none;
@@ -3825,11 +3857,68 @@ button:hover {
   max-width: 90%;
 }
 
-/* Table styling for slash command responses */
+/* Markdown tables in an answer (`MarkdownRenderer` wraps each in
+   `.chat-markdown-table`). The wrapper scrolls sideways; the table is at
+   least the message width and otherwise as wide as its words need, because
+   the cells opt back out of the message's `overflow-wrap: anywhere` — that
+   value lowers min-content to a single character, which is what split a
+   phone's first column letter by letter. The old column rules here
+   (a 500px description column, a centred fourth column) were written for a
+   slash-command listing that now renders its own inline-styled HTML, and
+   applied to every answer's tables. */
+.chat-markdown-table {
+  max-width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* The scroll cue: while a table can still scroll right, its right edge
+   fades out, and the fade is gone at the end of the scroll. A scroll-driven
+   animation on the scroller itself — no listener, no per-row work, and
+   inactive (so no fade at all) when the table fits. Engines without
+   scroll timelines simply show no cue. */
+@supports (animation-timeline: scroll()) {
+  .chat-markdown-table {
+    animation: chat-markdown-table-edge var(--ease-linear) both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
+@keyframes chat-markdown-table-edge {
+  0%,
+  96% {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      #000 calc(100% - 28px),
+      transparent
+    );
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  100% {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+.chat-markdown-table:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .message.assistant table {
   border-collapse: collapse;
-  width: 100%;
+  min-width: 100%;
   margin: 1em 0;
+}
+
+.message.assistant .chat-markdown-table table {
+  margin: 0;
+  /* Inside its scroller a table sizes to its content, each column up to the
+     cell cap below, instead of splitting the viewport between columns: a
+     prose column squeezed to its longest word made rows several hundred
+     pixels tall on a phone. */
+  width: max-content;
 }
 
 .message.assistant table th,
@@ -3837,34 +3926,23 @@ button:hover {
   padding: 8px 12px;
   border: 1px solid var(--border-primary);
   text-align: left;
+  vertical-align: top;
+  /* `break-word`, not the message's `anywhere`: it leaves min-content at
+     the longest word, so a squeezed column can never split words letter by
+     letter, but a token longer than the cell cap — a URL, a commit hash, a
+     long path, in code or not — still breaks inside its own cell instead of
+     painting over the next column. */
+  overflow-wrap: break-word;
+  word-break: normal;
+  /* A readable measure per column: at least 6rem, at most 20rem before a
+     cell wraps. */
+  min-width: 6rem;
+  max-width: 20rem;
 }
 
 .message.assistant table th {
   background: var(--bg-secondary);
   font-weight: 600;
-}
-
-/* Description column with flexible height based on row */
-.message.assistant table td:nth-child(2) {
-  max-width: 500px;
-  padding: 8px 12px;
-  vertical-align: middle;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-word;
-}
-
-/* Fixed width for parameters column with wrapping */
-.message.assistant table td:nth-child(3) {
-  max-width: 250px;
-  word-wrap: break-word;
-  white-space: normal;
-}
-
-/* Center align trusted column */
-.message.assistant table td:nth-child(4),
-.message.assistant table th:nth-child(4) {
-  text-align: center;
 }
 
 .message.loading {
@@ -3951,12 +4029,32 @@ button:hover {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.35;
 }
 .streaming-activity .elapsed-wait {
   font-variant-numeric: tabular-nums;
+}
+/* The progress row names a tool, and a tool's name can be a whole command
+   line ("Last: npm run gate:for … 2>&1 | tail"). The name alone shrinks to
+   an ellipsis inside the column, so the outcome after it ("· done") and the
+   elapsed time stay on screen; the full text stays in the row's title. */
+.turn-activity-progress__tool {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.turn-activity-progress__fixed {
+  flex-shrink: 0;
+  white-space: pre;
+}
+.turn-activity-progress__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Streaming-aliveness motion primitives (archive#2651) ──────────────────
@@ -4443,8 +4541,12 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+/* Right-aligned whatever the label's length: a short label ("Ran npm test")
+   used to leave the chevron trailing its text, out of line with the
+   full-width labels and batch summaries above and below it. */
 .tool-call__chevron {
   flex-shrink: 0;
+  margin-inline-start: auto;
   opacity: 0.5;
   font-size: 0.9em;
 }
@@ -4540,6 +4642,10 @@ button.tool-call__line:hover {
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
 .tool-call__status-badge {
+  /* A one- or two-word outcome ("Cancelled", "Output truncated") never
+     breaks mid-word in a narrow row; the label beside it ellipsizes instead. */
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.7em;
   padding: 2px 6px;
   background: var(--bg-tertiary);
@@ -4749,7 +4855,9 @@ button.tool-call__line:hover {
 .tool-call-batch__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* The single row's gap: a run that grows from one call to two keeps its
+     glyph and label where they were. */
+  gap: 6px;
   width: 100%;
   padding: 2px 4px;
   border: 0;
@@ -5743,6 +5851,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   position: relative;
 }
 
+/* The chat pane's floating status pill (components/status) sits over the
+   transcript's top-right corner. A constant 36px of clear space keeps it off
+   the first message when the transcript is scrolled to the top; it never
+   changes when the pill comes and goes, so nothing shifts. It is a spacer in
+   the scrolled content (20px plus the column's 16px gap), not padding on the
+   scroller: padding cannot shrink, and in a short dock it pushed the composer
+   out of view. */
+.chat-dock__content-area .chat-messages::before {
+  content: "";
+  flex: none;
+  height: 20px;
+}
+
 .conversation-history {
   width: min(300px, 80vw);
   flex-shrink: 0;
@@ -6315,7 +6436,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
      the corner the sidebar occupies instead. */
   .app-toolbar {
-    padding-left: max(14px, var(--titlebar-inset-left, 0px));
+    --app-toolbar-inset-left: var(--titlebar-inset-left, 0px);
   }
 
   .responsive-surface-overlay {
@@ -6441,7 +6562,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .app-toolbar {
     gap: 8px;
-    padding: 4px 12px;
+    --app-toolbar-gutter: 12px;
+    padding-bottom: 4px;
     padding-top: calc(4px + var(--safe-top, 0px));
     position: sticky;
     top: 0;
@@ -6474,10 +6596,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     white-space: nowrap;
   }
 
-  /* Hide the full state and identity spans on mobile. The compact healthy
-     chip keeps its bounded `Station · <saved name>` label in chat.css; the
-     action cluster's right-anchor and shrink behavior live there too
-     (station#3766). */
+  /* Phone connection chrome is a touchable status dot. Its full accessible
+     name and long-press hint are owned by HeaderActions; chat.css sizes it. */
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;
@@ -8818,7 +8938,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .chat-dock__mobile-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(80px, 28%) minmax(0, 1fr);
+  /* The title stays centred (equal edge tracks) and takes all but a fixed
+     reserve for the edges: the leading edge's drawer or dock toggle plus a
+     44px project control, mirrored on the right. The project name is what
+     gives way — one line, ellipsised — not the chat title, which used to be
+     held to 28% of the bar and clamped to two lines beside empty space. */
+  --chat-dock-mobile-header-edge: 96px;
+  /* `fit-content`: a short title ("Chat", "New chat") gives its unused width
+     back to the edges, so the project name only truncates when the title
+     actually needs the room. The 80px floor is the identity's own min-width. */
+  grid-template-columns:
+    minmax(0, 1fr)
+    fit-content(calc(100% - 2 * var(--chat-dock-mobile-header-edge)))
+    minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1);
   /* 12px of horizontal padding is a deliberate grab margin: the bar is the
@@ -8869,6 +9001,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    would be a no-op dressed up as a mechanism. Together those two changes are
    what turn a 24px overflow into ~28px of title. */
 @media (max-width: 360px) {
+  .app-toolbar.app-toolbar,
+  .app-toolbar .app-toolbar__actions {
+    gap: 2px;
+  }
+
   .chat-dock__mobile-header {
     padding: var(--space-1) 8px;
   }
@@ -9053,7 +9190,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .chat-dock__mobile-identity {
   justify-content: center;
-  min-width: 0;
+  min-width: 80px;
   text-align: center;
 }
 
@@ -9182,6 +9319,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* A maximized chat is the active phone surface; keep its Restore target
        above sticky toolbar descendants at the shared boundary. */
     z-index: calc(var(--layer-sticky) + 1);
+    /* No accent rule on a maximized sheet. The 2px `--accent-primary` top
+       border is the dock's edge against the page (it is a static accent, not
+       a progress indicator). Maximized, there is no page above it: under a
+       visible toolbar it stacked beneath the toolbar's own hairline as a
+       double rule, and with the toolbar hidden it drew a bright line along
+       the status bar. */
+    border-top: 0;
     /* The 44px mobile dock controls overhang the nominal header line box by a
        few pixels. Keep that hit target below the toolbar while preserving the
        visual-viewport bottom exactly. */
@@ -9358,6 +9502,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
       --chat-visual-viewport-bottom,
       var(--visual-viewport-bottom-inset, 0px)
     );
+    /* A phone in landscape has side insets (the notch or Dynamic Island on
+       one side, the rounded corner on the other; 59px on current iPhones).
+       The sheet's surface still runs edge to edge; its header, transcript
+       and composer sit inside the insets. */
+    padding-inline: var(--safe-left, 0px) var(--safe-right, 0px);
   }
 
   /* A full-screen mobile chat owns the viewport. ChatDockMobileHeader already
@@ -9390,9 +9539,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      owns this header's one mobile treatment). See page-frame.css's own
      responsive breakpoints. */
 
-  .app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header {
-    padding-top: calc(var(--space-1) + var(--safe-top, 0px));
-  }
+  /* No top safe-area padding on the full-screen dock's own header. The dock
+     already starts below the status bar: its `top` adds
+     `--app-toolbar-total-height`, which this mode reduces to `--safe-top`
+     (the maximized rule, and the short-window rule, which adds `--safe-top`
+     itself). Padding the header by the inset as well counted it twice and
+     left a status-bar-tall empty band above the project and chat title on
+     every edge-to-edge phone. tests/mobile-chat-composer.spec.ts measures
+     the header's height against the collapsed bar's with a real inset. */
 
   /* Deliberately NOT animated, reverting an attempt of mine to animate the
      snap into Full. A maximized dock's height tracks the visual viewport, so

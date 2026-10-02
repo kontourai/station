@@ -256,7 +256,7 @@ describe('approval inbox notifications', () => {
         // display text — for Codex the literal shell command.
         'no reported tool name at all',
         { rawInput: { command: 'git status' } },
-        'Allow this tool for this session',
+        'Allow for this session',
       ],
     ])('names %s', async (_case, payload, expected) => {
       await emit('orchestration:event', {

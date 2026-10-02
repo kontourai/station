@@ -356,7 +356,7 @@ Custom-host state slot; currently unbound in Station's default adapter.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout on desktop), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -3702,6 +3702,16 @@ resolves the checkout from the project alone. `QueryConfig.refetchOnWindowFocus`
 opts one read back into refetching a stale answer when the window returns;
 Station's client default leaves it off.
 
+`usePullRequestContextQuery({ project, thread }, config)` reads the Session's
+recorded checkout context. Its available result includes the local `branch` and
+optional `pushTargetOwner`, the owner selected by the branch's push-remote
+configuration and push URL. The repository identity still names the PR read
+target. Mergeability rows optionally include `sourceOwner` from GitHub's head
+repository owner; GitLab omits it. A conflict indicator matches the local branch
+and compares these owners case-insensitively when both are present. If either
+owner is absent, it matches on branch alone; the upstream branch name is never
+a substitute for the local branch.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
@@ -3810,9 +3820,16 @@ The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
 selected quota and live login queries, explicit login/account-create mutations,
 and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
 keys partition API base, authority, engine connection and profile. Login retries
-are disabled and live status polls only while a login is pending. Quota refresh
-is explicit. Strict contracts live in
-`@kontourai/station-contracts/engine-accounts`.
+are disabled and live status polls only while a login is pending. Quota refresh runs every minute while the account query is mounted and visible, and can also be requested explicitly. Strict contracts live in
+`@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
+optional account/credit/model, Claude spending/breakdown/limit metadata and
+response-shape audit fields and bounded hourly allowance history on both
+known and unknown quota variants. `useEngineActivityQuery` accepts an optional
+credential profile filter: `null` selects the default profile, a string selects
+a saved profile, and an omitted filter includes all engine accounts. Older
+usage without an account observation remains excluded from profile totals. Consumers must not treat unknown quota as zero
+or credit balances as dollars. Window durations come from the provider, rather
+than inferring five hours from the primary position.
 
 These exports require a release containing this change; current source presence
 is not evidence of npm publication. The Connections guide owns account-viewing,
