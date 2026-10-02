@@ -324,6 +324,18 @@ separate from the mounted frontend checks.
 The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-foundation-v2)
 keep credentials and durable retry identity out of the renderer.
 
+If a linked invitation finds multiple saved grants for its route and this
+installation, **Reset connection invitation** opens a management preview. Review
+the matching routing records, then confirm the reset explicitly. The host first
+tries to retire each grant normally; for an older routing generation it can use
+the still-unconsumed invitation to establish that the old scope is no longer
+admitted. This does not redeem the invitation, revoke Station trust, change
+Device approval, or affect the account session. If observation or local storage
+fails, cleanup remains pending and the invitation stays available. Operational
+status continues to refuse multiple grants until cleanup resolves; it never
+chooses one silently. This native journey still needs installed-shell
+qualification, as described in [native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
+
 For a native signing-key approval, select the saved broker route and choose
 **Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
