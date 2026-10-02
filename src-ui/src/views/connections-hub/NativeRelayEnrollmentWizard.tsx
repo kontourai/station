@@ -42,18 +42,18 @@ interface LoginCredentials {
 
 function enrollmentFailureCopy(cause: unknown): string {
   if (cause instanceof Error && cause.message === 'staleProfile')
-    return 'The saved route changed. Reopen setup and try again.';
+    return 'This Station’s connection changed. Close setup and open it again.';
   if (
     cause instanceof Error &&
     cause.message === 'native_enrollment_peer_capacity_reached'
   )
-    return 'Another native setup is still closing. Wait a moment and retry.';
+    return 'Another setup is still closing. Wait a moment before continuing.';
   if (
     cause instanceof Error &&
     cause.message === 'native_enrollment_recovery_required'
   )
-    return 'Station has an existing enrollment. Resume that Device setup before starting another.';
-  return 'Station could not verify this Device enrollment. Check the broker route, Station trust and connection, then retry.';
+    return 'A previous device setup needs attention. Resume it before starting another.';
+  return 'Device setup couldn’t be confirmed. Keep this screen open and ask the Station owner for help.';
 }
 
 function reportEnrollmentFailure(

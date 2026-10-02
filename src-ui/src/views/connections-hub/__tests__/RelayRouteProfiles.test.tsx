@@ -1621,7 +1621,7 @@ describe('RelayRouteProfiles', () => {
     );
 
     await screen.findByText(
-      'The saved route changed. Reopen setup and try again.',
+      'This Station’s connection changed. Close setup and open it again.',
     );
     expect(mocks.grantInvoke).toHaveBeenCalledWith(
       'station_profile_store_read',
