@@ -469,7 +469,15 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   `info/attributes`, hooks and reflogs are not carried; in-tree
   `.gitattributes` can only select a filter or driver the copy does not
   define. Every command that prints a diff also runs with `--no-ext-diff`
-  and `--no-textconv`. Measured this round (git 2.50.1, APFS, a process
+  and `--no-textconv`. The File Preview's per-file Changes read
+  (`POST /api/projects/:slug/file-preview/changes`) is the same read: it
+  resolves the file's folder against the Project (or the Session's own
+  checkout) the same way, runs its `diff` on the same kind of directory,
+  and answers `503 repository-busy` as below; deterministic tests drive a
+  `.git` file, a linked `.git`, alternates, `core.worktree` above the
+  Project, each program key, and a `config.worktree`, a `.git/config` and
+  a `.git` swapped between the judgement and `git diff` through that route.
+  Measured this round (git 2.50.1, APFS, a process
   flipping every 20 ms): with `.git/config` rewritten in place to name a
   clean filter, the planted program ran on 0 of 100 reads (51 answered
   `repository-config-refused`, 47 `repository-busy`, 2 read the clean

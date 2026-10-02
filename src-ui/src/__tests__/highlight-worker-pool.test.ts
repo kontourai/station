@@ -79,6 +79,33 @@ describe('HighlightWorkerPool (station#3354)', () => {
     pool.dispose();
   });
 
+  test('a token request names its format and settles only on tokens', async () => {
+    const { factory, workers } = fakeWorkerFactory();
+    const pool = new HighlightWorkerPool(factory, 1000, 1);
+    const html = pool.highlight('a', 'ts');
+    const htmlRequest = workers[0].messages[0] as Record<string, unknown>;
+    // Chat's html request keeps its original shape: no format key at all.
+    expect(Object.keys(htmlRequest).sort()).toEqual(['code', 'id', 'lang']);
+    workers[0].respond(REQ_ID(htmlRequest), '<pre>a</pre>');
+    await expect(html).resolves.toBe('<pre>a</pre>');
+
+    const tokens = pool.tokenize('b', 'ts');
+    const tokenRequest = workers[0].messages[1] as Record<string, unknown>;
+    expect(tokenRequest.format).toBe('tokens');
+    const lines = [[{ content: 'b', color: '#F97583' }]];
+    workers[0].onmessage?.({
+      data: { id: REQ_ID(tokenRequest), tokens: lines },
+    } as MessageEvent);
+    await expect(tokens).resolves.toEqual(lines);
+
+    // An html answer to a token request is not tokens: it rejects rather
+    // than handing the pane a string to render.
+    const mismatched = pool.tokenize('c', 'ts');
+    workers[0].respond(REQ_ID(workers[0].messages[2]), '<pre>c</pre>');
+    await expect(mismatched).rejects.toThrow('highlight worker failed');
+    pool.dispose();
+  });
+
   test('the module default is a single worker', () => {
     const { factory, workers } = fakeWorkerFactory();
     const pool = new HighlightWorkerPool(factory);

@@ -904,6 +904,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2363: the coding git routes over real repositories, a real bare remote
   // and plain git as the control for every planted config.
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
+  // The File Preview's per-file Changes read over real repositories, with
+  // plain git as the control for every planted `.git` and config it refuses.
+  'src-server/routes/projects/__tests__/workspace-file-changes.routes.test.ts',
   // The coding git read routes over real repositories, with plain git as the
   // control for every planted `.git`.
   'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',

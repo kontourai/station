@@ -364,6 +364,12 @@
   --syntax-keyword: #ff7b72;
   --syntax-number: #79c0ff;
   --syntax-string: #a5d6ff;
+  /* Rungs the File Preview's grammar tokens add (entity names, markup tags,
+     variables): github-dark's own values, text-floor 4.5:1, measured by
+     theme-rung-contrast.test.ts on the page, panel and selected line. */
+  --syntax-function: #b392f0;
+  --syntax-tag: #85e89d;
+  --syntax-variable: #ffab70;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -627,6 +633,12 @@
   --syntax-keyword: #b82b3a;
   --syntax-number: #0550ae;
   --syntax-string: #0a3069;
+  /* github-light-default's entity, tag and variable hues, darkened where
+     needed to hold 4.5:1 on the selected-line tint as well as the page
+     (theme-rung-contrast.test.ts measures all three backdrops). */
+  --syntax-function: #6639ba;
+  --syntax-tag: #116329;
+  --syntax-variable: #953800;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
