@@ -16,7 +16,7 @@
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"a5b6aab76a026713b995e37745c777db0c574349ee3a05d3961f8460108c2bac","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/index.ts","digest":"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625","revision":"7576509655a6bbef0ef61d5f4645722922b8ec43"},
 
@@ -38,7 +38,7 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"d0a0701a4b0893551ceb128a306b64e59c51cf62ecc04b732839cace06209439","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

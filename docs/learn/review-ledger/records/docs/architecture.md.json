@@ -52,7 +52,7 @@
 
     {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"d0a0701a4b0893551ceb128a306b64e59c51cf62ecc04b732839cace06209439","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a87b6b13110ca66c7fa8482c4a3a0b0a5f66c9fe02a4cf7bea1203435c158c59","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/runtime/streaming/InjectableStream.ts","digest":"a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

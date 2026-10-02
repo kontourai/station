@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"ed05e33d2688331c4ae675e82ce97079043cb0d3f886de04c0d2fc6f1d0ca01b","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+  "document": {"digest":"7defba738703ff7d9ebd1a8b79d945c3bc0a2f9d2ad85af6629b453a1c801ff2","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -56,7 +56,7 @@
 
     {"path":"packages/sdk/src/api-core.ts","digest":"a48681c1b98cd1d44065eed3e94bccc1bee906ef27722d6ebf04d27130469bd4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"a5b6aab76a026713b995e37745c777db0c574349ee3a05d3961f8460108c2bac","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/index.ts","digest":"0eea547402be44e6defe10dcf58f702a9142ba7a2eb83584bfe5ec1a64fe198b","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
@@ -246,7 +246,7 @@
 
     {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"d0a0701a4b0893551ceb128a306b64e59c51cf62ecc04b732839cace06209439","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
@@ -254,7 +254,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a87b6b13110ca66c7fa8482c4a3a0b0a5f66c9fe02a4cf7bea1203435c158c59","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 

@@ -22,7 +22,7 @@
 
     {"path":"packages/contracts/src/session-lifecycle.ts","digest":"defd4c1f3fd84f5b94d47f5a13c88ce75b92e3f2f7dc9c7ff9358f300e1795cf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/execution.ts","digest":"02defbe999179593f7f871febd05b1946381b3d64f540ccf0ffdc11756975d35","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/adapters/node-pty-adapter.ts","digest":"ba0efef51274d7f08e4ca45a1903ad536664adbb2ec542631b765a5093f1f758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

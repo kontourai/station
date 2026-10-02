@@ -30,7 +30,7 @@
 
     {"path":"src-server/services/inference/fleet-inference-service.ts","digest":"c8e7e04752800198ffc520d4f351d54491c6b10c6a35ac7a029741fd2962c4cb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
+    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"11d4da6afd7348dbc98931178181f6acab85dec13fe93bc045bdd498ea0efdab","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"}
   ],
 
   "checks": [

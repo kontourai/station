@@ -26,9 +26,9 @@
 
     {"path":"packages/connect/src/core/selfHostedBrokerBrowserClient.ts","digest":"9faa38be38d8546deb92d03624067408c37f222604291f2e7120950f285bdea2","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"packages/sdk/src/client/application-session.ts","digest":"47e755613e8c9008336e854ce799b1411f44017b5250958cadd0401d16c2c501","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"packages/sdk/src/client/application-session.ts","digest":"e99f9213d5664cb43887c1785a0ed5a332d52616f143fb08b7184d93c8a43819","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
-    {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"packages/sdk/src/client/projects.ts","digest":"0fa39c8b4b175813c59bc1a4beec90a1a96f77fa9aaeb9660671a64e5f92ce3c","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/shared/src/connection-proof.ts","digest":"921ea3f05e5e87aa308552c46b7dc567a340ca6c02989b710306ecfc6dd3c6b4","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -44,9 +44,9 @@
 
     {"path":"src-server/runtime/bootstrap/account-bound-device-gate.ts","digest":"d646b2bcba9f2f84c4c64246612e4a8899a7e11258c9834d53b1d3f52e502561","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"d0a0701a4b0893551ceb128a306b64e59c51cf62ecc04b732839cace06209439","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"a87b6b13110ca66c7fa8482c4a3a0b0a5f66c9fe02a4cf7bea1203435c158c59","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -68,7 +68,7 @@
 
     {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"7c655627f32e3048e82228592a1b81542e86acd44167e8d4b625cd64ebc10af2","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"11d4da6afd7348dbc98931178181f6acab85dec13fe93bc045bdd498ea0efdab","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/services/ssh/remote-session-reader.ts","digest":"60ed7d86fd255199cbbc2af5e309bc3b2959633f253ec3eaf980e1e8bc9f5c09","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"075102e16f725b97064957a677526602ad26d4ff6a50b01bcef9482c85ba1503","revision":"f9d07cd291c9a91ea04800a84167ac4a43a8ca69"},
 
     {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

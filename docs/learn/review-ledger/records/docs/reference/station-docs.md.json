@@ -36,7 +36,7 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"e5c709f79d36eab6b51b894f50ded580fc847fc2a8d62b37159dcecc7b332b0a","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

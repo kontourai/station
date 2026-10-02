@@ -66,7 +66,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","digest":"311cb357976129526312eddafdaea13d78f1bdb9f96b28adfdf0187388bc1769","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"9e1cadb09735e00cdbdb11ca1d8c32c7eecab8aa675a62f8f681106015ef18a0","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
