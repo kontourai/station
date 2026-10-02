@@ -151,6 +151,7 @@ describe.runIf(process.platform !== 'win32')(
   () => {
     const makeIceTempDir = trackTempDirs();
     const makeWithdrawalTempDir = trackTempDirs();
+    const makeScopeObservationTempDir = trackTempDirs();
     test('ICE HTTP routes require exact native PoP or connector authority and refuse retired owners', async () => {
       const root = makeIceTempDir('station-broker-ice-routes-');
       const now = 1_000;
@@ -3034,7 +3035,7 @@ describe.runIf(process.platform !== 'win32')(
       }
     });
     test('superseded scope observation authenticates the unconsumed invitation without changing routing authority', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-broker-scope-observe-'));
+      const root = makeScopeObservationTempDir('station-broker-scope-observe-');
       const path = join(root, 'broker.sqlite');
       const now = 100_000;
       let service = new SelfHostedBrokerService(path, () => now);
@@ -3362,7 +3363,6 @@ describe.runIf(process.platform !== 'win32')(
       } finally {
         db.close();
         service.close();
-        rmSync(root, { recursive: true, force: true });
       }
     });
     test('native grant renewal is proof-bound, idempotent across expiry and generation-safe', async () => {
