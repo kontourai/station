@@ -9,7 +9,7 @@
 
   "limits": "Selected documented claims only, not all broker protocols, transport implementation branches or provider/device behaviors. Existing fixture tests are not physical/native storage, cookie lifetime, reachable network, endpoint ownership or live revocation proof. Revocation rejects new authenticated admission; existing streams retain their own currentness boundaries. No new live authority/security probe or external write.",
 
-  "document": {"digest":"4a1c148347a0e32b16f87d176255ce36c9a05abf2a59208ad260477123388821","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
+  "document": {"digest":"5177a7569eef2e2401d24bb0be4ea4dff99287719b8990176cda0d1887b9e982","revision":"45349f9ef03de948da85f70c2dde2477832fac1a"},
 
   "sources": [
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
@@ -54,9 +54,9 @@
 
     {"path":"packages/connect/src/index.ts","digest":"cc849d431465dff7d0a98b8a06ef4a6a5efe65e645c31c96a2ce5e0deee14e80","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/connect/src/react/ConnectionManagerModal.tsx","digest":"f2751d812d1740911ae56233002d8697f6eeccc82c3e26d57e8d3a3fda1aa987","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/ConnectionManagerModal.tsx","digest":"1b517a7aa90ee9370552911c00f8dd1d2cddd53f5179fb0a4593222c238e9088","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"},
 
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058","revision":"9dbe4f65b46fcab127f36e9d878a2c535f381fec"},
 
     {"path":"packages/connect/src/react/ConnectionsContext.tsx","digest":"43c0fcf9366c3f522547ae38456d82fd9b4f8c366f520b1c3c6079a3d737857b","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -104,7 +104,11 @@
 
     {"path":"src-ui/src/platform/native/pairingTransport.ts","digest":"ff3b1d70df749c1ad0db5975df4f138f5ae897630a80d482c2828a623d405613","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"02d348f5a7d791124f2e352d51cef1eae20655bf57e57932a36ecc4be133c5e4","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"},
+
+    {"path":"packages/connect/src/react/connection-manager-modal-utils.ts","digest":"4ffe29b184ca50123b2b7d1b8c0742b8bde3d7a4b6b0510cda1897cf4eddefb6","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"}
   ],
 
   "checks": [
