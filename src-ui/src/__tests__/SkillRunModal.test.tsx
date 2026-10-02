@@ -49,6 +49,43 @@ describe('SkillRunModal', () => {
     ).toBe(false);
   });
 
+  test.each([
+    { defaultValue: '', required: true },
+    { defaultValue: '   ', required: true },
+    { defaultValue: 'staging', required: false },
+  ])(
+    'explains and applies the usable default $defaultValue',
+    ({ defaultValue, required }) => {
+      const onRun = vi.fn();
+      renderModal({
+        skill: { name: 'release-check', body: 'Ship to {{env}}' },
+        variables: [{ name: 'env', default: defaultValue }],
+        onRun,
+      });
+
+      expect(
+        screen.getByText(
+          required ? 'Required.' : 'Optional; leave blank to use the default.',
+        ),
+      ).toBeTruthy();
+      const field = screen.getByLabelText('env') as HTMLInputElement;
+      expect(field.placeholder).toBe(required ? 'env' : 'default: staging');
+      const start = screen.getByRole('button', {
+        name: 'Start chat',
+      }) as HTMLButtonElement;
+      expect(start.disabled).toBe(required);
+      fireEvent.click(start);
+      if (required) {
+        expect(onRun).not.toHaveBeenCalled();
+        fireEvent.change(field, { target: { value: 'production' } });
+        fireEvent.click(start);
+        expect(onRun).toHaveBeenCalledWith('Ship to production', 'station');
+      } else {
+        expect(onRun).toHaveBeenCalledWith('Ship to staging', 'station');
+      }
+    },
+  );
+
   test('withholds chat creation when no agent is available', () => {
     const onRun = vi.fn();
     renderModal({ skill, variables: [], agents: [], onRun });

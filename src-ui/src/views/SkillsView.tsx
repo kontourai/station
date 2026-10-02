@@ -423,11 +423,7 @@ export function SkillsView({
   }
 
   function handleSelectSkill(id: string) {
-    guard(() => {
-      select(id);
-      setIsCreating(false);
-      setDirty(false);
-    });
+    select(id);
   }
 
   function handleDeselectSkill() {
@@ -779,8 +775,8 @@ export function SkillsView({
                                   <span>{variable.description}</span>
                                 )}
                                 <span>
-                                  {variable.default !== undefined
-                                    ? `Default: ${variable.default || '(empty)'}`
+                                  {variable.default?.trim()
+                                    ? `Default: ${variable.default}`
                                     : 'Required before starting'}
                                 </span>
                               </dd>

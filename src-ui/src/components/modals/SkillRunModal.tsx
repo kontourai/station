@@ -106,7 +106,7 @@ export function SkillRunModal({
                   id={`skill-variable-hint-${v.name}`}
                 >
                   {v.description && <span>{v.description} </span>}
-                  {v.default !== undefined
+                  {v.default?.trim()
                     ? 'Optional; leave blank to use the default.'
                     : 'Required.'}
                 </p>
@@ -118,7 +118,7 @@ export function SkillRunModal({
                   // clearing a field falls back to its
                   // declared default, so the preview and this hint agree.
                   placeholder={
-                    v.default !== undefined ? `default: ${v.default}` : v.name
+                    v.default?.trim() ? `default: ${v.default}` : v.name
                   }
                   value={values[v.name] || ''}
                   onChange={(e) =>

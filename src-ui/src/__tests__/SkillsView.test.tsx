@@ -374,6 +374,39 @@ describe('SkillsView', () => {
     );
   });
 
+  test.each([
+    { defaultValue: '', required: true },
+    { defaultValue: '   ', required: true },
+    { defaultValue: 'staging', required: false },
+  ])(
+    'overview and start agree about the default $defaultValue',
+    ({ defaultValue, required }) => {
+      selectionState.selectedId = 'release-check';
+      localSkillsMock = [{ name: 'release-check', writable: true }];
+      editableSkillMock = {
+        name: 'release-check',
+        body: 'Ship to {{env}}',
+        variables: [{ name: 'env', default: defaultValue }],
+      };
+      render(<SkillsView />);
+      expect(
+        screen.getByText(
+          required ? 'Required before starting' : 'Default: staging',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Use in a new chat' }),
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Start chat',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(required);
+    },
+  );
+
   test('offers supported finding and file import from the library welcome', () => {
     render(<SkillsView />);
     fireEvent.click(
