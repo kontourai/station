@@ -20,7 +20,27 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
-    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"40912fb577fd1117d7008d190466c35030062c33d645eae7c33161524e770dae","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+
+    {"path":"src-ui/src/components/chat/QueuedMessages.tsx","digest":"1d0938dd073df3ecd07aff6bd97128182a629530c425af7f8e622eede164d7bd","revision":"8f54568ace0014007eee673a58f3d26d3588e282"},
+
+    {"path":"src-ui/src/components/chat/ComposerIconAction.tsx","digest":"ec75533d5cc10aaed540da2063fb547b9b5a9118dd53d33e642e0297f51d41cb","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+
+    {"path":"src-ui/src/components/chat/PortableDraftsMenu.tsx","digest":"e0eaa3d7de15e50fb2ad66dae8f0692f23616d6e2a1b074ad72f3d797e5355be","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+
+    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"49032d0e229840abde143440d3c444f5164b241243cd081c53b5ab1f93538d3a","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+
+    {"path":"packages/contracts/src/device-settings.ts","digest":"2b9e93111cf57f06a8846948e75767b36325bdf35cb59324b4be3f5dbd4627e4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+
+    {"path":"src-ui/src/components/status/chatStatus.ts","digest":"934dcb7ea0f4bbd9b8449fd2cd0277978f84cb37742fceee75cd96973921ebc4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"747b162c8314bb84b5cd3541ece7a270a603b484a8a4925406b244956d668f23","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+
+    {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+
+    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"0b328f9cf537be6395c1f5eec936924ec806194c673e71c15fcbcfa5b4b87973","revision":"8f54568ace0014007eee673a58f3d26d3588e282"}
   ],
 
   "checks": [
