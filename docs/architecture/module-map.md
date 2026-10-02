@@ -307,7 +307,7 @@ commands/URLs/headers.
 
 **Intent and Interface.** `createDestinationRegistry(definitions)` composes one
 immutable destination inventory. Callers read registered destinations, advertised
-destinations for an explicit flag set, ordered sidebar, Settings-navigation or
+destinations for an explicit flag set, ordered sidebar, Customize-navigation or
 command-palette projections, exact root routes, and the destination owning a
 `NavigationView`. Labels and badges resolve when projected, after locale, branding, and
 live attention facts exist. The built-in application composition is
@@ -315,9 +315,9 @@ live attention facts exist. The built-in application composition is
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
-order slots. Settings rows have unique order within each group and cannot also be
+order slots. Customize rows have unique order within each group and cannot also be
 sidebar entries or hidden from navigation. Composition and filtering do not invoke
-labels or badges; Settings projection resolves its optional label/route overrides. A
+labels or badges; Customize projection resolves its optional label/route overrides. A
 flag-gated surface stays registered and routable while `getAdvertised` hides it.
 Developer advertisement uses the device-scoped `device:developer-tools` flag; other
 flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
@@ -328,7 +328,7 @@ palette after static destination projection.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in
 descriptors. `routing.ts` consumes exact routes and semantic management ownership;
-`ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their
+`ProjectSidebarNav`, `CustomizeDialog`, `CommandPalette`, and notification header badge consume their
 ordered projections. Icons are a presentation Adapter keyed by the registry's finite
 icon vocabulary. Future trusted plugin surface contributions must enter at registry
 composition and pass the same validation; there is no mutable global `register()`

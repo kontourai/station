@@ -79,10 +79,14 @@ describe('ProjectSidebarNav', () => {
 
     expect(
       screen.getAllByRole('button').map((button) => button.textContent?.trim()),
-    ).toEqual(['Activity']);
+    ).toEqual(['Activity', 'Schedule', 'Customize']);
     // The two group toggles are gone as controls, not merely collapsed: a
     // collapsed group is still a button that reads "Customize".
-    expect(screen.queryByRole('button', { name: 'Customize' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Customize' })
+        .getAttribute('aria-haspopup'),
+    ).toBe('dialog');
     expect(screen.queryByRole('button', { name: 'System' })).toBeNull();
     expect(document.querySelector('[aria-expanded]')).toBeNull();
   });
@@ -106,7 +110,7 @@ describe('ProjectSidebarNav', () => {
     expect(screen.queryByRole('button', { name: 'Developer' })).toBeNull();
     expect(
       screen.getAllByRole('button').map((button) => button.textContent?.trim()),
-    ).toEqual(['Activity']);
+    ).toEqual(['Activity', 'Schedule', 'Customize']);
   });
 
   test('marks a row whose route is still loading', () => {

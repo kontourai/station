@@ -173,15 +173,24 @@ mid-conversation and links to the section for the rest; every one of these
 surfaces writes the same device-settings key through the same store, so none of
 them holds a copy of another's state.
 
-The Settings section navigation groups those sections under four names —
-Set up, This Station, Control, This device — plus Knowledge, which keeps a group of its
-own for now. The names are presentation: no section id moved with them, and
-what DECIDES a setting is still the row's own scope, stated on the row. Set up
-holds no sections at all; its rows are links to other surfaces (Agents, Skills,
-Engines & Models, Plugins, Schedule, and Developer under This Station when
-device developer tools are on), which replaced the separate "Manage" grid that
-used to sit below the nav. Registry has no row of its own: it is reached from
-Plugins, which carries the step to the catalogue.
+The Settings rail now contains nine topics: General, Appearance, Chat,
+Notifications & voice, Keyboard shortcuts, Devices, Privacy & sharing,
+My knowledge, and Advanced. General is the default. The topic inventory in
+[`settings-pages.ts`](../../src-ui/src/views/settings/settings-pages.ts) groups
+existing sections without changing their row identities or persistence scopes.
+Existing leaf-section URLs still work, and `?view=overview` retains the full
+inventory. Search spans all topics; clearing it returns to the selected topic.
+The project selector appears only alongside model/workspace defaults and
+permissions. Device settings still save immediately; Station and Project drafts
+keep their existing Save and discard guard.
+
+**Customize** is a separate button in the main panel. Its chooser opens Agents,
+Skills, Engines & Models, and Plugins at their existing routes. Developer joins
+that chooser when enabled on this device. Schedule has its own panel entry.
+The Settings rail and phone picker stay within Settings; the panel's Settings
+gear remains available from management screens. Long permission and checkpoint
+explanations keep their full text under Details, with a short consequence visible
+on the row. Registry remains reachable from Plugins and the command palette.
 
 ### S5. Connections — integration-shaped config stays in the hub
 Models, engines, stations/environments (incl. the still-CLI-only peer credentials,

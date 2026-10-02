@@ -1,3 +1,4 @@
+import { lazy, Suspense, useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type DestinationDefinition,
@@ -9,20 +10,12 @@ import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { destinationIcon } from './nav-items';
 
-/**
- * The panel's destination rows. #2059 (design record D3): the left panel
- * lists PLACES only, so this is a flat list with no group headers — the
- * `Customize` and `System` disclosure groups went with the eleven
- * configuration destinations they held, which are now reached through the
- * footer's gear (Settings' Manage group) and the command palette. The
- * registry's `sidebar` field is the seam; routes, pages and palette entries
- * did not move.
- *
- * What survives here is the row itself: `aria-current` for the place that is
- * the current page (a routed destination, or a region surface occupying
- * `main` at `/`), and the pending-route mark. Activity is the only row today;
- * Boards join it in slice 4 (#2061).
- */
+const CustomizeDialog = lazy(() =>
+  import('./CustomizeDialog').then((module) => ({
+    default: module.CustomizeDialog,
+  })),
+);
+
 interface ProjectSidebarNavProps {
   collapsed: boolean;
   isMobile: boolean;
@@ -40,6 +33,7 @@ export function ProjectSidebarNav({
   activePath,
   onAfterNavigate,
 }: ProjectSidebarNavProps) {
+  const [customizeOpen, setCustomizeOpen] = useState(false);
   const regionModel = useRegionModelOptional();
   const showSurfacePage = useShowSurfacePage();
   const activeDestination = APP_DESTINATION_REGISTRY.getDestinationForView(
@@ -117,6 +111,31 @@ export function ProjectSidebarNav({
   };
 
   return (
-    <div className="sidebar__nav">{sidebarDestinations.map(renderRow)}</div>
+    <div className="sidebar__nav">
+      {sidebarDestinations.map(renderRow)}
+      <button
+        type="button"
+        className="sidebar__nav-btn"
+        aria-label="Customize"
+        title={collapsed ? 'Customize' : undefined}
+        aria-haspopup="dialog"
+        onClick={() => setCustomizeOpen(true)}
+      >
+        {destinationIcon('plugins')}
+        <span className="sidebar__nav-label">Customize</span>
+      </button>
+      {customizeOpen && (
+        <Suspense fallback={null}>
+          <CustomizeDialog
+            onClose={() => setCustomizeOpen(false)}
+            onNavigate={(path) => {
+              setCustomizeOpen(false);
+              navigate(path);
+              if (isMobile) onAfterNavigate?.();
+            }}
+          />
+        </Suspense>
+      )}
+    </div>
   );
 }

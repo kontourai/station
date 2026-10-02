@@ -15,10 +15,6 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-  APP_DESTINATION_REGISTRY,
-  DEVELOPER_TOOLS_FLAG,
-} from '../app-shell/destination-registry';
-import {
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
@@ -425,7 +421,7 @@ describe('settings catalog completeness', () => {
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
-    window.history.replaceState({}, '', '/settings');
+    window.history.replaceState({}, '', '/settings?view=overview');
   });
 
   async function renderSettings() {
@@ -594,12 +590,8 @@ describe('settings catalog completeness', () => {
    */
   test('the page body mounts its sections in the order the nav lists them', async () => {
     const { container } = await renderSettings();
-    const { settingsSectionNavItems } = await import('../views/SettingsView');
-
     const operator = !pluginVisibilityRefused;
-    const expected = settingsSectionNavItems((id) => id, [])
-      .map((item) => item.key)
-      .filter((key) => key !== 'overview')
+    const expected = SETTINGS_SECTIONS.map((section) => section.id)
       .filter((key) => operator || !OPERATOR_ONLY_SECTION_IDS.has(key))
       .map((key) => `section-${key}`);
     // The expectation itself must not be empty, or the comparison below is
@@ -652,12 +644,9 @@ describe('settings catalog completeness', () => {
    * contents it is a claim about nothing.
    */
   describe('scope-group captions', () => {
-    const CONTROL_CAPTION =
-      'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.';
-    const STATION_CAPTION =
-      'Saved to this Station — every client sees the same values.';
-    const DEVICE_CAPTION =
-      'Saved to this device only — these choices won’t follow you to another device.';
+    const CONTROL_CAPTION = 'Saved to this Station.';
+    const STATION_CAPTION = 'Saved to this Station.';
+    const DEVICE_CAPTION = 'Saved to this device.';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -707,7 +696,11 @@ describe('settings catalog completeness', () => {
       window.history.replaceState({}, '', '/settings?view=plugin-visibility');
       const { container } = await renderSettings();
 
-      await screen.findByLabelText('Show settings for:');
+      await waitFor(() =>
+        expect(
+          container.querySelector('#section-plugin-visibility'),
+        ).toBeNull(),
+      );
       expect(captions(container)).toEqual([]);
       expect(container.querySelector('#section-plugin-visibility')).toBeNull();
     });
@@ -1182,12 +1175,14 @@ describe('settings catalog completeness', () => {
     );
   });
 
-  test('an unknown ?view= falls back to the overview and strips itself', async () => {
+  test('an unknown ?view= falls back to General and strips itself', async () => {
     window.history.replaceState({}, '', '/settings?view=not-a-section');
     const rendered = await renderedCatalogIds();
     expectExactCatalog(
       rendered,
-      visibleCatalogIds({ isMobile: false, isDesktop, isOperator: true }),
+      SETTINGS_CATALOG.filter((entry) =>
+        ['permissions', 'agent-runs'].includes(entry.section),
+      ).map((entry) => entry.id),
     );
     expect(window.location.search).toBe('');
   });
@@ -1442,7 +1437,7 @@ describe('settings catalog completeness', () => {
     await waitFor(() =>
       expect(container.querySelector('#section-agent-runs')).toBeTruthy(),
     );
-    expect(container.querySelector('#section-appearance')).toBeTruthy();
+    expect(container.querySelector('#section-appearance')).toBeNull();
     await waitFor(() => expect(window.location.search).toBe(''));
     // No announcement: nothing failed from the reader's point of view, and
     // that silence is exactly what makes this a soft break rather than an
@@ -1452,50 +1447,59 @@ describe('settings catalog completeness', () => {
     ).toBeNull();
   });
 
-  // #2144 slice 4. Turning developer tools on changes nothing where the switch
-  // is: it adds a row to the navigation strip at the top of the page, under a
-  // different group heading, in a strip that scrolls sideways. So the row has
-  // to say where to look — and the sentence has to be checked against the
-  // placement, or it goes on describing the old one after a move.
-  //
-  // The heading half is DERIVED: the projection below is built by the
-  // production `getSettingsNav` and `settingsSectionNavItems` against the real
-  // registry, then walked back to the group label the row would sit under.
-  // The flag set is synthetic because this render has developer tools OFF —
-  // the page as rendered here has no Developer row at all, which is the state
-  // a reader is in when they read this description.
-  //
-  // That the row is FIRST within the group is not asserted here; it is pinned
-  // in `SettingsSectionNav.test.tsx` ('opens each group at its first item').
-  test('the developer-tools row names the row it reveals and the group it opens', async () => {
+  test('the developer-tools row points to Customize', async () => {
     window.history.replaceState({}, '', '/settings?view=developer-tools');
-    const { settingsSectionNavItems } = await import('../views/SettingsView');
-    const { container, unmount } = await renderSettings();
+    const { container } = await renderSettings();
+    expect(
+      container.querySelector(
+        '[data-catalog-id="enable-developer-tools"] .page-row__description',
+      )?.textContent,
+    ).toContain('Customize');
+  });
 
-    const withDeveloper = APP_DESTINATION_REGISTRY.getSettingsNav(
-      new Set([DEVELOPER_TOOLS_FLAG]),
+  test('opens General by default and switches topics without leaving Settings', async () => {
+    window.history.replaceState({}, '', '/settings');
+    const { container } = await renderSettings();
+    expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+    expect(container.querySelector('#section-permissions')).toBeTruthy();
+    expect(container.querySelector('#section-system')).toBeNull();
+    expect(
+      screen
+        .getByRole('link', { name: 'General' })
+        .getAttribute('aria-current'),
+    ).toBe('location');
+    fireEvent.click(screen.getByRole('link', { name: 'Appearance' }));
+    await waitFor(() =>
+      expect(container.querySelector('#section-appearance')).toBeTruthy(),
     );
-    const developer = withDeveloper.find((entry) => entry.id === 'developer');
-    expect(developer).toBeTruthy();
-    const navItems = settingsSectionNavItems(
-      (section) => `/settings?view=${section}`,
-      withDeveloper,
-    );
-    const index = navItems.findIndex((item) => item.href === developer!.route);
-    expect(index).toBeGreaterThan(-1);
-    let groupLabel: string | undefined;
-    for (let cursor = index; cursor >= 0 && !groupLabel; cursor -= 1) {
-      groupLabel = navItems[cursor]!.groupLabel;
-    }
-    expect(groupLabel).toBeTruthy();
+    expect(window.location.pathname).toBe('/settings');
+    expect(container.querySelector('#section-agent-runs')).toBeNull();
+    expect(screen.queryByLabelText('Defaults for')).toBeNull();
+  });
 
-    const description = container.querySelector(
-      '[data-catalog-id="enable-developer-tools"] .page-row__description',
+  test('searches across topics and restores the selected topic when cleared', async () => {
+    window.history.replaceState({}, '', '/settings?view=appearance');
+    const { container } = await renderSettings();
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: 'Filter settings' }),
+      { target: { value: 'defaultMaxTurns' } },
     );
-    expect(description).toBeTruthy();
-    expect(description!.textContent).toContain(developer!.label);
-    expect(description!.textContent).toContain(groupLabel!);
-    unmount();
+    await waitFor(() =>
+      expect(container.querySelector('#section-agent-runs')).toBeTruthy(),
+    );
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: 'Filter settings' }),
+      { target: { value: 'nothing-matches-this-setting' } },
+    );
+    expect(screen.getByRole('status').textContent).toContain(
+      'No settings match',
+    );
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: 'Filter settings' }),
+      { target: { value: '' } },
+    );
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
+    expect(container.querySelector('#section-agent-runs')).toBeNull();
   });
 
   test('removes an invalid highlight without disturbing route and shell query state', async () => {
@@ -1536,8 +1540,8 @@ describe('settings catalog completeness', () => {
     await waitFor(() => expect(window.location.search).toBe(''));
     // Overview: every section on screen, rather than the reader stranded on
     // the one the dead `view` named.
-    expect(container.querySelector('#section-appearance')).toBeTruthy();
-    expect(container.querySelector('#section-chat')).toBeTruthy();
+    expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+    expect(container.querySelector('#section-permissions')).toBeTruthy();
   });
 
   // #2144 slice 4 renamed these, and nothing asserted them — so the rename was
@@ -1548,7 +1552,7 @@ describe('settings catalog completeness', () => {
   // name something other than a storage location: `Control` is an authority
   // relationship and `Knowledge` is a topic.
   test('each scope group is a landmark named for what it holds', async () => {
-    window.history.replaceState({}, '', '/settings');
+    window.history.replaceState({}, '', '/settings?view=overview');
     const { container } = await renderSettings();
 
     await waitFor(() =>
@@ -2168,7 +2172,7 @@ describe('settings catalog completeness', () => {
     const WORKSPACE_ROW = 'New chat workspace';
 
     function selectAtlas() {
-      fireEvent.change(screen.getByLabelText('Show settings for:'), {
+      fireEvent.change(screen.getByLabelText('Defaults for'), {
         target: { value: 'atlas' },
       });
     }
@@ -2189,8 +2193,7 @@ describe('settings catalog completeness', () => {
       // guard's explicit callback rather than the navigation store.
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
       expect(
-        (screen.getByLabelText('Show settings for:') as HTMLSelectElement)
-          .value,
+        (screen.getByLabelText('Defaults for') as HTMLSelectElement).value,
       ).toBe('');
 
       // The page's save pill also offers "Discard"; this one is the modal's.
@@ -2201,8 +2204,7 @@ describe('settings catalog completeness', () => {
       );
       await waitFor(() =>
         expect(
-          (screen.getByLabelText('Show settings for:') as HTMLSelectElement)
-            .value,
+          (screen.getByLabelText('Defaults for') as HTMLSelectElement).value,
         ).toBe('atlas'),
       );
       expect((registry as HTMLInputElement).value).toBe('https://one.test');

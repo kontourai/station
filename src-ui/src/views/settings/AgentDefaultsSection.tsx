@@ -64,12 +64,6 @@ export function AgentDefaultsSection({
 
   return (
     <SettingsSection icon="▾" title="Agent runs" id="section-agent-runs">
-      <p className="settings__field-hint agent-defaults__intro">
-        What an agent run starts with when nothing closer to it says otherwise.
-        Most agents and connections name their own — nothing here is injected
-        into every conversation unconditionally.
-      </p>
-
       <div className="agent-defaults__panel">
         <div
           className="settings__field"
@@ -101,8 +95,7 @@ export function AgentDefaultsSection({
               : "Default model for new chats and agents that don't specify one."}
           </span>
           <span className="settings__field-hint">
-            Projects and agents can override this — a project's own Settings
-            holds its override; agents override theirs in the agent editor.{' '}
+            Projects and agents can choose their own model.{' '}
             <button
               type="button"
               className="button button--link"
@@ -135,11 +128,10 @@ export function AgentDefaultsSection({
               <span className="settings__field-error">{regionError}</span>
             )}
             <span className="settings__field-hint">
-              Used when a configured connection requires regional routing, such
-              as built-in cloud services.
+              Region for connections that use regional routing.
             </span>
             <span className="settings__field-hint">
-              Agents can override this per-agent in the agent editor.{' '}
+              Agents can choose their own region.{' '}
               <button
                 type="button"
                 className="button button--link"
@@ -181,10 +173,9 @@ export function AgentDefaultsSection({
             </span>
           )}
           <span className="settings__field-hint">
-            Prepended ahead of a Station agent's own instructions, and used as
-            the whole instruction set for chats and agents that define none of
-            their own. Supports template variables like {'{{date}}'},{' '}
-            {'{{time}}'}, or custom variables below.
+            Added before Station agents’ instructions. Used for chats with no
+            instructions of their own. Supports {'{{date}}'}, {'{{time}}'}, or
+            custom variables below.
           </span>
         </div>
 

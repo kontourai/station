@@ -157,18 +157,19 @@ PROJECTS                                            +
   survive: the stamp belongs to a problem report, not to navigation chrome,
   and the count restated the panel's own Open chats section.)
 
-Everything below is removed from the panel and reached through the gear and
-the command palette: Agents, Connections, Guidance, Registry, Plugins,
-Schedule, Developer. The `Customize` and `System` group headers go with them.
+The original slice moved Agents, Connections, Guidance, Registry, Plugins,
+Schedule, and Developer behind the Settings gear and command palette, removing
+the old Customize/System disclosure groups. The October settings simplification
+supersedes that entry-point placement: a separate **Customize** button opens a
+chooser for Agents, Skills, Engines & Models, and Plugins, with Developer gated
+by this device's flag. Schedule is a panel destination. Settings contains only
+settings-topic navigation; its gear remains available from management screens.
 
-The destination registry is the seam. With both disclosure groups gone there
-are no sections left to order, so `sidebar.section` is retired: a panel row is
-`sidebar: { order }` and a configuration destination is
-`management: { order }`, read by a new `getManagement` projection that
-Settings' Manage group renders. (#2144 slice 4 retired both: those
-destinations are rows in Settings' own section navigation now, declared as
-`settingsNav: { group, order }` and read by `getSettingsNav`.) A destination may be one or the other and the
-composer refuses a definition claiming both. Routes and pages do not change.
+The destination registry owns `sidebar: { order }` for panel destinations and
+`customizeNav: { group, order }`, read by `getCustomizeNav`, for chooser entries.
+Composition refuses a destination claiming both. Routes and pages keep their
+existing identities. The chooser uses canonical guarded navigation, with native
+modified-click behavior for its links.
 One palette entry is ADDED rather than moved: Review's panel row was its only
 advertised entry point, and D4 below requires it stay palette-reachable until
 `/review-queue` retires.
