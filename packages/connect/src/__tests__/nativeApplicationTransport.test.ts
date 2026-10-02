@@ -388,6 +388,7 @@ describe('native application transport client', () => {
       expect(f.signaling.open).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(10_000);
       const completed = await result;
+      if ('error' in completed) throw completed.error;
       expect(completed).toHaveProperty('opened');
       expect(f.signaling.open).toHaveBeenCalledExactlyOnceWith(
         PEER_HANDLE,
