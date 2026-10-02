@@ -9,32 +9,32 @@
 
   "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
 
-  "document": {"digest":"eaf8811c2feade2dfa7377efde1e1395d6fde7361b8ed14c5e504cfc050b8957","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
+  "document": {"digest":"490d044f9376c5e9604c43516260d5508a44e4a7670ffe01b60492c916d1a9c4","revision":"1d49e432472043f4c3ab7d870104fb3baaf4ad05"},
 
   "sources": [
     {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
-    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"d118c809a928964381bd99c8fb18f9f0774497f59504b9639af3ae37874a34b2","revision":"8e353a6a1600fadd5df7f82941cfc289a66a686a"},
+    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"b93bb0e09fc5af0c8aae5fe2a23d075030f9df264be30077f1150f0cfb54a213","revision":"7d1527f7d45762dfaefe64449512d102c71a6c2c"},
 
     {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/shared/src/runtime-event-projection.ts","digest":"30844f3ebb0ddd1b51089aa16c1edb39f2aa668d1088bf3e3e5a00e7cc6bd2e9","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
-    {"path":"packages/shared/src/tool-request-preview.ts","digest":"b955ea32cee2ede2db61d468f372c687d4adf22412fe9bc03f761f4a8c23374a","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    {"path":"packages/shared/src/tool-request-preview.ts","digest":"b97e5705a45c2299f4661cc70ea845473b37765cd5405d0028a4d9d29c25685f","revision":"d28597b948558f03decf72957db69fa4510b5d93"},
 
     {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"1da86c2fc1e80cd7133afa6a7ad390959657fc597305580d3f7114d39ee69f98","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"f1ebbf1bbbbf8c5119ed7b54becb09a888825ea052551df72e75a55fde370c07","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
 
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"a194c76e9d176303a57fb46953fb0c32b874994a9073888eba4a585de57d6b25","revision":"593ba7779013fc65c6136152fcfb948e1ba91ce9"},
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"7f4d51f441897955e89406fa876e73af3b894bbe1c31c2699a16bac59890e963","revision":"835201d7c73568b7889f267cc5634fa16f73e575"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"f151fded7ef84715d5800e1e825e97fd89ba1308b2cc7c30da94b9ed1a08c222","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
