@@ -46,6 +46,7 @@ let handleRequestOpenedEvent: typeof import('../approvalHandlers').handleRequest
 let handleTurnAbortedEvent: typeof import('../turnHandlers').handleTurnAbortedEvent;
 let handleTurnCompletedEvent: typeof import('../turnHandlers').handleTurnCompletedEvent;
 let applyOrchestrationSnapshot: typeof import('../snapshotHandlers').applyOrchestrationSnapshot;
+let resetTurnAttentionNotifications: typeof import('../turnAttentionNotifications').resetTurnAttentionNotifications;
 /**
  * The server's own open-request fold (`open-requests.ts`), which feeds every
  * snapshot's `openRequestIds` — loaded at runtime from the server tree, as
@@ -181,6 +182,9 @@ beforeAll(async () => {
     '../turnHandlers'
   ));
   ({ applyOrchestrationSnapshot } = await import('../snapshotHandlers'));
+  ({ resetTurnAttentionNotifications } = await import(
+    '../turnAttentionNotifications'
+  ));
   ({ collectOpenRequests } = await vi.importActual<any>(
     '../../../../../src-server/services/orchestration/open-requests.js',
   ));
@@ -198,6 +202,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await vi.dynamicImportSettled();
+  resetTurnAttentionNotifications();
   activeChatsStore.flushPendingSave();
 });
 
