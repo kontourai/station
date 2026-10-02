@@ -251,6 +251,7 @@ export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
  * independently reported identity are all server- or adapter-derived facts.
  */
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
+  'usageAccountKey',
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
