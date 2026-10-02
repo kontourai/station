@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -20,7 +20,7 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
 
     {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -50,7 +50,7 @@
 
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"d974d8f960db5ff24108bfbe3e07f02b74979563216d7f09a8b019f3282211f5","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
     {"path":"packages/shared/src/process-identity.mjs","digest":"c51afd74ac7c56c24ad8f5cdc13c88e63f1966478b8829d30ea781d8c559127b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
