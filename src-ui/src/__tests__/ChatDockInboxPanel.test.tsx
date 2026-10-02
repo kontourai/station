@@ -80,7 +80,7 @@ describe('ChatDockInboxPanel', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders activity groups in order with lifecycle status chips', () => {
+  it('renders activity groups in order with their status words', () => {
     renderPanel();
 
     const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
@@ -103,11 +103,11 @@ describe('ChatDockInboxPanel', () => {
     expect(
       within(screen.getByRole('region', { name: 'Running' })).getByText(
         'Running',
-        { selector: '.lifecycle-chip' },
+        { selector: '.inbox-row__word' },
       ),
     ).not.toBeNull();
     expect(screen.queryByText('Active')).toBeNull();
-    expect(screen.getByText('Attention needed')).not.toBeNull();
+    expect(screen.getByText('Waiting on you')).not.toBeNull();
     expect(screen.getByText('Done')).not.toBeNull();
   });
 
@@ -803,7 +803,11 @@ describe('ChatDockInboxPanel', () => {
       screen.getByRole('button', { name: 'epoch title, epoch project' }),
     ).not.toBeNull();
     expect(screen.queryByText(/\d+d$/)).toBeNull();
-    expect(screen.getByText('now')).not.toBeNull();
+    // No timestamp means no time and no "last activity": the row says Idle
+    // and nothing it cannot back.
+    const row = screen.getByTestId('inbox-row');
+    expect(row.querySelector('.inbox-row__time')).toBeNull();
+    expect(screen.getByTestId('inbox-row-status').textContent).toBe('Idle');
   });
 
   it('persists collapsible section state', () => {

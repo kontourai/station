@@ -101,6 +101,7 @@ export function HomeSurface({
       <HomeRecentWorkSection
         lanes={lanes}
         workItems={model.workItems}
+        workFacts={model.workFacts}
         workLoading={model.workLoading}
         workDegraded={model.workDegraded}
         workError={model.workError}
