@@ -253,7 +253,7 @@ export function HeaderActions({
   const connIdentity = isIdle ? undefined : activeConnection?.name;
   // This is the user's saved connection label, not verified server identity.
   const connDisplayLabel = connIdentity
-    ? `Station · ${connIdentity}`
+    ? connIdentity
     : activeConnection?.injectedSource === 'managed-loopback'
       ? 'Local Station'
       : 'Station';

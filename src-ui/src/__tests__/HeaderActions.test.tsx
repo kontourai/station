@@ -194,15 +194,15 @@ describe('HeaderActions — self-describing connection surface', () => {
     expect(button.querySelector('.app-toolbar__conn-state')).toBeNull();
     expect(button.querySelector('.app-toolbar__conn-name')).toBeNull();
     expect(button.querySelector('.app-toolbar__conn-label')?.textContent).toBe(
-      'Station · Default',
+      'Default',
     );
     expect(button.classList).toContain('app-toolbar__conn--compact');
     // No 'Default'-name special-casing: identity is always named.
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Station · Default',
+      'Manage Stations — Connected · Default',
     );
     expect(button.title).toBe(
-      'Manage Stations — Connected · Station · Default',
+      'Manage Stations — Connected · Default',
     );
     // The dot is still the state channel that survives a device with no hover.
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
@@ -218,7 +218,7 @@ describe('HeaderActions — self-describing connection surface', () => {
     const button = renderConnButton();
 
     expect(button.classList).toContain('app-toolbar__conn--compact');
-    expect(button.textContent).toContain('Station · Default');
+    expect(button.textContent).toContain('Default');
     expect(button.getAttribute('aria-label')).toContain('Connected');
   });
 
@@ -226,7 +226,7 @@ describe('HeaderActions — self-describing connection surface', () => {
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
     expect(button.classList).toContain('app-toolbar__conn--compact');
-    expect(button.textContent).toBe('Station · Default');
+    expect(button.textContent).toBe('Default');
     expect(button.getAttribute('aria-label')).not.toContain('App only');
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
   });
@@ -310,7 +310,7 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     // and the name for assistive technology.
     const button = screen.getByRole('button', { name: /^Manage Stations/ });
     expect(button.title).toBe(
-      'Manage Stations — Connected · Station · Default',
+      'Manage Stations — Connected · Default',
     );
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
@@ -498,7 +498,7 @@ describe('HeaderActions — desktop sidecar state', () => {
     const button = renderConnButton();
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Station · Kontour',
+      'Manage Stations — Connected · Kontour',
     );
     expect(button.title).toBe(button.getAttribute('aria-label'));
   });

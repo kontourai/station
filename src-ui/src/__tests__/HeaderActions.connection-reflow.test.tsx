@@ -362,7 +362,7 @@ describe.skipIf(!chromiumAvailable)(
           expect(
             measured.compactLabel,
             `the connected chip must visibly identify the Station on a phone`,
-          ).toBe(state === 'connected' ? 'Station · Default' : '');
+          ).toBe(state === 'connected' ? 'Default' : '');
           expect(
             measured.accessibleName,
             `the ${state} chip must keep its words in the accessible name`,
@@ -459,7 +459,7 @@ describe.skipIf(!chromiumAvailable)(
         );
         expect(
           await page.locator('.app-toolbar__conn-label').textContent(),
-        ).toBe('Station · Default');
+        ).toBe('Default');
       } finally {
         await page.close();
       }
@@ -501,7 +501,7 @@ describe.skipIf(!chromiumAvailable)(
               labelFits: label.scrollWidth <= label.clientWidth,
             };
           }, theme);
-          expect(measured.label).toBe('Station · Default');
+          expect(measured.label).toBe('Default');
           expect(measured.labelFits).toBe(true);
           expect(measured.color).not.toBe('rgba(0, 0, 0, 0)');
           expect(measured.background).toBe(
@@ -565,7 +565,7 @@ describe.skipIf(!chromiumAvailable)(
 
       const desktop = await inventory({ width: 1280, height: 400 });
       expect(desktop).toEqual([
-        'Manage Stations — Connected · Station · Default',
+        'Manage Stations — Connected · Default',
         'Notifications',
         'Profile and settings',
       ]);
@@ -575,7 +575,7 @@ describe.skipIf(!chromiumAvailable)(
       // compact chip at both widths; the accessible name also carries status.
       const phone = await inventory({ width: 390, height: 600 });
       expect(phone).toEqual([
-        'Manage Stations — Connected · Station · Default',
+        'Manage Stations — Connected · Default',
         'Notifications',
         'More actions',
       ]);
