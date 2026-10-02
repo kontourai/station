@@ -43,10 +43,18 @@ describe('SkillRunModal', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: '▶ Send to Agent',
+          name: 'Start chat',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
+  });
+
+  test('withholds chat creation when no agent is available', () => {
+    const onRun = vi.fn();
+    renderModal({ skill, variables: [], agents: [], onRun });
+    expect(screen.getByText(/No agents are available/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start chat' }));
+    expect(onRun).not.toHaveBeenCalled();
   });
 
   test('rejects a missing no-default variable, naming it, and refuses to send', () => {
@@ -56,7 +64,7 @@ describe('SkillRunModal', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: '▶ Send to Agent',
+          name: 'Start chat',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -66,10 +74,10 @@ describe('SkillRunModal', () => {
     const onRun = vi.fn();
     renderModal({ skill, variables, onRun });
 
-    fireEvent.change(screen.getByLabelText('{{ticket}}'), {
+    fireEvent.change(screen.getByLabelText('ticket'), {
       target: { value: 'ABC-1' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '▶ Send to Agent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start chat' }));
 
     expect(onRun).toHaveBeenCalledWith('Ship ABC-1 to staging', 'station');
   });
@@ -81,21 +89,22 @@ describe('SkillRunModal', () => {
     const defaulted = { name: 'release-check', body: 'Ship to {{env}}' };
     const envVars = [{ name: 'env', default: 'staging' }];
     renderModal({ skill: defaulted, variables: envVars, onRun });
+    fireEvent.click(screen.getByText('Preview instructions'));
 
-    const field = screen.getByLabelText('{{env}}');
+    const field = screen.getByLabelText('env');
     fireEvent.change(field, { target: { value: 'prod' } });
     fireEvent.change(field, { target: { value: '' } });
 
     expect(screen.getByText('Ship to staging')).toBeTruthy();
     expect((field as HTMLInputElement).placeholder).toBe('default: staging');
-    fireEvent.click(screen.getByRole('button', { name: '▶ Send to Agent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start chat' }));
     expect(onRun).toHaveBeenCalledWith('Ship to staging', 'station');
   });
 
   test('entered values reset when the modal is closed and reopened', () => {
     const { rerender } = renderModal({ skill, variables });
 
-    fireEvent.change(screen.getByLabelText('{{ticket}}'), {
+    fireEvent.change(screen.getByLabelText('ticket'), {
       target: { value: 'ABC-1' },
     });
     rerender(
@@ -119,16 +128,16 @@ describe('SkillRunModal', () => {
       />,
     );
 
-    expect(
-      (screen.getByLabelText('{{ticket}}') as HTMLInputElement).value,
-    ).toBe('');
+    expect((screen.getByLabelText('ticket') as HTMLInputElement).value).toBe(
+      '',
+    );
   });
 
   test('entered values reset when the tested skill changes', () => {
     const other = { name: 'other', body: 'Deploy {{ticket}}' };
     const { rerender } = renderModal({ skill, variables });
 
-    fireEvent.change(screen.getByLabelText('{{ticket}}'), {
+    fireEvent.change(screen.getByLabelText('ticket'), {
       target: { value: 'ABC-1' },
     });
     rerender(
@@ -142,8 +151,8 @@ describe('SkillRunModal', () => {
       />,
     );
 
-    expect(
-      (screen.getByLabelText('{{ticket}}') as HTMLInputElement).value,
-    ).toBe('');
+    expect((screen.getByLabelText('ticket') as HTMLInputElement).value).toBe(
+      '',
+    );
   });
 });
