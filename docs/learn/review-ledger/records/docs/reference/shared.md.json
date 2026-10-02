@@ -40,7 +40,7 @@
 
     {"path":"packages/contracts/src/project.ts","digest":"81c1da22c4d64208ecd8d5dad2259958b296272dfb2537ec6b514c271a55fb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"4385997b5f108761575c33e0aa5d53cfadab0b279221ef2405a982d6701a5e3d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/provider.ts","digest":"76a5c2b4d3ed4261c0deb9ea2147eb0a770c8499305bac6a743542a3b34fce55","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
     {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -82,7 +82,7 @@
 
     {"path":"packages/shared/src/types.ts","digest":"fab18c926454048b1723c4e4575be8a5fba438473de42b420def9154a91d63a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

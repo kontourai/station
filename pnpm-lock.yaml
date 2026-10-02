@@ -152,8 +152,8 @@ importers:
         specifier: ^1.18.0
         version: 1.18.0(react@19.3.0)
       '@kontourai/veritas':
-        specifier: 1.7.4
-        version: 1.7.4(supports-color@7.2.0)(zod@4.6.5)
+        specifier: 1.7.6
+        version: 1.7.6(supports-color@7.2.0)(zod@4.6.5)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -2421,8 +2421,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.7.4':
-    resolution: {integrity: sha512-G960alKtrpYg6fgxIpU/02zef6mHzh5jHmNggtqERoYtFpe6XUIhVmy3at6G+ff8MlytSKyEMwxbvWPOrLzaew==}
+  '@kontourai/veritas@1.7.6':
+    resolution: {integrity: sha512-1BOyT7EbrSFZqVWdpmH65c9Ay8E/uk/4uOxM7Fe24uoax78BjgVB36cTKOS5cp0bxwsFBE9e5OHQJRbthpjViw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -9799,7 +9799,7 @@ snapshots:
     dependencies:
       react: 19.3.0
 
-  '@kontourai/veritas@1.7.4(supports-color@7.2.0)(zod@4.6.5)':
+  '@kontourai/veritas@1.7.6(supports-color@7.2.0)(zod@4.6.5)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.6.5)
@@ -9807,7 +9807,7 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       cross-spawn: 7.0.6
       hachure: 0.15.0
-      picomatch: 4.0.5
+      picomatch: 4.0.7
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - kerberos
@@ -13197,6 +13197,10 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.5
 
+  fdir@6.5.0(picomatch@4.0.7):
+    optionalDependencies:
+      picomatch: 4.0.7
+
   fecha@4.2.3: {}
 
   fetch-blob@3.2.0:
@@ -15857,8 +15861,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
 
   tinyrainbow@3.1.1: {}
 

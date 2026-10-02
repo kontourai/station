@@ -1275,9 +1275,9 @@ test('switches between mobile tasks and restores the exact active chat context',
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
   // Shared inbox rows (archive#3312): the row button's accessible name is
-  // "{title}, {project}" and the lifecycle renders as the shared chip text
-  // ("Running"/"Attention needed"), so state discrimination filters on the
-  // chip content rather than the old raw-text accessible name.
+  // "{title}, {project}" and the state renders as the row's status line
+  // ("Running"/"Waiting on you"), so state discrimination filters on the
+  // status text rather than the old raw-text accessible name.
   await expect(
     menu
       .getByRole('button', { name: 'Station Chat, Default' })
@@ -1285,7 +1285,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   ).toBeVisible();
   const reviewRow = menu
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Attention needed' });
+    .filter({ hasText: 'Waiting on you' });
   await expect(reviewRow).toBeVisible();
   const reviewBox = await reviewRow.boundingBox();
   expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -1329,7 +1329,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await menu
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Attention needed' })
+    .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
@@ -1362,7 +1362,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await menu
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Attention needed' })
+    .filter({ hasText: 'Waiting on you' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
@@ -1402,7 +1402,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page
     .getByRole('dialog', { name: 'Switch task' })
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Attention needed' })
+    .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
 
@@ -1730,7 +1730,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   await switcher.click();
   await menu
     .getByRole('button', { name: 'Station Chat, Default' })
-    .filter({ hasText: 'Attention needed' })
+    .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(menu).toBeHidden();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
@@ -3246,14 +3246,14 @@ test('profiles switching between authoritative conversations', async ({
     'conversation-switch',
     { conversations: 2 },
     async () => {
-      for (const state of ['Attention needed', 'Running', 'Attention needed']) {
+      for (const state of ['Waiting on you', 'Running', 'Waiting on you']) {
         await switcher.click();
         await menu
           .getByRole('button', { name: 'Station Chat, Default' })
           .filter({ hasText: state })
           .click();
         await expect(menu).toBeHidden();
-        if (state === 'Attention needed') {
+        if (state === 'Waiting on you') {
           await expect(textarea).toBeEnabled();
           await textarea.fill('profile draft');
         }

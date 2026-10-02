@@ -217,14 +217,15 @@ function presenceState(
  * The footer presence tray (#2066, design record D5). An avatar stack and the
  * participant count, opening onto the participants and the agent workers
  * together: participants carry a message action that admission has not
- * unlocked yet, workers carry a follow that opens the same Activity surface
- * `LiveCollaboratorsSection`'s "View session" opens. The record says "people";
- * `roster` records why this says participants instead.
+ * unlocked yet, workers carry a follow that opens the Activity surface on
+ * that worker's session. The record says "people"; `roster` records why this
+ * says participants instead.
  *
- * It reads the one authority Activity reads — `useLiveActivityQuery`, the
- * `['live-activity']` cache entry — rather than a second copy of it. Two
- * surfaces deriving the same presence from two reads is how they start
- * disagreeing about who is here.
+ * It reads `useLiveActivityQuery`, the `['live-activity']` cache entry, and
+ * is that projection's one reader in the shell since Activity's own Live
+ * collaborators section was removed (#2982). A second surface showing
+ * presence reads the same entry rather than a copy of it: two reads of the
+ * same presence is how two surfaces start disagreeing about who is here.
  */
 export function ProjectSidebarPresenceTray() {
   const { data, isPending, isError } = useLiveActivityQuery();

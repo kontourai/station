@@ -78,9 +78,11 @@ export function routeIdentity(view: NavigationView): string {
 
 /**
  * The longer-lived visual surface identity. Route boundaries still need the
- * exact `routeIdentity` above for pending/error/entrance correctness; only a
- * Connections section's split pane can keep its frame and portal root across
- * its list/edit route pair.
+ * exact `routeIdentity` above for pending/error/entrance correctness; a
+ * split pane whose list stays on screen while its detail changes route — a
+ * Connections section, Agents — keeps its frame and portal root across those
+ * routes. Remounting it there replays the entrance on every row and drops
+ * keyboard focus out of the list the reader is arrowing through (#2992).
  */
 export function routeSurfaceIdentity(view: NavigationView): string {
   switch (view.type) {
@@ -93,6 +95,10 @@ export function routeSurfaceIdentity(view: NavigationView): string {
     case 'connections-tools':
     case 'connections-tool-edit':
       return 'connections-tools';
+    case 'agents':
+    case 'agent-new':
+    case 'agent-edit':
+      return 'agents';
     default:
       return routeIdentity(view);
   }

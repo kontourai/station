@@ -12,7 +12,7 @@
   "document": {"digest":"42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"79138ba3d68fed1437d2c541c1517dd833788be5369fe9f2f86c1a2b52b5de5e","revision":"a47e99c46dd2e877f8b9d0750db41b314f676d49"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"ffcc9ba4170f39d2e37eb9c6a9567a10f649cdb0d0cf7cec0a97cf57097b1305","revision":"a5cca76ed88ba6f99813da924ad1c7554335de87"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
 
@@ -30,7 +30,7 @@
 
     {"path":"packages/shared/package.json","digest":"3d498c9980c805fad291b809e3400392dd3c5c29515074c2438f785f4812e69c","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

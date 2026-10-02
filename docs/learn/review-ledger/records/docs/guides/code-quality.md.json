@@ -44,7 +44,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 

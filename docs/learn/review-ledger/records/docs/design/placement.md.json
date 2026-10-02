@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"218b4053f0dae1f9701e51b7ffc613bf64755ceb0a7dafd2d500ee00f97c48f7","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+  "document": {"digest":"c0c0ec5bfeea94fc2648c9de704fa68b68199b0f6b47a6dc72e6ba680a213bff","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"3c424a624a485b680e8bdb76bbed9c3c3dfb6f39b237556fb6e32fa772b92ee3","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"28432f059d8379e25f1aec3d0d32530c90d1dd37475e010750f76284d85455ea","revision":"75b756325d79a9e07c4e66308d65d7252a696cfb"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-placement.ts","digest":"25fbfd594288f945664092139e20c1e37c1a74888cdddb1bf7826b0a7bf3a296","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"c711f470fc52a9b4efbd47d87a95657338593d9a380d78f715025333c5ef9f70","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"cfe2b91b0e6b975623897be596556ed668fe3025983972e043ba0a54526ae934","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx","digest":"adbfc13058751ddc325188504ed102282546456b531287a3ae12b773c0b900e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -80,7 +80,7 @@
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx","digest":"1e5ba5ee73ae0d145b3834b11fb3835c4a19b1f07ec53c5fe3d82a7f44507eb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"d0cc105841ca2405afd67e7724376d98be9246bb0d62a663bfd2684218402a33","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
     {"path":"src-ui/src/contexts/useDismissPhoneLayer.ts","digest":"9ebdbb98dd1fe419fb92f7ee1210efbe7bd141c53697ddf9453478d9e8ff3720","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
