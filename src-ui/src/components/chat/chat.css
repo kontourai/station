@@ -2496,3 +2496,10 @@
   );
   mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
 }
+
+@media (max-width: 360px) {
+  .app-toolbar.app-toolbar,
+  .app-toolbar .app-toolbar__actions {
+    gap: 2px;
+  }
+}

@@ -2429,10 +2429,22 @@ const SCREENS: Screen[] = [
       await assertNoStrayProjectModal(page);
       const brand = page.locator('.app-toolbar__brand');
       await expect(brand).toBeVisible();
+      const geometry = await brand.evaluate((element) => {
+        const toolbar = element.closest('.app-toolbar')!;
+        return {
+          name: element.textContent,
+          available: element.clientWidth,
+          required: element.scrollWidth,
+          gap: getComputedStyle(toolbar).gap,
+          children: Array.from(toolbar.children).map((child) => ({
+            className: child.className,
+            width: child.getBoundingClientRect().width,
+          })),
+        };
+      });
       expect(
-        await brand.evaluate(
-          (element) => element.scrollWidth <= element.clientWidth + 1,
-        ),
+        geometry.required <= geometry.available + 1,
+        JSON.stringify(geometry),
       ).toBe(true);
       await expect(page.locator('.chat-dock')).toBeVisible({
         timeout: 10_000,
