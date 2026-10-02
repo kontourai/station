@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-02T06:29:08Z | nightly-npm | 0.7.0-nightly.2466.36968209089 | `2ed63fc` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36968209089) |
 | 2026-10-01T14:30:43Z | nightly-desktop | 0.1.11-nightly.2465.1 | `a91c50d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36865249714) |
 | 2026-10-01T14:30:40Z | nightly-android | 0.1.11-nightly.2465.1 | `a91c50d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36865249714) |
 | 2026-10-01T14:08:22Z | nightly-npm | 0.7.0-nightly.2465.36865249714 | `a91c50d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36865249714) |
@@ -214,6 +215,47 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-02T06:29:08Z · nightly-npm · 0.7.0-nightly.2466.36968209089
+
+- Ship SHA: `2ed63fc9e7f6c73ef9c7a20cbdc742975dfaf1a9`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2466.36968209089 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a91c50d` ([full sha](https://github.com/kontourai/station/commit/a91c50d32c2d96d89330c31054ca00c72e82d606)):
+
+**Features**
+
+- [#3077](https://github.com/kontourai/station/pull/3077) feat(inbox): one status ladder and a redesigned row
+- [#3087](https://github.com/kontourai/station/pull/3087) feat(connections): add provider metadata, allowance history and account trends
+- [#3035](https://github.com/kontourai/station/pull/3035) feat(ui): the Coding layout's centre becomes a Chat → drill-in navigation stack
+- [#3055](https://github.com/kontourai/station/pull/3055) feat(ui): Activity opens as the main page from the sidebar, and shows as current
+- [#3064](https://github.com/kontourai/station/pull/3064) feat(browser): page dialogs, console, screenshots and hand-back in a quiet Browser pane
+
+**Fixes**
+
+- [#3062](https://github.com/kontourai/station/pull/3062) fix(cli): Windows service task has no time limit or battery rules (#2970)
+- [#3109](https://github.com/kontourai/station/pull/3109) fix(regions): Back returns from the Activity page, and Move to Main shows the pane (#2986, #2988)
+- [#3103](https://github.com/kontourai/station/pull/3103) fix(chat): a failed turn shows one failure card after a reload (#2985)
+- [#3094](https://github.com/kontourai/station/pull/3094) fix(pull-requests): match the session conflict chip against the branch's push owner (#2941)
+- [#3104](https://github.com/kontourai/station/pull/3104) fix(cli): give the start's TCP listener waits the slow-boot extension (#2964)
+- [#3095](https://github.com/kontourai/station/pull/3095) fix(ui): Agents keeps keyboard focus on selection; the list search box is 44px on touch (#2992, #3061)
+- [#3081](https://github.com/kontourai/station/pull/3081) fix(server): settle requests when their turn is aborted
+- [#3089](https://github.com/kontourai/station/pull/3089) fix(coding): confine git reads, checkpoints and checkouts to the Project's own repository
+- [#3091](https://github.com/kontourai/station/pull/3091) fix(claude): network-host, sandbox-override and org-policy asks always reach a person (#2932, part 1)
+
+**Docs**
+
+- [#3105](https://github.com/kontourai/station/pull/3105) docs(ui): comments stop citing the removed Live collaborators section
+
+**Other**
+
+- [#3121](https://github.com/kontourai/station/pull/3121) test(ui): isolate turn-settlement fixture lifetime
+- [#3096](https://github.com/kontourai/station/pull/3096) chore(test): neutral placeholders in remaining fixtures; Veritas 1.7.6
+- [#3092](https://github.com/kontourai/station/pull/3092) test(ui): scan selected-row contrast after theme transitions settle
 
 ## 2026-10-01T14:30:43Z · nightly-desktop · 0.1.11-nightly.2465.1
 
