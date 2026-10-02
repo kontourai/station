@@ -121,6 +121,7 @@
 
 .chat-status-pill-host .chat-status-pill {
   display: inline-flex;
+  width: 100%;
   max-width: 100%;
   min-height: 32px;
   align-items: center;
@@ -137,6 +138,9 @@
   pointer-events: auto;
   text-align: left;
   transform-origin: right center;
+}
+
+.chat-status-pill[data-entering="true"] {
   animation: chat-status-pill-in var(--motion-slow) var(--ease-spring) both;
 }
 
@@ -210,8 +214,10 @@ button.chat-status-pill {
 
 .chat-status-pill__clock {
   flex-shrink: 0;
+  min-width: 5ch;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .chat-status-pill__count {

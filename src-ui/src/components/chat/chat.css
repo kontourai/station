@@ -2579,3 +2579,61 @@
     display: none;
   }
 }
+
+/* The existing live markers gate motion; settled and approval rows stay still. */
+.tool-call__line:has(.tool-call__pulse),
+.tool-call-batch__summary:has(.tool-call-batch__pulse) {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.tool-call__line .tool-call__pulse,
+.tool-call-batch__summary .tool-call-batch__pulse {
+  display: none;
+}
+
+.tool-call__line:has(.tool-call__pulse)::after,
+.tool-call-batch__summary:has(.tool-call-batch__pulse)::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 35%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--k-text) 10%, transparent),
+    transparent
+  );
+  animation: tool-call-reflection var(--motion-status-breathe)
+    var(--ease-linear) infinite;
+}
+
+@keyframes tool-call-reflection {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(390%);
+  }
+}
+
+:root[data-page-hidden] .tool-call__line::after,
+:root[data-page-hidden] .tool-call-batch__summary::after {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-call__line:has(.tool-call__pulse)::after,
+  .tool-call-batch__summary:has(.tool-call-batch__pulse)::after {
+    display: none;
+  }
+}
+
+.chat-input__activity .chat-scroll-to-bottom:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--k-panel-raised);
+}
