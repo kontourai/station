@@ -229,12 +229,6 @@ For a writable skill, **Edit skill** opens its definition and command settings.
 plugin-served skills show the server's read-only reason and keep editing
 unavailable.
 
-The [Skills view](../../src-ui/src/views/SkillsView.tsx) and
-[input review dialog](../../src-ui/src/components/modals/SkillRunModal.tsx) own
-this journey. [Rendered action tests](../../src-ui/src/__tests__/SkillsView.test.tsx)
-cover the overview, guarded editing, per-file import outcomes, and message
-submission; they do not prove a live Agent's task outcome.
-
 ## Start Your First Task
 
 1. Open a Project and create a Task for work you want to keep.
