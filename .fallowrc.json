@@ -31,6 +31,7 @@
     "examples/**/plugin.mjs",
     "examples/**/providers/*.{js,ts}",
     "examples/**/src/index.{ts,tsx}",
+    "packages/shared/src/installer/cli.ts",
     "packaging/portable-server/bin/station.mjs",
     "src-server/services/plugins/plugin-draft-build-child.ts",
     "src-ui/public/sw.js",
