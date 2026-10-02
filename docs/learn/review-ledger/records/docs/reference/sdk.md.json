@@ -438,19 +438,19 @@
 
     {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"f63a554477e86361ac8977b153449a5be400cda1b0d53d3bb78067289041c196","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
-
-    {"path":"src-ui/src/components/EnvironmentPicker.tsx","digest":"3b9e4c1fb8f7763b5429b3f881af81679c666a982f4f486a48f20110a8680290","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"src-ui/src/components/attention/NeedsInputReply.tsx","digest":"ab0b8da0cf2a028f663b3ec521d1e5888636123168b3c3b9cba5aad5c9a122cc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"b9d8d43057e6a311366de908504c8d9f806cc78828c72be2b3ac7805a2e5a157","revision":"74141966c510f72845b72b7b4c8d2a2128079034"},
+
+    {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/components/chat/CheckpointRestoreButton.tsx","digest":"a17fed2fc8f712386a4eb64756b500c32a1a712721c65b3f5dab1ee0ea033bab","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/components/chat/QuoteSourceLink.tsx","digest":"14b2b534af47415c4b5a102dca20ee7bf42c800963d1ff01306e48a088c00106","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"f63a554477e86361ac8977b153449a5be400cda1b0d53d3bb78067289041c196","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+
+    {"path":"src-ui/src/components/EnvironmentPicker.tsx","digest":"3b9e4c1fb8f7763b5429b3f881af81679c666a982f4f486a48f20110a8680290","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -460,21 +460,21 @@
 
     {"path":"src-ui/src/contexts/AuthorityQueryContext.tsx","digest":"f62bda5353e068d89a300e57fa9fa6d359516aefce3e3f8b61530d72bdfd5ade","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-ui/src/contexts/chat-drafts-store.ts","digest":"7d0ad1efa918a621e16a0009c5c79ffc542d9cc39ba0c4fccde67ac8cfac090a","revision":"a3e0c82741b8a549d79b5f50fad1b63adfaafc92"},
+
     {"path":"src-ui/src/contexts/MessageContextContext.tsx","digest":"dec7401b0386c41e767b5a142087624f28ad709f309b6103cf834a9341a4ff4d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/contexts/ProjectsContext.tsx","digest":"d1734c82e801ea01140693584481d98157f2ff1e5bcd8ef592a8c917423d53bd","revision":"d1e48038616b647d445649657545b5b353e2af51"},
 
     {"path":"src-ui/src/contexts/VoiceProviderContext.tsx","digest":"d6edf8a1c73c48fb42d859cdd86f242e270b7cdbab67c9f506d53f1599f7b7e4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/contexts/chat-drafts-store.ts","digest":"7d0ad1efa918a621e16a0009c5c79ffc542d9cc39ba0c4fccde67ac8cfac090a","revision":"a3e0c82741b8a549d79b5f50fad1b63adfaafc92"},
+    {"path":"src-ui/src/core/layoutProviders.ts","digest":"208b58e6d5ffb1f5e57112ae67f00b0d25a0e08010f6ca3724f4335a322fcb74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/core/layoutProviders.ts","digest":"208b58e6d5ffb1f5e57112ae67f00b0d25a0e08010f6ca3724f4335a322fcb74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -500,25 +500,25 @@
 
     {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
-    {"path":"src-ui/src/platform/PlatformSessionGate.tsx","digest":"35d3e16ce939595075ebf514e56bcfc26b1152f1076d1d4c153c248a3b0b1f4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
+    {"path":"src-ui/src/platform/PlatformSessionGate.tsx","digest":"35d3e16ce939595075ebf514e56bcfc26b1152f1076d1d4c153c248a3b0b1f4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
     {"path":"src-ui/src/utils/answer-quotes.ts","digest":"416cddd2a19213ed2d37bb5f413b44a27e4fc5cdbcc4d3fbaeddcc22f32ec45c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"07ed17665765fac384ff9a87492de2e80648702031e162e337f11ff31cf717eb","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
-
-    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0","revision":"3a63c64679a92f30544c2b84905fdb2874ebfebb"},
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"2d6f90097103d33b904c999baa092c10fe9e9dfe9f23dd474a95b0986f709e10","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
 
+    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"07ed17665765fac384ff9a87492de2e80648702031e162e337f11ff31cf717eb","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
     {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"a0749e9f35dbf8eb7510c22a9d57184c64480e3c1e34b4ecec9dc689958bea69","revision":"d956082d3d2864711773914857b8098c60bdd972"},
+
+    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0","revision":"3a63c64679a92f30544c2b84905fdb2874ebfebb"},
 
     {"path":"src-ui/src/views/settings/CoreUpdateCheck.tsx","digest":"741884aa974710daf98a46aa0f7cb7990b71847b52f748467ee584db96766471","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

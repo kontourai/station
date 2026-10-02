@@ -92,15 +92,15 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
+    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+
     {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+
+    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
     {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
-
-    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
-
-    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
     {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
