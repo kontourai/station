@@ -95,11 +95,21 @@ describe('codingPanels — the wide fold and the panels’ bounds (#3040)', () =
     expect(codingLowerDefaultHeight(380)).toBe(codingLowerMaxHeight(380));
   });
 
-  test('the transcript keeps 480px beside a tool, counting the inbox as measured or by its own rule', () => {
-    // The floor beside its derivation: the fold budgets 480 for Chat with
-    // the inbox at its 240 floor, so a folded inbox gives it all to the
-    // transcript.
-    expect(CODING_TRANSCRIPT_MIN_WIDTH).toBe(480);
+  test('the transcript keeps 640px beside a tool, counting the inbox as measured or by its own rule', () => {
+    // The floor beside its derivation (`codingPanels.ts`): the column's
+    // two 20px gutters, then the bubble's 80% of the row and its 48px of
+    // padding, leave 432px of text — the ~60-character measure.
+    expect(CODING_TRANSCRIPT_MIN_WIDTH).toBe(640);
+    expect((CODING_TRANSCRIPT_MIN_WIDTH - 2 * 20) * 0.8 - 48).toBe(432);
+    // So at 1440 with the inbox at its 24vw (346) and a 440 tool, the
+    // transcript (1440 - 44 - 8 - 440 - 346 = 602) is under the floor and
+    // the inbox folds; at 1920 (1920 - 52 - 440 - 360 = 1068) it stays.
+    expect(codingTranscriptWidth(1440, 440, 346)).toBeLessThan(
+      CODING_TRANSCRIPT_MIN_WIDTH,
+    );
+    expect(codingTranscriptWidth(1920, 440, null)).toBeGreaterThan(
+      CODING_TRANSCRIPT_MIN_WIDTH,
+    );
     // 1440 room, 440 tool, inbox measured 345: 1440 - 44 - 8 - 440 - 345.
     expect(codingTranscriptWidth(1440, 440, 345)).toBe(603);
     // Unmeasured inbox: clamp(240, 24% of 1440 = 345.6, 360).

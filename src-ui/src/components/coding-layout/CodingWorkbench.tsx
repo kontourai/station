@@ -32,6 +32,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { subscribeCenterChatPageRequests } from '../../app-shell/chat-placement';
 import {
   useDeviceSettings,
@@ -63,6 +64,7 @@ import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspac
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import {
+  ArrowLeftGlyph,
   ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
@@ -476,6 +478,28 @@ export function CodingWorkbench({
     0,
     STACK_CHORD_WHEN,
   );
+  // ── Escape is the layout's own "up": it closes the panel the reader is
+  // in (wide) or returns a drill-in to the conversation, and with nothing
+  // to close it is still consumed. Left to the app's route-level fallback
+  // it went up a level further — out of the layout to the project — from
+  // a rail item or a panel head (design audit U6/D5). Inside the composer
+  // and other fields the registry never offers Escape to a shortcut, so
+  // their own Escape is untouched; editors that own the key keep it.
+  const escapeRef = useRef<() => boolean>(() => true);
+  const escapeChord = useCallback(
+    () => (focusInKeyOwningEditor() ? false : escapeRef.current()),
+    [],
+  );
+  useKeyboardShortcut(
+    'codingStack.escape',
+    'Escape',
+    [],
+    'Close the panel, or return to the conversation',
+    escapeChord,
+    true,
+    0,
+    STACK_CHORD_WHEN,
+  );
 
   // The Chat page from a drill-in: Back when the entry behind is exactly the
   // Chat page (the stack does not grow), else a push to it.
@@ -746,6 +770,23 @@ export function CodingWorkbench({
     userMoveRef.current = performance.now();
     navigationStore.setActiveWorkspacePane(instance.instanceId, scopeKey);
   };
+  escapeRef.current = () => {
+    if (wide) {
+      const within = (element: HTMLElement | null) =>
+        Boolean(
+          element &&
+            document.activeElement &&
+            element.contains(document.activeElement),
+        );
+      // The panel the reader is in first; then whichever is open.
+      if (lowerOpen && within(lowerPanelRef.current)) toggleLower(true);
+      else if (sideOpen) closeSide(true);
+      else if (lowerOpen) toggleLower(true);
+      return true;
+    }
+    if (pageRef.current === 'drill-in') returnToChatPage();
+    return true;
+  };
   const requestCatalog = () => {
     const document = hostDocument();
     if (!document) return;
@@ -980,6 +1021,17 @@ export function CodingWorkbench({
     [lowerHeadLeading, lowerHeadTrailing],
   );
   const drillInDetail = drilledIn ? (paneDetail?.(drilledIn) ?? null) : null;
+  // A File Preview beside Chat was most likely opened from Files, which it
+  // replaced; its head offers the way back (design audit U5).
+  const previewBackTo =
+    wide &&
+    drilledIn?.descriptorId === WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR_ID
+      ? (instances.find(
+          (instance) =>
+            instance.descriptorId ===
+            WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
+        ) ?? null)
+      : null;
 
   const pageState = (candidate: 'chat' | 'drill-in', active: boolean) => ({
     'data-active': active ? 'true' : 'false',
@@ -1056,6 +1108,21 @@ export function CodingWorkbench({
     >
       <div className="coding-workbench__main">
         <div className="coding-workbench__bar">
+          {/* The rail is last in the tab order (bar, Chat, the open panel,
+              then the rail); a reader who wants a tool first skips to it. */}
+          <button
+            type="button"
+            className="coding-workbench__skip"
+            onClick={() => {
+              rootRef.current
+                ?.querySelector<HTMLElement>(
+                  '.coding-workbench__rail-item[data-rail-item]',
+                )
+                ?.focus();
+            }}
+          >
+            Skip to views
+          </button>
           <nav className="coding-workbench__nav" aria-label="Coding navigation">
             <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
               <li className="coding-workbench__crumb">
@@ -1220,6 +1287,23 @@ export function CodingWorkbench({
             >
               {wide ? (
                 <header className="coding-workbench__panel-head">
+                  {previewBackTo ? (
+                    <Tooltip
+                      label={`Back to ${paneLabel(previewBackTo)}`}
+                      placement="bottom"
+                    >
+                      <button
+                        type="button"
+                        className="coding-workbench__rail-item coding-workbench__panel-back"
+                        aria-label={`Back to ${paneLabel(previewBackTo)}`}
+                        onClick={(event) =>
+                          openSide(previewBackTo, activatedByKeyboard(event))
+                        }
+                      >
+                        <ArrowLeftGlyph />
+                      </button>
+                    </Tooltip>
+                  ) : null}
                   <h2
                     ref={sideHeadingRef}
                     className="coding-workbench__panel-title"
@@ -1667,10 +1751,45 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
   const panelId = useId();
   const close = useCallback(() => setOpen(false), []);
   const panelRef = useMenuFocus<HTMLElement>(open, close);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // The rail scrolls, so a flyout inside it is clipped to the rail's own
+  // 44px (design audit D1). It renders on the overlay layer instead, fixed
+  // beside its trigger: top-aligned with it, its right edge a gap from the
+  // rail, and never off the top or bottom of the viewport.
+  const [place, setPlace] = useState<CSSProperties | null>(null);
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null);
+      return;
+    }
+    const measure = () => {
+      const trigger = triggerRef.current;
+      const panel = panelRef.current;
+      if (!trigger) return;
+      const anchor = trigger.getBoundingClientRect();
+      const height = panel?.getBoundingClientRect().height ?? 0;
+      const top = Math.max(
+        RAIL_FLYOUT_GUTTER_PX,
+        Math.min(
+          anchor.top,
+          window.innerHeight - height - RAIL_FLYOUT_GUTTER_PX,
+        ),
+      );
+      setPlace({
+        position: 'fixed',
+        top: `${top}px`,
+        right: `${window.innerWidth - anchor.left + RAIL_FLYOUT_GAP_PX}px`,
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open, panelRef]);
   return (
     <div className="coding-workbench__rail-slot">
       <Tooltip label="Open Browser" placement="left">
         <button
+          ref={triggerRef}
           type="button"
           className="coding-workbench__rail-item"
           aria-label="Open Browser pane"
@@ -1681,25 +1800,31 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
           <GlobeGlyph />
         </button>
       </Tooltip>
-      {open ? (
-        <section
-          id={panelId}
-          ref={panelRef}
-          className="coding-workbench__rail-panel"
-          aria-label="Browser"
-          tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return;
-            event.stopPropagation();
-            close();
-          }}
-        >
-          {launcher}
-        </section>
-      ) : null}
+      {open
+        ? createPortal(
+            <section
+              id={panelId}
+              ref={panelRef}
+              className="coding-workbench__rail-panel"
+              aria-label="Browser"
+              tabIndex={-1}
+              style={place ?? undefined}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.stopPropagation();
+                close();
+              }}
+            >
+              {launcher}
+            </section>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
+const RAIL_FLYOUT_GAP_PX = 8;
+const RAIL_FLYOUT_GUTTER_PX = 8;
 
 /**
  * The drill-in's own actions, behind one ⋯ on the breadcrumb row (or the

@@ -548,6 +548,14 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       'aria-pressed',
       'true',
     );
+    // The shell is the only kind of terminal here, so the panel opens one
+    // rather than an empty state and a one-option picker (design audit U7).
+    await expect(
+      lowerPanel(page).getByRole('tab', { name: 'Shell 1' }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      lowerPanel(page).getByRole('dialog', { name: 'New terminal' }),
+    ).toHaveCount(0);
     await expect(sidePanel(page)).toBeVisible();
     await expect(page).toHaveURL(/[?&]pane=/);
     const chat = (await chatPage(page).boundingBox())!;
@@ -724,7 +732,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await expect(sidePanel(page)).toBeVisible();
     await expect(inbox(page)).toHaveCount(0);
     const transcript = (await centreChat(page).boundingBox())!;
-    expect(transcript.width).toBeGreaterThanOrEqual(480);
+    expect(transcript.width).toBeGreaterThanOrEqual(640);
     await openCodingView(page, 'Diff');
     await expect(sidePanel(page)).toBeHidden();
     await expect(inbox(page)).toBeVisible();
@@ -799,9 +807,85 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await expect(item.locator('xpath=..').getByRole('tooltip')).toHaveText(
       'src/app.ts',
     );
+    // The preview's head offers the way back to Files (design audit U5).
+    await sidePanel(page)
+      .getByRole('button', { name: 'Back to Files' })
+      .click();
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    await expect(codingViewItem(page, 'Files')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(
+      sidePanel(page).getByRole('button', { name: /^Back to/ }),
+    ).toHaveCount(0);
     // Back leaves the layout; it does not step through the panel.
     await page.goBack();
     await expect(page).not.toHaveURL(/layouts\/code/);
+  });
+
+  test('the Browser flyout opens beside the rail, on screen and under the pointer; the rail’s tooltips are not clipped (D1, U12)', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const viewport = page.viewportSize()!;
+    await page.getByRole('button', { name: 'Open Browser pane' }).click();
+    const flyout = page.getByRole('region', { name: 'Browser' });
+    await expect(flyout).toBeVisible();
+    const rail = (await codingViewRail(page).boundingBox())!;
+    const box = (await flyout.boundingBox())!;
+    expect(box.width).toBeGreaterThan(200);
+    expect(box.height).toBeGreaterThan(40);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(rail.x);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    // Painted, not merely laid out: the point at its centre hits it.
+    const hit = await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest('[aria-label="Browser"]') !==
+        null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    expect(hit).toBe(true);
+    await expect(flyout.getByRole('textbox')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(flyout).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Open Browser pane' }),
+    ).toBeFocused();
+
+    // A rail tooltip, whole and to the left of the rail.
+    await page.mouse.move(10, 10);
+    const item = codingViewItem(page, 'Files');
+    await item.hover();
+    const tip = item.locator('xpath=..').getByRole('tooltip');
+    await expect(tip).toBeVisible();
+    await expect(tip).toHaveText('Files');
+    const tipBox = (await tip.boundingBox())!;
+    expect(tipBox.width).toBeGreaterThan(24);
+    expect(tipBox.x).toBeGreaterThanOrEqual(0);
+    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(rail.x + 1);
+  });
+
+  test('Escape never leaves the layout: a panel opened from the keyboard takes focus, Escape closes it back to the rail, and Escape on the rail stays put (U6, D5)', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const item = codingViewItem(page, 'Diff');
+    await item.focus();
+    await page.keyboard.press('Enter');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(item).toBeFocused();
+    await expect(page).toHaveURL(/layouts\/code/);
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL(/layouts\/code/);
+    await expect(centreChat(page)).toBeVisible();
   });
 });
 

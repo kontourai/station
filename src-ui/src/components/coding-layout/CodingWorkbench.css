@@ -25,9 +25,32 @@
   align-items: center;
   flex: none;
   min-width: 0;
-  min-height: 44px;
+  /* One 40px bar: the panel heads are the same height, so their titles
+     share a baseline with the breadcrumb (design audit Q6). */
+  min-height: 40px;
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--border-primary);
+}
+
+/* The rail is last in the tab order; this skips to it. Off screen until
+   focused, as a skip link is. */
+.coding-workbench__skip {
+  position: absolute;
+  left: -9999px;
+  z-index: var(--layer-popover);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.coding-workbench__skip:focus-visible {
+  position: static;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
 }
 
 .coding-workbench__crumbs {
@@ -171,7 +194,11 @@
   width: 44px;
   padding: var(--space-2) 0;
   border-left: 1px solid var(--border-primary);
-  overflow-y: auto;
+  /* Visible, not scrolling: the items' tooltips sit to the left of the
+     rail, and a scrolling rail clipped them to its own 44px (design audit
+     U12). The rail holds a handful of 44px items; it does not need to
+     scroll. */
+  overflow: visible;
 }
 
 .coding-workbench__rail-slot {
@@ -253,10 +280,10 @@
 }
 
 .coding-workbench__rail-panel {
-  position: absolute;
+  /* Portalled to the body and placed by the trigger (CodingWorkbench.tsx):
+     an absolute flyout inside the rail was clipped by it (design audit D1). */
+  position: fixed;
   z-index: var(--layer-popover);
-  top: 0;
-  right: calc(100% + var(--space-4));
   width: min(22rem, 70vw);
   padding: var(--space-4);
   border: 1px solid var(--border-primary);
@@ -356,14 +383,16 @@
 }
 
 /* A panel's head: its name, its ⋯ when it has one, and a close icon. One
-   36px row, quiet. */
+   40px row with 12px side padding, the title 13px semibold in sentence
+   case, ellipsised; the same row and the same close on every panel, and
+   the bar's own height (design audit Q6/C4). */
 .coding-workbench__panel-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex: none;
-  min-height: 36px;
-  padding: 0 var(--space-2) 0 var(--space-4);
+  min-height: 40px;
+  padding: 0 var(--space-4) 0 var(--space-6);
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -373,7 +402,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -385,14 +414,20 @@
   border-radius: var(--radius-sm);
 }
 
-.coding-workbench__panel-close {
-  width: 36px;
-  height: 36px;
+.coding-workbench__panel-close,
+.coding-workbench__panel-back {
+  width: 32px;
+  height: 32px;
   font-size: var(--text-md);
 }
 
-.coding-workbench__panel-close::before {
-  inset: 4px;
+.coding-workbench__panel-close::before,
+.coding-workbench__panel-back::before {
+  inset: 0;
+}
+
+.coding-workbench__panel-back {
+  margin-left: calc(-1 * var(--space-2));
 }
 
 /* The separator: an 8px grab strip over the panel's edge whose line brightens
@@ -578,6 +613,7 @@
 .coding-workbench__panel-head .coding-layout__terminal-bar--head {
   height: auto;
   padding: 0;
+  border-bottom: 0;
   background: transparent;
 }
 
@@ -737,12 +773,14 @@
   border-top: 0;
 }
 
-/* At rest the edge reads as a control, quietly: a small low-emphasis
-   chevron on an accent-tinted rule; hover or focus brings both up. */
+/* At rest the edge reads as a control: a 3px accent bar with a small
+   low-emphasis chevron on it, and the Needs-you count above (design audit
+   U4); hover or focus brings the bar and the chevron up. */
 .coding-workbench__inbox-edge {
+  border-right-width: 3px;
   border-right-color: color-mix(
     in srgb,
-    var(--accent-primary) 45%,
+    var(--accent-primary) 60%,
     transparent
   );
   overflow: visible;

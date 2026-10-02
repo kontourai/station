@@ -15,6 +15,7 @@ import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { createFilePreviewPaneInstance } from '../../../workspace-panes/filePreviewPaneInstance';
 import { useRegionChromeSlots } from '../../../workspace-panes/RegionChromeSlots';
 import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
@@ -110,6 +111,14 @@ vi.mock('../../../hooks/useIsMobile', async (original) => ({
 }));
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => harness.showSurface,
+}));
+// The Browser launcher is its own subject; here it is the flyout's content.
+vi.mock('../../../workspace-panes/BrowserPreviewPaneLauncher', () => ({
+  BrowserPreviewPaneLauncher: () => (
+    <form>
+      <input aria-label="Address" />
+    </form>
+  ),
 }));
 
 const ROUTE = '/projects/demo/layouts/coding';
@@ -341,7 +350,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(chatPage().getAttribute('data-active')).toBe('true');
   });
 
-  test('⌘[ and ⌘] are Back and Forward (never Escape, which the composer owns)', async () => {
+  test('⌘[ and ⌘] are Back and Forward; Escape is the layout’s own, and the composer’s inside it', async () => {
     renderStack();
     expect(harness.shortcuts.get('codingStack.back')).toMatchObject({
       key: '[',
@@ -351,9 +360,15 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       key: ']',
       modifiers: ['cmd'],
     });
+    // One Escape, the stack's (the registry never offers Escape to a
+    // shortcut while a field has focus, so the composer keeps its own).
     expect(
-      [...harness.shortcuts.values()].some((entry) => entry.key === 'Escape'),
-    ).toBe(false);
+      [...harness.shortcuts.entries()].filter(
+        ([, entry]) => entry.key === 'Escape',
+      ),
+    ).toEqual([
+      ['codingStack.escape', expect.objectContaining({ modifiers: [] })],
+    ]);
 
     await drillInto('Files');
     act(() => harness.shortcuts.get('codingStack.back')?.handler());
@@ -1057,7 +1072,7 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
 
   test('a tool that would crowd the transcript folds the inbox for its stay and unfolds it when the tool closes', async () => {
     // jsdom's 1024px room: 1068 - 44 - 8 - 440 - 245 (the inbox's own rule)
-    // leaves the transcript 331, under its 480 floor.
+    // leaves the transcript 331, under its 640 floor.
     renderStack({ wide: true });
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
     await drillInto('Diff');
@@ -1509,5 +1524,185 @@ describe('CodingWorkbench — review round: file links, the fold’s owner, geom
     expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Terminal']);
     // No lower panel below the fold: the host draws the Terminal there.
     expect(lowerPanel()).toBeNull();
+  });
+});
+
+describe('CodingWorkbench — design audit round: the flyout, Escape, the way back, the rail', () => {
+  const pressEscape = () =>
+    harness.shortcuts.get('codingStack.escape')!.handler();
+
+  test('Escape never leaves the layout: it closes the panel the reader is in, returns a drill-in to the conversation, and is consumed with nothing to close (U6/D5)', async () => {
+    renderStack({ wide: true, terminal });
+    // Nothing open: consumed, so the app's route-level "up" never fires.
+    expect(pressEscape()).not.toBe(false);
+    expect(window.location.pathname).toBe(ROUTE);
+
+    fireEvent.click(railItem('Diff'), { detail: 0 });
+    await act(async () => undefined);
+    expect(window.document.activeElement).toBe(
+      within(sidePanel()).getByRole('heading', { name: 'Diff' }),
+    );
+    expect(pressEscape()).not.toBe(false);
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+    expect(window.document.activeElement).toBe(railItem('Diff'));
+    expect(window.location.pathname).toBe(ROUTE);
+
+    // In the lower panel, with a side panel also open: the one the reader
+    // is in closes, the other stays.
+    await drillInto('Files');
+    fireEvent.click(railItem('Terminal'), { detail: 0 });
+    await act(async () => undefined);
+    expect(window.document.activeElement).toBe(
+      within(lowerPanel()!).getByRole('heading', { name: 'Terminal' }),
+    );
+    pressEscape();
+    await act(async () => undefined);
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('false');
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+    expect(window.document.activeElement).toBe(railItem('Terminal'));
+  });
+
+  test('below the fold, Escape on a drill-in is the way back to the conversation', async () => {
+    renderStack();
+    await drillInto('Files');
+    expect(drillInPage().getAttribute('data-active')).toBe('true');
+    expect(pressEscape()).not.toBe(false);
+    await historyBackSettled();
+    expect(chatPage().getAttribute('data-active')).toBe('true');
+    expect(window.location.pathname).toBe(ROUTE);
+    // On the conversation with nothing to close: still the layout's.
+    expect(pressEscape()).not.toBe(false);
+  });
+
+  test('the bar starts with a control that skips to the rail, which is last in the tab order', () => {
+    renderStack({ wide: true });
+    const bar = window.document.querySelector('.coding-workbench__bar')!;
+    const skip = within(bar as HTMLElement).getByRole('button', {
+      name: 'Skip to views',
+    });
+    expect(bar.querySelector('button')).toBe(skip);
+    const railNode = rail();
+    expect(
+      bar.compareDocumentPosition(railNode) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sidePanel().compareDocumentPosition(railNode) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(skip);
+    expect(window.document.activeElement).toBe(
+      within(railNode).getAllByRole('button')[0],
+    );
+    expect(window.document.activeElement?.getAttribute('data-rail-item')).toBe(
+      diff.instanceId,
+    );
+  });
+
+  test('the Browser flyout renders on the body, fixed beside its trigger, not inside the scrolling rail (D1)', async () => {
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={{ open: vi.fn(() => WORKSPACE_PANE_OPENED) }}
+          onOpenCatalog={vi.fn()}
+          browserPreviewAvailability={{
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          }}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    const trigger = within(rail()).getByRole('button', {
+      name: 'Open Browser pane',
+    });
+    expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
+    // A pointer click focuses the button it lands on; jsdom's does not.
+    trigger.focus();
+    fireEvent.click(trigger);
+    await act(async () => undefined);
+    const flyout = screen.getByRole('region', { name: 'Browser' });
+    expect(rail().contains(flyout)).toBe(false);
+    expect(flyout.parentElement).toBe(window.document.body);
+    expect(flyout.style.position).toBe('fixed');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(trigger.getAttribute('aria-controls')).toBe(flyout.id);
+    // Focus moves into it; Escape closes it and returns to the trigger.
+    expect(window.document.activeElement).toBe(
+      within(flyout).getByRole('textbox', { name: 'Address' }),
+    );
+    fireEvent.keyDown(flyout, { key: 'Escape' });
+    await act(async () => undefined);
+    expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
+    expect(window.document.activeElement).toBe(trigger);
+  });
+
+  test('a File Preview beside Chat offers the way back to Files in its head; other panels do not (U5)', async () => {
+    const preview = createFilePreviewPaneInstance(
+      { version: '1.0', projectSlug: 'demo', path: 'src/app.ts', wrap: true },
+      'project-uuid',
+      'c'.repeat(32),
+    )!;
+    const held = [files, diff, preview];
+    const name = (instance: WorkspacePaneInstance) =>
+      instance.instanceId === preview.instanceId ? 'app.ts' : label(instance);
+    const Subject = ({ wide }: { wide: boolean }) => {
+      const selection = useCodingStackSelection();
+      const location = resolveCodingStackLocation(
+        scope,
+        held,
+        selection.pane,
+        selection.paneScope,
+      );
+      return (
+        <CodingWorkbench
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide={wide}
+          location={location}
+          scope={scope}
+          instances={held}
+          hostDocument={() => document}
+          paneLabel={name}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+        >
+          <div />
+        </CodingWorkbench>
+      );
+    };
+    render(
+      <NavigationProvider>
+        <Subject wide />
+      </NavigationProvider>,
+    );
+    fireEvent.click(railItem('app.ts'));
+    await act(async () => undefined);
+    expect(
+      within(sidePanel()).getByRole('heading', { name: 'app.ts' }),
+    ).toBeTruthy();
+    const back = within(sidePanel()).getByRole('button', {
+      name: 'Back to Files',
+    });
+    fireEvent.click(back, { detail: 0 });
+    await act(async () => undefined);
+    expect(
+      within(sidePanel()).getByRole('heading', { name: 'Files' }),
+    ).toBeTruthy();
+    expect(
+      within(sidePanel()).queryByRole('button', { name: /^Back to/ }),
+    ).toBeNull();
+    expect(railItem('Files').getAttribute('aria-pressed')).toBe('true');
   });
 });

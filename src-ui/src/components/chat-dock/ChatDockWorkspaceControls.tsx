@@ -18,10 +18,20 @@ const loadSessionInventoryEntryPoint = () =>
     default: module.SessionInventoryEntryPoint,
   }));
 
+/**
+ * A compose mark (a pen over a sheet), not a "+": in the Coding bar a "+"
+ * beside the rail's "Add pane" "+" read as the same verb twice (design
+ * audit B7).
+ */
 function NewChatGlyph() {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 16 16">
-      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M7.5 3H3v10h10V8.5M12.3 2.2l1.5 1.5-6 6H6.3V8.2l6-6Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

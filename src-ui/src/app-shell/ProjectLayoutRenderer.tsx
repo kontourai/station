@@ -78,6 +78,7 @@ import {
 import { LayoutView } from '../views/LayoutView';
 import {
   admitRestoredBrowserPreviewPaneInstance,
+  browserPreviewPaneOrdinal,
   browserPreviewPanePresentationLabel,
   removeRemovedBrowserPreviewPaneState,
 } from '../workspace-panes/browserPreviewPaneInstance';
@@ -1491,11 +1492,17 @@ function BuiltinCodingLayoutHost({
   const stackPaneLabel = (instance: WorkspacePaneInstance) => {
     const path = stackPaneDetail(instance);
     if (path) return path.slice(path.lastIndexOf('/') + 1) || path;
-    return (
+    const name =
       presentationLabel(instance) ??
       builtinWorkspacePaneName(instance.descriptorId) ??
-      'Pane'
+      'Pane';
+    // A second Browser is "Browser 2": two identical globes on the rail
+    // told the reader nothing (design audit D8).
+    const ordinal = browserPreviewPaneOrdinal(
+      hostInstances ?? document?.instances ?? [],
+      instance,
     );
+    return ordinal === null ? name : `${name} ${ordinal}`;
   };
   return (
     <CodingWorkbench

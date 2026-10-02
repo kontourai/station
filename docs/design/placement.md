@@ -1504,8 +1504,10 @@ into from it.
   rail on the trailing edge with the current one solid, the Diff badged with a
   changed-file count the layout already knows, the Browser launcher and the
   pane catalog last. Back and Forward are the browser's and the stack's
-  chords (⌘[ ⌘] on macOS, Alt+← Alt+→ elsewhere); Escape is left to the
-  composer. The navigation store remembers the locations of the entries it
+  chords (⌘[ ⌘] on macOS, Alt+← Alt+→ elsewhere); Escape is the layout's
+  own "up" (a drill-in returns to the conversation, a panel beside Chat
+  closes; see the audit round below) and inside a field it is the field's.
+  The navigation store remembers the locations of the entries it
   has seen (`adjacentLocation`, bounded to 64, in memory) so a chord can tell
   whether the adjacent entry is this layout's.
 - **Both pages stay mounted.** The inactive page is hidden (`visibility`) and
@@ -1634,7 +1636,7 @@ per conversation.** Below the fold nothing above changes.
 - **Quiet chrome.** The rail is unchanged in shape: past the fold its items
   are toggles (`aria-pressed`, `aria-controls` naming the panel) with the
   open ones solid, the Terminal's among them; below it they keep
-  `aria-current`. Each panel has one 36px head — its name as the panel's one
+  `aria-current`. Each panel has one 40px head — its name as the panel's one
   heading, focusable, the pane's own controls in the head's slots, the
   drill-in ⋯ where it has one, an icon-only close — and no labelled button,
   so the button cap is untouched. Opening from the keyboard
@@ -1659,8 +1661,10 @@ per conversation.** Below the fold nothing above changes.
   whatever tool is beside Chat, showing an already-open preview of that
   path (the rail names each preview's path) rather than opening a second
   occurrence.
-- **The transcript keeps 480px beside a tool** (`CODING_TRANSCRIPT_MIN_WIDTH`,
-  the same floor the fold budgets for Chat once the inbox is folded). A tool
+- **The transcript keeps 640px beside a tool** (`CODING_TRANSCRIPT_MIN_WIDTH`,
+  derived from the transcript's own rules: the column's 20px gutters, the
+  bubble's 80% of the row and its 48px padding leave 432px of text, the
+  ~60-character measure). A tool
   that would leave the transcript narrower folds the inbox (`inboxOpen`
   false) for its stay and unfolds it when the tool closes, measuring the
   inbox as rendered or by its own 240–360px rule. A fold or unfold the
@@ -1713,8 +1717,9 @@ per conversation.** Below the fold nothing above changes.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge
-  carries a slim strip — 6px with a faint rule at rest, 24px with its glyph
-  on hover or keyboard focus, full height, a real button named "Show inbox"
+  carries a slim strip — 6px with a 3px accent bar and a small chevron at
+  rest, 24px with its glyph brought up on hover or keyboard focus, full
+  height, a real button named "Show inbox"
   with a tooltip — whose activation opens the inbox as the reader's own
   choice (the session remembers it). It wears the inbox's "Needs you" count,
   published by Chat from the same partition the inbox panel renders
@@ -1736,6 +1741,27 @@ per conversation.** Below the fold nothing above changes.
   appears once a terminal exists (the empty state's own "New Terminal" says
   it first), and a file row truncates with an ellipsis and a full-name title
   rather than widening its panel.
+
+- **The design audit round (2026-10-02).** The Browser launcher flyout
+  renders on the body, fixed beside its rail trigger, since the rail
+  clipped it (the rail no longer scrolls, so its tooltips, placed to the
+  left, are whole too). Escape never leaves the layout: the workbench
+  registers it above the app's route-level "up", closes the panel the
+  reader is in (focus back to its rail item), returns a drill-in to the
+  conversation, and consumes it otherwise; the bar starts with a
+  visually-hidden "Skip to views" control, since the rail is last in the
+  tab order (bar, Chat, the open panel, the rail). A File Preview beside
+  Chat has a back arrow to Files in its head. The bar and every panel head
+  are one 40px row with 12px side padding, a 13px semibold title and the
+  same 32px close. The Terminal: with the shell the only kind of terminal
+  (no agent connections), an open empty panel opens a shell and "+" opens
+  another, no picker; its chrome — tabs, "+", the empty state, the picker
+  — is on the app's tokens and face in both themes, and only the xterm
+  viewport keeps the terminal's dark ground and monospace. The bar's New
+  chat is a compose mark, not a "+", beside the rail's "Add pane" "+". A
+  second Browser on the rail is "Browser 2" (`browserPreviewPaneOrdinal`);
+  the stored Browser state holds a session id, not a URL, so a URL tooltip
+  was not built.
 
 Limits: the lower panel is the Terminal's alone (no other pane docks below);
 the fold ignores whether the Project sidebar is collapsed; a shared link that
