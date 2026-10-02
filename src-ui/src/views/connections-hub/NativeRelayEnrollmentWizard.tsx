@@ -13,6 +13,7 @@ import { SkeletonBlock } from '../../components/state';
 import { createNativeRelayEnrollmentClient } from '../../platform/native/nativeRelayEnrollmentClient';
 import {
   type NativeRelayGrantState,
+  NativeRelayGrantStatusError,
   nativeRelayGrantAdapter,
 } from '../../platform/native/nativeRelayGrantAdapter';
 import { nativeRelayKeyApproval } from '../../platform/native/relayKeyApproval';
@@ -185,7 +186,13 @@ export function NativeRelayEnrollmentWizard({
         throw new Error('stationTrustRequired');
       return grantStatus.profileRevision;
     } catch (cause) {
-      throw captureNativeEnrollmentFailure(cause, stage);
+      throw captureNativeEnrollmentFailure(
+        cause instanceof NativeRelayGrantStatusError &&
+          cause.code === 'ambiguous'
+          ? new Error('native_enrollment_saved_connections_ambiguous')
+          : cause,
+        stage,
+      );
     }
   }
 
@@ -267,6 +274,9 @@ export function NativeRelayEnrollmentWizard({
       : error
         ? beginDiagnostic
         : undefined;
+
+  const savedConnectionsAmbiguous =
+    setupDiagnostic?.code === 'native_enrollment_saved_connections_ambiguous';
 
   const resume = useMutation({
     mutationFn: async (selectedHandle: string) => {
@@ -529,11 +539,14 @@ export function NativeRelayEnrollmentWizard({
           {recovery.isError ? (
             <>
               <p role="status">
-                Saved Device setup could not be checked. Retry before starting
-                another setup.
+                {savedConnectionsAmbiguous
+                  ? 'More than one connection is saved on this device. Ask the Station owner for a new setup invitation, then review and remove saved connections before continuing.'
+                  : 'Saved Device setup could not be checked. Retry before starting another setup.'}
               </p>
               <Button onClick={() => void recovery.refetch()}>
-                Retry saved setup check
+                {savedConnectionsAmbiguous
+                  ? 'Check after connection recovery'
+                  : 'Retry saved setup check'}
               </Button>
             </>
           ) : null}

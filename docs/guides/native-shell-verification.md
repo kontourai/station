@@ -76,7 +76,9 @@ codes, with no response bodies or raw error text. The adapter still rejects
 multiple grants and foreign or malformed metadata; it never chooses a grant
 to make qualification proceed.
 
-When a linked invitation encounters multiple saved grants, **Review saved
+Before linked redemption, even one older-generation saved grant blocks
+redemption and keeps the invitation available for explicit cleanup. Multiple
+saved grants and pending cleanup also expose recovery. **Review saved
 connections** opens a management-only preview for the same saved route and
 installation. **Remove saved connections** is the explicit confirmation.
 Technical routing details stay collapsed until opened. Operational status still
@@ -92,8 +94,12 @@ this distinct scope basis before exact local deletion. It does not claim that
 an individual grant was found or revoked. Profile, pending-link, trust, key and
 vault identity changes after the request refuse deletion. Unavailable or
 unsupported brokers, failed storage and equal/future generations remain pending.
-Qualify preview, explicit confirmation, pending status, restart recovery and
-replacement preservation in the installed shell before claiming this journey.
+If device setup encounters ambiguity after redemption, its fixed diagnostic is
+`native_enrollment_saved_connections_ambiguous`; it directs the user to a fresh
+owner-issued invitation for review and cleanup. A consumed invitation cannot
+be reused as cleanup authority. Same-generation custody is not automatically
+removed. Qualify the single-old-grant turnover, preview, explicit confirmation,
+pending status, restart recovery and replacement preservation in the installed shell before claiming this journey.
 
 ## Native request queue pressure
 

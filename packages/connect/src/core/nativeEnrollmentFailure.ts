@@ -23,6 +23,7 @@ const SAFE_CODES = new Set([
   'native_enrollment_peer_refused',
   'native_enrollment_operation_refused',
   'native_enrollment_route_refused',
+  'native_enrollment_saved_connections_ambiguous',
   'stationTrustRequired',
   'native_enrollment_peer_capacity_reached',
   'native_enrollment_peer_invalid',

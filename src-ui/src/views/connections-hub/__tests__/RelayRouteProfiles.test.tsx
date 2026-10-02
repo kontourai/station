@@ -1141,6 +1141,53 @@ describe('RelayRouteProfiles', () => {
     ).toBe(false);
   });
 
+  test('saved route refresh preserves ambiguity for actionable wizard recovery before opening a peer', async () => {
+    configureEnrollmentReadyRoute();
+    const original = mocks.grantInvoke.getMockImplementation()!;
+    let statusReads = 0;
+    mocks.grantInvoke.mockImplementation(async (command, args) => {
+      const response = await original(command, args);
+      if (
+        command !== 'station_native_relay_grant_status' ||
+        ++statusReads === 1
+      )
+        return response;
+      const grant = response.grants[0];
+      return {
+        ...response,
+        grants: [
+          grant,
+          {
+            ...grant,
+            metadata: {
+              ...grant.metadata,
+              route: {
+                ...grant.metadata.route,
+                routingGeneration: 5,
+                grantId: 'zyxwvutsrqponmlkjihgfe',
+              },
+            },
+          },
+        ],
+      };
+    });
+    renderRoutes();
+    await screen.findByText(/Ask the Station owner for a new setup invitation/);
+    expect(
+      screen.getByText(
+        /Stage: route-status. Code: native_enrollment_saved_connections_ambiguous/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Check after connection recovery' }),
+    ).toBeTruthy();
+    expect(mocks.openVerifiedPeer).not.toHaveBeenCalled();
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: 'Request device access' }),
+    ).toBeNull();
+  });
+
   test('automatic recovery diagnostics cover route validation before client construction and exclude secret traps', async () => {
     configureEnrollmentReadyRoute();
     const original = mocks.grantInvoke.getMockImplementation()!;

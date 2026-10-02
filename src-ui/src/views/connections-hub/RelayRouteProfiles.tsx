@@ -294,7 +294,8 @@ function NativeRelayGrantControls({
           onEnrollmentCancel={() => setEnrollmentStarted(false)}
           refreshGrantStatus={async () => {
             const refreshed = await status.refetch();
-            if (refreshed.isError || !refreshed.data)
+            if (refreshed.isError) throw refreshed.error;
+            if (!refreshed.data)
               throw new Error('Native relay grant status is unavailable.');
             return refreshed.data;
           }}

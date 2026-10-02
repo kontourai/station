@@ -40,6 +40,7 @@ const LOCAL_FAILURE_CODES = new Map([
   ['trust', 'station-trust-required'],
   ['staleProfile', 'saved-profile-changed'],
   ['Connection cleanup is still pending.', 'connection-cleanup-pending'],
+  ['Older saved connections need review.', 'older-saved-connections'],
   [
     'Station could not read native relay grant status.',
     'grant-status-unavailable',
@@ -178,6 +179,16 @@ function Review({
         setCleanupPending(true);
         throw new Error('Connection cleanup is still pending.');
       }
+      if (
+        status.grants.some(
+          ({ metadata }) =>
+            metadata.route.routingGeneration <
+            delivery.invitation.routingGeneration,
+        )
+      ) {
+        setCleanupPending(true);
+        throw new Error('Older saved connections need review.');
+      }
       step = 'host-redemption';
       const result = await nativeRelayGrantAdapter.redeemLinked({
         pendingId: delivery.pendingId,
@@ -209,7 +220,9 @@ function Review({
               );
         setConnectionFailure({ step, ...(code ? { code } : {}) });
         setError(
-          'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
+          code === 'older-saved-connections'
+            ? 'An earlier connection is saved on this device. Review and remove it before using this invitation.'
+            : 'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
         );
       }
     } finally {
@@ -343,7 +356,8 @@ function Review({
           </>
         )}
         {error ? <p role="alert">{error}</p> : null}
-        {(connectionFailure?.code === 'grant-status-ambiguous' ||
+        {(connectionFailure?.code === 'older-saved-connections' ||
+          connectionFailure?.code === 'grant-status-ambiguous' ||
           connectionFailure?.code === 'connection-cleanup-pending') &&
         delivery.kind === 'bound-invitation' &&
         profile &&

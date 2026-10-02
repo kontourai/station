@@ -513,6 +513,141 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
   expect(host.store?.profiles[0].credentialRef).toBeUndefined();
 });
 
+it.each([8, 9])(
+  'reviews older saved generation %i before G9 redemption and preserves same-generation custody with wizard recovery',
+  async (savedGeneration) => {
+    const { profile, keyId, bound } = await configureBoundFlow(true);
+    host.launch = {
+      ...bound,
+      invitation: { ...bound.invitation, routingGeneration: 9 },
+    };
+    const oldGrant: NativeRelayGrantMetadata = {
+      route: {
+        brokerOrigin: route.brokerOrigin,
+        stationId: route.stationId,
+        enrollmentId: route.enrollmentId,
+        routingGeneration: savedGeneration,
+        grantId: 'abcdefghijklmnopqrstuv',
+      },
+      stationSigningKeyId: keyId,
+      stationSigningGeneration: 1,
+      expiresAt: Date.now() + 60_000,
+    };
+    const newGrant: NativeRelayGrantMetadata = {
+      ...oldGrant,
+      route: {
+        ...oldGrant.route,
+        routingGeneration: 9,
+        grantId: 'zyxwvutsrqponmlkjihgfe',
+      },
+    };
+    let grants = [{ metadata: oldGrant, expired: false }];
+    const state = () => ({
+      profileName: profile.name,
+      profileRevision: host.store?.revision,
+      stationId: route.stationId,
+      enrollmentId: route.enrollmentId,
+      grants,
+      cleanups: [],
+    });
+    const ordinaryInvoke = host.invoke.getMockImplementation();
+    host.invoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_relay_grant_status') return state();
+      if (command === 'station_native_relay_link_recovery_preview')
+        return { state: state(), outcomes: [] };
+      if (command === 'station_native_relay_link_recovery_reset') {
+        grants = [];
+        return { state: state(), outcomes: [] };
+      }
+      if (command === 'station_native_relay_link_redeem') {
+        grants = [...grants, { metadata: newGrant, expired: false }];
+        return { status: 'redeemed', grant: newGrant };
+      }
+      return ordinaryInvoke?.(command, args);
+    });
+    render(
+      <NativeRelayLinkIntake>
+        <ProtectedRoot />
+      </NativeRelayLinkIntake>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Continue to device approval',
+      }),
+    );
+    if (savedGeneration === 9) {
+      await screen.findByText(
+        /Stage: route-status. Code: native_enrollment_saved_connections_ambiguous/,
+      );
+      expect(
+        screen.getByText(/Ask the Station owner for a new setup invitation/),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Check after connection recovery' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Review saved connections' }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Request device access' }),
+      ).toBeNull();
+      expect(
+        host.invoke.mock.calls.some(
+          ([command]) =>
+            command === 'station_native_relay_link_recovery_reset' ||
+            command === 'station_native_enrollment_resume',
+        ),
+      ).toBe(false);
+      expect(grants).toEqual([
+        { metadata: oldGrant, expired: false },
+        { metadata: newGrant, expired: false },
+      ]);
+      return;
+    }
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Review saved connections' }),
+    );
+    await screen.findByText('Remove saved connections?');
+    expect(screen.getByText('Saved connections: 1.')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Continue to device approval' }),
+    ).toHaveProperty('disabled', true);
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_relay_link_redeem' ||
+          command === 'station_native_relay_link_recovery_reset',
+      ),
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove saved connections' }),
+    );
+    await screen.findByText(/Saved connections removed/);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue to device approval' }),
+    );
+    await screen.findByRole('button', { name: 'Request device access' });
+    expect(grants).toEqual([{ metadata: newGrant, expired: false }]);
+    const reset = host.invoke.mock.calls.find(
+      ([command]) => command === 'station_native_relay_link_recovery_reset',
+    );
+    const redeem = host.invoke.mock.calls.filter(
+      ([command]) => command === 'station_native_relay_link_redeem',
+    );
+    expect(reset?.[1]).toEqual({
+      pendingId: bound.pendingId,
+      profileName: profile.name,
+      expectedProfileRevision: host.store?.revision,
+      expectedUpdatedAt: profile.updatedAt,
+    });
+    expect(redeem).toHaveLength(1);
+    expect(redeem[0][1]).toEqual(reset?.[1]);
+    expect(host.account).toBe('opaque-account-session');
+    expect(host.active).toBe('station-profile:existing');
+    expect(host.store?.profiles[0].credentialRef).toBeUndefined();
+  },
+);
+
 it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
   'explicit connection reset uses validated management metadata and preserves refusal for %s',
   async (outcome) => {

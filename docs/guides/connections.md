@@ -324,9 +324,11 @@ separate from the mounted frontend checks.
 The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-foundation-v2)
 keep credentials and durable retry identity out of the renderer.
 
-If a linked invitation finds multiple saved grants for its route and this
-installation, or a previous cleanup is still pending, **Review saved
-connections** opens a preview. **Remove saved connections** confirms the
+Before redeeming a linked invitation, Station checks saved grants for the same
+route and installation. If even one belongs to an earlier routing generation,
+it keeps the invitation unconsumed and asks you to review the old connection.
+The same review is available for multiple saved grants or pending cleanup.
+**Review saved connections** opens a preview. **Remove saved connections** confirms the
 cleanup. Technical routing details appear only when expanded. The host first
 tries to retire each broker grant and clears eligible local records only after
 cleanup is established. This does not change Station
@@ -335,8 +337,12 @@ routing generation only, the host can use the still-unconsumed invitation to
 establish that the old scope is no longer admitted. If observation or local
 storage fails, cleanup remains pending and the invitation stays available.
 After cleanup, continue to device approval; account sign-in and shared Projects
-are separate steps. Operational status continues to refuse multiple grants
-until cleanup resolves; it never chooses one silently. This native journey
+are separate steps. If device setup still finds multiple connections, it asks
+for a new owner-issued setup invitation; use that invitation’s review and
+confirmation before retrying the saved setup check. Diagnostic details report
+`native_enrollment_saved_connections_ambiguous` without raw host errors. A
+same-generation saved connection does not trigger older-generation cleanup.
+Operational status continues to refuse multiple grants until cleanup resolves; it never chooses one silently. This native journey
 still needs installed-shell qualification, as described in
 [native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
 

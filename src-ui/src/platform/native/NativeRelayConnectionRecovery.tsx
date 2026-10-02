@@ -50,10 +50,9 @@ export function NativeRelayConnectionRecovery({
         <>
           <h3>Remove saved connections?</h3>
           <p>
-            This device has multiple saved connections to this Station. Remove
-            them to use this invitation. We’ll also try to turn off any that
-            still work. This won’t change your Station confirmation or shared
-            Project access.
+            Remove the saved connections shown below to use this invitation.
+            We’ll also try to turn off any that still work. This won’t change
+            your Station confirmation or shared Project access.
           </p>
           <p>Saved connections: {preview.data.state.grants.length}.</p>
           <details>
