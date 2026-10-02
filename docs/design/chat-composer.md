@@ -43,8 +43,8 @@ detail, with a Back to list control, instead of squeezing both columns.
 Live approval, connection, and working status sit above the composer, on the
 right of the Agent, Model, and Approval controls. Scroll to bottom appears
 immediately to the right of that status and moves with it as the draft grows.
-When the chat pane is narrow, the status and scroll control share a row above
-the settings. The desktop header exposes Collapse chat list / Expand chat list
+When the chat pane is narrow, the status and scroll control are centered
+together in a row above the settings. The desktop header exposes Collapse chat list / Expand chat list
 directly, with its current state available to assistive technology.
 
 User-message action menus reserve padding before hover so their targets cannot

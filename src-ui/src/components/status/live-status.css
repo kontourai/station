@@ -310,3 +310,11 @@ button.chat-status-pill {
     transform: scale(1.9);
   }
 }
+
+@container (max-width: 640px) {
+  .chat-status-pill__details {
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
+  }
+}
