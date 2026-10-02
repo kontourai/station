@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"b5be1b44c0a7d9c2fcbc52eedc60c88af7e8cee705b9b0e7cfe575ba771c482f","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+  "document": {"digest":"cc867662ee4b4098002167d2352960c0900b4b27c2ce97b33626a39905903bdb","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -170,7 +170,7 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"5f09d9cb93677cdd0ce3065bb267d030418d003904810229c116baf50303c9d5","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -258,7 +258,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21","revision":"068722323b07f15f14280d43b1c05dbc2ca212eb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 

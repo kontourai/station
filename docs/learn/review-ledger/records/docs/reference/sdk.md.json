@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"17c5761df02fd7438ec6c71c71429837a7b7169cfbc0a072fa17a37aeb9d82de","revision":"9816185d79a9c9f83a325d7bc16905765ea66705"},
+  "document": {"digest":"f517fe8ebfa659958e0f223e3bb61a9b7a581a4288d2bb78aa94a420b9f40486","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -294,7 +294,7 @@
 
     {"path":"src-server/routes/operations/notifications.ts","digest":"4d0add85259d3edb2deee0c0929891851ebccc980416b6c693b0b002cc081651","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"5f09d9cb93677cdd0ce3065bb267d030418d003904810229c116baf50303c9d5","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
     {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -340,7 +340,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21","revision":"068722323b07f15f14280d43b1c05dbc2ca212eb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
