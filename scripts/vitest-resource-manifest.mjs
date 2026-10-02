@@ -822,6 +822,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // under the four-worker ordinary corpus. Keep their feedback deterministic.
   'src-server/providers/__tests__/acp-adapter.test.ts',
   'src-server/providers/__tests__/station-control-mcp-passthrough.integration.test.ts',
+  // #2932: the real Agent SDK launches a small Node script standing in for
+  // the Claude CLI, through its own spawn and through Station's. The spawn
+  // is the SDK's and the adapter's, not a direct test-file import. Each run
+  // is single-shot and exits by itself; nothing asserts a wall-clock bound.
+  'src-server/providers/__tests__/claude-code-spawn.sdk.test.ts',
   'src-server/providers/auth/__tests__/cli-auth-login-path.test.ts',
   'src-server/routes/plugins/__tests__/plugins.routes.test.ts',
   // One private Node child with exposed GC proves strong lease custody. No

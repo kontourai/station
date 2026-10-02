@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  claudeAskEscalates,
   directoryPermissionUpdateKind,
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
   sessionGrantPermissionUpdates,
@@ -408,6 +409,370 @@ describe('#2932: escalation signals the engine forwards', () => {
     const request = { toolName: 'Bash', ...extra };
     expect(toolRequestSessionGrant(request)).toBe('tool');
     expect(toolRequestIsPlainCall(request)).toBe(true);
+  });
+});
+
+describe("#2932 part 2: the engine's structured ask reason", () => {
+  const ORDINARY = 'This command requires approval';
+  /** `claudeAskEscalates` for a Bash ask unless another tool is named. */
+  const escalates = (
+    claudeAsk: unknown,
+    decisionReason: unknown,
+    toolName = 'Bash',
+  ) => claudeAskEscalates({ toolName, claudeAsk, decisionReason });
+  const acceptEdits = {
+    type: 'setMode',
+    mode: 'acceptEdits',
+    destination: 'session',
+  };
+
+  test.each([
+    'rule',
+    'mode',
+    'permissionPromptTool',
+    'hook',
+    'asyncAgent',
+    'sandboxOverride',
+    'workingDir',
+    'safetyCheck',
+    'classifier',
+    'a-type-added-later',
+  ])('reason type %s escalates, whatever the reason text', (type) => {
+    expect(escalates({ decisionReasonType: type }, undefined)).toBe(true);
+    expect(escalates({ decisionReasonType: type }, ORDINARY)).toBe(true);
+    const request = {
+      toolName: 'Bash',
+      toolInput: { command: 'git push' },
+      decisionReason: ORDINARY,
+      claudeAsk: { decisionReasonType: type },
+    };
+    expect(toolRequestEscalates(request)).toBe(true);
+    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestIsPlainCall(request)).toBe(false);
+  });
+
+  describe('a compound shell command (subcommandResults)', () => {
+    const compound = (extra: Record<string, unknown> = {}) => ({
+      toolName: 'Bash',
+      toolInput: { command: 'git add -A && git commit -m x' },
+      claudeAsk: { decisionReasonType: 'subcommandResults' },
+      ...extra,
+    });
+
+    test('on Bash is a plain call when the frame shows nothing about its parts; on PowerShell it always escalates', () => {
+      const bash = compound();
+      expect(claudeAskEscalates(bash)).toBe(false);
+      expect(toolRequestSessionGrant(bash)).toBe('tool');
+      expect(toolRequestIsPlainCall(bash)).toBe(true);
+      const powerShell = compound({ toolName: 'PowerShell' });
+      expect(claudeAskEscalates(powerShell)).toBe(true);
+      expect(toolRequestSessionGrant(powerShell)).toBe('none');
+      expect(toolRequestIsPlainCall(powerShell)).toBe(false);
+      // An empty or blank reason is no reason.
+      for (const decisionReason of [undefined, null, '', '  '])
+        expect(
+          toolRequestSessionGrant(compound({ decisionReason })),
+          String(decisionReason),
+        ).toBe('tool');
+    });
+
+    test.each([
+      [
+        'classifierApprovable false',
+        {
+          claudeAsk: {
+            decisionReasonType: 'subcommandResults',
+            classifierApprovable: false,
+          },
+        },
+      ],
+      [
+        'classifierApprovable true',
+        {
+          claudeAsk: {
+            decisionReasonType: 'subcommandResults',
+            classifierApprovable: true,
+          },
+        },
+      ],
+      [
+        'a matched ask rule',
+        {
+          matchedAskRule: {
+            source: 'projectSettings',
+            toolName: 'Bash',
+            ruleContent: 'git push:*',
+          },
+        },
+      ],
+      ['any reason text', { decisionReason: ORDINARY }],
+      ['a reason that is not text', { decisionReason: 1 }],
+      ['a blocked path', { blockedPath: '/outside/f' }],
+      [
+        'an addDirectories suggestion',
+        {
+          suggestions: [
+            {
+              type: 'addDirectories',
+              directories: ['/outside'],
+              destination: 'session',
+            },
+          ],
+        },
+      ],
+      [
+        'a sandbox override',
+        { toolInput: { command: 'a && b', dangerouslyDisableSandbox: true } },
+      ],
+      ['suppressAlwaysAllowRule', { suppressAlwaysAllowRule: true }],
+      ['defaultToNo', { defaultToNo: true }],
+      ['requiresUserInteraction', { requiresUserInteraction: true }],
+      ['a tool that is not a shell tool', { toolName: 'mcp__x__y' }],
+      ['PowerShell', { toolName: 'PowerShell' }],
+      // The engine names the tool `Bash`; no other spelling is the tool.
+      ['the tool name bash', { toolName: 'bash' }],
+      ['the tool name BASH', { toolName: 'BASH' }],
+      [
+        'a decision reason code',
+        {
+          claudeAsk: {
+            decisionReasonType: 'subcommandResults',
+            decisionReasonCode: 'outside_reads_blocked',
+          },
+        },
+      ],
+    ])('escalates with %s', (_label, extra) => {
+      const request = compound(extra);
+      expect(toolRequestEscalates(request)).toBe(true);
+      expect(toolRequestIsPlainCall(request)).toBe(false);
+      expect(toolRequestSessionGrant(request)).not.toBe('tool');
+    });
+
+    test('claudeAskEscalates itself reads the three signals about a part', () => {
+      expect(claudeAskEscalates(compound())).toBe(false);
+      expect(
+        claudeAskEscalates(
+          compound({
+            claudeAsk: {
+              decisionReasonType: 'subcommandResults',
+              classifierApprovable: true,
+            },
+          }),
+        ),
+      ).toBe(true);
+      expect(
+        claudeAskEscalates(
+          compound({ matchedAskRule: { source: 'x', toolName: 'Bash' } }),
+        ),
+      ).toBe(true);
+      expect(claudeAskEscalates(compound({ decisionReason: 'warning' }))).toBe(
+        true,
+      );
+    });
+
+    test('a read-rule suggestion from a part keeps the folder option and no tool grant', () => {
+      expect(
+        toolRequestSessionGrant(
+          compound({
+            suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+                behavior: 'allow',
+                destination: 'session',
+              },
+            ],
+          }),
+        ),
+      ).toBe('read-folder');
+    });
+  });
+
+  test('type other is a plain call only with the ordinary reason text', () => {
+    expect(escalates({ decisionReasonType: 'other' }, ORDINARY)).toBe(false);
+    for (const reason of [
+      'This command uses shell operators that require approval for safety',
+      'Process substitution requires manual approval',
+      `${ORDINARY}.`,
+      ` ${ORDINARY}`,
+      '',
+      undefined,
+      null,
+      42,
+    ])
+      expect(
+        escalates({ decisionReasonType: 'other' }, reason),
+        String(reason),
+      ).toBe(true);
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: ORDINARY,
+        claudeAsk: { decisionReasonType: 'other' },
+      }),
+    ).toBe('tool');
+  });
+
+  test('an ask with no reason type is a plain call: MCP, WebFetch, an edit inside the working directories', () => {
+    for (const toolName of ['mcp__github__create_issue', 'WebFetch', 'Edit'])
+      expect(escalates({}, undefined, toolName), toolName).toBe(false);
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'mcp__github__create_issue',
+        claudeAsk: {},
+      }),
+    ).toBe('tool');
+    expect(
+      toolRequestSessionGrant({ toolName: 'WebFetch', claudeAsk: {} }),
+    ).toBe('tool');
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Edit',
+        suggestions: [acceptEdits],
+        claudeAsk: {},
+      }),
+    ).toBe('edit-mode');
+  });
+
+  test('classifierApprovable set either way escalates, with any reason type or none', () => {
+    for (const classifierApprovable of [true, false, null])
+      for (const decisionReasonType of [undefined, 'other', 'safetyCheck'])
+        expect(
+          escalates({ decisionReasonType, classifierApprovable }, ORDINARY),
+          `${String(classifierApprovable)} ${String(decisionReasonType)}`,
+        ).toBe(true);
+    // A sensitive-file edit in default mode suggests acceptEdits like a
+    // plain edit; the structured reason is what tells them apart.
+    const sensitive = {
+      toolName: 'Edit',
+      suggestions: [acceptEdits],
+      claudeAsk: {
+        decisionReasonType: 'safetyCheck',
+        classifierApprovable: true,
+      },
+    };
+    expect(toolRequestSessionGrant(sensitive)).toBe('none');
+    expect(toolRequestIsPlainCall(sensitive)).toBe(false);
+  });
+
+  test('a Claude ask whose frame was not read escalates; an engine that reports none is left alone', () => {
+    for (const missing of [null, 'other', 0, false, [], [{}]])
+      expect(escalates(missing, ORDINARY), String(missing)).toBe(true);
+    expect(toolRequestSessionGrant({ toolName: 'Bash', claudeAsk: null })).toBe(
+      'none',
+    );
+    expect(toolRequestIsPlainCall({ toolName: 'Bash', claudeAsk: null })).toBe(
+      false,
+    );
+    // Other engines (ACP, Codex, Station's own) set no `claudeAsk`.
+    expect(escalates(undefined, undefined)).toBe(false);
+    expect(escalates(undefined, undefined, 'WebFetch')).toBe(false);
+    expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+  });
+
+  test('a decision reason code escalates with any reason type or none', () => {
+    for (const decisionReasonCode of [
+      'outside_reads_blocked',
+      'memory_paused',
+      'classifier_transcript_too_long',
+      'a-code-added-later',
+    ]) {
+      expect(
+        escalates(
+          { decisionReasonType: 'other', decisionReasonCode },
+          ORDINARY,
+        ),
+        decisionReasonCode,
+      ).toBe(true);
+      expect(
+        escalates({ decisionReasonCode }, undefined, 'WebFetch'),
+        decisionReasonCode,
+      ).toBe(true);
+    }
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: ORDINARY,
+        claudeAsk: {
+          decisionReasonType: 'other',
+          decisionReasonCode: 'memory_paused',
+        },
+      }),
+    ).toBe('none');
+  });
+
+  test('a shell ask with no reason type escalates: the engine always sends one', () => {
+    for (const toolName of ['Bash', 'PowerShell']) {
+      expect(escalates({}, undefined, toolName), toolName).toBe(true);
+      expect(escalates({}, ORDINARY, toolName), toolName).toBe(true);
+      expect(toolRequestSessionGrant({ toolName, claudeAsk: {} })).toBe('none');
+      expect(toolRequestIsPlainCall({ toolName, claudeAsk: {} })).toBe(false);
+    }
+    // Positive control: the same ask with the ordinary reason type.
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Bash',
+        decisionReason: ORDINARY,
+        claudeAsk: { decisionReasonType: 'other' },
+      }),
+    ).toBe('tool');
+    // Another engine's Bash carries no `claudeAsk` and is left alone.
+    expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+  });
+
+  test('a reason type that is not a string escalates', () => {
+    for (const type of [null, 1, {}, ['other']])
+      expect(
+        escalates({ decisionReasonType: type }, ORDINARY),
+        String(type),
+      ).toBe(true);
+  });
+
+  test('an escalating ask still forwards the folder the engine suggested', () => {
+    expect(
+      toolRequestSessionGrant({
+        toolName: 'Edit',
+        suggestions: [
+          acceptEdits,
+          {
+            type: 'addDirectories',
+            directories: ['/elsewhere'],
+            destination: 'session',
+          },
+        ],
+        claudeAsk: { decisionReasonType: 'workingDir' },
+      }),
+    ).toBe('folder');
+  });
+
+  test('the payload reader passes claudeAsk through, null included', () => {
+    const payload = {
+      toolName: 'Bash',
+      toolInput: { command: 'git push' },
+      decisionReason: ORDINARY,
+    };
+    expect(
+      toolRequestSessionGrantFromPayload({
+        ...payload,
+        claudeAsk: { decisionReasonType: 'other' },
+      }),
+    ).toBe('tool');
+    expect(
+      toolRequestSessionGrantFromPayload({
+        ...payload,
+        claudeAsk: { decisionReasonType: 'rule' },
+      }),
+    ).toBe('none');
+    expect(
+      toolRequestSessionGrantFromPayload({ ...payload, claudeAsk: null }),
+    ).toBe('none');
+    // A payload round-tripped through JSON keeps the null.
+    expect(
+      toolRequestSessionGrantFromPayload(
+        JSON.parse(JSON.stringify({ ...payload, claudeAsk: null })),
+      ),
+    ).toBe('none');
+    expect(toolRequestSessionGrantFromPayload(payload)).toBe('tool');
   });
 });
 
