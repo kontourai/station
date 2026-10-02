@@ -9,7 +9,7 @@
 
   "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): document ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged document bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"153ad5eab5cac2503ca79442ae65806bde979576652f2ed89346374048e79ec9","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+  "document": {"digest":"71a8ddf3c522f2f3f987a147ba6c106b13fb2c26d90429d57a381aa6a1559110","revision":"1ac5727520fe410ac2db16dd6742697287a08e79"},
 
   "sources": [
     {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -124,11 +124,11 @@
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"d5d2360ea1df6047239154ad8d646f65709c3c2052460bfd8c0c529a03ad8d0e","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"feaf044fab9c3913928b4f890a8567694642efef4c6797d35fd1fdedf7d10d80","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"ccf4eadf7c4154cf6a012ac766f0bde30c757a5a5cf03214c8a04ba3f5a44eca","revision":"7602896f5d1febf6f37d5158cbd0981254d4b960"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"2d6f90097103d33b904c999baa092c10fe9e9dfe9f23dd474a95b0986f709e10","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"85d7e6a9e3e4e969d8a54ddf2a47f1127099916eb1590989e53340e262375705","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
 
     {"path":"tests/tauri-shell/native-chat-dispatch.e2e.ts","digest":"cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
 

@@ -12,7 +12,7 @@
   "document": {"digest":"639c22132706ff3f95576f36d67379fe01240546042bb299f4075c3571dd1de4","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
   "sources": [
-    {"path":"docs/guides/native-shell-verification.md","digest":"153ad5eab5cac2503ca79442ae65806bde979576652f2ed89346374048e79ec9","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"71a8ddf3c522f2f3f987a147ba6c106b13fb2c26d90429d57a381aa6a1559110","revision":"1ac5727520fe410ac2db16dd6742697287a08e79"},
 
     {"path":"scripts/gate-for.mjs","digest":"6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
   ],

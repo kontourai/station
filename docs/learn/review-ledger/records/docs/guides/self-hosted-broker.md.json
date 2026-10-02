@@ -20,7 +20,7 @@
 
     {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"e01bc77122b9ed7b4323dde178d7c82334f7de49"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"153ad5eab5cac2503ca79442ae65806bde979576652f2ed89346374048e79ec9","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"71a8ddf3c522f2f3f987a147ba6c106b13fb2c26d90429d57a381aa6a1559110","revision":"1ac5727520fe410ac2db16dd6742697287a08e79"},
 
     {"path":"packages/connect/src/__tests__/relayIceConfiguration.test.ts","digest":"3146699fe18f669c88e277edc5ebd750a3250233d6fe1f85055c9e3ce059a637","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
@@ -166,9 +166,9 @@
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"ccf4eadf7c4154cf6a012ac766f0bde30c757a5a5cf03214c8a04ba3f5a44eca","revision":"7602896f5d1febf6f37d5158cbd0981254d4b960"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"2d6f90097103d33b904c999baa092c10fe9e9dfe9f23dd474a95b0986f709e10","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"85d7e6a9e3e4e969d8a54ddf2a47f1127099916eb1590989e53340e262375705","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 

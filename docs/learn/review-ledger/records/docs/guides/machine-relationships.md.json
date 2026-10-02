@@ -12,7 +12,7 @@
   "document": {"digest":"108f08839833e66e6ac3d7c5b61bc59c9cb7de5dc999f58ee6aa52ac5aa52441","revision":"2ab3c6e171e1cae8222f85e17416538a99019390"},
 
   "sources": [
-    {"path":"docs/guides/connections.md","digest":"82666b65f456b495e65db8317bf3403d716b196d1699b9e5dd6b6fd0142c314e","revision":"4fc27440716382d26fd4bba77e94bd8fdbf75153"},
+    {"path":"docs/guides/connections.md","digest":"65f5ac0341f5b2b62d8f675efb2693a2d161255f582874c3b47b3a4478eac067","revision":"37273326edafdc6317763c16bb46d085bb48a43f"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
 
@@ -106,7 +106,7 @@
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"2d6f90097103d33b904c999baa092c10fe9e9dfe9f23dd474a95b0986f709e10","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"85d7e6a9e3e4e969d8a54ddf2a47f1127099916eb1590989e53340e262375705","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
 
     {"path":"src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx","digest":"afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"}
   ],

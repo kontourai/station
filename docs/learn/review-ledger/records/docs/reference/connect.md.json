@@ -52,7 +52,7 @@
 
     {"path":"packages/connect/src/core/nativeEnrollmentExchange.ts","digest":"cdaba0e74010c7829c8d1df109d4e9c0647fb828986778b24c0fe373d8545e12","revision":"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666"},
 
-    {"path":"packages/connect/src/core/nativeEnrollmentFailure.ts","digest":"53a7fe30cbe59099c417d52529b71731e7563fcbf7696888ffcb4d802b292e3f","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"packages/connect/src/core/nativeEnrollmentFailure.ts","digest":"3fa46ed3d1b6c8652ecbd9810911a23631e9e9d1c6eeed2f5c55fa956b5e5d43","revision":"6dcf8c71a9b65c1b30f3a61408f6f0ca4b76555f"},
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b810e954f0908cbad89aacfc4477d984a87f3188324f44a64084510cdcacddea","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 
@@ -126,9 +126,9 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"d5d2360ea1df6047239154ad8d646f65709c3c2052460bfd8c0c529a03ad8d0e","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"feaf044fab9c3913928b4f890a8567694642efef4c6797d35fd1fdedf7d10d80","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"}
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"ccf4eadf7c4154cf6a012ac766f0bde30c757a5a5cf03214c8a04ba3f5a44eca","revision":"7602896f5d1febf6f37d5158cbd0981254d4b960"}
   ],
 
   "checks": [

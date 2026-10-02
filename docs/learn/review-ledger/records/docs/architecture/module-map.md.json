@@ -880,7 +880,7 @@
 
     {"path":"src-ui/src/settings/shortcutPreferences.ts","digest":"4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"ccf4eadf7c4154cf6a012ac766f0bde30c757a5a5cf03214c8a04ba3f5a44eca","revision":"7602896f5d1febf6f37d5158cbd0981254d4b960"},
 
     {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

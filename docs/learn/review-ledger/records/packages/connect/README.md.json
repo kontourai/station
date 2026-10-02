@@ -52,7 +52,7 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"}
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"ccf4eadf7c4154cf6a012ac766f0bde30c757a5a5cf03214c8a04ba3f5a44eca","revision":"7602896f5d1febf6f37d5158cbd0981254d4b960"}
   ],
 
   "checks": [
