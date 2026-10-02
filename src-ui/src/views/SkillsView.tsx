@@ -19,7 +19,7 @@ import {
   useUninstallSkillMutation,
   useUpdateLocalSkillMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
@@ -126,6 +126,9 @@ export function SkillsView({
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(rawSelectedId === 'new');
   const [isEditing, setIsEditing] = useState(false);
+  const [pendingCreatedSkill, setPendingCreatedSkill] = useState<string | null>(
+    null,
+  );
   const [showRunModal, setShowRunModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importResults, setImportResults] = useState<
@@ -135,6 +138,10 @@ export function SkillsView({
   const [dirty, setDirty] = useState(false);
   const splitPaneSelectedId = isCreating ? '__new__' : selectedId;
   const [form, setForm] = useState<SkillForm>(EMPTY_SKILL_FORM);
+  const formRef = useRef(form);
+  formRef.current = form;
+  const selectionRef = useRef(rawSelectedId);
+  selectionRef.current = rawSelectedId;
   const { navigate, setDockState, setActiveChat } = useNavigation();
   const { showToast } = useToast();
   const { apiBase } = useApiBase();
@@ -254,12 +261,15 @@ export function SkillsView({
   // request dispatch — the dead path audited in #890 stalled before fetch.
   const importSkillsMutation = useImportSkills(apiBase);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  useEffect(() => {
+    if (!pendingCreatedSkill || dirty) return;
+    setPendingCreatedSkill(null);
+    select(pendingCreatedSkill);
+  }, [pendingCreatedSkill, dirty, select]);
+
   useCloseShortcut(() => {
     if (isCreating || selectedId) {
-      guard(() => {
-        deselect();
-        setIsCreating(false);
-      });
+      deselect();
       return;
     }
     // Escape is a dismissal: return to `/` and whatever occupies `main`, not
@@ -308,16 +318,22 @@ export function SkillsView({
       return;
     }
     const payload = buildSkillPayload(form);
+    const submittedForm = form;
+    const submittedSelection = rawSelectedId;
     try {
       if (isCreating) {
         await createLocalMutation.mutateAsync(payload);
-        setIsCreating(false);
-        select(payload.name);
       } else {
         await updateLocalMutation.mutateAsync(payload);
       }
-      setDirty(false);
       showToast('Skill saved');
+      if (
+        formRef.current !== submittedForm ||
+        selectionRef.current !== submittedSelection
+      )
+        return;
+      if (isCreating) setPendingCreatedSkill(payload.name);
+      setDirty(false);
     } catch (error) {
       showToast(
         error instanceof Error
@@ -427,17 +443,15 @@ export function SkillsView({
   }
 
   function handleDeselectSkill() {
-    guard(() => {
-      deselect();
-      setIsCreating(false);
-      setDirty(false);
-    });
+    deselect();
   }
 
   function handleAddSkill() {
-    guard(() => {
+    if (rawSelectedId !== 'new') {
       select('new');
-      setIsCreating(true);
+      return;
+    }
+    guard(() => {
       setForm(newSkillForm);
       setDirty(false);
     });
@@ -817,7 +831,10 @@ export function SkillsView({
                 )}
 
                 {showEditor && (
-                  <>
+                  <fieldset
+                    className="skill-editor__fields"
+                    disabled={savePending}
+                  >
                     <div className="agent-editor__section">
                       <div className="editor-field">
                         <label className="editor-label" htmlFor="skill-name">
@@ -914,7 +931,7 @@ export function SkillsView({
                         </div>
                       </details>
                     </div>
-                  </>
+                  </fieldset>
                 )}
 
                 {!isCreating && selected && (

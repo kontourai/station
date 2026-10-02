@@ -508,3 +508,13 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.skill-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-5);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

@@ -317,14 +317,12 @@ describe('SkillsView', () => {
     expect(screen.queryByText('No skill selected')).toBeNull();
   });
 
-  test('opens the create form when the add button is clicked', () => {
+  test('requests the new-skill route when the add button is clicked', () => {
     renderEditor();
 
     fireEvent.click(screen.getByRole('button', { name: 'New skill' }));
 
     expect(selectionState.select).toHaveBeenCalledWith('new');
-    expect(screen.getByText('New Skill')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
   });
 
   test('starts with a skill overview and guards returning from unsaved authoring', () => {
