@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/merge-queue-regression.yml","digest":"f803f8df52480932b1b69b1e623f31ac0f1128596f034ab0b0babca1fd46bbb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -62,9 +62,9 @@
 
     {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"e1f9ca1c3fbfb5c9368447ec82975b33d7745f330f1cf78f15d9b5de9f1c15a5","revision":"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d"},
+    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"01211e6de3353b7773a35a910287e1dea2de931fca837de9d55a76cc3e0ad5fa","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
 
-    {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -108,7 +108,7 @@
 
     {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"0c791fec362bdc43dbbc24e650c79b39e121462e818d30beeb8e2edae3383333","revision":"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d"},
+    {"path":"scripts/test-impact-manifest.mjs","digest":"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
 
     {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
