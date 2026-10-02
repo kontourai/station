@@ -73,9 +73,10 @@ When a linked invitation encounters multiple saved grants, **Review saved
 connections** opens a management-only preview for the same saved route and
 installation. **Remove saved connections** is the explicit confirmation.
 Technical routing details stay collapsed until opened. Operational status still
-refuses multiple grants. Confirmation quarantines the matching routing records
-under the profile revision; it does not redeem the invitation or alter Station
-trust, Device approval, account sign-in or shared Project access.
+refuses multiple grants. Confirmation first tries normal retirement at the
+broker, then quarantines eligible local routing records under the profile
+revision. It does not redeem the invitation or alter Station trust, Device
+approval, account sign-in or shared Project access.
 
 Cleanup first attempts normal individual retirement. For an older generation
 only, the native host may authenticate a superseded-scope observation with the

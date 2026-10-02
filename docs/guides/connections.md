@@ -327,16 +327,16 @@ keep credentials and durable retry identity out of the renderer.
 If a linked invitation finds multiple saved grants for its route and this
 installation, **Review saved connections** opens a preview. **Remove saved
 connections** confirms the cleanup. Technical routing details appear only when
-expanded. This clears saved access on this device and does not change Station
-trust, device approval, account sign-in or shared Project access. After cleanup,
-continue to device approval; account sign-in and shared Projects are separate
-steps. The host first tries to retire each grant
-normally; for an older routing generation it can use the still-unconsumed
-invitation to establish that the old scope is no longer admitted. If observation
-or local storage fails, cleanup remains pending and the invitation stays
-available. Operational status continues to refuse multiple grants until
-cleanup resolves; it never chooses one silently. This native journey still
-needs installed-shell qualification, as described in
+expanded. The host first tries to retire each broker grant and clears eligible
+local records only after cleanup is established. This does not change Station
+trust, Device approval, account sign-in or shared Project access. For an older
+routing generation only, the host can use the still-unconsumed invitation to
+establish that the old scope is no longer admitted. If observation or local
+storage fails, cleanup remains pending and the invitation stays available.
+After cleanup, continue to device approval; account sign-in and shared Projects
+are separate steps. Operational status continues to refuse multiple grants
+until cleanup resolves; it never chooses one silently. This native journey
+still needs installed-shell qualification, as described in
 [native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
 
 For a native signing-key approval, select the saved broker route and choose
