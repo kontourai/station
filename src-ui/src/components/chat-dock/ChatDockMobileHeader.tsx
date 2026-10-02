@@ -122,6 +122,19 @@ export function ChatDockMobileHeader({
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const titleDescriptionId = useId();
+  const activityDescriptionId = useId();
+  // The dot on ⋯ used to be decoration only: an unexplained orange mark on
+  // the chat-actions button. It means chats (this one included) are working
+  // or have unread replies — the sheet's Chats row is where they are — so it
+  // says so, as the button's description rather than its name.
+  const activitySummary = [
+    activeCount > 0
+      ? `${activeCount} ${activeCount === 1 ? 'chat' : 'chats'} working`
+      : null,
+    unreadCount > 0 ? `${unreadCount} unread` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
     <div
       className="chat-dock__header chat-dock__mobile-header"
@@ -227,12 +240,24 @@ export function ChatDockMobileHeader({
         aria-haspopup="dialog"
         aria-expanded={isOverflowOpen}
         aria-label="Chat actions"
+        aria-describedby={activitySummary ? activityDescriptionId : undefined}
+        title={
+          activitySummary ? `Chat actions — ${activitySummary}` : undefined
+        }
         data-no-dock-drag=""
         onClick={() => setIsOverflowOpen((open) => !open)}
       >
         <span aria-hidden="true">⋯</span>
-        {(activeCount > 0 || unreadCount > 0) && (
-          <span className="chat-dock__mobile-activity-dot" aria-hidden="true" />
+        {activitySummary && (
+          <>
+            <span
+              className="chat-dock__mobile-activity-dot"
+              aria-hidden="true"
+            />
+            <span id={activityDescriptionId} className="sr-only">
+              {activitySummary}
+            </span>
+          </>
         )}
       </button>
       {isOverflowOpen && (

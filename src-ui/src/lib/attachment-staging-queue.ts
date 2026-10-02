@@ -35,6 +35,8 @@ export type ComposerAttachmentStageUpdate = {
   reference?: StagedAttachmentReference;
   delivery?: 'legacy-inline' | 'staged';
   error?: string;
+  /** The server refused a new stage: this login already holds its maximum. */
+  capacityFull?: boolean;
 };
 
 function inputFor(
@@ -158,11 +160,21 @@ export async function stageComposerAttachments(
         const failure =
           error instanceof Error ? error : new Error(String(error));
         failures.push(failure);
+        // `stage_capacity` is not a transient failure: retrying asks for yet
+        // another stage from a login that already holds its maximum, and
+        // fails the same way until one is sent, removed or expires.
+        const capacityFull =
+          (failure as { code?: unknown }).code === 'stage_capacity';
         observer?.({
           clientAttachmentId: input.clientAttachmentId,
-          state: signal?.aborted ? 'cancelled' : 'retryable',
+          state: signal?.aborted
+            ? 'cancelled'
+            : capacityFull
+              ? 'failed'
+              : 'retryable',
           progress: 0,
           error: signal?.aborted ? undefined : failure.message,
+          ...(capacityFull ? { capacityFull: true } : {}),
         });
       }
     }

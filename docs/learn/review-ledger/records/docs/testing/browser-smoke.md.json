@@ -44,7 +44,7 @@
 
     {"path":"tests/helpers/ollama-fixture.ts","digest":"1f9e2f666db8c43303edfd0b8fbf3d263dc39e8395c43028aa74128a51a8b8ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/orchestration-chat-flow.spec.ts","digest":"a19479000e8e86c233d82a1bf25a1574c18321852f795165ae6cd943373c1b4d","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
+    {"path":"tests/orchestration-chat-flow.spec.ts","digest":"24c14104688ee219d5d5e78e0099e740d6132e03f5a2a218ae64b6fd5b231716","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
 
     {"path":"tests/pr-smoke-live-chat-send.spec.ts","digest":"34e256af4b0ff8c90928093987dcc152ee370f4719677716c2082d639833db45","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

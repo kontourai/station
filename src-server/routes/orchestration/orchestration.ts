@@ -44,6 +44,7 @@ import {
 import {
   APPROVAL_MODES,
   type ApprovalMode,
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -1399,6 +1400,12 @@ export function createOrchestrationRoutes(
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
     ) => void;
+    /** Undo the binding of a send refused before any engine effect. */
+    releaseStagedAttachments?: (
+      owner: PrincipalRef,
+      references: readonly StagedAttachmentReference[],
+      binding: { threadId: string; clientTurnId: string },
+    ) => void;
     handoffConversation?: (
       input: ConversationHandoffRequest,
     ) => Promise<unknown>;
@@ -1736,6 +1743,15 @@ export function createOrchestrationRoutes(
         503,
       );
     }
+    // Visible to the catch below: what this send bound, for a refusal that
+    // must release it.
+    let stagedAttachmentsForRelease:
+      | readonly StagedAttachmentReference[]
+      | undefined;
+    let stagedBindingForRelease:
+      | { threadId: string; clientTurnId: string }
+      | undefined;
+    let releasePrincipal: PrincipalRef | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -1840,6 +1856,9 @@ export function createOrchestrationRoutes(
               resolveAttachments: (binding) =>
                 (() => {
                   stagedBinding = binding;
+                  stagedBindingForRelease = binding;
+                  stagedAttachmentsForRelease = stagedAttachments;
+                  releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
@@ -1964,6 +1983,21 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
+      // The engine refused these attachments before anything reached it, so
+      // their binding to this turn proves nothing: release it, or a resend
+      // of the same (restored) chips anywhere else is refused as bound.
+      if (
+        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        stagedAttachmentsForRelease?.length &&
+        stagedBindingForRelease &&
+        releasePrincipal
+      ) {
+        deps.releaseStagedAttachments?.(
+          releasePrincipal,
+          stagedAttachmentsForRelease,
+          stagedBindingForRelease,
+        );
+      }
       return c.json(
         {
           success: false,

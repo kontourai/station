@@ -1621,6 +1621,94 @@ describe('useActiveChatTranscript', () => {
     }
   });
 
+  // The live OpenCode shape (cancel + re-prompt steer): the steer used to
+  // render ABOVE the whole turn's work — above the very command it stopped —
+  // so on a long turn it looked like it had never been sent.
+  test('an open turn renders a steer after the work it interrupted, and says it stopped it', async () => {
+    const id = 'thread-1';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Steer placement',
+      orchestrationSessionStarted: true,
+    });
+    try {
+      const acp = { provider: 'acp', turnId: 'turn-1' };
+      const started = event('e1', 'turn.started', {
+        ...acp,
+        prompt: 'run the gates',
+      });
+      handleTurnStartedEvent(
+        started.event as Parameters<typeof handleTurnStartedEvent>[0],
+      );
+      const steer = event('e3', 'turn.started', {
+        ...acp,
+        prompt: 'Still going?',
+        inputKind: 'steer',
+        steerInterruptedRun: true,
+      });
+      handleTurnStartedEvent(
+        steer.event as Parameters<typeof handleTurnStartedEvent>[0],
+      );
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 5,
+        hasMore: false,
+        events: [
+          started,
+          event('e2', 'tool.started', {
+            ...acp,
+            toolCallId: 'call-1',
+            toolName: 'bash',
+          }),
+          steer,
+          event('e4', 'tool.completed', {
+            ...acp,
+            toolCallId: 'call-1',
+            toolName: 'bash',
+            status: 'cancelled',
+          }),
+          event('e5', 'content.text-delta', { ...acp, delta: 'Stopped it.' }),
+        ],
+      });
+      const session = {
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      } as unknown as ChatSession;
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() =>
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'Stopped it.',
+          ),
+        ).toBe(true),
+      );
+      const rows = result.current.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        tool: message.contentParts?.find(
+          (part) => part.type === 'tool-invocation',
+        )?.state,
+      }));
+      expect(rows).toEqual([
+        { role: 'user', content: 'run the gates', tool: undefined },
+        { role: 'assistant', content: '', tool: 'cancelled' },
+        { role: 'user', content: 'Still going?', tool: undefined },
+        { role: 'assistant', content: 'Stopped it.', tool: undefined },
+      ]);
+      expect(
+        result.current.messages.find(
+          (message) => message.content === 'Still going?',
+        )?.steerInterruptedRun,
+      ).toBe(true);
+    } finally {
+      activeChatsStore.removeChat(id);
+    }
+  });
+
   /**
    * #2304: a client that attached to a turn already running never saw its
    * `turn.started` live, so the bounded window is the only place the turn's

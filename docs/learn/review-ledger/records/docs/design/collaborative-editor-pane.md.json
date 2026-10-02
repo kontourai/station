@@ -16,7 +16,7 @@
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
-    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
+    {"path":"src-ui/src/index.css","digest":"9b0f73c59e84688e32fcaff618a290e4fad31a51ace52e2ab6aa7ef2e714aa23","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
