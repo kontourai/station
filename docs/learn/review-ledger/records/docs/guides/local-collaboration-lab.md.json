@@ -58,7 +58,7 @@
 
     {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"scripts/browser-transport-lab.ts","digest":"bcb681ee30437f1c49cdb64a99d6a3e19807829fd26df32f44eb33f30d2ff197","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/browser-transport-lab.ts","digest":"1dca04b7e16d1a9974f5c3534eaf9e22e2d0e1b234da58770d40a7d87389fbe4","revision":"10865a5ad289d1a7c5b815262f4df15763a368f7"},
 
     {"path":"scripts/connection-key.ts","digest":"d21d2c52fa8fb316669f3dacf21bc89140cf6d09691c8b5d3cb168de66b97b33","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
