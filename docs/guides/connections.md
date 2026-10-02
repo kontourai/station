@@ -180,6 +180,10 @@ Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 switch the active connection. Switching respects unsaved-work decisions.
 Each address wraps on narrow screens so its port stays visible. The row's
 **More actions** menu provides **Copy address** and **Check reachability**.
+For the current saved Station, **Reconnect** opens its access-request flow
+even when this device is already paired, so you can request fresh approval.
+It is not offered for an inactive Station or a connection managed by the
+native host. Completing reauthorization still requires Station approval.
 The manager uses the current Station's live status; inactive rows show
 **Not checked** until checked there. Connections with valid saved access do
 not prompt for another access request. A rejected or missing credential still
