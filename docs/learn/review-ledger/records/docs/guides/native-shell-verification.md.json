@@ -9,7 +9,7 @@
 
   "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.",
 
-  "document": {"digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
+  "document": {"digest":"2b87da743882666270a60fa6e64e668e562add0736d7b573091090f0492d1441","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
   "sources": [
     {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -50,7 +50,7 @@
 
     {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-desktop/src/lib.rs","digest":"6513ebc7c5421258387578f9580976c372c4f87e0584e192e5cf4163fbd17ded","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
@@ -110,7 +110,15 @@
 
     {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"}
+    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+
+    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"9012676f5874a8bd8c33a140764d6c83abeac50fdbdb667468fb5800a6216602","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+
+    {"path":"src-ui/src/platform/native/nativeCommandError.ts","digest":"ab08d2ab71b4029623c73156de493399908a9282c4249326fa8014faa74216ff","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+
+    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"2d20c70fb3a0cb6690d377ea952a97c77aacb2162cf888ac2092a73f450fdc00","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+
+    {"path":"src-ui/src/lib/queryDefaults.ts","digest":"ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae","revision":"3fd1eca58b46371b83b05cac0fbb61560acdbb92"}
   ],
 
   "checks": [

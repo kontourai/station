@@ -108,7 +108,7 @@
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-desktop/src/lib.rs","digest":"6513ebc7c5421258387578f9580976c372c4f87e0584e192e5cf4163fbd17ded","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

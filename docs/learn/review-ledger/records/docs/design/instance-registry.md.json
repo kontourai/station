@@ -30,7 +30,7 @@
 
     {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+    {"path":"src-desktop/src/lib.rs","digest":"6513ebc7c5421258387578f9580976c372c4f87e0584e192e5cf4163fbd17ded","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
     {"path":"src-server/tools/instance-registry-bridge.ts","digest":"bb68aa5e87bf85c0262beda833b5d5a69a8f279fecc151e61a3c8be4bda45b13","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
