@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"13b2d0b50682f13e11cec9cc098ceb20186d40d210c1c6a55b526f2c0943a4b3","revision":"39e1f4bbf14013fd9e91df90a3f285d57aed40d3"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ee24bb15d9cd65eb8f3bf9b13d6bef9b2cd6378f0fdc5f95f4f62e8a3b3513da","revision":"2ef5603c9d1d413c0147faa50f612883f34761ba"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
