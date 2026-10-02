@@ -510,7 +510,7 @@
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"85d7e6a9e3e4e969d8a54ddf2a47f1127099916eb1590989e53340e262375705","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"f77bea26e724dc0dcc49103ffc478ca5428f81d3be1ba092e30201cdf9439680","revision":"ccf76b6ebf226cf9b7100fc5dd3de0948badd7bf"},
 
     {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"07ed17665765fac384ff9a87492de2e80648702031e162e337f11ff31cf717eb","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 

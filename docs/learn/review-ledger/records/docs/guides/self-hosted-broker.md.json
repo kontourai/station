@@ -168,7 +168,7 @@
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"ccf4eadf7c4154cf6a012ac766f0bde30c757a5a5cf03214c8a04ba3f5a44eca","revision":"7602896f5d1febf6f37d5158cbd0981254d4b960"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"85d7e6a9e3e4e969d8a54ddf2a47f1127099916eb1590989e53340e262375705","revision":"86cd71938a4e23edccb58c305bc1cb47f0f495d9"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"f77bea26e724dc0dcc49103ffc478ca5428f81d3be1ba092e30201cdf9439680","revision":"ccf76b6ebf226cf9b7100fc5dd3de0948badd7bf"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
