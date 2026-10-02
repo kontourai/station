@@ -173,6 +173,34 @@ successor preparation does not prove that a native grant was absent or retired.
    through the fixed native HTTP operation, and read the actual member Project.
    Invitation acceptance is not inferred from an arbitrary HTTP 200.
 
+For an iOS receiver with registered native link intake, the privileged operator
+producer can also write an installation-bound invitation link to a second private
+file. After explicitly approving the exact native surface through the operator
+registry, run the existing connector invitation CLI with the optional output:
+
+```sh
+npm run connector:invite -- /absolute/station-home /absolute/connector.json /absolute/public-install-proof.json /absolute/new-invitation.json --link-output /absolute/new-native-link.txt --dev-scheme station-relay-dev-fixture
+```
+
+Replace the example dev scheme with the receiver's actual registered declaration;
+dev has no inferred default. Stable, beta and nightly links derive their distinct
+scheme from the actual invitation surface channel and do not accept a dev override.
+The producer derives the application routing hint from its validated connector
+configuration. Both output paths must be new files under private owned directories.
+No URL or invitation secret is printed, copied to a clipboard, or automatically
+opened.
+
+The normal issuer still creates the actual installation-bound v2 invitation.
+Before publishing its optional link, the producer requires a current registry
+approval matching every scope and surface field, then rechecks that approval after
+encoding. It never approves a surface itself. If approval or link validation fails
+after issuance, the actual JSON invitation remains in its private file and no link
+is written; the failure message reports that partial outcome without secret data.
+An invitation link supplies routing authority only. It does not authenticate the
+Station key, approve a Device, sign in an account, or grant Project membership.
+Sender codec/CLI tests do not establish installed iOS cold/warm delivery or physical
+Nightly acceptance; retain those separate receipts.
+
 The full user-action driver and physical receiver remain follow-up evidence.
 An empty shared-work response is not evidence of reading the published artifact.
 The operator publisher uses actual human TaskRoom message/edit-plan/batch
