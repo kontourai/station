@@ -3,6 +3,8 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import {
@@ -75,6 +77,8 @@ export interface ChatDockInboxPanelProps {
    * other shared props — the `memo()` wrap compares shallowly.
    */
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
+  /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
+  workFacts?: InboxGroupListProps['workFacts'];
 }
 
 /**
@@ -99,8 +103,14 @@ function ChatDockInboxPanelImpl({
   now: suppliedNow,
   agents,
   gitLocationByThreadId,
+  workFacts,
 }: ChatDockInboxPanelProps) {
-  const now = suppliedNow ?? Date.now();
+  // One coarse tick for the whole list's relative times, rather than a new
+  // `now` on every render of the dock around it.
+  const now = useCoarseNow(suppliedNow);
+  // A pointer that cannot hover gets the always-visible 44px chrome, the
+  // same one the mobile sheet uses, rather than hover-revealed controls.
+  const coarsePointer = useCoarsePointer();
   const panelRef = useRef<HTMLElement>(null);
   // A row that changes lane remounts in another section; keep focus on it.
   useRowFocusPreservation(panelRef, '.chat-dock-inbox__item');
@@ -147,6 +157,9 @@ function ChatDockInboxPanelImpl({
             now={now}
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
+            workFacts={workFacts}
+            chrome={coarsePointer ? 'touch' : 'hover'}
+            snoozeMenuOnly={coarsePointer}
             collapsible={{ sections, onToggle: toggleSection }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did
