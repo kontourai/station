@@ -532,6 +532,21 @@ handoff only on that exact simulator build. The UI wording has since changed,
 so this receipt does not verify the current button copy. Physical iOS, Nightly,
 Device peer-open, account continuation and Project access remain **NOT_VERIFIED**.
 
+A later G9 run used published source `05288afd0c21857edf167ecdb318d2bab46de868`
+and the installed development app executable SHA-256
+`ca4c1156fa6f9ed517c4bb8964396bf0cd8652b3d79d850a6d3734385ac7e4dd`.
+After a consumed invitation left two saved grants, a fresh bound invitation
+explicitly removed generation 8 through superseded-scope observation and
+generation 9 through individual retirement. The same invitation then redeemed;
+**Request device access** opened a real peer and showed a public Device
+candidate and Station account form. Registration did not create an account:
+the five-minute challenge expired during form entry, and the saved expired
+attempt could not resume. The G9 Project invitation remained unconsumed.
+These are simulator observations, not proof that the newer proactive turnover
+or expired-challenge recovery code works in an installed shell. Device approval,
+account continuation, Project-member access, signed Nightly and physical iOS
+remain **NOT_VERIFIED**.
+
 The separate `public-fixture-registration-renewal-receipt.json` records normal
 isolated Station source `d8dd1a41494a9ffbfe42d6f994b3f7f30cc132d4`, public broker
 registration at lease revision 1, subsequent renewal at revision 15, and actual
