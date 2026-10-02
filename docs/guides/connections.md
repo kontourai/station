@@ -182,7 +182,7 @@ flow.
 On native clients, **Add computer → Save an encrypted broker route** records
 public Station and broker addresses and the exact Station enrollment. Saving
 this record does not connect, sign in, pair a Device or grant Project access.
-**Saved broker routes** exposes separate Station signing-key approval, routing
+**Your Stations** exposes separate Station signing-key approval, routing
 grant redemption and Device setup. The host keeps routing and Device
 credentials in OS custody, outside the saved public record.
 
@@ -294,10 +294,10 @@ The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-fou
 keep credentials and durable retry identity out of the renderer.
 
 For a native signing-key approval, select the saved broker route and choose
-**Prepare native Station identity**. Station creates or reopens this install's
+**Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
-instance, app/channel, and selected route. Copy this **public install proof** to
-the Station operator. On the operator's machine, with the self-hosted connector
+instance, app/channel, and selected route. Choose **Copy device details** and
+send this public installation proof to the Station owner. On the owner's machine, with the self-hosted connector
 configured and online, save that JSON to a private file and run:
 
 ```sh
@@ -308,17 +308,19 @@ The command uses the Station-owned broker credential internally and writes one
 surface-bound native invitation to a new 0600 file in a private directory. It
 does not print the invitation secret. Send the file's contents to the intended
 client through a private channel; the invitation alone grants no Station,
-account, Device, or Project authority. The client pastes it into the saved
-route's **One-time Station invitation** field, then independently compares the
+account, Device, or Project authority. The client expands
+**Advanced: paste a setup invitation** and pastes it into the saved
+route's **One-time Station invitation** field, then chooses **Check this Station** and independently compares the
 candidate's 16-character code and full key ID with the operator using a
 separate channel. The operator can read those values with
 `npm run --silent connection:key -- fingerprint --home=<absolute-home-path>`.
 Only after entering both independently obtained values and confirming that
-separate comparison does **Approve Station key** store public trust on the
-client. **Revoke Station key trust** requires the current full key ID and a
+separate comparison does **Confirm Station** store public trust on the
+client. Under **Confirmation details**, **Revoke Station key trust** requires the current full key ID and a
 successful keyring write; an error leaves revocation unresolved. Approval and
 revocation do not start a native broker route or sign the client in.
-When a Station rotates its signing key, **Review new Station key** opens a new
+When a Station rotates its signing key, expand **Confirmation details** and
+choose **Review new Station key** to open a new
 invitation and comparison without discarding the currently approved key. The
 replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer

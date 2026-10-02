@@ -2600,8 +2600,9 @@ is required. Older/source-home usage without `accountKey` remains unattributed.
 
 `GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
 for engine activity. Filtering precedes folding and pagination, while coverage
-remains explicit. This is Station engine history across accounts, not billing or
-per-profile attribution.
+remains explicit. Without a credential-profile filter, this is Station engine
+history across accounts. A profile filter selects attributed receipts and
+excludes unattributed usage; neither view is a provider billing statement.
 
 ## Read engine sign-in profiles
 
