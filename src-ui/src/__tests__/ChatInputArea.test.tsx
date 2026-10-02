@@ -799,9 +799,7 @@ describe('ChatInputArea', () => {
       onSend,
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Steer — during this turn' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
     expect(onSend).toHaveBeenCalledOnce();
     expect(onQueueFollowUp).not.toHaveBeenCalled();
@@ -817,7 +815,7 @@ describe('ChatInputArea', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
     expect(
       screen.getByRole('button', {
-        name: 'Steer — wait for a safe boundary, then stop and send',
+        name: 'Steer when safe',
       }),
     ).toBeTruthy();
   });

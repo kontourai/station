@@ -14,11 +14,15 @@ import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contr
 import type { ProviderSessionStartInput } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
-import { steerOrchestrationTurn } from '@kontourai/station-sdk';
+import {
+  inspectOrchestrationSteerInput,
+  steerOrchestrationTurn,
+} from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -472,6 +476,62 @@ const personalReadAuthority = (userId: string) =>
   });
 
 describe('Orchestration Routes', () => {
+  test('SDK receipt-protected steering and inspection fail closed on a legacy server before engine invocation', async () => {
+    const legacySteerSchema = z.object({
+      type: z.literal('steerTurn'),
+      threadId: z.string(),
+      input: z.string(),
+      turnId: z.string().optional(),
+    });
+    const engineSteer = vi.fn();
+    const legacy = new Hono();
+    legacy.post('/api/orchestration/commands', async (c) => {
+      const parsed = legacySteerSchema.safeParse(await c.req.json());
+      if (!parsed.success)
+        return c.json({ success: false, error: 'Validation failed' }, 400);
+      engineSteer(parsed.data);
+      return c.json({
+        success: true,
+        data: {
+          outcome: 'steered',
+          threadId: parsed.data.threadId,
+          turnId: 'live',
+        },
+      });
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input, init) =>
+        legacy.request(input instanceof Request ? input : String(input), init),
+      );
+    const input = {
+      apiBase: 'http://legacy.test',
+      threadId: 'legacy-thread',
+      turnId: 'live',
+      text: 'redirect',
+      clientInputId: 'stable-input',
+    };
+    try {
+      await expect(inspectOrchestrationSteerInput(input)).rejects.toThrow(
+        'Validation failed',
+      );
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(steerOrchestrationTurn(input)).rejects.toThrow(
+        'Validation failed',
+      );
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(
+        steerOrchestrationTurn({ ...input, clientInputId: '' }),
+      ).rejects.toThrow('Validation failed');
+      expect(engineSteer).not.toHaveBeenCalled();
+      await steerOrchestrationTurn({ ...input, clientInputId: undefined });
+      expect(engineSteer).toHaveBeenCalledTimes(1);
+      expect(engineSteer.mock.calls[0][0]).not.toHaveProperty('clientInputId');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   test('SDK native steer identity survives lost HTTP acknowledgement and a completed turn without redelivery', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'steer-http-receipt-'));
     const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
@@ -570,6 +630,44 @@ describe('Orchestration Routes', () => {
         createdAt: at,
         finishReason: 'stop',
       });
+      expect(await inspectOrchestrationSteerInput(input)).toEqual({
+        outcome: 'steered',
+        threadId,
+        turnId: 'live',
+      });
+      const absent = { ...input, clientInputId: 'http-never-received' };
+      expect(await inspectOrchestrationSteerInput(absent)).toEqual({
+        outcome: 'not-received',
+        threadId,
+        clientInputId: absent.clientInputId,
+      });
+      expect(await inspectOrchestrationSteerInput(absent)).toMatchObject({
+        outcome: 'not-received',
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      expect(
+        eventStore.readSteerInput({
+          threadId,
+          input: absent.text,
+          turnId: absent.turnId,
+          clientInputId: absent.clientInputId,
+        }),
+      ).toBeUndefined();
+      const held = { ...input, clientInputId: 'http-pending' };
+      expect(
+        eventStore.claimSteerInput({
+          threadId,
+          input: held.text,
+          turnId: held.turnId,
+          clientInputId: held.clientInputId,
+        }),
+      ).toBe(true);
+      expect(await inspectOrchestrationSteerInput(held)).toEqual({
+        outcome: 'indeterminate',
+        threadId,
+        clientInputId: held.clientInputId,
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       expect(await steerOrchestrationTurn(input)).toEqual({
         outcome: 'steered',
         threadId,

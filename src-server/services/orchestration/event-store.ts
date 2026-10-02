@@ -11015,7 +11015,9 @@ export class EventStore {
     clientInputId: string;
     input: string;
     turnId?: string;
-  }): SteerTurnResult | undefined {
+  }):
+    | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
+    | undefined {
     const row = this.db
       .prepare(
         `SELECT input_digest, confirmed_turn_id FROM orchestration_steer_inputs WHERE thread_id = ? AND client_input_id = ?`,

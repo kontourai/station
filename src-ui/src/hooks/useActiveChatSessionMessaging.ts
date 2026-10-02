@@ -351,11 +351,13 @@ export function useSendMessage(
             openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
           turnId: openTurn?.turnId ?? currentState.openTurnId,
         };
+        const claimState = activeChatsStore.getSnapshot()[sessionId];
+        if (!claimState) return false;
         clearInput(sessionId);
         updateChat(sessionId, {
-          queuedMessages: [...currentState.queuedMessages, content],
+          queuedMessages: [...claimState.queuedMessages, content],
           queuedMessageMetadata: [
-            ...(currentState.queuedMessageMetadata ?? []),
+            ...(claimState.queuedMessageMetadata ?? []),
             {
               id: clientInputId,
               mode: 'steer',
@@ -366,6 +368,24 @@ export function useSendMessage(
           ],
           queueSendNowPending: true,
         });
+        if (!activeChatsStore.flushPendingSave()) {
+          const held = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queueSendNowPending: false,
+            queuedMessageMetadata: held?.queuedMessageMetadata?.map((entry) =>
+              entry.id === clientInputId
+                ? { ...entry, delivery: 'indeterminate' }
+                : entry,
+            ),
+            queuedMessageFailure: {
+              code: 'steering-save-failed',
+              message:
+                'Could not save pending steering. It was not sent; your message remains held.',
+              at: Date.now(),
+            },
+          });
+          return false;
+        }
         const removeClaim = () => {
           const latest = activeChatsStore.getSnapshot()[sessionId];
           const index =

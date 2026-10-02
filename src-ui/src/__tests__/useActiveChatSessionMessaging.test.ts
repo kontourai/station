@@ -1483,11 +1483,27 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
-    steerOrchestrationTurnMock.mockResolvedValueOnce({
-      outcome: 'steered',
-      threadId: 'exec-claude-1',
-      turnId: 'turn-open',
-    });
+    steerOrchestrationTurnMock.mockImplementationOnce(
+      async (input: { clientInputId: string }) => {
+        const persisted: ReturnType<typeof serializeActiveChats> = JSON.parse(
+          sessionStorage.getItem('activeChats') ?? '[]',
+        );
+        expect(
+          persisted.find((entry) => entry.sessionId === sessionId)
+            ?.queuedMessageMetadata,
+        ).toContainEqual(
+          expect.objectContaining({
+            id: input.clientInputId,
+            delivery: 'steering',
+          }),
+        );
+        return {
+          outcome: 'steered',
+          threadId: 'exec-claude-1',
+          turnId: 'turn-open',
+        };
+      },
+    );
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
@@ -1780,6 +1796,46 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
         ?.content,
     ).toContain('still in the composer');
+  });
+
+  it('does not invoke native steering when the pending delivery marker cannot be saved', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'execution-origin',
+      turnId: 'origin-turn',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'execution-origin',
+      openTurnId: 'origin-turn',
+      input: 'retain this input',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const write = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    try {
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'claude',
+          sessionId,
+          'retain this input',
+        );
+      });
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+        'retain this input',
+      ]);
+      expect(
+        activeChatsStore.getSnapshot()[sessionId].queuedMessageFailure?.code,
+      ).toBe('steering-save-failed');
+    } finally {
+      write.mockRestore();
+    }
   });
 
   it('holds an unconfirmed native steer with a stable delivery identity instead of duplicating the draft', async () => {

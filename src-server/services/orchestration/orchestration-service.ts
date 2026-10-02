@@ -44,6 +44,7 @@ import type {
   OrchestrationSessionSummary,
   SessionBoardItem,
   SetApprovalModeResult,
+  SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -5783,6 +5784,7 @@ export class OrchestrationService {
     | ProviderSession
     | ProviderTurnStartResult
     | SteerTurnResult
+    | SteerInputInspectionResult
     | InterruptTurnResult
     | SetApprovalModeResult
     | undefined
@@ -5792,6 +5794,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined;
@@ -5858,6 +5861,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined
@@ -7045,6 +7049,16 @@ export class OrchestrationService {
           }
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
+        }
+        case 'inspectSteerInput': {
+          const stored = this.options.eventStore?.readSteerInput(command);
+          const result: SteerInputInspectionResult = stored ?? {
+            outcome: this.options.eventStore ? 'not-received' : 'indeterminate',
+            threadId: command.threadId,
+            clientInputId: command.clientInputId,
+          };
+          this.persistReceipt(receipt);
+          return { receipt, result };
         }
         case 'steerTurn': {
           const steerInput = command.clientInputId

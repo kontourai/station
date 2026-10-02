@@ -94,13 +94,15 @@ export class ActiveChatsStore {
     }
   }
 
-  private saveToStorage() {
+  private saveToStorage(): boolean {
+    if (!this.storage) return false;
     try {
       const minimal = serializeActiveChats(this.chats);
-      this.storage?.setItem(this.storageKey, JSON.stringify(minimal));
+      this.storage.setItem(this.storageKey, JSON.stringify(minimal));
       // A write got through: the run is over and a later failure is news
       // again, for every chat.
       this.storageFailureReportedFor.clear();
+      return true;
     } catch (error) {
       log.api('Failed to save active chats to sessionStorage:', error);
       // review: this used to be console-only. A failed write means
@@ -126,6 +128,7 @@ export class ActiveChatsStore {
         notified = true;
       }
       if (notified) this.notify(false);
+      return false;
     }
   }
 
@@ -134,11 +137,11 @@ export class ActiveChatsStore {
    * otherwise restores the state from before the last change: for an
    * approval pick that is an OLDER, possibly looser pick (#2334).
    */
-  flushPendingSave = () => {
-    if (!this.saveTimer) return;
+  flushPendingSave = (): boolean => {
+    if (!this.saveTimer) return false;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    this.saveToStorage();
+    return this.saveToStorage();
   };
 
   /**

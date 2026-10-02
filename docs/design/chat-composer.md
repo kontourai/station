@@ -153,13 +153,16 @@ For other engines, Steer holds the message for a supported safe boundary before
 stopping and sending. Current adapters expose no such safe-boundary receipt, so
 this fallback conservatively waits for turn completion, even after tools settle.
 Native steering uses a persisted `clientInputId` for each intent. The server
-claims it before invoking the adapter and records the confirmed turn after the
+accepts the protected `steerTurnOnce` wire command and claims its ID before invoking the adapter and records the confirmed turn after the
 adapter returns. Same-ID acknowledgement retries return that stored result;
 an unresolved claim returns **Delivery not confirmed** and never replays the
 engine invocation. The pending row retains its original Session and turn,
 remains visible across reload, and cannot be edited or sent as a new turn while
-its delivery is uncertain. Retry steering reuses that identity; it may make the
-first attempt only if no earlier request reached the server. The server journal
+its delivery is uncertain. Retry steering first inspects that original identity. It retires a confirmed
+receipt, holds unknown or unsupported inspection, and makes a protected first
+attempt only when the new server reports no claim. Older servers reject the
+protected wire command before invoking an engine. The pending marker must save
+successfully before any native mutation; failed storage keeps the message held. The server journal
 retains digests rather than message bodies, and Session deletion removes it.
 
 The pending-message section starts collapsed, showing only its count and a

@@ -23,8 +23,8 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { activeChatsStore } from '../contexts/active-chats-store';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { activeChatsStore } from '../contexts/active-chats-store';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const transcriptMock = vi.hoisted(() => ({
@@ -40,10 +40,14 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
+const realQueueControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+const inspectOrchestrationSteerInputMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  inspectOrchestrationSteerInput: (...args: unknown[]) =>
+    inspectOrchestrationSteerInputMock(...args),
   steerOrchestrationTurn: (...args: unknown[]) =>
     steerOrchestrationTurnMock(...args),
 }));
@@ -87,13 +91,22 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
 }));
 
-vi.mock('../contexts/ActiveChatsContext', () => ({
-  useActiveChatActions: () => ({
-    updateChat: vi.fn(),
-    clearEphemeralMessages: vi.fn(),
-    addEphemeralMessage: vi.fn(),
-  }),
-}));
+vi.mock('../contexts/ActiveChatsContext', async () => {
+  const { activeChatsStore } = await import('../contexts/active-chats-store');
+  return {
+    useActiveChatActions: () => ({
+      removeQueuedMessage:
+        activeChatsStore.removeQueuedMessage.bind(activeChatsStore),
+      editQueuedMessage:
+        activeChatsStore.editQueuedMessage.bind(activeChatsStore),
+      reorderQueuedMessage:
+        activeChatsStore.reorderQueuedMessage.bind(activeChatsStore),
+      updateChat: vi.fn(),
+      clearEphemeralMessages: vi.fn(),
+      addEphemeralMessage: vi.fn(),
+    }),
+  };
+});
 
 vi.mock('../contexts/MessageContextContext', () => ({
   useMessageContextContext: () => ({ getComposedContext: () => '' }),
@@ -175,7 +188,7 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
     QueuedMessages: (props: Record<string, any>) => {
       queuedMessagesPropsMock.current = props;
       const Actual = actual.QueuedMessages;
-      return realControlsMock.enabled ? (
+      return realControlsMock.enabled || realQueueControlsMock.enabled ? (
         <Actual {...(props as React.ComponentProps<typeof Actual>)} />
       ) : (
         <div data-testid="queued-messages" />
@@ -314,7 +327,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
+    realQueueControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
+    inspectOrchestrationSteerInputMock.mockReset();
+    inspectOrchestrationSteerInputMock.mockResolvedValue({
+      outcome: 'not-received',
+    });
     steerOrchestrationTurnMock.mockResolvedValue({ outcome: 'steered' });
   });
 
@@ -334,11 +352,17 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   test('queued Steer targets the receipted current execution Session', async () => {
-    activeChatsStore.initChat('thread-alpha', { agentSlug: 'claude', agentName: 'Claude', title: 'Steering chat' });
+    activeChatsStore.initChat('thread-alpha', {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Steering chat',
+    });
     activeChatsStore.updateChat('thread-alpha', {
-      status: 'sending', queuedMessages: ['course correct'],
+      status: 'sending',
+      queuedMessages: ['course correct'],
       queuedMessageMetadata: [{ id: 'queued-steer-id', mode: 'queue' }],
-      currentSessionId: 'thread-alpha:session:child-3', openTurnId: 'turn-child-3',
+      currentSessionId: 'thread-alpha:session:child-3',
+      openTurnId: 'turn-child-3',
     });
     renderDock({
       orchestrationSession: buildOrchestrationSession({
@@ -359,7 +383,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(queuedMessagesPropsMock.current?.canSteer).toBe(true),
     );
     await act(async () => {
-      await queuedMessagesPropsMock.current?.onSteer('course correct', 'queued-steer-id');
+      await queuedMessagesPropsMock.current?.onSteer(
+        'course correct',
+        'queued-steer-id',
+      );
     });
 
     expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
@@ -372,20 +399,314 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   test('a held steering retry remains available after completion and uses its original session and turn', async () => {
-    const metadata = [{ id: 'held-steer-id', mode: 'steer' as const, delivery: 'indeterminate' as const, steerThreadId: 'original-child', steerTurnId: 'original-turn' }];
-    activeChatsStore.initChat('thread-alpha', { agentSlug: 'claude', agentName: 'Claude', title: 'Steering chat' });
+    const metadata = [
+      {
+        id: 'held-steer-id',
+        mode: 'steer' as const,
+        delivery: 'indeterminate' as const,
+        steerThreadId: 'original-child',
+        steerTurnId: 'original-turn',
+      },
+    ];
+    activeChatsStore.initChat('thread-alpha', {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Steering chat',
+    });
     activeChatsStore.updateChat('thread-alpha', {
-      status: 'idle', queuedMessages: ['held'], queuedMessageMetadata: metadata, currentSessionId: 'new-child',
+      status: 'idle',
+      queuedMessages: ['held'],
+      queuedMessageMetadata: metadata,
+      currentSessionId: 'new-child',
     });
     renderDock({
-      orchestrationSession: buildOrchestrationSession({ status: 'completed', lifecycleState: 'completed' }),
-      session: buildSession({ status: 'idle', queuedMessages: ['held'], queuedMessageMetadata: metadata, orchestrationProvider: 'claude', currentSessionId: 'new-child' }),
+      orchestrationSession: buildOrchestrationSession({
+        status: 'completed',
+        lifecycleState: 'completed',
+      }),
+      session: buildSession({
+        status: 'idle',
+        queuedMessages: ['held'],
+        queuedMessageMetadata: metadata,
+        orchestrationProvider: 'claude',
+        currentSessionId: 'new-child',
+      }),
     });
-    await waitFor(() => expect(queuedMessagesPropsMock.current?.canSteer).toBe(true));
-    await act(async () => { await queuedMessagesPropsMock.current?.onSteer('held', 'held-steer-id'); });
+    await waitFor(() =>
+      expect(queuedMessagesPropsMock.current?.canSteer).toBe(true),
+    );
+    await act(async () => {
+      await queuedMessagesPropsMock.current?.onSteer('held', 'held-steer-id');
+    });
     expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
-      threadId: 'original-child', turnId: 'original-turn', clientInputId: 'held-steer-id', text: 'held', apiBase: 'http://localhost:3242',
+      threadId: 'original-child',
+      turnId: 'original-turn',
+      clientInputId: 'held-steer-id',
+      text: 'held',
+      apiBase: 'http://localhost:3242',
     });
+  });
+
+  test.each([
+    'steered',
+    'indeterminate',
+    'not-received',
+    'old-server',
+  ] as const)(
+    'a mounted uncertain steering retry inspects delivery before any engine action: %s',
+    async (inspection) => {
+      realQueueControlsMock.enabled = true;
+      const metadata = [
+        {
+          id: 'held-steer-id',
+          mode: 'steer' as const,
+          delivery: 'indeterminate' as const,
+          steerThreadId: 'original-child',
+          steerTurnId: 'original-turn',
+        },
+      ];
+      activeChatsStore.initChat('thread-alpha', {
+        agentSlug: 'claude',
+        agentName: 'Claude',
+        title: 'Steering chat',
+      });
+      activeChatsStore.updateChat('thread-alpha', {
+        status: 'idle',
+        queuedMessages: ['held'],
+        queuedMessageMetadata: metadata,
+        currentSessionId: 'new-child',
+      });
+      if (inspection === 'old-server')
+        inspectOrchestrationSteerInputMock.mockRejectedValueOnce(
+          new Error('Unknown command'),
+        );
+      else
+        inspectOrchestrationSteerInputMock.mockResolvedValueOnce({
+          outcome: inspection,
+          threadId: 'original-child',
+          clientInputId: 'held-steer-id',
+          turnId: 'original-turn',
+        });
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          status: 'completed',
+          lifecycleState: 'completed',
+        }),
+        session: buildSession({
+          status: 'idle',
+          queuedMessages: ['held'],
+          queuedMessageMetadata: metadata,
+          orchestrationProvider: 'claude',
+          currentSessionId: 'new-child',
+        }),
+      });
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: '1 pending message, needs review',
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Retry steering' }));
+      await waitFor(() =>
+        expect(
+          inspectOrchestrationSteerInputMock,
+        ).toHaveBeenCalledExactlyOnceWith({
+          threadId: 'original-child',
+          turnId: 'original-turn',
+          clientInputId: 'held-steer-id',
+          text: 'held',
+          apiBase: 'http://localhost:3242',
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          activeChatsStore.getSnapshot()['thread-alpha'].queueSendNowPending,
+        ).toBe(false),
+      );
+      if (inspection === 'not-received') {
+        expect(steerOrchestrationTurnMock).toHaveBeenCalledExactlyOnceWith({
+          threadId: 'original-child',
+          turnId: 'original-turn',
+          clientInputId: 'held-steer-id',
+          text: 'held',
+          apiBase: 'http://localhost:3242',
+        });
+      } else expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(
+        activeChatsStore.getSnapshot()['thread-alpha'].queuedMessages,
+      ).toEqual(
+        inspection === 'steered' || inspection === 'not-received'
+          ? []
+          : ['held'],
+      );
+    },
+  );
+
+  test('a mounted queued steer cannot affect the engine when saving its delivery marker fails', async () => {
+    realQueueControlsMock.enabled = true;
+    const metadata = [{ id: 'queued-protected-id', mode: 'queue' as const }];
+    activeChatsStore.initChat('thread-alpha', {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Steering chat',
+    });
+    activeChatsStore.updateChat('thread-alpha', {
+      status: 'sending',
+      conversationId: 'confirmed-conversation',
+      currentSessionId: 'original-child',
+      openTurnId: 'original-turn',
+      queuedMessages: ['held'],
+      queuedMessageMetadata: metadata,
+    });
+    activeChatsStore.flushPendingSave();
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'running',
+        lifecycleState: 'running',
+      }),
+      session: buildSession({
+        status: 'sending',
+        conversationId: 'confirmed-conversation',
+        queuedMessages: ['held'],
+        queuedMessageMetadata: metadata,
+        orchestrationProvider: 'claude',
+        currentSessionId: 'original-child',
+        openTurnId: 'original-turn',
+      }),
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: '1 pending message' }),
+    );
+    const write = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    try {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Send as steer' }));
+      });
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+      expect(
+        activeChatsStore.getSnapshot()['thread-alpha'].queuedMessages,
+      ).toEqual(['held']);
+      expect(
+        activeChatsStore.getSnapshot()['thread-alpha'].queuedMessageFailure
+          ?.code,
+      ).toBe('steering-save-failed');
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  test('a rendered legacy row without a delivery identity never uses legacy native steering', async () => {
+    realQueueControlsMock.enabled = true;
+    activeChatsStore.initChat('thread-alpha', {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Steering chat',
+    });
+    activeChatsStore.updateChat('thread-alpha', {
+      status: 'sending',
+      queuedMessages: ['legacy row'],
+      currentSessionId: 'original-child',
+      openTurnId: 'original-turn',
+    });
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'running',
+        lifecycleState: 'running',
+      }),
+      session: buildSession({
+        status: 'sending',
+        queuedMessages: ['legacy row'],
+        orchestrationProvider: 'claude',
+        currentSessionId: 'original-child',
+        openTurnId: 'original-turn',
+      }),
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: '1 pending message' }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send as steer' }));
+    });
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(inspectOrchestrationSteerInputMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()['thread-alpha'].queuedMessages,
+    ).toEqual(['legacy row']);
+  });
+
+  test('an inspection can confirm a held delivery despite unavailable storage and never invokes the engine again', async () => {
+    const metadata = [
+      {
+        id: 'held-steer-id',
+        mode: 'steer' as const,
+        delivery: 'indeterminate' as const,
+        steerThreadId: 'original-child',
+      },
+    ];
+    activeChatsStore.initChat('thread-alpha', {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Steering chat',
+    });
+    activeChatsStore.updateChat('thread-alpha', {
+      status: 'sending',
+      queuedMessages: ['held'],
+      queuedMessageMetadata: metadata,
+      currentSessionId: 'new-child',
+      openTurnId: 'new-turn',
+    });
+    inspectOrchestrationSteerInputMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'original-child',
+      turnId: 'original-turn',
+    });
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'running',
+        lifecycleState: 'running',
+      }),
+      session: buildSession({
+        status: 'sending',
+        queuedMessages: ['held'],
+        queuedMessageMetadata: metadata,
+        orchestrationProvider: 'claude',
+        currentSessionId: 'new-child',
+        openTurnId: 'new-turn',
+      }),
+    });
+    await waitFor(() =>
+      expect(queuedMessagesPropsMock.current?.canSteer).toBe(true),
+    );
+    const write = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    try {
+      let confirmed: unknown;
+      await act(async () => {
+        confirmed = await queuedMessagesPropsMock.current?.onSteer(
+          'held',
+          'held-steer-id',
+        );
+      });
+      expect(confirmed).toBe(true);
+      expect(
+        inspectOrchestrationSteerInputMock,
+      ).toHaveBeenCalledExactlyOnceWith({
+        threadId: 'original-child',
+        turnId: undefined,
+        clientInputId: 'held-steer-id',
+        text: 'held',
+        apiBase: 'http://localhost:3242',
+      });
+      expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+    }
   });
 
   test('background-only work offers neither queued Steer nor turn Stop', async () => {

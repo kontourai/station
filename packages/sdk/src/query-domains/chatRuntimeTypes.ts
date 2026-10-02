@@ -142,6 +142,14 @@ export type OrchestrationCommandInput =
       threadId: string;
       turnId?: string;
     }
+  | import('@kontourai/station-contracts/orchestration').ReceiptProtectedSteerCommand
+  | {
+      type: 'inspectSteerInput';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId: string;
+    }
   | {
       type: 'steerTurn';
       threadId: string;

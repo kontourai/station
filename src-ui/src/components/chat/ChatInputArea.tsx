@@ -1598,7 +1598,7 @@ export function ChatInputArea({
                   setSendModeOpen(false);
                 }}
               >
-                Queue — after this turn finishes
+                Queue for next turn
               </Button>
               <Button
                 variant="ghost"
@@ -1611,8 +1611,8 @@ export function ChatInputArea({
                 }}
               >
                 {busySteeringKind === 'native'
-                  ? 'Steer — during this turn'
-                  : 'Steer — wait for a safe boundary, then stop and send'}
+                  ? 'Steer this turn'
+                  : 'Steer when safe'}
               </Button>
             </ResponsiveDialogSurface>
           )}

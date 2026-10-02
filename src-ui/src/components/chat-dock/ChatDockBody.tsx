@@ -3,6 +3,7 @@ import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-cap
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
+  inspectOrchestrationSteerInput,
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
@@ -1175,10 +1176,12 @@ export function ChatDockBody({
                 true,
               ),
             canSteer:
-              Boolean(isExecutionActive ||
-                activeSession.queuedMessageMetadata?.some(
-                  (entry) => !!entry.delivery,
-                )) &&
+              Boolean(
+                isExecutionActive ||
+                  activeSession.queuedMessageMetadata?.some(
+                    (entry) => !!entry.delivery,
+                  ),
+              ) &&
               sessionAdapterSupportsSteering(
                 activeSession.agentConnectionId,
                 [],
@@ -1201,35 +1204,35 @@ export function ChatDockBody({
                 latest.queueDrainSettling
               )
                 return false;
+              if (!clientInputId) {
+                addEphemeralMessage(activeSession.id, {
+                  role: 'system',
+                  content:
+                    'This pending message has no delivery identity. Keep it queued or reopen the conversation before steering.',
+                });
+                return false;
+              }
+              const metadataIndex =
+                latest.queuedMessageMetadata?.findIndex(
+                  (entry) => entry.id === clientInputId,
+                ) ?? -1;
+              const metadata = latest.queuedMessageMetadata?.[metadataIndex];
+              if (
+                !metadata ||
+                latest.queuedMessages[metadataIndex] !== message
+              ) {
+                addEphemeralMessage(activeSession.id, {
+                  role: 'system',
+                  content:
+                    'This pending message changed. Review the current queue before steering it.',
+                });
+                return false;
+              }
               activeChatsStore.updateChat(activeSession.id, {
                 queueSendNowPending: true,
               });
-              const metadata = latest.queuedMessageMetadata?.find(
-                (entry) => entry.id === clientInputId,
-              );
-              activeChatsStore.updateChat(activeSession.id, {
-                queuedMessageMetadata: latest.queuedMessageMetadata?.map(
-                  (entry) =>
-                    entry.id === clientInputId
-                      ? {
-                          ...entry,
-                          delivery: 'steering',
-                          mode: 'steer',
-                          steerThreadId:
-                            entry.steerThreadId ??
-                            latest.conversationActivity?.openTurn?.threadId ??
-                            latest.currentSessionId ??
-                            activeSession.id,
-                          steerTurnId:
-                            entry.steerTurnId ??
-                            latest.conversationActivity?.openTurn?.turnId ??
-                            latest.openTurnId,
-                        }
-                      : entry,
-                ),
-              });
               try {
-                const result = await steerOrchestrationTurn({
+                const steeringInput = {
                   // Steering is a command on the live execution Session. The
                   // tab id remains the durable conversation identity after a
                   // continuation child becomes current.
@@ -1237,18 +1240,99 @@ export function ChatDockBody({
                   // #2309: the server's open turn names the exact lineage
                   // child and turn; the local stamp is the older-server path.
                   threadId:
-                    metadata?.steerThreadId ??
+                    (metadata?.delivery ? metadata.steerThreadId : undefined) ??
                     activeSession.conversationActivity?.openTurn?.threadId ??
                     activeSession.currentSessionId ??
                     activeSession.id,
                   text: message,
                   clientInputId,
                   turnId:
-                    metadata?.steerTurnId ??
-                    activeSession.conversationActivity?.openTurn?.turnId ??
-                    activeSession.openTurnId,
+                    metadata?.delivery && metadata.steerThreadId !== undefined
+                      ? metadata.steerTurnId
+                      : (activeSession.conversationActivity?.openTurn?.turnId ??
+                        activeSession.openTurnId),
                   apiBase,
+                };
+                if (metadata?.delivery) {
+                  const inspection = await inspectOrchestrationSteerInput({
+                    ...steeringInput,
+                    clientInputId,
+                  });
+                  if (inspection.outcome === 'steered') {
+                    addEphemeralMessage(activeSession.id, {
+                      role: 'system',
+                      content: 'Steering sent.',
+                    });
+                    return true;
+                  }
+                  if (inspection.outcome !== 'not-received') {
+                    const held =
+                      activeChatsStore.getSnapshot()[activeSession.id];
+                    activeChatsStore.updateChat(activeSession.id, {
+                      queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                        (entry) =>
+                          entry.id === clientInputId
+                            ? { ...entry, delivery: 'indeterminate' }
+                            : entry,
+                      ),
+                    });
+                    addEphemeralMessage(activeSession.id, {
+                      role: 'system',
+                      content:
+                        'Steering delivery is still unconfirmed. Your message remains held.',
+                    });
+                    return false;
+                  }
+                }
+                const prepared =
+                  activeChatsStore.getSnapshot()[activeSession.id];
+                const preparedIndex =
+                  prepared?.queuedMessageMetadata?.findIndex(
+                    (entry) => entry.id === clientInputId,
+                  ) ?? -1;
+                if (
+                  !prepared ||
+                  preparedIndex < 0 ||
+                  prepared.queuedMessages[preparedIndex] !== message
+                )
+                  return false;
+                activeChatsStore.updateChat(activeSession.id, {
+                  ...(prepared.queuedMessageFailure?.code ===
+                  'steering-save-failed'
+                    ? { queuedMessageFailure: undefined }
+                    : {}),
+                  queuedMessageMetadata: prepared.queuedMessageMetadata?.map(
+                    (entry) =>
+                      entry.id === clientInputId
+                        ? {
+                            ...entry,
+                            delivery: 'steering',
+                            mode: 'steer',
+                            steerThreadId: steeringInput.threadId,
+                            steerTurnId: steeringInput.turnId,
+                          }
+                        : entry,
+                  ),
                 });
+                if (!activeChatsStore.flushPendingSave()) {
+                  const held = activeChatsStore.getSnapshot()[activeSession.id];
+                  activeChatsStore.updateChat(activeSession.id, {
+                    queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                      (entry) =>
+                        entry.id === clientInputId
+                          ? { ...entry, delivery: 'indeterminate' }
+                          : entry,
+                    ),
+                    queuedMessageFailure: {
+                      code: 'steering-save-failed',
+                      message:
+                        'Could not save pending steering. It was not sent; your message remains held.',
+                      at: Date.now(),
+                    },
+                  });
+                  return false;
+                }
+                const result = await steerOrchestrationTurn(steeringInput);
                 if (result.outcome === 'steered') {
                   addEphemeralMessage(activeSession.id, {
                     role: 'system',
@@ -1274,7 +1358,12 @@ export function ChatDockBody({
                   queuedMessageMetadata: refused?.queuedMessageMetadata?.map(
                     (entry) =>
                       entry.id === clientInputId
-                        ? { ...entry, delivery: undefined }
+                        ? {
+                            ...entry,
+                            delivery: undefined,
+                            steerThreadId: undefined,
+                            steerTurnId: undefined,
+                          }
                         : entry,
                   ),
                 });
@@ -1282,7 +1371,7 @@ export function ChatDockBody({
                   role: 'system',
                   content: steerRefusalMessage(result),
                 });
-              } catch (error) {
+              } catch {
                 const held = activeChatsStore.getSnapshot()[activeSession.id];
                 activeChatsStore.updateChat(activeSession.id, {
                   queuedMessageMetadata: held?.queuedMessageMetadata?.map(
@@ -1294,7 +1383,8 @@ export function ChatDockBody({
                 });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
-                  content: `Could not confirm steering delivery: ${error instanceof Error ? error.message : String(error)}`,
+                  content:
+                    'Station could not confirm steering delivery. Your message remains held.',
                 });
               } finally {
                 activeChatsStore.updateChat(activeSession.id, {
