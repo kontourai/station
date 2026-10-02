@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

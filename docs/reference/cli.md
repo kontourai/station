@@ -1539,6 +1539,11 @@ station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
 ```
 
+`create`, `update` and `delete` print the resolved target to stderr
+(`Target: station=… endpoint=… source=…`) before the request, because the
+default target can be a saved remote Station. `create` refuses an `id` that
+already names a Model connection on that Station; use `update` instead.
+
 ### `flow`
 
 Drive project-scoped Flow gate-engine runs (`/api/projects/:slug/flow`).
