@@ -2032,11 +2032,18 @@ not change the install result.
 
 For a GitHub Skill, the provider copies the selected directory's files from one
 catalog snapshot, including binary assets and executable files, through SkillService's
-validated staging/publication path. Blob integrity or acquisition failure prevents
-publication. Only files inside that directory are acquired; references to other Skills
+validated staging/publication path. The existing portable package path policy refuses
+case/Unicode aliases and file/directory collisions before writes; files are created
+exclusively so acquisition cannot overwrite an existing staged path. Blob integrity,
+path validation, or acquisition failure prevents publication. Only files inside that directory are acquired; references to other Skills
 do not install those Skills automatically. This does not bind an old UI selection to a
 revision after a catalog refresh, and the route's bare ID does not distinguish
-equal-name entries across providers. Those source-selection contracts remain pending.
+equal-name entries across providers. The default runtime composes filesystem and
+GitHub providers through `MultiSourceSkillRegistryProvider`; source-qualified
+selection, per-source failures, and aggregate fallback behavior remain pending. The
+GitHub acquisition tests exercise the direct provider through real routes and
+SkillService, rather than qualifying that default composition. Network deadlines
+and download budgets remain separate qualification work.
 
 ### Uninstall Skill from Registry
 

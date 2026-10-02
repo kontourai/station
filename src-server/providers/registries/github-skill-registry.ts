@@ -6,6 +6,7 @@ import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
+import { validateWorkspacePackagePaths } from '@kontourai/station-shared/workspace-package';
 import { parseFrontmatter } from 'agent-skills-ts-sdk';
 import { assertSafeSkillName } from '../../domain/skill-paths.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
@@ -209,6 +210,23 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
     return []; // Installed skills are tracked by the local skill service.
   }
 
+  private assertPackagePaths(paths: string[]): void {
+    validateWorkspacePackagePaths(paths);
+    const siblings = new Map<string, Set<string>>();
+    for (const path of paths) {
+      const parts = path.split('/');
+      for (let index = 0; index < parts.length; index++) {
+        const parent = parts.slice(0, index).join('/');
+        const names = siblings.get(parent) ?? new Set<string>();
+        names.add(parts[index]!);
+        siblings.set(parent, names);
+      }
+    }
+    // Different child filenames must not hide aliased directory spellings.
+    for (const names of siblings.values())
+      validateWorkspacePackagePaths([...names]);
+  }
+
   async install(id: string, targetDir: string): Promise<InstallResult> {
     try {
       assertSafeSkillName(id);
@@ -223,12 +241,16 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
       const files = snapshot.tree.filter(
         (entry) => entry.type === 'blob' && entry.path.startsWith(prefix),
       );
+      this.assertPackagePaths(
+        files.map((file) => file.path.slice(prefix.length)),
+      );
       const skillDir = join(targetDir, id);
       for (const file of files) {
         const filePath = join(skillDir, file.path.slice(prefix.length));
         const bytes = await this.fetchBlob(file, snapshot.commit);
         await mkdir(dirname(filePath), { recursive: true });
         await writeFile(filePath, bytes, {
+          flag: 'wx',
           mode: file.mode === '100755' ? 0o755 : 0o644,
         });
       }

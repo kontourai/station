@@ -38,6 +38,7 @@ function networkFixture(
     corruptAsset?: boolean;
     missingAsset?: boolean;
     missingMarkdown?: boolean;
+    additionalFiles?: Array<{ path: string; bytes: Buffer }>;
   } = {},
 ) {
   let branchMoved = false;
@@ -77,6 +78,14 @@ function networkFixture(
           sha: blobSha(script),
         },
       ];
+      for (const file of options.additionalFiles ?? []) {
+        entries.push({
+          path: `skills/productivity/grilling/${file.path}`,
+          type: 'blob',
+          mode: '100644',
+          sha: blobSha(file.bytes),
+        });
+      }
       if (options.duplicate)
         entries.push({
           path: 'skills/other/interview/SKILL.md',
@@ -95,7 +104,11 @@ function networkFixture(
     }
     const pinnedRoot = `https://raw.githubusercontent.com/example/skills/${firstCommit}/skills/`;
     if (url.startsWith(pinnedRoot)) {
-      const path = url.slice(pinnedRoot.length);
+      const path = decodeURIComponent(url.slice(pinnedRoot.length));
+      const extra = options.additionalFiles?.find(
+        (file) => path === `productivity/grilling/${file.path}`,
+      );
+      if (extra) return new Response(extra.bytes);
       if (path.endsWith('/SKILL.md')) {
         if (options.missingMarkdown)
           return new Response('Missing', { status: 404 });
@@ -246,6 +259,45 @@ describe('GitHub skill acquisition through Registry routes', () => {
     expect((await app.request('/skills')).status).toBe(200);
     expect((await install(app)).status).toBe(500);
     await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
+  });
+
+  test.each([
+    ['case-colliding filenames', ['assets/Foo.txt', 'assets/foo.txt']],
+    ['case-colliding directories', ['Assets/first.txt', 'assets/second.txt']],
+    [
+      'normalization-colliding filenames',
+      ['assets/café.txt', 'assets/cafe\u0301.txt'],
+    ],
+    ['file/directory aliases', ['assets/Foo.txt', 'assets/foo.txt/child.txt']],
+  ])(
+    'refuses %s before publishing an installed package',
+    async (_name, paths) => {
+      networkFixture({
+        additionalFiles: paths.map((path, index) => ({
+          path,
+          bytes: Buffer.from(index === 0 ? 'UPPER' : 'lower'),
+        })),
+      });
+      const { app, home, skillService } = setup();
+      expect((await app.request('/skills')).status).toBe(200);
+      expect((await install(app)).status).toBe(500);
+      await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
+      expect(skillService.listSkills()).toEqual([]);
+    },
+  );
+
+  test('preserves both distinct asset paths and their exact independent bytes', async () => {
+    const files = [
+      { path: 'assets/first.txt', bytes: Buffer.from('UPPER') },
+      { path: 'assets/second.txt', bytes: Buffer.from('lower') },
+    ];
+    networkFixture({ additionalFiles: files });
+    const { app, home } = setup();
+    expect((await install(app)).status).toBe(200);
+    for (const file of files)
+      expect(await readFile(join(home, 'skills/grill-me', file.path))).toEqual(
+        file.bytes,
+      );
   });
 
   test('reports refresh failure instead of returning an expired catalog as successful', async () => {
