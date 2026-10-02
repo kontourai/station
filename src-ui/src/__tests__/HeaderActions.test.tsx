@@ -201,9 +201,7 @@ describe('HeaderActions — self-describing connection surface', () => {
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Default',
     );
-    expect(button.title).toBe(
-      'Manage Stations — Connected · Default',
-    );
+    expect(button.title).toBe('Manage Stations — Connected · Default');
     // The dot is still the state channel that survives a device with no hover.
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
@@ -309,9 +307,7 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     // and the healthy compact chip now keeps its saved label in visible text
     // and the name for assistive technology.
     const button = screen.getByRole('button', { name: /^Manage Stations/ });
-    expect(button.title).toBe(
-      'Manage Stations — Connected · Default',
-    );
+    expect(button.title).toBe('Manage Stations — Connected · Default');
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
     );
