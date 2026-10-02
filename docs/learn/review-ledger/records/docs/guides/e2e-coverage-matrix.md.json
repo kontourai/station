@@ -9,7 +9,7 @@
 
   "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
 
-  "document": {"digest":"2f4089d72858c659210572db4b796e4c4102af8fb05a6671c93a7711f8ff78f0","revision":"61f31f5bade67ee3c6eb6f8d6ed20bbaf0e8c015"},
+  "document": {"digest":"0a67c15e1ab58bbc6955bffa4b049a305da6cba208478e7ed8e59e2adabe244d","revision":"04123ca275d85ac19e95a3f0fd87ae68b138324f"},
 
   "sources": [
     {"path":".github/workflows/ci-extended.yml","digest":"6cd65c4dae77a42df037641d1175f753185ad04e23e031f0dd5e26b9aefa3fd2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -76,13 +76,13 @@
 
     {"path":"tests/plugin-update.spec.ts","digest":"763fcd2f7eb0895885768c211dfd34ec0f4eb548f3073f715267d6d91f88aa29","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/project-architecture.spec.ts","digest":"891bb2fb8ae92c7dd4e27760b00a991ff2eef818400f74a62274e08aaf06e3a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/project-architecture.spec.ts","digest":"a02aded42efd999f49a482e0b3be6984e418ccfada537726484f203cb9505f7c","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
 
     {"path":"tests/project-forms.spec.ts","digest":"b7cc6160772a22f3cab8ceeafe53fc5faab18648df52935679bcc3c98cb73db3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/project-lifecycle.spec.ts","digest":"ee20ad928e01c437068d3ea0cec848bf5b57191e23857230fdf9b73399582b16","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/registry.spec.ts","digest":"15c543422b443be1ab3481be24952ac3c830dfac8e9060ecf017af5ea0176928","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/registry.spec.ts","digest":"7161a9fabd41940c69d064540dca0db2cfac5b1b40145899f8a75d109937f715","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
 
     {"path":"tests/root-route-restore.spec.ts","digest":"f91cf5602f3cde40d21ecda73db252c51d96b9028b512307fdf00e7d1951ede6","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
 
@@ -92,7 +92,7 @@
 
     {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"8609fe0f38ce85a6f6f721e049a8db3882860547be1fd400001bdb2f1fc95562","revision":"c75f24edf36e9dc018be74053f55ebcaeb5309c5"}
+    {"path":"tests/task-first-home.spec.ts","digest":"0a3131833240133200b0d99ee0cdcf6b065b1079b839bee0f7763572202c1968","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"}
   ],
 
   "checks": [
