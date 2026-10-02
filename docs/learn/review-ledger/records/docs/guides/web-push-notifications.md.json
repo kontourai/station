@@ -12,7 +12,7 @@
   "document": {"digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
   "sources": [
-    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"ab557b18a6dbc37049c5bdb0a4dcad86d494807ed5c28e65490339c460e15469","revision":"bfc3d0ba086747557187431680ee533e2ed09544"},
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15","revision":"ae4a861e2c29da739f863b17078c7b5a0a7ca326"},
 
     {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

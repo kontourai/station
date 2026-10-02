@@ -56,7 +56,7 @@
 
     {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab","revision":"955afd3f496da8d9536e133d2cdeea83bb967c34"},
 
-    {"path":"tests/connect-modal.spec.ts","digest":"6d63119b07073540c9dd1326af41d26d59e12da070bb0c3a2386ecd435db45b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/connect-modal.spec.ts","digest":"e9dc0d34c938e4e853b9526575bfb31bdfbff80e9526b1a09cc0c9e61ea5a5e4","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
 
     {"path":"tests/connect-reconnect-banner.spec.ts","digest":"bab4e941ef2f1f5d5cc72bbb970a727c0750d6ad772600b03ed96d208078cdc1","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
 

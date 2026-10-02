@@ -106,7 +106,7 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"ab557b18a6dbc37049c5bdb0a4dcad86d494807ed5c28e65490339c460e15469","revision":"bfc3d0ba086747557187431680ee533e2ed09544"},
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15","revision":"ae4a861e2c29da739f863b17078c7b5a0a7ca326"},
 
     {"path":"packages/connect/src/react/connection-manager-modal-utils.ts","digest":"4ffe29b184ca50123b2b7d1b8c0742b8bde3d7a4b6b0510cda1897cf4eddefb6","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"}
   ],

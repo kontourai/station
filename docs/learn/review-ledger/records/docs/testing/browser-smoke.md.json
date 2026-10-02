@@ -30,13 +30,13 @@
 
     {"path":"scripts/run-e2e-suite.mjs","digest":"6a11a2a611efee2a6ea5aee135d7ea1a8fffcf9bc9c73f0936508ba1e4bde4dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/connect-modal.spec.ts","digest":"6d63119b07073540c9dd1326af41d26d59e12da070bb0c3a2386ecd435db45b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/connect-modal.spec.ts","digest":"e9dc0d34c938e4e853b9526575bfb31bdfbff80e9526b1a09cc0c9e61ea5a5e4","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
 
     {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"1449417b3039c54c70304704542d1ed239a50196162f5e869d98ba0766c6edd9","revision":"8427f3fd9868b0f9943f0b85389d18f2cc63240e"},
 
-    {"path":"tests/csp-shell.spec.ts","digest":"d970b0c1d9081b74d24dccd4faa3a8a4d87f97b38c6c05074ed0824ba1b287b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/csp-shell.spec.ts","digest":"2d4188a6409f2de786843b35a2fa405f5257af78467ad9fce030d73a6f69511e","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
 
     {"path":"tests/e2e-manifest.mjs","digest":"2fbba39624069865e8b0ab8e45746f104001e3be4e591e098e916e9a405ae873","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
 
