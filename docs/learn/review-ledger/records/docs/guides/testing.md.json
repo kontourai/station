@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"3e4789296b942680c646505eec49db5b87f7cbe2eb160ee719c580022dc27950","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+  "document": {"digest":"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925","revision":"1c13dd90939769cd3ca557a36649aa25823194db"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -44,7 +44,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
@@ -132,7 +132,9 @@
 
     {"path":"vitest.setup.ts","digest":"38b7e04f1819daa86f0ebf0f332e29ddc6d62a6576cad2b736870749b18b87e3","revision":"c322e3bff535a1d8d7a84d882dd84d75bddf041f"},
 
-    {"path":"scripts/__tests__/fast-checks-plan.test.ts","digest":"9b80626ee80d7912562f671ab2c003d1647ff82ba5cb0fb4ebfb82022d1ebc92","revision":"e3aa94d61398bd351129bb14663daefd2b11e2ec"}
+    {"path":"scripts/ci-health.mjs","digest":"993d903e857a0b61646ce251b6308f6d69333b203738891cad05baf87eccabb8","revision":"7e8519008b556d901570139123f56890cf07a113"},
+
+    {"path":"scripts/__tests__/ci-health.test.ts","digest":"da42de553d1e10b9f552ac81ea6eaf29da7dc4122a7c11ca0a844e9a61db62c0","revision":"7e8519008b556d901570139123f56890cf07a113"}
   ],
 
   "checks": [
