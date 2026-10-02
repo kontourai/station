@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"218b4053f0dae1f9701e51b7ffc613bf64755ceb0a7dafd2d500ee00f97c48f7","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+  "document": {"digest":"c0c0ec5bfeea94fc2648c9de704fa68b68199b0f6b47a6dc72e6ba680a213bff","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -28,47 +28,45 @@
 
     {"path":"packages/sdk/src/components/LayoutHeader.tsx","digest":"e8fa75ca2b662a2b0befe9c660d4e2f264f387a9dccac7dce0a7734d9c1bca10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
-
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
-
-    {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"1ef7d183b06ac39f704660542495e0fddd62bdaffb1d2d1ea38847d3b06af8e3","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
     {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
+    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
+
+    {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"1ef7d183b06ac39f704660542495e0fddd62bdaffb1d2d1ea38847d3b06af8e3","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
+
+    {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
+
     {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"13b2d0b50682f13e11cec9cc098ceb20186d40d210c1c6a55b526f2c0943a4b3","revision":"39e1f4bbf14013fd9e91df90a3f285d57aed40d3"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/chat/ChatMarkdownAnchor.tsx","digest":"58bb0fa41719b1f9bf314506cc756eb6a6ccf6a71b3c55fa2579af09b31363ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/chat/MarkdownLinkContext.ts","digest":"1bf70d0065b6b9678f1369a79141b4073267cf68fbb08d9037a576d373d17c56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat/chat.css","digest":"14b4baff35cb6c07405e97469216982662618507a013f536aa0d34dbe31dd967","revision":"0368881dcab562767c4127b5bee0ebb6356449f3"},
 
-    {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/ChatMarkdownAnchor.tsx","digest":"58bb0fa41719b1f9bf314506cc756eb6a6ccf6a71b3c55fa2579af09b31363ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/header/RegionToolbarControls.tsx","digest":"1c97058bfab1e930795e2807b2b20f00d7536bf91c09e53d221505be630c7d08","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
+    {"path":"src-ui/src/components/chat/MarkdownLinkContext.ts","digest":"1bf70d0065b6b9678f1369a79141b4073267cf68fbb08d9037a576d373d17c56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx","digest":"470ea53ccefa5a886d452dc8220efbd61980d55325e84fa5288420595923dab0","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
+    {"path":"src-ui/src/components/header/RegionToolbarControls.tsx","digest":"1c97058bfab1e930795e2807b2b20f00d7536bf91c09e53d221505be630c7d08","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
+
     {"path":"src-ui/src/components/header/useRegionSurfaceMenu.ts","digest":"f3b5b6862088c6622a7730b1221ce2bdafb0931a36252ebcd7680c886b79e842","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx","digest":"c56b19ab7cd39b42f1336884553e107ccb701e6ed1bf2bc3ed4ccb2085ac7508","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx","digest":"756aadc751086e43c7c862b7c1d5fa7750a29622c999a451b9ec4f8b9429f0c9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-open.ts","digest":"a4f56cc7926d499d1611ee24a5a707ff985fc26e4d1282b3acb0083b0f3fd845","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-placement.ts","digest":"25fbfd594288f945664092139e20c1e37c1a74888cdddb1bf7826b0a7bf3a296","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"c711f470fc52a9b4efbd47d87a95657338593d9a380d78f715025333c5ef9f70","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx","digest":"c56b19ab7cd39b42f1336884553e107ccb701e6ed1bf2bc3ed4ccb2085ac7508","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx","digest":"756aadc751086e43c7c862b7c1d5fa7750a29622c999a451b9ec4f8b9429f0c9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx","digest":"adbfc13058751ddc325188504ed102282546456b531287a3ae12b773c0b900e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -80,7 +78,9 @@
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx","digest":"1e5ba5ee73ae0d145b3834b11fb3835c4a19b1f07ec53c5fe3d82a7f44507eb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"d0cc105841ca2405afd67e7724376d98be9246bb0d62a663bfd2684218402a33","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
+
+    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"cfe2b91b0e6b975623897be596556ed668fe3025983972e043ba0a54526ae934","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
     {"path":"src-ui/src/contexts/useDismissPhoneLayer.ts","digest":"9ebdbb98dd1fe419fb92f7ee1210efbe7bd141c53697ddf9453478d9e8ff3720","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -114,20 +114,6 @@
 
     {"path":"src-ui/src/views/PersonalBoardView.tsx","digest":"ea91263596a16ded25be80f4679e8f4afd48340cd36a6cdcc0cb60246312248e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","digest":"b25d6b5a453cac24f77ec5495a7fc515ead1ebe098b9ab6d55279a0dd7b7d807","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/LayoutPaneTitles.tsx","digest":"8b0bd7bea8418658402853a12ddb81d06d340f87ce812b5c13221bc1cca16b14","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/LayoutWorkspacePane.tsx","digest":"bf99e5dffd3076e544ce9d30aa06a2b8a96ee5c193c93a07f68f911c5c5f271c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionChooserPanel.tsx","digest":"58d435aeb106f76ced1195bb9220b4d1db306d209746863aea1e10a84b32837a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionChromeBar.tsx","digest":"38ed2ff9111e6b3f8d8fc4dc63b13897d25adea847d3ac0f7a2427f0058a55e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionEmptyChooser.tsx","digest":"b5db980bb3d0f19a6896f1fda56901525b0fae2af762a5ac0a920ff6d87f8b9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"7aeaffe0ca0c199563ebe34302646533558871d69914b365810ced54e74f4ed4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx","digest":"8560e54fa82f7309fd7189b7f99919bdfc828e79455d3f378aeef269cf3ceb9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionEmptyChooser.test.tsx","digest":"8088c3f795451158675d442af0a8cb9964b60b2e33d1ab369e457e655ae45ddb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -141,6 +127,20 @@
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx","digest":"466d25073741824d65a8de1be3b0d6ec94bd32c2716731ca2b170c99834dd27f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","digest":"dbb42796254704a45f20aeff3d4f14aad76f5a2a35303827559ac3e22dc21d06","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","digest":"b25d6b5a453cac24f77ec5495a7fc515ead1ebe098b9ab6d55279a0dd7b7d807","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/LayoutPaneTitles.tsx","digest":"8b0bd7bea8418658402853a12ddb81d06d340f87ce812b5c13221bc1cca16b14","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/LayoutWorkspacePane.tsx","digest":"bf99e5dffd3076e544ce9d30aa06a2b8a96ee5c193c93a07f68f911c5c5f271c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionChooserPanel.tsx","digest":"58d435aeb106f76ced1195bb9220b4d1db306d209746863aea1e10a84b32837a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionChromeBar.tsx","digest":"38ed2ff9111e6b3f8d8fc4dc63b13897d25adea847d3ac0f7a2427f0058a55e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionEmptyChooser.tsx","digest":"b5db980bb3d0f19a6896f1fda56901525b0fae2af762a5ac0a920ff6d87f8b9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"7aeaffe0ca0c199563ebe34302646533558871d69914b365810ced54e74f4ed4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/useDockProject.ts","digest":"c23ae2160b25f249c27c5e83f6d3df8f0994de980b8d84b4d225ca6db9394260","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

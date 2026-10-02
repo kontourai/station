@@ -122,8 +122,9 @@ every other route. These rules make it a region rather than a special case
     below the page, and the reader's maximize memory (`lastDockMaximized`,
     what `focusSession` reopens Chat with) is kept. This holds for Home's row
     as well, which shares the path. `placeSurface` (a tab's Move to Main, the
-    Layout picker) does not go through `commit` and does not restore a
-    maximized region yet. On a phone the page is not a layer over
+    Layout picker) does not go through `commit` but restores a maximized
+    region the same way, with the same memory rule, when the target is
+    `main` (#2988). On a phone the page is not a layer over
     Chat; when the layer is showing the very pane being opened as the page,
     the layer is ended through its own restore first (without asking its
     guards — only a guard-free surface can be both), and its history entry
@@ -137,21 +138,49 @@ every other route. These rules make it a region rather than a special case
     transient, like the phone layer's origin — it is not in the persisted
     arrangement record, so after a reload the chord returns to
     `defaultRegion`. An explicit placement clears it.
-  - **Accepted gap: swapping `main` at `/` adds no history entry.** The page
-    is placement, not a URL, as Home's row always was. From another route
-    the navigation to `/` is one entry, and Back returns to that route. At
-    `/`, Back after the swap leaves `/` for the previous entry rather than
-    returning to Home — and on a phone, where Back used to close Activity's
-    layer back to Chat, Back from the Activity page now leaves the page
-    (in the Android app, from the first entry, that can close the app).
-    When the page was opened from Activity's phone layer, the layer's
-    history entry is consumed by that open, so Back lands on the entry
-    before the layer, whose URL carries Chat's maximize: Chat comes back
-    full screen over the Activity page, which is still `main`'s occupant.
-    A history entry per swap would need a restore-on-popstate rule for
-    `main` that survives reload, forward and interleaved route navigation;
-    that is a design decision for `main`'s URL identity, not part of this
-    rule.
+  - **A page swap at `/` is a history entry (#2986).** The page is
+    placement, not a URL, so its identity lives in `history.state`
+    (`main-page-history.ts`): every `/` entry is stamped with the surface
+    `main` showed on it, and a swap made at `/` pushes a same-URL entry for
+    the new page. A traversal that lands on a stamped entry puts that page
+    back, so Back from Activity returns to Home, Forward re-opens Activity,
+    and the stamps are in `history.state`, so they outlive a reload. After
+    one, the stored arrangement is what is shown and the live entry is
+    stamped to match it. From another route the
+    navigation to `/` is still one entry and Back returns to that route. On a
+    phone with Chat full screen, the entry being left keeps `maximize` in its
+    URL, so Back returns to the full-screen Chat the page was opened over
+    — also when the page was opened from Activity's phone layer, whose own
+    entry is left orphaned beneath and skipped on the way back.
+    The swap is pushed through the navigation store, so the entry has a
+    navigation index of its own and a guarded traversal across page entries
+    is travelled back by the right distance; the traversal between two page
+    entries is itself same-URL and asks no unsaved-changes guard. A stamp
+    says what the entry showed, so a change of occupant that is not a page
+    open (the chord returning Activity to its dock, a tab moved out of
+    `main`) rewrites the live entry's stamp rather than adding an entry —
+    including at mount, where the stored arrangement is what is on screen. A
+    route entry carries no stamp, and an unstamped `/` entry is stamped on
+    arrival. Three traversals are not obeyed: the store's own bare
+    `popstate`; the landing of a guarded traversal before the guard has
+    answered (`navigationStore.traversalAwaitsGuard`); and a traversal
+    within one navigation entry — a dialog layer copies the state it was
+    pushed on, stamp included, so closing it lands on the entry beneath,
+    whose stamp is then brought up to date instead of applied (the two are
+    told apart by navigation index: the store reports the index of the
+    entry a traversal left, `traversalDepartedIndex`). A page change caused
+    by adopting a surface deep link (`/?surface=…`) adds no entry of its
+    own: the link's entry is the entry, and the adoption clears the command
+    from it. Limits: a
+    page chosen from a dialog (the command palette) closes that dialog, as
+    any navigation does, and leaves its entry orphaned beneath, which costs
+    one extra Forward press on the way back; a swap also closes any other
+    open dialog, and abandons a navigation still waiting on its precommit,
+    as a navigation does; a swap asked for from inside another navigation's
+    notification gets no entry of its own; and the page a traversal
+    removes is unplaced, as when Home's row takes the page, without asking
+    that surface's own unsaved-changes guards (no surface that declares
+    `main` registers one today).
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,

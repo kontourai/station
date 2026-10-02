@@ -63,6 +63,11 @@ import {
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
+import {
   buildCliRuntimePrerequisites,
   type CliCommandResult,
   runCliCommand,
@@ -146,7 +151,7 @@ interface CodexAdapterOptions {
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -808,9 +813,9 @@ export class CodexAdapter implements ProviderAdapterShape {
   }): Promise<ConnectionQuotaResult> {
     // Resolve the credential namespace before consulting cache: the same
     // connection can legitimately address a profile or global Codex account.
-    const appHomeEnv = await this.resolveAppHomeEnv(
-      options.credentialProfileRef,
-    );
+    const appHomeEnv = (
+      await this.resolveAppHomeEnv(options.credentialProfileRef)
+    )?.env;
     const { accountScope, cacheKey } = quotaCacheIdentity({
       connectionId: options.connectionId,
       credentialProfileRef: options.credentialProfileRef,
@@ -1722,6 +1727,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       adoption?.input.sourceAffinity ?? resumeCursor?.sourceAffinity;
     let appHomeEnv: Record<string, string> | undefined;
     let appHome: 'profile' | 'global' | 'source';
+    let resolvedHome: ResolvedAppHome | undefined;
     if (sourceAffinity) {
       const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
@@ -1730,7 +1736,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHomeEnv = { CODEX_HOME: sourceHome };
       appHome = 'source';
     } else {
-      appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      resolvedHome = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      appHomeEnv = resolvedHome?.env;
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
@@ -1895,6 +1902,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         initialState: 'created',
         metadata: {
           ...input.metadata,
+          usageAccountKey: resolvedHome
+            ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+            : undefined,
           codexThreadId: codexThread.id,
           ...(adoption
             ? {
@@ -1916,6 +1926,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
+        usageAccountKey: resolvedHome
+          ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+          : undefined,
         // Note: `effectiveModel` here is sourced from `record.session.model`
         // (reported-or-requested, pre-existing behavior kept for
         // back-compat with every consumer already reading it as "the best
@@ -2212,14 +2225,15 @@ export class CodexAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,

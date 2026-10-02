@@ -79,7 +79,7 @@ export function pulseStats(
   targets: Record<string, PulseStatTarget> = {},
 ): PulseStat[] {
   return [
-    // The live lanes, by what is happening (`liveLaneFor`) — never one
+    // The live lanes, by what is happening (`workStatus`) — never one
     // "Active now" total that counted idle sessions as active.
     { label: LIVE_LANE_LABELS.needsYou, value: lanes.needsYou.length },
     { label: LIVE_LANE_LABELS.running, value: lanes.running.length },

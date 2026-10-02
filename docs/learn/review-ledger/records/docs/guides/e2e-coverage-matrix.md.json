@@ -14,6 +14,12 @@
   "sources": [
     {"path":".github/workflows/ci-extended.yml","digest":"6cd65c4dae77a42df037641d1175f753185ad04e23e031f0dd5e26b9aefa3fd2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify","digest":"f23e8cff5f2a50cacd77392afb718bd69b9e6ac4ee3d757de4d9ffd554db135d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify:e2e:full","digest":"2dd4ee20128013b80e12dfc5e60f8a551952b968863963d6e44331304e6db342","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
     {"path":"scripts/__tests__/e2e-coverage.test.ts","digest":"f62d79ceaa3fd83f136477158e595af8a6aa44f5125a314f1a69a2d7fee385dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/__tests__/e2e-manifest.test.ts","digest":"117cf89146518ac74ddfc9befe51172135b198266eb372f83e308e9a1f57e94a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -86,13 +92,7 @@
 
     {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"8609fe0f38ce85a6f6f721e049a8db3882860547be1fd400001bdb2f1fc95562","revision":"c75f24edf36e9dc018be74053f55ebcaeb5309c5"},
-
-    {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/verify","digest":"f23e8cff5f2a50cacd77392afb718bd69b9e6ac4ee3d757de4d9ffd554db135d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/verify:e2e:full","digest":"2dd4ee20128013b80e12dfc5e60f8a551952b968863963d6e44331304e6db342","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    {"path":"tests/task-first-home.spec.ts","digest":"8609fe0f38ce85a6f6f721e049a8db3882860547be1fd400001bdb2f1fc95562","revision":"c75f24edf36e9dc018be74053f55ebcaeb5309c5"}
   ],
 
   "checks": [

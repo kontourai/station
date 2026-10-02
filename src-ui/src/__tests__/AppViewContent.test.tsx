@@ -44,7 +44,12 @@ vi.mock('../views/AgentConnectionView', () => ({
   AgentConnectionView: () => <div>AgentConnection</div>,
 }));
 vi.mock('../views/AgentsView', () => ({
-  AgentsView: () => <div data-testid="agents-view">Agents</div>,
+  AgentsView: () => (
+    <div data-testid="agents-view">
+      Agents
+      <button type="button">Agent row</button>
+    </div>
+  ),
 }));
 vi.mock('../views/ConnectionsHub', () => ({
   ConnectionsHub: () => <div>ConnectionsHub</div>,
@@ -382,5 +387,45 @@ describe('AppViewContent — Connections surface continuity', () => {
     ).toBe(providerInstance);
     expect(providerMounts).toBe(1);
     expect(providerUnmounts).toBe(0);
+  });
+});
+
+describe('AppViewContent — Agents surface continuity', () => {
+  test('selecting an agent keeps keyboard focus in the list (#2992)', async () => {
+    // Enter on a row navigates `agents` -> `agent-edit:<slug>`. A remount of
+    // the surface there detaches the focused row, and the browser hands focus
+    // to <body>, so the next key did nothing.
+    const { container, rerender } = render(
+      <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
+    );
+    const row = await screen.findByRole('button', { name: 'Agent row' });
+    const surface = container.querySelector('.route-transition');
+    row.focus();
+    expect(document.activeElement).toBe(row);
+
+    for (const view of [
+      { type: 'agent-edit', slug: 'a' },
+      { type: 'agent-edit', slug: 'b' },
+      { type: 'agent-new' },
+      { type: 'agents' },
+    ] as const) {
+      rerender(<AppViewContent {...baseProps} currentView={view} />);
+      expect(container.querySelector('.route-transition')).toBe(surface);
+      expect(row.isConnected).toBe(true);
+      expect(document.activeElement).toBe(row);
+    }
+    // The boundary still sees each exact route, so pending and error state
+    // stay per record.
+    rerender(
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'agent-edit', slug: 'a' }}
+      />,
+    );
+    expect(
+      container
+        .querySelector('[data-route-key]')
+        ?.getAttribute('data-route-key'),
+    ).toBe('agent-edit:a');
   });
 });

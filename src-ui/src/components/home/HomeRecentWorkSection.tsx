@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -20,15 +20,16 @@ import {
 import { revealHomeRegion } from '../../views/home/home-reveal';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
+import type { WorkFactsById } from '../../views/home/work-facts';
 import { ReturnGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../state';
-import { renderHomeWorkRow } from './HomeWorkRow';
+import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
 
 const SETTLED_PAGE_SIZE = 5;
 const loadSnoozeMenu = () => import('./SnoozeMenu');
 
-/** One heading per live lane (`liveLaneFor`) — the pulse counts reveal them. */
+/** One heading per live lane (`workStatus`) — the pulse counts reveal them. */
 const LIVE_LANES: readonly {
   id: LiveLaneId;
   label: string;
@@ -59,6 +60,8 @@ interface HomeRecentWorkSectionProps {
   lanes: HomeWorkLanes;
   /** Whether the host has any work at all — see `HomeWorkContent`. */
   workItems: HomeWorkItem[];
+  /** Status facts by item id, derived by the host beside `workItems`. */
+  workFacts?: WorkFactsById;
   workLoading: boolean;
   workDegraded: boolean;
   workError: boolean;
@@ -81,6 +84,8 @@ interface HomeWorkController {
   toggleShelf: () => void;
   expandShelf: () => void;
   showMoreSettled: () => void;
+  detailsFor: string | null;
+  setDetailsFor: (id: string | null) => void;
 }
 
 function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
@@ -89,7 +94,27 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
   const [shelfExpanded, setShelfExpanded] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // A sheet belongs to a row that is on screen. A row that leaves the
+  // rendered lanes (snoozed, discarded, paged out) clears it, so the sheet
+  // cannot reopen unprompted if the row returns.
+  const detailsRowRendered =
+    detailsFor !== null &&
+    [
+      ...lanes.needsYou,
+      ...lanes.running,
+      ...lanes.idle,
+      ...lanes.recentlyFinished,
+      ...(lanes.external ?? []),
+      ...(lanes.drafts ?? []),
+      ...lanes.settled.slice(0, settledVisibleCount),
+    ].some((item) => item.id === detailsFor);
+  useEffect(() => {
+    if (detailsFor !== null && !detailsRowRendered) setDetailsFor(null);
+  }, [detailsFor, detailsRowRendered]);
   return {
+    detailsFor,
+    setDetailsFor,
     lanes,
     snoozeMenuFor,
     snoozeTriggerRef,
@@ -113,7 +138,7 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
   // A row whose lane changes (or whose lane empties) remounts elsewhere;
   // keep a keyboard user's focus on it. `tabIndex={-1}` is the last-resort
   // fallback target when the row itself is gone.
-  useRowFocusPreservation(sectionRef, '.home-view__task-open');
+  useRowFocusPreservation(sectionRef, '.chat-dock-inbox__item');
   return (
     <section
       ref={sectionRef}
@@ -176,6 +201,7 @@ function HomeWorkContent({
   workLoading,
   workDegraded,
   workError,
+  workFacts,
   agents,
   onOpen,
   onViewActivity,
@@ -207,6 +233,14 @@ function HomeWorkContent({
       <HomeWorkLanesContent
         controller={controller}
         agents={agents}
+        // The lanes' own clock (it already ticks), never a `Date.now()` per
+        // row render.
+        context={{
+          now: controller.lanes.now,
+          workFacts,
+          detailsFor: controller.detailsFor,
+          setDetailsFor: controller.setDetailsFor,
+        }}
         onOpen={onOpen}
       />
     </>
@@ -303,10 +337,12 @@ function RecentWorkEmpty() {
 function HomeWorkLanesContent({
   controller,
   agents,
+  context,
   onOpen,
 }: {
   controller: HomeWorkController;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   return (
@@ -317,12 +353,14 @@ function HomeWorkLanesContent({
           lane={lane}
           controller={controller}
           agents={agents}
+          context={context}
           onOpen={onOpen}
         />
       ))}
       <HomeRecentlyFinishedLane
         lanes={controller.lanes}
         agents={agents}
+        context={context}
         onOpen={onOpen}
       />
       {controller.lanes.external?.length ? (
@@ -333,7 +371,13 @@ function HomeWorkLanesContent({
           <p>Conversations started in your coding apps.</p>
           <ul className="home-view__task-list">
             {controller.lanes.external.map((task) =>
-              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+              renderHomeWorkRow({
+                task,
+                isWoken: false,
+                agents,
+                onOpen,
+                context,
+              }),
             )}
           </ul>
         </details>
@@ -342,6 +386,7 @@ function HomeWorkLanesContent({
         <HomeDraftsSection
           drafts={controller.lanes.drafts}
           agents={agents}
+          context={context}
           onOpen={onOpen}
         />
       ) : null}
@@ -350,6 +395,7 @@ function HomeWorkLanesContent({
       <HomeSettledTail
         controller={controller}
         agents={agents}
+        context={context}
         onOpen={onOpen}
       />
     </>
@@ -364,10 +410,12 @@ function HomeWorkLanesContent({
 function HomeDraftsSection({
   drafts,
   agents,
+  context,
   onOpen,
 }: {
   drafts: readonly HomeLaneItem[];
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const { recent, older } = splitDraftsByAge(drafts, Date.now());
@@ -378,6 +426,7 @@ function HomeDraftsSection({
       agents,
       onOpen,
       discardDraft: true,
+      context,
     });
   return (
     <details className="home-view__settled-tail">
@@ -398,11 +447,13 @@ function HomeLiveLane({
   lane,
   controller,
   agents,
+  context,
   onOpen,
 }: {
   lane: (typeof LIVE_LANES)[number];
   controller: HomeWorkController;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const items = controller.lanes[lane.id];
@@ -425,6 +476,7 @@ function HomeLiveLane({
             agents,
             onOpen,
             onSnooze: controller.openSnoozeMenu,
+            context,
           }),
         )}
       </ul>
@@ -435,10 +487,12 @@ function HomeLiveLane({
 function HomeRecentlyFinishedLane({
   lanes,
   agents,
+  context,
   onOpen,
 }: {
   lanes: HomeWorkLanes;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   if (lanes.recentlyFinished.length === 0) return null;
@@ -456,7 +510,13 @@ function HomeRecentlyFinishedLane({
       </h3>
       <ul className="home-view__task-list">
         {lanes.recentlyFinished.map((task) =>
-          renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+          renderHomeWorkRow({
+            task,
+            isWoken: false,
+            agents,
+            onOpen,
+            context,
+          }),
         )}
       </ul>
     </section>
@@ -537,10 +597,12 @@ function HomeSnoozedRows({ controller }: { controller: HomeWorkController }) {
 function HomeSettledTail({
   controller,
   agents,
+  context,
   onOpen,
 }: {
   controller: HomeWorkController;
   agents: readonly SessionIconAgent[];
+  context: HomeRowContext;
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const { settled } = controller.lanes;
@@ -565,7 +627,14 @@ function HomeSettledTail({
           <h4 className="home-view__bucket-label">{bucket.label}</h4>
           <ul className="home-view__task-list">
             {bucket.items.map((task) =>
-              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+              renderHomeWorkRow({
+                task,
+                isWoken: false,
+                agents,
+                onOpen,
+                size: 'slim',
+                context,
+              }),
             )}
           </ul>
         </div>
