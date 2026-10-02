@@ -633,11 +633,9 @@ it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
       );
     } else {
       await screen.findByText('Remove saved connections?');
+      expect(screen.getByText(/Saved connections: 2\./)).toBeTruthy();
       expect(
-        screen.getByText(/Saved connections: 2\. Cleanup needed: 0/),
-      ).toBeTruthy();
-      expect(
-        screen.getByText(/Station trust, device approval, account sign-in/),
+        screen.getByText(/your Station confirmation or shared Project access/),
       ).toBeTruthy();
       const technicalDetails = screen.getByText('Technical details')
         .parentElement as HTMLDetailsElement;
