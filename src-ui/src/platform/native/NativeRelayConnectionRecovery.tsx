@@ -9,9 +9,11 @@ import {
 export function NativeRelayConnectionRecovery({
   selection,
   onBusyChange,
+  onPendingChange,
 }: {
   selection: Parameters<NativeRelayGrantAdapter['recoveryPreview']>[0];
   onBusyChange: (busy: boolean) => void;
+  onPendingChange: (pending: boolean) => void;
 }) {
   const preview = useMutation({
     mutationFn: () => nativeRelayGrantAdapter.recoveryPreview(selection),
@@ -34,6 +36,10 @@ export function NativeRelayConnectionRecovery({
         result.state.cleanups.some((entry) => !entry.localCleanupComplete) ||
         result.outcomes.some((entry) => !entry.localCleanupComplete)),
   );
+  useEffect(() => {
+    if (result) onPendingChange(pending);
+    else if (reset.isError) onPendingChange(true);
+  }, [result, pending, reset.isError, onPendingChange]);
   return (
     <section aria-label="Connection invitation recovery">
       {!preview.data ? (

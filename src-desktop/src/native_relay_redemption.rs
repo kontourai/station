@@ -3877,6 +3877,161 @@ mod tests {
         }
     }
 
+    struct BlockingRecoveryRestore<'a> {
+        original: &'a crate::native_relay_proof_key::MemoryNativeRelayProofKeyVault,
+        calls: std::sync::atomic::AtomicUsize,
+        reached: Sender<()>,
+        release: Mutex<Receiver<()>>,
+    }
+    impl NativeProofKeyOperations for BlockingRecoveryRestore<'_> {
+        fn restore(
+            &self,
+            owner: &NativeProofKeyOwner,
+        ) -> Result<NativeProofKeyPublicMetadata, ProofKeyError> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 1 {
+                self.reached.send(()).map_err(|_| ProofKeyError::Store)?;
+                self.release
+                    .lock()
+                    .map_err(|_| ProofKeyError::Store)?
+                    .recv_timeout(Duration::from_secs(3))
+                    .map_err(|_| ProofKeyError::Store)?;
+            }
+            self.original.restore(owner)
+        }
+        fn sign(
+            &self,
+            owner: &NativeProofKeyOwner,
+            challenge: &NativeBrokerRedemptionChallenge,
+        ) -> Result<Vec<u8>, ProofKeyError> {
+            self.original.sign_es256_p1363(owner, challenge)
+        }
+        fn sign_native_request(
+            &self,
+            owner: &NativeProofKeyOwner,
+            challenge: &NativeBrokerRequestProofChallenge,
+        ) -> Result<Vec<u8>, ProofKeyError> {
+            self.original
+                .sign_native_request_es256_p1363(owner, challenge)
+        }
+    }
+
+    #[test]
+    fn pending_replacement_during_blocking_restore_refuses_old_journal_deletion_and_success() {
+        let mut prepared = prepared("https://broker.example".into(), 7);
+        let grants = stored_signal_grant(&prepared);
+        let binding = NativeRelayGrantBinding {
+            owner: prepared.owner.clone(),
+            route: native_route_for_grant(&sample_grant(&prepared, NOW + 3_600_000)),
+        };
+        prepared.invitation.scope.routing_generation = 10;
+        let (reached_tx, reached_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let keys = BlockingRecoveryRestore {
+            original: &prepared.proof_keys,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            reached: reached_tx,
+            release: Mutex::new(release_rx),
+        };
+        let cancelled = AtomicBool::new(false);
+        let gate = Mutex::new(());
+        let transport = NeverTransport(AtomicBool::new(false));
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                NativeRelayRedemptionService::new(
+                    prepared.authority.as_ref(),
+                    &keys,
+                    &transport,
+                    &grants,
+                    || NOW,
+                )
+                .recover_link_cleanup(
+                    "Local",
+                    7,
+                    &prepared.invitation,
+                    |_, grant| {
+                        Ok(NativeSupersededScopeObservation {
+                            version: "station-broker-native-superseded-scope-observed/v1".into(),
+                            request_nonce: "A".repeat(43),
+                            scope: crate::native_relay_proof_key::NativeObservedScope {
+                                station_id: grant.scope.station_id.clone(),
+                                enrollment_id: grant.scope.enrollment_id.clone(),
+                                routing_generation: grant.scope.routing_generation,
+                            },
+                            disposition: "superseded-generation-not-admitted".into(),
+                            lease_revision: 1,
+                        })
+                    },
+                    (&cancelled, &gate),
+                )
+            });
+            reached_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            let replacement_commit = gate
+                .try_lock()
+                .expect("pending replacement must remain nonblocking during key restore");
+            cancelled.store(true, Ordering::Release);
+            drop(replacement_commit);
+            release_tx.send(()).unwrap();
+            let outcomes = worker.join().unwrap().unwrap();
+            assert!(!outcomes[0].local_cleanup_complete);
+            assert_eq!(
+                outcomes[0].failure,
+                Some(NativeRedemptionError::StaleProfile)
+            );
+            let pending = grants.pending_cleanups(&prepared.owner).unwrap();
+            assert!(pending[0].remote_basis.is_none());
+            assert!(!pending[0].broker_retired);
+            assert!(grants
+                .backend
+                .lock()
+                .unwrap()
+                .get(&native_grant_account(&binding).unwrap())
+                .unwrap()
+                .is_some());
+        });
+    }
+
+    #[test]
+    fn same_route_pending_cleanup_refuses_before_request_gate_and_http_but_foreign_cleanup_does_not(
+    ) {
+        for foreign in [false, true] {
+            let prepared = prepared("https://broker.example".into(), 7);
+            let grants = stored_signal_grant(&prepared);
+            let mut grant = sample_grant(&prepared, NOW + 3_600_000);
+            if foreign {
+                grant.scope.station_id = "44444444-4444-4444-8444-444444444444".into();
+                grant.credential.id = "F".repeat(22);
+                grants.store(&prepared.owner, &grant, NOW).unwrap();
+            }
+            grants
+                .stage_cleanup(&prepared.owner, &grant, true, NOW)
+                .unwrap();
+            let transport = NeverTransport(AtomicBool::new(false));
+            let consumed = AtomicBool::new(false);
+            let failure = NativeRelayRedemptionService::new(
+                prepared.authority.as_ref(),
+                &prepared.proof_keys,
+                &transport,
+                &grants,
+                || NOW,
+            )
+            .redeem_with_request_gate("Local", 7, prepared.invitation, None, || {
+                consumed.store(true, Ordering::Release);
+                Ok(())
+            })
+            .unwrap_err();
+            assert_eq!(transport.0.load(Ordering::Acquire), foreign);
+            assert_eq!(consumed.load(Ordering::Acquire), foreign);
+            assert_eq!(
+                failure.primary,
+                if foreign {
+                    NativeRedemptionError::BrokerTransport
+                } else {
+                    NativeRedemptionError::GrantStore
+                }
+            );
+        }
+    }
+
     #[test]
     fn equal_and_future_generation_failures_remain_pending_without_observation() {
         for current in [8, 9] {
@@ -7585,6 +7740,12 @@ where
                 },
             };
             let recovered = remote.and_then(|basis| {
+                // Keyring reads can block. Pending replacement remains free to
+                // cancel this attempt until the short destructive commit.
+                let fresh = self
+                    .proof_keys
+                    .restore(&owner)
+                    .map_err(|_| NativeRedemptionError::ProofKey)?;
                 let _commit = cancellation
                     .1
                     .lock()
@@ -7603,10 +7764,6 @@ where
                             (self.now)(),
                             Some(&public),
                         )?;
-                        let fresh = self
-                            .proof_keys
-                            .restore(&owner)
-                            .map_err(|_| NativeRedemptionError::ProofKey)?;
                         if fresh != public {
                             return Err(NativeRedemptionError::ProofKey);
                         }
@@ -7661,6 +7818,23 @@ where
         invitation: NativeRelayInvitationV2,
         cancellation: Option<(&AtomicBool, &Mutex<()>)>,
     ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
+        self.redeem_with_request_gate(
+            profile_name,
+            expected_profile_revision,
+            invitation,
+            cancellation,
+            || Ok(()),
+        )
+    }
+
+    pub(crate) fn redeem_with_request_gate(
+        &self,
+        profile_name: &str,
+        expected_profile_revision: u64,
+        invitation: NativeRelayInvitationV2,
+        cancellation: Option<(&AtomicBool, &Mutex<()>)>,
+        before_request: impl FnOnce() -> RedemptionResult<()>,
+    ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
         let check_cancelled = || {
             if cancellation.is_some_and(|(cancelled, _)| cancelled.load(Ordering::Acquire)) {
                 Err(NativeRedemptionError::StaleProfile)
@@ -7689,6 +7863,20 @@ where
             &before.profile.client_instance_id,
         )
         .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+        let unresolved_cleanup = self
+            .grants
+            .pending_cleanups(&owner)?
+            .into_iter()
+            .any(|entry| {
+                entry.route.broker_origin == before.profile.broker_origin
+                    && entry.route.station_id == before.profile.station_id
+                    && entry.route.enrollment_id == before.profile.enrollment_id
+                    && (!entry.broker_retired
+                        || (entry.local_cleanup_required && !entry.local_cleanup_complete))
+            });
+        if unresolved_cleanup {
+            return Err(NativeRedemptionError::GrantStore.into());
+        }
         // Persist the secret-free owner identity before any broker can issue
         // a credential. Every post-request compensation path can then be
         // discovered after a profile edit or process restart.
@@ -7746,6 +7934,7 @@ where
                 validate_invitation_and_trust(&current, &invitation, (self.now)(), Some(&public))
             })?;
         check_cancelled()?;
+        before_request()?;
         let response = self
             .http
             .redeem(&before.profile.broker_origin, &request_body)?;

@@ -39,6 +39,7 @@ const LOCAL_FAILURE_CODES = new Map([
   ['changed', 'saved-profile-changed'],
   ['trust', 'station-trust-required'],
   ['staleProfile', 'saved-profile-changed'],
+  ['Connection cleanup is still pending.', 'connection-cleanup-pending'],
   [
     'Station could not read native relay grant status.',
     'grant-status-unavailable',
@@ -118,6 +119,7 @@ function Review({
     useState<NativeRelayGrantRedemptionFailureCode>();
   const [error, setError] = useState<string | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [cleanupPending, setCleanupPending] = useState(false);
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
@@ -166,6 +168,16 @@ function Review({
       step = 'grant-status';
       const status = await nativeRelayGrantAdapter.status(selection);
       if (!active.current) return;
+      if (
+        status.cleanups.some(
+          (entry) =>
+            !entry.brokerRetired ||
+            (entry.localCleanupRequired && !entry.localCleanupComplete),
+        )
+      ) {
+        setCleanupPending(true);
+        throw new Error('Connection cleanup is still pending.');
+      }
       step = 'host-redemption';
       const result = await nativeRelayGrantAdapter.redeemLinked({
         pendingId: delivery.pendingId,
@@ -301,6 +313,7 @@ function Review({
                     disabled={
                       busy ||
                       recoveryBusy ||
+                      cleanupPending ||
                       delivery.invitation.expiresAt <= Date.now()
                     }
                     pending={busy}
@@ -330,7 +343,8 @@ function Review({
           </>
         )}
         {error ? <p role="alert">{error}</p> : null}
-        {connectionFailure?.code === 'grant-status-ambiguous' &&
+        {(connectionFailure?.code === 'grant-status-ambiguous' ||
+          connectionFailure?.code === 'connection-cleanup-pending') &&
         delivery.kind === 'bound-invitation' &&
         profile &&
         selection ? (
@@ -341,6 +355,7 @@ function Review({
               expectedUpdatedAt: profile.updatedAt,
             }}
             onBusyChange={setRecoveryBusy}
+            onPendingChange={setCleanupPending}
           />
         ) : null}
         {error && connectionFailure ? (

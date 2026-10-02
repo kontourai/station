@@ -344,7 +344,9 @@ impl NativeRelayLinkState {
             .as_ref()
             .is_some_and(|pending| pending.expires_at <= now_ms())
         {
-            Self::cancel_pending(&mut inner);
+            if !Self::cancel_pending(&mut inner) {
+                return Ok(Some(rejected("unavailable")));
+            }
             inner.notification = Some(rejected("expired"));
         }
         // Recover public metadata if an async consumer was disposed after
@@ -356,10 +358,26 @@ impl NativeRelayLinkState {
                 .map(|pending| pending.delivery.clone())
         }))
     }
-    fn cancel_pending(state: &mut DeliveryState) {
+    fn clear_pending_under_commit_gate(state: &mut DeliveryState) {
         if let Some(pending) = state.pending.take() {
             pending.cancelled.store(true, Ordering::Release);
         }
+    }
+
+    fn cancel_pending(state: &mut DeliveryState) -> bool {
+        let gate = state
+            .pending
+            .as_ref()
+            .map(|pending| pending.commit_gate.clone());
+        let _commit = match gate.as_ref() {
+            Some(gate) => match gate.try_lock() {
+                Ok(guard) => Some(guard),
+                Err(_) => return false,
+            },
+            None => None,
+        };
+        Self::clear_pending_under_commit_gate(state);
+        true
     }
 
     fn receive(
@@ -385,7 +403,11 @@ impl NativeRelayLinkState {
                 return current.delivery.clone();
             }
         }
-        Self::cancel_pending(&mut state);
+        // Never wait for keyring work on the URL/UI callback. A rejected
+        // incoming URL is not published as a new pending owner.
+        if !Self::cancel_pending(&mut state) {
+            return rejected("unavailable");
+        }
         let delivery = match parsed {
             Ok(pending) => {
                 let delivery = pending.delivery.clone();
@@ -402,7 +424,9 @@ impl NativeRelayLinkState {
     #[cfg(target_os = "ios")]
     pub(crate) fn unavailable(&self) {
         if let Ok(mut state) = self.0.state.lock() {
-            Self::cancel_pending(&mut state);
+            if !Self::cancel_pending(&mut state) {
+                return;
+            }
             state.unavailable = true;
             state.notification = Some(rejected("unavailable"));
         }
@@ -423,11 +447,14 @@ impl NativeRelayLinkState {
                     Some(pending) => {
                         let now = now_ms();
                         if pending.expires_at <= now {
-                            Self::cancel_pending(&mut state);
-                            state.notification = Some(rejected("expired"));
-                            continue;
+                            if Self::cancel_pending(&mut state) {
+                                state.notification = Some(rejected("expired"));
+                                continue;
+                            }
+                            Duration::from_millis(50)
+                        } else {
+                            Duration::from_millis(pending.expires_at - now)
                         }
-                        Duration::from_millis(pending.expires_at - now)
                     }
                     None => Duration::from_secs(60),
                 };
@@ -506,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_link_supersedes_without_waiting_for_commit_and_old_completion_preserves_it() {
+    fn a_new_link_is_rejected_without_ui_wait_during_commit_and_reopen_supersedes_afterward() {
         let now = now_ms();
         let state = NativeRelayLinkState::default();
         let first = state.receive(
@@ -532,13 +559,61 @@ mod tests {
         let delivery = delivered_rx.recv_timeout(Duration::from_secs(2));
         drop(gate);
         callback.join().unwrap();
-        let delivery =
-            delivery.expect("URL intake must not wait for the old attempt's keyring commit");
-        let next_id = pending_id(&delivery).unwrap();
+        let delivery = delivery.expect("URL intake must not wait for keyring commit");
+        assert!(matches!(delivery, LinkDelivery::Rejected { .. }));
+        assert!(!attempt.cancelled.load(Ordering::Acquire));
+        let current = state.take_delivery().unwrap().unwrap();
+        assert_eq!(pending_id(&current), Some(old_id.as_str()));
+        let mut reopened = invitation(now);
+        reopened["invitation"]["invitationId"] = json!("invite-replacement");
+        let next = state.receive(
+            &link(&reopened),
+            "io.kontourai.station.nightly",
+            "nightly",
+            false,
+            now,
+        );
+        let next_id = pending_id(&next).unwrap();
         assert_ne!(next_id, old_id);
         assert!(attempt.cancelled.load(Ordering::Acquire));
         finish_attempt(&state, &old_id, true, true);
         assert!(reserve_attempt(&state, next_id, "Home", "main", false).is_ok());
+    }
+
+    #[test]
+    fn request_gate_consumes_only_the_current_attempt_once_and_refuses_replacement() {
+        let now = now_ms();
+        let state = NativeRelayLinkState::default();
+        let first = state.receive(
+            &link(&invitation(now)),
+            "io.kontourai.station.nightly",
+            "nightly",
+            false,
+            now,
+        );
+        let id = pending_id(&first).unwrap();
+        let attempt = reserve_attempt(&state, id, "Home", "main", false).unwrap();
+        consume_attempt_invitation(&state, id, &attempt).unwrap();
+        assert_eq!(
+            consume_attempt_invitation(&state, id, &attempt),
+            Err(NativeRedemptionError::InvitationInvalid)
+        );
+        let mut replacement = invitation(now);
+        replacement["invitation"]["invitationId"] = json!("invite-replacement");
+        let next = state.receive(
+            &link(&replacement),
+            "io.kontourai.station.nightly",
+            "nightly",
+            false,
+            now,
+        );
+        assert_ne!(pending_id(&next), Some(id));
+        assert_eq!(
+            consume_attempt_invitation(&state, id, &attempt),
+            Err(NativeRedemptionError::StaleProfile)
+        );
+        let current = state.take_delivery().unwrap().unwrap();
+        assert_eq!(pending_id(&current), pending_id(&next));
     }
 
     #[test]
@@ -685,7 +760,11 @@ pub(crate) fn receive_opened(app: &AppHandle, urls: &[url::Url]) {
 pub(crate) fn reject_invalid_delivery(app: &AppHandle) {
     let state = app.state::<NativeRelayLinkState>();
     if let Ok(mut inner) = state.0.state.lock() {
-        NativeRelayLinkState::cancel_pending(&mut inner);
+        if !NativeRelayLinkState::cancel_pending(&mut inner) {
+            drop(inner);
+            let _ = app.emit(EVENT, rejected("unavailable"));
+            return;
+        }
         inner.notification = Some(rejected("invalid"));
     }
     let _ = app.emit(EVENT, rejected("invalid"));
@@ -764,7 +843,7 @@ pub(crate) async fn station_native_relay_link_cancel(
                     .clone()
                     .zip(pending.caller_label.clone())
             });
-            NativeRelayLinkState::cancel_pending(&mut inner);
+            NativeRelayLinkState::clear_pending_under_commit_gate(&mut inner);
             inner.notification = None;
             drop(inner);
             if let Some((profile_name, caller_label)) = binding {
@@ -865,8 +944,9 @@ fn finish_attempt(state: &NativeRelayLinkState, id: &str, failed: bool, consumed
             .is_some_and(|pending| pending_id(&pending.delivery) == Some(id))
         {
             if failed || consumed {
-                NativeRelayLinkState::cancel_pending(&mut inner);
-                inner.notification = None;
+                if NativeRelayLinkState::cancel_pending(&mut inner) {
+                    inner.notification = None;
+                }
             } else if let Some(pending) = inner.pending.as_mut() {
                 pending.in_flight = false;
             }
@@ -1090,6 +1170,38 @@ pub(crate) async fn station_native_relay_link_recovery_reset(
     .await
 }
 
+fn consume_attempt_invitation(
+    state: &NativeRelayLinkState,
+    id: &str,
+    attempt: &LinkAttempt,
+) -> RedemptionResult<()> {
+    let _commit = attempt
+        .commit_gate
+        .lock()
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
+    let mut inner = state
+        .0
+        .state
+        .lock()
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
+    let pending = inner
+        .pending
+        .as_mut()
+        .filter(|pending| pending_id(&pending.delivery) == Some(id))
+        .ok_or(NativeRedemptionError::StaleProfile)?;
+    if attempt.cancelled.load(Ordering::Acquire)
+        || pending.expires_at <= now_ms()
+        || !pending.in_flight
+    {
+        return Err(NativeRedemptionError::StaleProfile);
+    }
+    pending
+        .invitation
+        .take()
+        .ok_or(NativeRedemptionError::InvitationInvalid)?;
+    Ok(())
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub(crate) async fn station_native_relay_link_redeem(
     window: WebviewWindow,
@@ -1105,8 +1217,9 @@ pub(crate) async fn station_native_relay_link_redeem(
         return Err(UNAVAILABLE.into());
     }
     let state = state.inner().clone();
-    let attempt = reserve_attempt(&state, &pending_id, &profile_name, window.label(), true)?;
+    let attempt = reserve_attempt(&state, &pending_id, &profile_name, window.label(), false)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let mut requested = false;
         let result = (|| {
             check_saved_route(&app, &profile_name, expected_updated_at, &attempt.route)?;
             let invitation =
@@ -1123,18 +1236,23 @@ pub(crate) async fn station_native_relay_link_redeem(
             let service =
                 NativeRelayRedemptionService::new(&context, &keys, &http, &grants, now_ms);
             Ok(
-                match service.redeem_with_cancellation(
+                match service.redeem_with_request_gate(
                     &profile_name,
                     expected_profile_revision,
                     invitation,
                     Some((&attempt.cancelled, &attempt.commit_gate)),
+                    || {
+                        consume_attempt_invitation(&state, &pending_id, &attempt)?;
+                        requested = true;
+                        Ok(())
+                    },
                 ) {
                     Ok(grant) => NativeRelayGrantRedemptionResult::Redeemed { grant },
                     Err(failure) => NativeRelayGrantRedemptionResult::Failed { failure },
                 },
             )
         })();
-        finish_attempt(&state, &pending_id, result.is_err(), true);
+        finish_attempt(&state, &pending_id, result.is_err() && requested, requested);
         result
     })
     .await

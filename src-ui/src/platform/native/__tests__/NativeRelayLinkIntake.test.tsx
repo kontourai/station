@@ -662,6 +662,13 @@ it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
         expectedProfileRevision: state.profileRevision,
         expectedUpdatedAt: profile.updatedAt,
       });
+    if (outcome === 'pending') {
+      const continuation = screen.getByRole('button', {
+        name: 'Continue to device approval',
+      });
+      expect(continuation).toHaveProperty('disabled', true);
+      fireEvent.click(continuation);
+    }
     expect(document.body.textContent).not.toContain(trap);
     expect(
       host.invoke.mock.calls.some(
