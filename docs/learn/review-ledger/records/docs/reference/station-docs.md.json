@@ -9,7 +9,7 @@
 
   "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
 
-  "document": {"digest":"9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+  "document": {"digest":"20355d38c989b077e221d2811b14cd933fb656df7e4e864a90140ffd16520a1b","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -58,7 +58,7 @@
 
     {"path":"src-server/routes/plugins/plugin-validate-routes.ts","digest":"22e628993e930427de7679249466002699eb1819f8cfbe8728c12a27da9afdc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"1e8ca834f915e477e055a6bda36e08d6cc4375d9604345bd69ef726082596e9f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"ac9e7fb59ca6ef72a15b70ce7a91c5510659a36e8a1f2686f355a08199eefdef","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
     {"path":"src-server/runtime/bootstrap/native-engine-adoption.ts","digest":"553480ee2b76b8672f4a187a0680b30dc2576397644fdecb1aead79d1ef62b82","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"4ec510404c46aa8fd0bd0739e593acb214998048418fcac797cbc66a031cea8a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"27cfd3498b4543c9d1f04538671ffeb60dc245442284d6983cc97c20f901d113","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"c112f831517ab8df9af25fba576016ccdc41f3fdb711660418566bd9342cca3c","revision":"e403554362186ebc38993487e46a7c4acf1004f8"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -116,7 +116,9 @@
 
     {"path":"src-ui/src/components/monitoring/FleetRoutingReceipts.tsx","digest":"6fbaad9aca8523ce87fab5a8ccb20f2c9da40ab7b70f4e5a6bf965dfac4089bd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"}
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"},
+
+    {"path":"src-server/runtime/agents/station-capability-discovery.ts","digest":"fb95589365de3171f527ef96c98df9127dfb32e363df5f4253f86f105bf31e52","revision":"69eb5db90072c149c16115135f495ac538155e71"}
   ],
 
   "checks": [

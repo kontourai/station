@@ -35,6 +35,7 @@ import { ConnectionListPanel } from './connection-manager-modal/ConnectionListPa
 import { ManualAddPanel } from './connection-manager-modal/ManualAddPanel';
 import { PairedDevicesPanel } from './connection-manager-modal/PairedDevicesPanel';
 import {
+  type ConnectionManagerActiveHealth,
   type ConnectionManagerPanel,
   getConnectionManagerTitle,
   getConnectionStatus,
@@ -64,6 +65,10 @@ interface ConnectionManagerModalContentProps {
    * `{ ok: false, reason }` result instead. `ConnectionHealthCheckResult`
    * includes `boolean`, so existing boolean implementations still satisfy this.
    */
+  /** Host's live status, bound to its currently selected connection. */
+  activeHealth?: ConnectionManagerActiveHealth;
+  /** Host-owned unsaved-work decision before changing the selected Station. */
+  guardConnectionChange?: (proceed: () => void) => void;
   checkHealth: (
     url: string,
     credential?: string,
@@ -174,6 +179,8 @@ async function readCandidateHandshake(response: Response): Promise<{
 export function ConnectionManagerModalContent({
   onClose,
   checkHealth,
+  activeHealth,
+  guardConnectionChange,
   checkCompatibility,
   initialPanel = 'list',
   initialPairingPayload,
@@ -749,6 +756,10 @@ export function ConnectionManagerModalContent({
       connectionId: conn.id,
       activeConnectionId: activeConnection?.id,
       healthValue: healthMap[conn.id],
+      activeStatus:
+        activeHealth?.connectionId === conn.id
+          ? activeHealth.status
+          : undefined,
     });
 
   const reviewConnectionCandidate = useCallback(
@@ -983,20 +994,23 @@ export function ConnectionManagerModalContent({
             credentialEntry={credentialEntry}
             allowManualCredentials={allowManualCredentials}
             getStatus={statusForConn}
+            activeHealth={activeHealth}
             pendingConnectionId={pendingForConnections?.targetConnectionId}
             onSelect={(connection) => {
-              void setActiveConnection(connection.id)
-                .then(() => {
-                  setSelectionError(null);
-                  void checkOne(connection);
-                })
-                .catch((error) => {
-                  setSelectionError(
-                    `Could not switch Stations: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                  );
-                });
+              const proceed = () => {
+                void setActiveConnection(connection.id)
+                  .then(() => {
+                    setSelectionError(null);
+                    void checkOne(connection);
+                  })
+                  .catch((error) => {
+                    setSelectionError(
+                      `Could not switch Stations: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                  });
+              };
+              if (guardConnectionChange) guardConnectionChange(proceed);
+              else proceed();
             }}
             onCheck={checkOne}
             onStartEdit={startEdit}

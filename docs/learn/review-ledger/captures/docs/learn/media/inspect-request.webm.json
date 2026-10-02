@@ -14,7 +14,7 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/index.css","digest":"9b0f73c59e84688e32fcaff618a290e4fad31a51ace52e2ab6aa7ef2e714aa23","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
 
     {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

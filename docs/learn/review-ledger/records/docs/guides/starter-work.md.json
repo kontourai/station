@@ -9,10 +9,10 @@
 
   "limits": "Source/caller review of the stated contract, not exhaustive testing of every Scheduler or engine branch. No new tests, live engine completion, browser/device journey, external SDK compatibility, hosted execution or release qualification. Existing 175-test tranche and captures remain their original evidence.",
 
-  "document": {"digest":"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
+  "document": {"digest":"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839","revision":"a15d7b09e3b1a1434ac3d51a25d52773d30746a7"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"5e54afc2870c678ee4b78efd17f1644aaeb1e686d5cb3b1cc0d6efb6b86afd77","revision":"8ee746bb6c74755b4d29cbef0a8f5b3311afa7b7"},
+    {"path":"docs/learn/media.json","digest":"692a998fa632e3a710e6eee3245d6fdd1f8ba18a1177a344b95d1b1ebb64858b","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
     {"path":"docs/learn/media.json#/captures/0","digest":"1d9e84ec3e04ca70b00f9f6c19301264c638e901b32e5e70ccacc858d402ca9d","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
-    {"path":"src-ui/src/index.css","digest":"9b0f73c59e84688e32fcaff618a290e4fad31a51ace52e2ab6aa7ef2e714aa23","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
 
     {"path":"src-ui/src/lib/starter-work-operation-store.ts","digest":"d3c5ace0dae590debb023c5954ae91564e94d343fc08a19da311522f340daf68","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -106,7 +106,7 @@
 
     {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
 
-    {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/HomeView.tsx","digest":"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f","revision":"c4e12e530c3346d3191a89e29cd504f2e2e475a7"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

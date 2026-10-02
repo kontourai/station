@@ -12,11 +12,11 @@
   "document": {"digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
   "sources": [
-    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"5c113e440ff60d70cf1904f8e53c681d465c39211de98f948c3d9996c42a2a61","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15","revision":"ae4a861e2c29da739f863b17078c7b5a0a7ca326"},
 
     {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058","revision":"9dbe4f65b46fcab127f36e9d878a2c535f381fec"},
 
     {"path":"packages/contracts/src/notification-preferences.ts","digest":"913dd3f26b26c67550aaae1914c4c8cbe850b2866d70ae40c322b62523bb9be1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-server/services/notifications/web-push-service.ts","digest":"8029e96b806624cdbbb2a3d12bcbd285dee94b8e4cfbdd9ecc06a77138c10e05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
     {"path":"src-server/services/ssh/client-connection-presence.ts","digest":"b325fd2ef3e349d46d9dadec9631eef93cb6d895bd3a483cd823ca588b1d793d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 

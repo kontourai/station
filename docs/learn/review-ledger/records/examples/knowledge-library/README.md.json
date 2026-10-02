@@ -12,6 +12,10 @@
   "document": {"digest":"9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
   "sources": [
+    {"path":"docs/learn/media.json#/captures/6","digest":"d439fffbb12f94d32532b32a4e15363981c8ed65c3c4e0bf31c10fb92db60616","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
+    {"path":"docs/learn/media.json#/captures/7","digest":"1bfef4b8a5a1eacc113acfe951e4498bea40e4a03bf6842c2d651c0766bc6fe0","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
+
     {"path":"docs/learn/media/repository-knowledge-narrow.png","digest":"d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
     {"path":"docs/learn/media/repository-knowledge.png","digest":"8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
@@ -22,13 +26,13 @@
 
     {"path":"examples/knowledge-library/plugin.json","digest":"56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
-
-    {"path":"examples/knowledge-library/src/RootPicker.tsx","digest":"f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
-
     {"path":"examples/knowledge-library/src/index.tsx","digest":"0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
     {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"examples/knowledge-library/src/RootPicker.tsx","digest":"f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
     {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -50,15 +54,11 @@
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/index.css","digest":"9b0f73c59e84688e32fcaff618a290e4fad31a51ace52e2ab6aa7ef2e714aa23","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
-
-    {"path":"docs/learn/media.json#/captures/6","digest":"d439fffbb12f94d32532b32a4e15363981c8ed65c3c4e0bf31c10fb92db60616","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
-
-    {"path":"docs/learn/media.json#/captures/7","digest":"1bfef4b8a5a1eacc113acfe951e4498bea40e4a03bf6842c2d651c0766bc6fe0","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"}
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
   ],
 
   "checks": [

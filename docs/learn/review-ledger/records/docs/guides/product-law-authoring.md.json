@@ -86,7 +86,7 @@
 
     {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"src-ui/src/views/HomeView.tsx","digest":"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f","revision":"c4e12e530c3346d3191a89e29cd504f2e2e475a7"},
 
     {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 

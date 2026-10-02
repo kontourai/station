@@ -6584,10 +6584,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     white-space: nowrap;
   }
 
-  /* Hide the full state and identity spans on mobile. The compact healthy
-     chip keeps its bounded `Station · <saved name>` label in chat.css; the
-     action cluster's right-anchor and shrink behavior live there too
-     (station#3766). */
+  /* Phone connection chrome is a touchable status dot. Its full accessible
+     name and long-press hint are owned by HeaderActions; chat.css sizes it. */
   .app-toolbar__conn-name,
   .app-toolbar__conn-state {
     display: none;
@@ -8991,6 +8989,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    would be a no-op dressed up as a mechanism. Together those two changes are
    what turn a 24px overflow into ~28px of title. */
 @media (max-width: 360px) {
+  .app-toolbar.app-toolbar,
+  .app-toolbar .app-toolbar__actions {
+    gap: 2px;
+  }
+
   .chat-dock__mobile-header {
     padding: var(--space-1) 8px;
   }

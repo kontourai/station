@@ -961,7 +961,7 @@ export class AttentionProjectionService {
       {
         id: `setup-incomplete:model-connection:${requirement.agentSlug}`,
         kind: 'setup-incomplete',
-        title: `${requirement.agentName} cannot run yet`,
+        title: `Agent “${requirement.agentName}” needs setup`,
         body: requirement.reason,
         createdAt: observedAt,
         updatedAt: observedAt,
@@ -1193,10 +1193,7 @@ export class AttentionProjectionService {
             // only when true; a session tier that cannot pass the pairing
             // family's authorization gets the remedy instead of dead buttons.
             viewerCanDecide,
-            // The Connections hub is where pairing/device management lives;
-            // the decision itself happens through this item's own
-            // Approve/Deny, which call the gated `/api/pairing` routes.
-            openHref: '/connections',
+            openHref: `/notifications?pairing=${encodeURIComponent(request.requestId)}`,
             source: {
               requestId: request.requestId,
               ...(notificationId ? { notificationId } : {}),
