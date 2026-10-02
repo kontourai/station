@@ -209,9 +209,9 @@ export function MobileTaskSwitcher({
 
   if (!open) return null;
 
-  // 'Switch task' is the established accessible name for this sheet and is what
-  // the e2e suite and any name-driven caller already target.
-  const heading = 'Switch task';
+  // One word, which is also the sheet's accessible name: the lanes under it
+  // say what kind of chat each row is.
+  const heading = 'Chats';
 
   // Portaled to <body>: this sheet used to render inside the ChatDock
   // subtree, whose `position: fixed; z-index: 100` root creates a stacking
@@ -237,10 +237,7 @@ export function MobileTaskSwitcher({
         tabIndex={-1}
       >
         <header className="mobile-task-switcher__header">
-          <div>
-            <p>Chats and tasks</p>
-            <h2>{heading}</h2>
-          </div>
+          <h2>{heading}</h2>
           <ResponsiveDialogCloseButton
             label="Close task switcher"
             onClick={closeAndRestoreFocus}

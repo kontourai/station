@@ -95,27 +95,27 @@ function openMoreMenu() {
 }
 
 describe('header inbox toggle (from #1064 AC1/AC2)', () => {
-  test('open state renders "Collapse chat list" checked', async () => {
+  test('open state renders "Hide inbox" checked', async () => {
     const controls = workspaceControls();
     renderHeader({ workspaceControls: controls });
     openMoreMenu();
 
     const row = await screen.findByRole('menuitemcheckbox', {
-      name: 'Collapse chat list',
+      name: 'Hide inbox',
     });
     expect(row.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(row);
     expect(controls.onToggleInbox).toHaveBeenCalledTimes(1);
   });
 
-  test('collapsed state renders "Expand chat list" unchecked', async () => {
+  test('collapsed state renders "Show inbox" unchecked', async () => {
     renderHeader({
       workspaceControls: workspaceControls({ isInboxOpen: false }),
     });
     openMoreMenu();
 
     const row = await screen.findByRole('menuitemcheckbox', {
-      name: 'Expand chat list',
+      name: 'Show inbox',
     });
     expect(row.getAttribute('aria-checked')).toBe('false');
   });
@@ -127,10 +127,10 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     openMoreMenu();
 
     expect(
-      screen.queryByRole('menuitemcheckbox', { name: 'Collapse chat list' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Hide inbox' }),
     ).toBeNull();
     expect(
-      screen.queryByRole('menuitemcheckbox', { name: 'Expand chat list' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Show inbox' }),
     ).toBeNull();
     // Its neighbours are still there, so an empty menu cannot pass this.
     expect(
@@ -264,7 +264,7 @@ describe('header background tasks button (from #1064 AC3)', () => {
     // never registers here: this suite's `useHostRequestAuthorityScope` stub
     // returns undefined, which is also the real "no authority yet" case.
     const row = screen.getByRole('menuitem', {
-      name: 'Session inventory — loading',
+      name: 'Chat inventory — loading',
     });
     expect(row.hasAttribute('disabled')).toBe(true);
   });
@@ -334,7 +334,7 @@ describe('one-bar rule (#3309)', () => {
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat settings' })).toBeTruthy();
     expect(
-      screen.queryByRole('menuitemcheckbox', { name: 'Collapse chat list' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Hide inbox' }),
     ).toBeNull();
     expect(
       screen.queryByRole('menuitem', { name: 'Background tasks' }),

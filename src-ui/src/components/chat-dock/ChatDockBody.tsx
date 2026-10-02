@@ -1428,19 +1428,16 @@ export function ChatDockBody({
             color: 'var(--text-muted)',
           }}
         >
-          <strong>The engine appears stalled.</strong>{' '}
           <ProgressSilenceObservation observation={turnProgressSilence} />
           {'. '}
-          You can wait, or{' '}
           <button
             type="button"
             onClick={() => void chatInput.handleCancel()}
             disabled={!!activeSession.stopPending}
             style={BANNER_LINK_BUTTON_STYLE}
           >
-            stop this turn
+            Stop this turn
           </button>
-          .
         </div>
       )}
       {activeSession.replay?.mode === 'timeline' ? (

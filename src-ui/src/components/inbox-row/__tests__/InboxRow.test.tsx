@@ -258,7 +258,7 @@ describe('the row says exactly what the ladder says', () => {
     healthy.unmount();
 
     renderRow(rowFor({ turnProgress: SILENCE }));
-    expect(statusText()).toBe('No progress for 6m · Bash · 1m 12s');
+    expect(statusText()).toBe('No progress · 6m · Bash · 1m 12s');
     expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
     expect(glyphPath()).toBeTruthy();
     expect(glyphPath()).not.toBe(healthyGlyph);
@@ -369,7 +369,9 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.getByTestId('inbox-row-answerability').textContent).toBe(
       row.item.unanswerableNotice,
     );
-    expect(screen.getByTestId('inbox-row-status').className).toContain(
+    // Off the visible line (the word is "Elsewhere"; the basis is the
+    // hover card's), still the row's description.
+    expect(screen.getByTestId('inbox-row-status').className).not.toContain(
       'inbox-row__status--reason',
     );
     expect(describedText()).toContain(row.item.unanswerableNotice);
@@ -408,10 +410,9 @@ describe('a reason is readable in full on every surface', () => {
       { timeout: 8000 },
     );
     expect(details.getAttribute('aria-expanded')).toBe('true');
-    // The whole reason, the model, the kind and the folder.
+    // The whole reason, the model and the folder.
     expect(sheet.textContent).toContain(FAILED.terminalAttribution.detail);
     expect(sheet.textContent).toContain(row.item.modelLabel);
-    expect(sheet.textContent).toContain('Session');
     expect(sheet.textContent).toContain('…/kontourai/station');
     expect(sheet.textContent).toContain('Failed');
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));

@@ -118,7 +118,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('dialog', { name: 'Switch task' });
+    const dialog = screen.getByRole('dialog', { name: 'Chats' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
@@ -395,7 +395,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('dialog', { name: 'Switch task' });
+    const dialog = screen.getByRole('dialog', { name: 'Chats' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
   });
 });

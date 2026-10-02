@@ -467,7 +467,7 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     renderDock(session, stalledOrchestrationSession(), chatInput);
 
     expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
-    expect(screen.getByText(/appears stalled/i)).toBeTruthy();
+    expect(screen.getByText(/No progress for/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /stop this turn/i }));
     expect(chatInput.handleCancel).toHaveBeenCalledTimes(1);
   });

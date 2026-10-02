@@ -87,24 +87,28 @@ function coarseDuration(elapsedMs: number): string {
 
 /** The detail's test id names what it is the basis for, where one exists. */
 const DETAIL_TEST_IDS: Partial<Record<WorkStatusRung, string>> = {
-  unanswerable: 'inbox-row-answerability',
   failed: 'inbox-row-failure-reason',
+};
+
+/**
+ * The ladder's `reason` is never drawn on the row (the hover card and the
+ * Details sheet show it), but it stays the row's accessible description:
+ * archive#1783 requires the unanswerable basis to be reachable from the row,
+ * and a screen reader reaches it here. The test id names what it is.
+ */
+const REASON_TEST_IDS: Partial<Record<WorkStatusRung, string>> = {
+  unanswerable: 'inbox-row-answerability',
   stopped: 'inbox-row-failure-reason',
 };
 
 /**
- * The rungs whose detail is a REASON the user needs in full: why it failed,
- * why nothing here can answer it. For these the fixed one-line budget
- * yields: the line may wrap to two lines rather than cut the reason off
- * (archive#1783 requires the unanswerable basis on the row itself). The
- * whole text is always in the DOM, so the row's `aria-describedby` reads all
- * of it, and the row's details surface shows it unclamped.
+ * The one rung whose detail is a REASON the user needs in full on the row:
+ * why it failed. For it the fixed one-line budget yields: the line may wrap
+ * to two lines rather than cut the cause off. The whole text is always in
+ * the DOM, so the row's `aria-describedby` reads all of it, and the row's
+ * details surface shows it unclamped.
  */
-const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set([
-  'failed',
-  'stopped',
-  'unanswerable',
-]);
+const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set(['failed']);
 
 /**
  * The row's single status line: icon, word, then whatever the ladder says
@@ -126,9 +130,22 @@ export function InboxRowStatusLine({
       className={`inbox-row__status${wraps ? ' inbox-row__status--reason' : ''}`}
       data-tone={status.tone}
       data-testid="inbox-row-status"
+      title={status.reason}
     >
       <InboxRowStatusGlyph rung={status.rung} />
       <span className="inbox-row__word">{status.word}</span>
+      {status.reason && (
+        <>
+          <span className="sr-only">{' · '}</span>
+          <span
+            className="sr-only"
+            data-testid={REASON_TEST_IDS[status.rung]}
+            title={status.reason}
+          >
+            {status.reason}
+          </span>
+        </>
+      )}
       {status.detail && (
         <>
           <span className="inbox-row__sep">{' · '}</span>

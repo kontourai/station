@@ -475,10 +475,9 @@ export function InboxRow({
   // filed under come from the same function.
   const status = workStatus(item, now, facts);
   const chips = inboxRowChips(item, { hasUnsentDraft, isWoken });
-  const agentText =
-    item.controlMode === 'read-only-attached'
-      ? `Started in ${item.agentLabel}`
-      : item.agentLabel;
+  // An attached transcript's meta line names the app it lives in; the
+  // status word ("Elsewhere") says this Station cannot answer there.
+  const agentText = item.agentLabel;
   const hasTime = item.updatedAt > 0;
   const closable = Boolean(onCloseChat && isOpenChat && item.chatSessionId);
   const tooltip = hoverCard && chrome === 'hover';
@@ -710,10 +709,13 @@ export function InboxRow({
               title={status.line}
             >
               {status.word}
-              {/* One line shows only the word; the reason behind it is
-                  still the row's description for a screen reader. */}
-              {status.detail && (
-                <span className="sr-only">{` · ${status.detail}`}</span>
+              {/* One line shows only the word; the detail and reason
+                  behind it are still the row's description for a screen
+                  reader. */}
+              {(status.detail || status.reason) && (
+                <span className="sr-only">
+                  {` · ${status.detail ?? status.reason}`}
+                </span>
               )}
             </span>
             {hasTime && (

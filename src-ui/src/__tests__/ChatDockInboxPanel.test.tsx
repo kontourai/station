@@ -844,7 +844,7 @@ describe('ChatDockInboxPanel answerability basis (station#1783)', () => {
     // (`Completed` -> "Done"); `Unanswerable` was the only member leaking its
     // enum text.
     renderPanel({ items: [unanswerableItem()] });
-    expect(screen.getByText("Can't answer here")).toBeTruthy();
+    expect(screen.getByText('Elsewhere')).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();
   });
 

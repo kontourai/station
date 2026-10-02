@@ -12,7 +12,6 @@ import {
   type ChatUIState,
   createDefaultChatState,
 } from '../contexts/active-chats-state';
-import { sessionStatusWord } from '../utils/session-state';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import {
   buildHomeWorkItems,
@@ -25,6 +24,7 @@ import {
   type WorkLane,
   workStatus,
 } from '../views/home/work-status';
+import { sessionWorkStatus } from '../views/sessions/sessions-lane-model';
 
 /**
  * #3042: one status line per row, chosen by one ladder, and the lane read
@@ -114,11 +114,11 @@ describe('the status ladder, from real server summaries', () => {
     });
   });
 
-  it('a running row with an open question reads as needs-your-answer', () => {
+  it('a running row with an open question reads as needs-answer', () => {
     expect(statusOf(QUESTION_IN_OPEN_TURN)).toEqual({
       rung: 'answer',
       lane: 'needsYou',
-      line: 'Needs your answer',
+      line: 'Needs answer',
     });
   });
 
@@ -156,7 +156,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(summary)).toEqual({
       rung: 'childWork',
       lane: 'running',
-      line: '3 sub-agents running · 1m 12s',
+      line: '3 sub-agents · 1m 12s',
     });
   });
 
@@ -179,7 +179,7 @@ describe('the status ladder, from real server summaries', () => {
       rung: 'quiet',
       lane: 'running',
       tone: 'caution',
-      line: 'No progress for 6m · Bash · 6m 01s',
+      line: 'No progress · 6m · Bash · 6m 01s',
     });
     // Never drawn as the healthy run it sits beside.
     const healthy = rowFor(RUNNING_TOOL);
@@ -201,13 +201,13 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(summary)).toEqual({
       rung: 'childWork',
       lane: 'running',
-      line: '2 sub-agents running',
+      line: '2 sub-agents',
     });
-    // The Sessions list's word comes from the same label fold and agrees.
-    expect(sessionStatusWord(summary)).toBe('Running');
+    // The Activity list reads the SAME ladder call for the same summary.
+    expect(sessionWorkStatus(summary, [], NOW).word).toBe('2 sub-agents');
     // Without the children the same ending is simply done.
     expect(statusOf(TURN_COMPLETED).line).toBe('Done');
-    expect(sessionStatusWord(TURN_COMPLETED)).toBe('Completed');
+    expect(sessionWorkStatus(TURN_COMPLETED, [], NOW).word).toBe('Done');
   });
 
   it('a session nothing was sent to is a Draft', () => {
@@ -216,7 +216,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(summary)).toEqual({
       rung: 'draft',
       lane: 'drafts',
-      line: 'Draft · nothing sent yet',
+      line: 'Draft',
     });
   });
 
@@ -238,7 +238,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(status.line).not.toContain('raw adapter text');
   });
 
-  it('a request nothing here can answer is idle, with its basis, even mid-turn', () => {
+  it('a request nothing here can answer is idle and Elsewhere, its basis off the row, even mid-turn', () => {
     const summary = folded('detachedApproval');
     expect(summary.answerability).toMatchObject({
       answerable: false,
@@ -248,7 +248,8 @@ describe('the status ladder, from real server summaries', () => {
     const status = workStatus(item, NOW, facts);
     expect(status.rung).toBe('unanswerable');
     expect(status.lane).toBe('idle');
-    expect(status.line).toBe(`Can't answer here · ${item.unanswerableNotice}`);
+    expect(status.line).toBe('Elsewhere');
+    expect(status.reason).toBe(item.unanswerableNotice);
     expect(item.unanswerableNotice).toMatch(/observed by station-a/);
     // No kind is recorded for a request nothing here can answer.
     expect(facts?.attention).toBeUndefined();
@@ -294,7 +295,7 @@ describe('the status ladder, from real server summaries', () => {
       currentThreadId: 'T',
       runningChildWork: { count: 3 },
     });
-    expect(statusOf(current).line).toBe('3 sub-agents running · 1m 12s');
+    expect(statusOf(current).line).toBe('3 sub-agents · 1m 12s');
     expect(statusOf({ ...current, threadId: 'earlier-child' })).toEqual({
       rung: 'running',
       lane: 'running',
@@ -376,10 +377,10 @@ const TABLE: ReadonlyArray<
     'needsYou',
   ],
   [
-    'needs your answer',
+    'needs answer',
     { lifecycleLabel: 'Needs attention' },
     { attention: 'answer' },
-    'Needs your answer',
+    'Needs answer',
     'needsYou',
     'needsYou',
   ],
@@ -448,10 +449,10 @@ const TABLE: ReadonlyArray<
     'recentlyFinished',
   ],
   [
-    "can't answer here",
+    'elsewhere (nothing here can answer): the basis is the reason, not the line',
     { lifecycleLabel: 'Unanswerable', unanswerableNotice: 'Observed by a.' },
     undefined,
-    "Can't answer here · Observed by a.",
+    'Elsewhere',
     'idle',
     'idle',
   ],
@@ -459,7 +460,7 @@ const TABLE: ReadonlyArray<
     'sub-agents running',
     { lifecycleLabel: 'Running' },
     { activity: { ...ACTIVITY, childWorkCount: 2 } },
-    '2 sub-agents running · 1m 12s',
+    '2 sub-agents · 1m 12s',
     'running',
     'running',
   ],
@@ -467,7 +468,7 @@ const TABLE: ReadonlyArray<
     'sub-agents still running after their turn ended',
     { lifecycleLabel: 'Running', activeReason: 'background' },
     { activity: { childWorkCount: 2 } },
-    '2 sub-agents running',
+    '2 sub-agents',
     'running',
     'running',
   ],
@@ -483,7 +484,7 @@ const TABLE: ReadonlyArray<
     'running, but the watchdog reports no progress',
     { lifecycleLabel: 'Running', activeReason: 'turn', turnProgress: SILENCE },
     { activity: ACTIVITY },
-    'No progress for 6m · Bash · 1m 12s',
+    'No progress · 6m · Bash · 1m 12s',
     'running',
     'running',
   ],
@@ -499,15 +500,15 @@ const TABLE: ReadonlyArray<
     'background work with no count',
     { lifecycleLabel: 'Running', activeReason: 'background' },
     undefined,
-    'Background work running',
+    'Running',
     'running',
     'running',
   ],
   [
-    'idle',
+    'idle: the row corner carries the time, the line says only Idle',
     { lifecycleLabel: 'Ready' },
     undefined,
-    'Idle · last activity 25m ago',
+    'Idle',
     'idle',
     'idle',
   ],
@@ -523,7 +524,7 @@ const TABLE: ReadonlyArray<
     'draft',
     { lifecycleLabel: 'Draft' },
     undefined,
-    'Draft · nothing sent yet',
+    'Draft',
     'drafts',
     'drafts',
   ],
@@ -547,10 +548,10 @@ const TABLE: ReadonlyArray<
     'recentlyFinished',
   ],
   [
-    'followed from another app',
+    'followed from another app: Elsewhere, the app in the reason',
     { lifecycleLabel: 'Running', controlMode: 'read-only-attached' },
     undefined,
-    'Started in Claude Code',
+    'Elsewhere',
     'external',
     'external',
   ],
@@ -612,7 +613,25 @@ describe('the status ladder, state by state', () => {
         attention: 'approval',
         activity: ACTIVITY,
       }).line,
-    ).toBe('Idle · last activity 25m ago');
+    ).toBe('Idle');
+  });
+
+  it('a stopped reason and an attached app are reasons, never on the line', () => {
+    expect(
+      workStatus(
+        item({
+          lifecycleLabel: 'Stopped',
+          failureNotice: 'Stopped by request.',
+        }),
+        NOW,
+      ),
+    ).toMatchObject({ line: 'Stopped', reason: 'Stopped by request.' });
+    expect(
+      workStatus(
+        item({ lifecycleLabel: 'Running', controlMode: 'read-only-attached' }),
+        NOW,
+      ),
+    ).toMatchObject({ line: 'Elsewhere', reason: 'Started in Claude Code' });
   });
 
   it('formats a duration so it reads the same while it ticks', () => {

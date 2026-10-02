@@ -200,7 +200,7 @@ export function ChatDockMobileHeader({
         className="chat-dock__mobile-identity"
         data-dock-drag-passthrough=""
         aria-label={
-          agentIdentity ? `Switch task — ${agentIdentity.name}` : 'Switch task'
+          agentIdentity ? `Switch chat — ${agentIdentity.name}` : 'Switch chat'
         }
         aria-describedby={titleDescriptionId}
         onClick={onOpenTaskSwitcher}

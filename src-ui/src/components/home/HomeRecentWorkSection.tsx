@@ -285,7 +285,7 @@ function statTargets(
   }
   if (lanes.recentlyFinished.length > 0) {
     targets['Just finished'] = {
-      destination: 'show the Recently finished lane',
+      destination: 'show the Just finished lane',
       onActivate: () => revealHomeRegion(FINISHED_HEADING_ID),
     };
   }
@@ -475,7 +475,7 @@ function HomeLiveLane({
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const items = controller.lanes[lane.id];
-  // Empty live lanes render nothing, like Recently finished: three "(0)"
+  // Empty live lanes render nothing, like Just finished: three "(0)"
   // headings would be noise, and the pulse counts already say zero.
   if (items.length === 0) return null;
   return (
@@ -524,7 +524,7 @@ function HomeRecentlyFinishedLane({
         className="home-view__group-label"
         tabIndex={-1}
       >
-        Recently finished ({lanes.recentlyFinished.length})
+        Just finished ({lanes.recentlyFinished.length})
       </h3>
       <ul className="home-view__task-list">
         {lanes.recentlyFinished.map((task) =>

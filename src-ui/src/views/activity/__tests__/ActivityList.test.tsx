@@ -333,11 +333,10 @@ describe('Activity list', () => {
     renderView();
     const row = screen.getByRole('button', { name: /^Refactor the parser/ });
     const meta = within(row).getByTestId('activity-row-meta');
+    // The status ladder's line — the same words the dock row prints for
+    // this session: the word, the tool, the turn's elapsed time.
     expect(within(meta).getByTestId('activity-row-state').textContent).toBe(
-      'Running for 3m · using Bash',
-    );
-    expect(within(meta).getByRole('img').getAttribute('aria-label')).toBe(
-      'Running',
+      'Running · Bash · 3m 00s',
     );
     expect(meta.querySelector('[data-segment="project"]')?.textContent).toBe(
       'station',
@@ -351,7 +350,7 @@ describe('Activity list', () => {
       .closest('.split-pane__item-row')
       ?.querySelector('.activity-row__time');
     expect(time?.textContent).toBe('3m');
-    expect(meta.textContent).toContain(', 3m ago');
+    expect(meta.textContent).toContain(', 3m');
   });
 
   test('New task opens a TOP-LEVEL launcher even when delegated work exists', async () => {
@@ -794,11 +793,9 @@ describe('Activity list', () => {
       }),
     ).toBeTruthy();
     // Two subtasks on the board — the completed ROOT is not a third.
+    expect(screen.getByRole('button', { name: /^1 done — / })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: /^1 completed — / }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /^1 needs attention — / }),
+      screen.getByRole('button', { name: /^1 needs you — / }),
     ).toBeTruthy();
   });
 

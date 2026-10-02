@@ -631,7 +631,7 @@ describe('SessionsView', () => {
     ).toBe('true');
     expect(screen.getAllByTestId('activity-row-meta')).toHaveLength(3);
     expect(
-      (await screen.findAllByText(/No progress events for/)).length,
+      (await screen.findAllByText(/No progress · /)).length,
     ).toBeGreaterThan(0);
     expect(
       screen
@@ -639,7 +639,7 @@ describe('SessionsView', () => {
         .find(
           (node) => node.getAttribute('data-session-id') === 'worker-thread-2',
         )?.textContent,
-    ).not.toContain('No progress events for');
+    ).not.toContain('No progress ·');
 
     fireEvent.click(
       screen.getByRole('button', { name: /Check the migration/ }),
@@ -714,29 +714,16 @@ describe('SessionsView', () => {
         .getAllByTestId('activity-row-meta')
         .find((node) => node.getAttribute('data-session-id') === sessionId)!;
 
-    expect(
-      within(statusFor('ready-parent'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Ready');
-    expect(
-      within(statusFor('needs-attention'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Needs attention');
-    expect(
-      within(statusFor('completed'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Completed');
-    expect(
-      within(statusFor('no-lifecycle-state'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Ready');
-    expect(
-      within(statusFor('stopped')).getByRole('img').getAttribute('aria-label'),
-    ).toBe('Stopped');
+    // The ladder's words, with the ladder's own (decorative) glyph beside
+    // them: the word carries the state, so the glyph is not a second name.
+    const stateOf = (sessionId: string) =>
+      within(statusFor(sessionId)).getByTestId('activity-row-state')
+        .textContent;
+    expect(stateOf('ready-parent')).toBe('Idle');
+    expect(stateOf('needs-attention')).toBe('Needs approval');
+    expect(stateOf('completed')).toBe('Done');
+    expect(stateOf('no-lifecycle-state')).toBe('Idle');
+    expect(stateOf('stopped')).toBe('Stopped');
     expect(
       within(statusFor('stopped')).getByTestId(
         'session-member-terminal-attribution',
@@ -879,12 +866,12 @@ describe('SessionsView', () => {
     ).toHaveLength(1);
     expect(
       row?.querySelector('.split-pane__item-subtitle')?.textContent,
-    ).toMatch(/^! Waiting on you · Claude Code · demo, \d+d ago$/);
+    ).toMatch(/^\s*Waiting on you · Claude Code · demo, .+$/);
     // The row is named by its title alone; its status line describes it.
     // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
       name: 'An independent session',
-      description: /^\s*! Waiting on you · Claude Code · demo, \d+d ago$/,
+      description: /^\s*Waiting on you · Claude Code · demo, .+$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
@@ -925,7 +912,7 @@ describe('SessionsView', () => {
     expect(rows).toHaveLength(1);
     expect(
       rows[0].querySelector('.split-pane__item-subtitle')?.textContent,
-    ).toMatch(/^✓ Completed · Claude Code · 2 turns, /);
+    ).toMatch(/^\s*Done · Claude Code · 2 turns, /);
     expect(
       container.querySelector('.split-pane__section-header')?.textContent,
     ).toMatch(/ · 1$/);
@@ -1473,7 +1460,7 @@ describe('SessionsView', () => {
     expect(
       within(detail).queryByLabelText('Continue delegated task'),
     ).toBeNull();
-    expect(within(detail).getAllByText('Completed').length).toBe(1);
+    expect(within(detail).getAllByText('Done').length).toBe(1);
   });
 
   test("shows the failed session's own failure detail instead of a bare badge, with no live/stop contradiction", () => {
@@ -3449,7 +3436,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      expect(listRows(container)[0].textContent).toContain('3h ago');
+      expect(listRows(container)[0].textContent).toContain('3h');
     });
 
     test('lists the newest session first, against a server list that arrives oldest-first', () => {
@@ -3579,7 +3566,7 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container);
       expect(headings.slice(0, 2)).toEqual([
         'Needs you · 2',
-        'Recently finished · 1',
+        'Just finished · 1',
       ]);
       expect(['Earlier today · 1', 'Yesterday · 1']).toContain(headings[2]);
       expect(headings).toHaveLength(3);
@@ -3604,17 +3591,18 @@ describe('SessionsView', () => {
      * recomputes the map it checks agrees by construction.
      */
     test('no rendered row contradicts the section heading above it', () => {
-      const FINISHED = ['Completed', 'Stopped', 'Failed'];
+      const FINISHED = ['Done', 'Stopped', 'Failed'];
       const LANE_VOCABULARY: Record<string, string[]> = {
         'Needs you': [
-          'Needs attention',
+          'Needs approval',
+          'Needs answer',
           'Waiting on you',
-          'Review pending',
+          'Interrupted',
           'Blocked',
         ],
         Running: ['Running'],
-        Idle: ['Ready', 'Queued', "Can't answer here"],
-        'Recently finished': FINISHED,
+        Idle: ['Idle', 'Elsewhere'],
+        'Just finished': FINISHED,
         // The history lane's dated sub-sections.
         'Earlier today': FINISHED,
         Yesterday: FINISHED,
@@ -3727,7 +3715,7 @@ describe('SessionsView', () => {
         [...headings].filter(
           (heading) => heading !== 'Earlier today' && heading !== 'Yesterday',
         ),
-      ).toEqual(['Needs you', 'Running', 'Idle', 'Recently finished']);
+      ).toEqual(['Needs you', 'Running', 'Idle', 'Just finished']);
       expect(headings.size).toBe(5);
 
       for (const entry of rendered) {
@@ -3743,10 +3731,10 @@ describe('SessionsView', () => {
       const rowText = (name: string) =>
         listRows(container).find((row) => row.textContent?.includes(name))
           ?.textContent ?? '';
-      expect(rowText('Attached but idle')).toContain('Ready');
-      expect(rowText('Review pending mid-turn')).toContain('Needs attention');
-      expect(rowText('Closed mid-run')).toContain('Completed');
-      expect(rowText('Stranded request')).toContain("Can't answer here");
+      expect(rowText('Attached but idle')).toContain('Idle');
+      expect(rowText('Review pending mid-turn')).toContain('Needs approval');
+      expect(rowText('Closed mid-run')).toContain('Done');
+      expect(rowText('Stranded request')).toContain('Elsewhere');
       // The explicit stopped outcome must not fold into the successful word.
       expect(rowText('Canceled run')).toContain('Stopped');
     });

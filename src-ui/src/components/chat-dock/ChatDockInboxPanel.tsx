@@ -213,7 +213,7 @@ function ChatDockInboxPanelImpl({
       <footer className="chat-dock-inbox__footer">
         <button type="button" onClick={onOpenHistory}>
           <MessageGlyph />
-          Conversation history
+          History
         </button>
       </footer>
     </aside>

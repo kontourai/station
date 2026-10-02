@@ -176,7 +176,7 @@ describe('mobile conversation focus', () => {
     renderHeader({
       onOpenTaskSwitcher,
     });
-    const identity = screen.getByRole('button', { name: /^Switch task/ });
+    const identity = screen.getByRole('button', { name: /^Switch chat/ });
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
     // The visible title ellipsizes on narrow widths; the full text rides
@@ -196,7 +196,7 @@ describe('mobile conversation focus', () => {
     expect(
       screen.getByRole('button', { name: /^Switch project/ }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Switch task/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Switch chat/ })).toBeTruthy();
   });
   test('keeps New chat callable from the actions sheet', async () => {
     const onNewChat = vi.fn();
@@ -208,7 +208,7 @@ describe('mobile conversation focus', () => {
   test('chat overflow is chats and dock chrome, not Profile or a second conversation list', async () => {
     renderHeader();
     await openActions();
-    expect(screen.getByRole('menuitem', { name: 'Chats' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Inbox' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Profile' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
@@ -279,7 +279,7 @@ describe('mobile conversation focus', () => {
       projectSwitcher: null,
     });
     expect(
-      screen.getByRole('button', { name: 'Switch task' }).textContent,
+      screen.getByRole('button', { name: 'Switch chat' }).textContent,
     ).toBe('New chat');
     expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
   });
@@ -292,7 +292,7 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     for (const name of [
       'Collapse chat',
       'Switch project — Kontour AI',
-      'Switch task — Codex',
+      'Switch chat — Codex',
       'Chat actions',
     ]) {
       expect(screen.getByRole('button', { name })).toBeTruthy();

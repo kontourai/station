@@ -1,4 +1,4 @@
-import { relativeTime, relativeTimeAgo } from '../../utils/relativeTime';
+import { relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
 
@@ -25,14 +25,22 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
- *  needs approval, needs your answer, waiting on you, queued to send,
+ *  needs approval, needs answer, waiting on you, queued to send,
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
- *  can't answer here                             (Idle)
- *  sub-agents running, no progress, running      (Running)
+ *  elsewhere                                     (Idle)
+ *  N sub-agents, no progress, running            (Running)
  *  draft                                         (Drafts)
  *  done                                          (finished)
  *  idle                                          (Idle)
+ *
+ * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
+ * strip that names a conversation's state renders `word` (or `line`) from
+ * here; `session-state-word-consistency.test.ts` fails on a synonym written
+ * anywhere else. The words are short on purpose: the row corner already
+ * carries the time, so an idle row says "Idle" and nothing about when; a
+ * reason (why it failed, why nothing here can answer it) is `reason`, read
+ * by the hover card and the Details sheet, never printed on the row.
  *
  * NOT ON THE LADDER, because nothing computes it: "a sub-agent needs
  * approval". Child work reports only running/settled per child
@@ -80,8 +88,14 @@ export interface WorkStatus {
   tone: WorkStatusTone;
   /** The status word. Always present: status is never colour-only. */
   word: string;
-  /** What the word is about (a tool, a recorded reason, a recency). */
+  /** What the word is about (the running tool, a failure's cause). */
   detail?: string;
+  /**
+   * The longer form behind the word, for the hover card and the Details
+   * sheet: why nothing here can answer, why a run was stopped, where an
+   * attached transcript was started. Never on the row itself.
+   */
+  reason?: string;
   /** Epoch ms a ticking duration counts from; only while a turn is open. */
   since?: number;
   /** The whole line as text at `now`. */
@@ -109,7 +123,8 @@ type Rung = Omit<WorkStatus, 'line'>;
 
 const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
   approval: 'Needs approval',
-  answer: 'Needs your answer',
+  answer: 'Needs answer',
+  // The generic rung, for an owed decision whose kind nothing recorded.
   waiting: 'Waiting on you',
   queued: 'Queued to send',
   blocked: 'Blocked',
@@ -122,11 +137,14 @@ function rungFor(
   now: number,
 ): Rung {
   if (item.controlMode === 'read-only-attached') {
+    // The row's meta line already names the app; the word says only that
+    // this Station cannot answer in it.
     return {
       rung: 'external',
       lane: 'external',
       tone: 'neutral',
-      word: `Started in ${item.agentLabel}`,
+      word: 'Elsewhere',
+      reason: `Started in ${item.agentLabel}`,
     };
   }
   switch (item.lifecycleLabel) {
@@ -142,21 +160,30 @@ function rungFor(
       };
     }
     case 'Failed':
+      // The one reason that stays on the row: why it broke is what the user
+      // needs before anything else.
+      return {
+        rung: 'failed',
+        lane: 'finished',
+        tone: 'broken',
+        word: 'Failed',
+        detail: item.failureNotice,
+      };
     case 'Stopped':
       return {
-        rung: item.lifecycleLabel === 'Failed' ? 'failed' : 'stopped',
+        rung: 'stopped',
         lane: 'finished',
-        tone: item.lifecycleLabel === 'Failed' ? 'broken' : 'neutral',
-        word: item.lifecycleLabel,
-        detail: item.failureNotice,
+        tone: 'neutral',
+        word: 'Stopped',
+        reason: item.failureNotice,
       };
     case 'Unanswerable':
       return {
         rung: 'unanswerable',
         lane: 'idle',
         tone: 'neutral',
-        word: "Can't answer here",
-        detail: item.unanswerableNotice,
+        word: 'Elsewhere',
+        reason: item.unanswerableNotice,
       };
     case 'Running': {
       const activity = facts?.activity;
@@ -167,7 +194,7 @@ function rungFor(
           rung: 'childWork',
           lane: 'running',
           tone: 'active',
-          word: `${children} sub-agent${children === 1 ? '' : 's'} running`,
+          word: `${children} sub-agent${children === 1 ? '' : 's'}`,
           since,
         };
       }
@@ -189,7 +216,7 @@ function rungFor(
           rung: 'quiet',
           lane: 'running',
           tone: 'caution',
-          word: `No progress for ${relativeTime(silentSince, now)}`,
+          word: `No progress · ${relativeTime(silentSince, now)}`,
           detail: activity?.toolName,
           since,
         };
@@ -198,10 +225,7 @@ function rungFor(
         rung: 'running',
         lane: 'running',
         tone: 'active',
-        word:
-          item.activeReason === 'background'
-            ? 'Background work running'
-            : 'Running',
+        word: 'Running',
         detail: activity?.toolName,
         since,
       };
@@ -212,7 +236,6 @@ function rungFor(
         lane: 'drafts',
         tone: 'neutral',
         word: 'Draft',
-        detail: 'nothing sent yet',
       };
     case 'Completed':
       return { rung: 'done', lane: 'finished', tone: 'neutral', word: 'Done' };
@@ -231,16 +254,12 @@ export function workStatus(
   facts?: WorkFacts,
 ): WorkStatus {
   const rung = rungFor(item, facts, now);
-  const detail =
-    rung.rung === 'idle' && item.updatedAt > 0
-      ? `last activity ${relativeTimeAgo(item.updatedAt, now)}`
-      : rung.detail;
   const line = [
     rung.word,
-    detail,
+    rung.detail,
     rung.since !== undefined ? formatElapsed(now - rung.since) : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
-  return { ...rung, detail, line };
+  return { ...rung, line };
 }

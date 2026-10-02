@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   activityOriginKey,
   activityOriginShortLabel,
-  activityRunningDetail,
   datedStreamBucket,
 } from '../activity-list-model';
 
@@ -84,84 +83,6 @@ describe('datedStreamBucket', () => {
         datedStreamBucket(new Date(2026, 2, 8, 0, 30).getTime(), now),
       ).toBe('Yesterday');
     });
-  });
-});
-
-describe('activityRunningDetail', () => {
-  const running = (minutesAgo: number, tools?: string[]) =>
-    summary({
-      hasActiveTurn: true,
-      conversationActivity: {
-        conversationId: 'c',
-        asOfSequence: 1,
-        openTurn: {
-          turnId: 't',
-          threadId: 'thread-1',
-          startedAt: new Date(NOW - minutesAgo * 60_000).toISOString(),
-        },
-        ...(tools
-          ? {
-              runningTools: tools.map((name, index) => ({
-                name,
-                callId: `call-${index}`,
-                startedAt: new Date(NOW).toISOString(),
-              })),
-            }
-          : {}),
-      },
-    });
-
-  test('names the duration and the newest running tool', () => {
-    expect(activityRunningDetail(running(3, ['Read', 'Bash']), NOW)).toEqual({
-      duration: '3m',
-      activity: 'using Bash',
-    });
-  });
-
-  test('a fresh turn with nothing in flight adds nothing', () => {
-    expect(activityRunningDetail(running(0), NOW)).toEqual({
-      duration: null,
-      activity: null,
-    });
-  });
-
-  test('says when progress was last heard, unless a silence notice already does', () => {
-    const lastProgress = new Date(NOW - 4 * 60_000).toISOString();
-    const heard = {
-      ...running(6),
-      turnProgress: { lastProgressEventAt: lastProgress },
-    };
-    expect(activityRunningDetail(heard, NOW)).toEqual({
-      duration: '6m',
-      activity: 'last progress 4m ago',
-    });
-    // The silence observation renders its own "No progress events for Nm";
-    // repeating the age beside it pushed the row past its two lines.
-    const silent = {
-      ...running(6),
-      turnProgress: {
-        lastProgressEventAt: lastProgress,
-        progressSilence: {
-          detectedAt: new Date(NOW).toISOString(),
-          windowMs: 180_000,
-          silentSinceEventAt: lastProgress,
-          provider: 'station',
-        },
-      },
-    };
-    expect(activityRunningDetail(silent, NOW)).toEqual({
-      duration: '6m',
-      activity: null,
-    });
-  });
-
-  test('a summary with no active turn claims no running detail', () => {
-    expect(
-      activityRunningDetail(
-        { ...running(3, ['Bash']), hasActiveTurn: false },
-        NOW,
-      ),
-    ).toEqual({ duration: null, activity: null });
   });
 });
 

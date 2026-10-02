@@ -13,6 +13,8 @@ import {
   compareTaskRecency,
   type HomeWorkItem,
 } from '../home/home-view-model';
+import { buildWorkFacts } from '../home/work-facts';
+import { type WorkStatus, workStatus } from '../home/work-status';
 
 /**
  * State lanes for the Sessions list (archive#3027). The owner's decision was
@@ -52,11 +54,43 @@ export const SESSION_LANE_ORDER: readonly SessionLaneId[] = [
 
 export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
   ...LIVE_LANE_LABELS,
-  recentlyFinished: 'Recently finished',
+  recentlyFinished: 'Just finished',
   drafts: 'Drafts',
   earlier: 'Earlier',
   external: 'From other apps',
 };
+
+/**
+ * A session's status, in the status ladder's words — the one read every
+ * surface that lists `OrchestrationSessionSummary`s directly (the Activity
+ * list, the session detail header, the project page's live work) makes.
+ * The summary is converted by Home's own adapter and its facts derived
+ * beside it, exactly as the inbox rows do, so an Activity row and the dock
+ * row for the same session cannot print two words.
+ */
+export function sessionWorkStatuses(
+  sessions: readonly OrchestrationSessionSummary[],
+  agents: AgentSummary[],
+  now: number,
+): Map<string, WorkStatus> {
+  const items = buildOrchestrationItems([...sessions], agents);
+  const facts = buildWorkFacts({ items, sessions });
+  return new Map(
+    items.map((item) => [item.id, workStatus(item, now, facts.get(item.id))]),
+  );
+}
+
+export function sessionWorkStatus(
+  session: OrchestrationSessionSummary,
+  agents: AgentSummary[],
+  now: number,
+): WorkStatus {
+  const status = sessionWorkStatuses([session], agents, now).get(
+    session.threadId,
+  );
+  if (!status) throw new Error(`no status for session ${session.threadId}`);
+  return status;
+}
 
 export interface SessionLane {
   id: SessionLaneId;

@@ -891,7 +891,7 @@ describe('HomeView', () => {
     expect(screen.getByText('Write a message and begin')).toBeTruthy();
   });
 
-  test('separates Running from terminal Recently finished work with counts', () => {
+  test('separates Running from terminal Just finished work with counts', () => {
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -928,7 +928,7 @@ describe('HomeView', () => {
 
     const active = screen.getByRole('region', { name: 'Running (1)' });
     const recentlyFinished = screen.getByRole('region', {
-      name: 'Recently finished (1)',
+      name: 'Just finished (1)',
     });
     expect(within(active).getByText('Keep working')).toBeTruthy();
     expect(
@@ -976,7 +976,6 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate });
 
     expect(screen.getAllByText('Durable local work')).toHaveLength(2);
-    expect(screen.getAllByText(/Durable Task/).length).toBeGreaterThan(0);
     expect(
       screen.getAllByText(/Agent unavailable · Model unavailable/).length,
     ).toBeGreaterThan(0);

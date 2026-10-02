@@ -1171,7 +1171,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'conversation-history',
-            label: 'Conversation history',
+            label: 'History',
             onSelect: openConversationHistory,
           },
         ]
@@ -1190,7 +1190,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'open-code-layout',
-            label: 'Open code layout',
+            label: 'Open in Coding',
             onSelect: () => {
               handleOpenLayout(
                 activeSession.projectSlug as string,
@@ -2805,7 +2805,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }}
             pending={
               <MobileSheetPending
-                label="Switch task"
+                label="Switch chat"
                 style={visualViewport.style}
                 onClose={() => setIsTaskSwitcherOpen(false)}
                 returnFocusTarget={taskSwitcherTriggerRef.current}

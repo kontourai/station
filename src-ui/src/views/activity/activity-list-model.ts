@@ -2,8 +2,6 @@ import type { ClientOriginSurface } from '@kontourai/station-contracts/client-or
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { clientOriginSummary } from '../../utils/clientOrigin';
-import { relativeTime } from '../../utils/relativeTime';
-import { activeTurnProgress } from '../../utils/session-state';
 import { foldConversationTurns } from '../sessions/conversation-groups';
 import { groupDelegatedSessionRuns } from '../sessions/run-groups';
 import {
@@ -13,9 +11,9 @@ import {
 
 /**
  * Pure presentation helpers for the Activity list. None of these classify a
- * session's STATE — that stays `partitionSessionLanes` /
- * `orchestrationLifecycleLabel` (#3027, #3227). These only answer "which
- * filter bucket" and "what short words go on the row".
+ * session's STATE or word it — that is `partitionSessionLanes` and the status
+ * ladder (`sessionWorkStatus`; #3027, #3227). These only answer "which
+ * filter bucket" and "which short origin word goes on the row".
  */
 
 function isAttached(session: OrchestrationSessionSummary): boolean {
@@ -234,40 +232,4 @@ export function datedStreamBucket(
   if (recency >= localMidnight(now, 1)) return 'Yesterday';
   if (recency >= localMidnight(now, 6)) return 'This week';
   return 'Older';
-}
-
-/**
- * The running detail a Running row adds to its state word: how long the
- * open turn has run ("for 3m") and what it is doing ("using Bash", or when
- * no tool is in flight, "last progress 2m ago"). Every fact is read from the
- * summary's own projections — `conversationActivity.openTurn`/`runningTools`
- * (the same fold as `hasActiveTurn`) and `activeTurnProgress`'s
- * applicability gate — and any missing or sub-minute one is omitted, never
- * defaulted: a fresh turn reads plain "Running".
- */
-export function activityRunningDetail(
-  session: OrchestrationSessionSummary,
-  now: number,
-): { duration: string | null; activity: string | null } {
-  if (!session.hasActiveTurn) return { duration: null, activity: null };
-  const activity = session.conversationActivity;
-  const minutesSince = (stamp: string | undefined) => {
-    const at = Date.parse(stamp ?? '');
-    if (!Number.isFinite(at) || at <= 0) return null;
-    const compact = relativeTime(at, now);
-    return compact === 'now' ? null : compact;
-  };
-  const duration = minutesSince(activity?.openTurn?.startedAt);
-  const runningTool = activity?.runningTools?.at(-1)?.name;
-  if (runningTool) return { duration, activity: `using ${runningTool}` };
-  const turnProgress = activeTurnProgress(session);
-  // A progress-silence observation already says how long nothing has been
-  // heard; "last progress Nm ago" beside it repeats the fact on a row that
-  // has two lines.
-  if (turnProgress?.progressSilence) return { duration, activity: null };
-  const progress = minutesSince(turnProgress?.lastProgressEventAt);
-  return {
-    duration,
-    activity: progress ? `last progress ${progress} ago` : null,
-  };
 }

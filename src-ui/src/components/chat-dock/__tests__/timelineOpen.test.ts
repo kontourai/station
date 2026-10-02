@@ -74,7 +74,7 @@ test('turns an unavailable authority into visible feedback without an unhandled 
     ),
   ).resolves.toBeUndefined();
   expect(notify).toHaveBeenLastCalledWith(
-    'Conversation history authorization is no longer current.',
+    'History authorization is no longer current.',
   );
   expect(dismiss).toHaveBeenCalledWith('loading-toast');
   expect(open).not.toHaveBeenCalled();

@@ -21,24 +21,19 @@ import { Button } from '../components/Button';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { AgentIcon } from '../components/icons/AgentIcon';
-import { LazyBoundary } from '../components/LazyBoundary';
+import { InboxRowStatusGlyph } from '../components/inbox-row/InboxRowStatus';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useIsPageFramed } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
-import { StatusGlyph } from '../components/status/StatusGlyph';
 import { useAgents } from '../contexts/AgentsContext';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { copyToClipboard } from '../lib/clipboard';
-import { relativeTime, relativeTimeAgo } from '../utils/relativeTime';
-import {
-  activeTurnProgress,
-  orchestrationLifecycleLabel,
-  sessionStatusWord,
-} from '../utils/session-state';
+import { relativeTime } from '../utils/relativeTime';
+import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
   humanizeId,
   isStreamingSession,
@@ -59,7 +54,6 @@ import {
   activityOriginOptions,
   activityOriginShortLabel,
   activityProjectOptions,
-  activityRunningDetail,
   DATED_STREAM_ORDER,
   datedStreamBucket,
   matchesActivityKind,
@@ -82,6 +76,7 @@ import {
   SESSION_LANE_ORDER,
   type SessionLaneId,
   sessionProjectFilterKey,
+  sessionWorkStatus,
 } from './sessions/sessions-lane-model';
 import './SessionsView.css';
 import './page-layout.css';
@@ -101,12 +96,6 @@ const ACTIVITY_CLOCK_MS = 30_000;
  * `SESSION_LANE_LABELS`.
  */
 const DATED_STREAM_LANE: SessionLaneId = 'earlier';
-
-// Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
-// renderer, its relative-time wording, and the watchdog-owned silence
-// derivation remain in ProgressSilenceObservation.
-const loadProgressSilenceObservation = () =>
-  import('../components/home/ProgressSilenceObservation');
 
 function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
@@ -146,12 +135,10 @@ function searchableSessionFields(
  * The row's second line: state first, then who, where and from what.
  * Ordered loudest to quietest, and every segment is omitted rather than
  * defaulted when its fact is missing:
- * - the state in words from `sessionStatusWord` — the same fold the lane
- *   heading is built from, so the finer word can never contradict the
- *   coarser one (archive#3227 A1) — with the kit status glyph beside it, so
- *   tone never carries the state alone; a Running row adds how long and
- *   which tool (`activityRunningDetail`), a Failed/Stopped row the server's
- *   own `terminalAttribution.detail`;
+ * - the status ladder's line (`sessionWorkStatus`: the same words and the
+ *   same lane fold the inbox rows print, so this list and the dock cannot
+ *   name one session two ways), with the ladder's own glyph beside it so
+ *   tone never carries the state alone;
  * - the kind, only for a delegated session;
  * - the agent, the project as plain text, and the short origin;
  * - how many turn-sessions the conversation fold collapsed (`foldConversationTurns`).
@@ -172,36 +159,28 @@ function ActivityRowMeta({
   now: number;
   foldedTurnCount?: number;
 }) {
-  const state = orchestrationLifecycleLabel(session);
-  const stateWord = sessionStatusWord(session);
-  const running =
-    state === 'Running' ? activityRunningDetail(session, now) : null;
-  const stateText = [
-    running?.duration ? `${stateWord} for ${running.duration}` : stateWord,
-    running?.activity,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const turnProgress = activeTurnProgress(session);
+  const status = sessionWorkStatus(session, agents, now);
   // The server attaches `terminalAttribution` only once a failed session has
   // closed; while it is still loaded the reason lives in the same two fields
   // the detail's failure text folds (`sessionFailureText`), so a fresh
   // failure reads the same in the row and in the detail.
-  const terminalDetail =
-    state === 'Failed' || state === 'Stopped'
-      ? (session.terminalAttribution?.detail ??
-        (state === 'Failed'
-          ? (session.lastRuntimeErrorMessage ?? session.blockedReason)
-          : undefined))
+  const freshFailure =
+    status.rung === 'failed' && !status.detail
+      ? (session.lastRuntimeErrorMessage ?? session.blockedReason)
       : undefined;
+  // The server's own account of how a run ended, in the row's accessible
+  // text: a failure's cause is already on the line, a stop's is the
+  // ladder's reason.
+  const terminalAttribution =
+    status.detail ??
+    freshFailure ??
+    (status.rung === 'stopped' ? status.reason : undefined);
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
   const project = sessionProjectLabel(session);
-  const originShort = activityOriginShortLabel(session);
-  // An attached row's state word already names its engine ("Started in
-  // Claude Code"); repeating it as the origin says nothing new.
-  const origin =
-    originShort && !stateWord.includes(originShort) ? originShort : null;
+  // An attached row's origin is the app it was started in, which is also its
+  // agent name; the "Elsewhere" word beside it says the rest.
+  const origin = activityOriginShortLabel(session);
   const originText = session.turnOrigin?.hasOtherOrigins
     ? `${origin ?? 'Several origins'} (also another origin)`
     : origin;
@@ -222,30 +201,32 @@ function ActivityRowMeta({
       data-session-id={session.threadId}
       data-testid="activity-row-meta"
     >
-      <span className="activity-row-meta__state">
-        {!attached && <StatusGlyph state={state} />}{' '}
-        <span data-testid="activity-row-state">{stateText}</span>
+      <span
+        className="activity-row-meta__state"
+        data-tone={status.tone}
+        title={status.reason}
+      >
+        <InboxRowStatusGlyph rung={status.rung} />{' '}
+        <span data-testid="activity-row-state">{status.line}</span>
+        {status.reason && status.rung !== 'stopped' && (
+          <span className="sr-only">{` · ${status.reason}`}</span>
+        )}
       </span>
-      {turnProgress?.progressSilence && (
+      {terminalAttribution && (
         <>
-          {' · '}
-          <LazyBoundary
-            load={loadProgressSilenceObservation}
-            pending={null}
-            componentProps={{ observation: turnProgress.progressSilence }}
-            unavailable={() => null}
-          />
-        </>
-      )}
-      {terminalDetail && (
-        <>
-          {' · '}
+          <span className="sr-only">{' · '}</span>
           <span
-            className="activity-row-meta__detail"
+            className="sr-only"
             data-testid="session-member-terminal-attribution"
           >
-            {terminalDetail}
+            {terminalAttribution}
           </span>
+        </>
+      )}
+      {freshFailure && (
+        <>
+          {' · '}
+          <span className="activity-row-meta__detail">{freshFailure}</span>
         </>
       )}
       {segments.map((segment) => (
@@ -257,7 +238,7 @@ function ActivityRowMeta({
       {recency > 0 && (
         // The visible time sits on the row's first line, outside the row
         // button (`trailing`); this copy keeps it in the row's description.
-        <span className="sr-only">{`, ${relativeTimeAgo(recency, now)}`}</span>
+        <span className="sr-only">{`, ${relativeTime(recency, now)}`}</span>
       )}
     </span>
   );

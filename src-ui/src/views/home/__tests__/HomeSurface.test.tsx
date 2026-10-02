@@ -527,7 +527,7 @@ describe('HomeSurface: what is clickable', () => {
     // real heading rather than scrolling nowhere.
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Just finished, 1, show the Recently finished lane',
+        name: 'Just finished, 1, show the Just finished lane',
       }),
     );
     expect(

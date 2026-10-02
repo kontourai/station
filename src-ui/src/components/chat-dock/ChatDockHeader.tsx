@@ -186,9 +186,7 @@ export function ChatDockHeader({
       ? [
           {
             key: 'chat-list',
-            label: workspaceControls.isInboxOpen
-              ? 'Collapse chat list'
-              : 'Expand chat list',
+            label: workspaceControls.isInboxOpen ? 'Hide inbox' : 'Show inbox',
             checked: workspaceControls.isInboxOpen,
             onSelect: () => workspaceControls.onToggleInbox(),
           },
@@ -217,8 +215,8 @@ export function ChatDockHeader({
           {
             key: 'session-inventory',
             label: inventoryReady
-              ? 'Session inventory'
-              : 'Session inventory — loading',
+              ? 'Chat inventory'
+              : 'Chat inventory — loading',
             haspopup: 'dialog' as const,
             expanded: Boolean(inventoryOccurrence),
             disabled: !inventoryReady,
@@ -240,7 +238,7 @@ export function ChatDockHeader({
                 })
               )
                 toastStore.show(
-                  'Session inventory is not ready for this chat yet.',
+                  'Chat inventory is not ready for this chat yet.',
                 );
             },
           },

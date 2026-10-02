@@ -102,7 +102,7 @@ describe('MobileTaskSwitcher answerability basis', () => {
 
   test('translates the label instead of leaking the wire enum', () => {
     renderSheet([task()]);
-    expect(screen.getByText("Can't answer here")).toBeTruthy();
+    expect(screen.getByText('Elsewhere')).toBeTruthy();
     expect(screen.queryByText('Unanswerable')).toBeNull();
   });
 

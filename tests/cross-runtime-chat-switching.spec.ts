@@ -1698,7 +1698,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       );
       // Distinct from the task switcher — never the buried eyebrow.
       await expect(
-        page.getByRole('button', { name: 'Switch task' }),
+        page.getByRole('button', { name: 'Switch chat' }),
       ).toBeVisible();
 
       await expect(
@@ -1708,7 +1708,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       ).toBeVisible();
       await trigger.click({ trial: true });
       await page
-        .getByRole('button', { name: /^Switch task/ })
+        .getByRole('button', { name: /^Switch chat/ })
         .click({ trial: true });
       await page.screenshot({
         path: testInfo.outputPath('mobile-primary-context.png'),

@@ -21,7 +21,7 @@ import {
   clientOriginSurfaceLabel,
 } from '../../utils/clientOrigin';
 import { errorAgentDraft } from '../../utils/errorAgentDraft';
-import { relativeTimeAgo } from '../../utils/relativeTime';
+import { relativeTime } from '../../utils/relativeTime';
 import {
   builderRunIdentityLabel,
   builderRunMatchLabel,
@@ -270,7 +270,7 @@ export function MutableSessionDetail({
     : Number.NaN;
   const lastUserActionWhen =
     latestOrigin && Number.isFinite(lastUserActionAtMs)
-      ? relativeTimeAgo(lastUserActionAtMs, Date.now())
+      ? relativeTime(lastUserActionAtMs, Date.now())
       : null;
 
   // "Started from": the first recorded command origin, surface only. An
@@ -288,9 +288,8 @@ export function MutableSessionDetail({
     session.reportedModel ?? session.effectiveModel ?? session.model,
     sessionProjectLabel(session),
     startedFrom ? `from ${startedFrom}` : null,
-    Number.isFinite(createdAtMs)
-      ? `started ${relativeTimeAgo(createdAtMs, Date.now())}`
-      : null,
+    // The compact time, last, where every row keeps it.
+    Number.isFinite(createdAtMs) ? relativeTime(createdAtMs, Date.now()) : null,
   ];
 
   const parentTaskId = session.delegation?.taskId ?? threadId;

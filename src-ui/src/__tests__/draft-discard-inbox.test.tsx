@@ -405,6 +405,6 @@ describe('#2312 discarding Drafts from the inbox', () => {
       />,
       { wrapper: withQueryClient },
     );
-    expect(screen.getByText('Background work running')).toBeTruthy();
+    expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
   });
 });

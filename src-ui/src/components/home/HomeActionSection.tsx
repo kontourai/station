@@ -1,7 +1,7 @@
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
-import { relativeTimeAgo } from '../../utils/relativeTime';
+import { relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type {
   HomeViewNavigation,
@@ -86,20 +86,24 @@ function projectAvailability(count: number): string {
     : 'Choose a working directory';
 }
 
-/** Continue-card subtitle: omit "Model not reported", include Failed + time. */
+/**
+ * Continue-card subtitle: the agent, a model only when one was reported,
+ * Failed when it is, and the compact time. No kind word ("Session", "Direct
+ * chat"): the card already says it continues work.
+ */
 export function continueWorkDetail(
   item: Pick<
     HomeWorkItem,
-    'kindLabel' | 'agentLabel' | 'modelLabel' | 'lifecycleLabel' | 'updatedAt'
+    'agentLabel' | 'modelLabel' | 'lifecycleLabel' | 'updatedAt'
   >,
   now = Date.now(),
 ): string {
-  const parts = [item.kindLabel, item.agentLabel];
+  const parts = [item.agentLabel];
   if (item.modelLabel && item.modelLabel !== 'Model not reported') {
     parts.push(item.modelLabel);
   }
   if (item.lifecycleLabel === 'Failed') parts.push('Failed');
-  if (item.updatedAt > 0) parts.push(relativeTimeAgo(item.updatedAt, now));
+  if (item.updatedAt > 0) parts.push(relativeTime(item.updatedAt, now));
   return parts.join(' · ');
 }
 
