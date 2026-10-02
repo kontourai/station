@@ -164,11 +164,11 @@
 
     {"path":"scripts/verify-windows-installer-upgrade.ps1","digest":"e7935481402cf99f16b2ad2489e07a51677c0878828a9e7a50fecc393e159754","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.lock","digest":"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"c590f935a579a9cf6c14a6110587a7fb223b5c91e6def12c9d13e2082186a8ab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

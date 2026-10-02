@@ -24,11 +24,11 @@
 
     {"path":"patches/android-native-keyring-store/src/shared_preferences.rs","digest":"5ed949a0dcfc366029e21c890716031cd1b9cc05465419d51e33eae2c5011f88","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.lock","digest":"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.toml","digest":"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"}
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"}
   ],
 
   "checks": [

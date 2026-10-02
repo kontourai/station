@@ -30,7 +30,7 @@
 
     {"path":"docs/reference/cli.md","digest":"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee","revision":"4a1fc2197028ded07d0e389e98a30042ab7cadb5"},
 
-    {"path":"docs/reference/contracts.md","digest":"fa9a365a583cd2682034df73ce8be3b8d05f15333c688df3ad98b2a56011a47a","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
+    {"path":"docs/reference/contracts.md","digest":"181b3cdbf7cdafccac2757a632d18ecaa0c827ed1614703f064e5e76d314a8ad","revision":"193a4a5ece772653262138bf748d52abd753f667"},
 
     {"path":"docs/reference/sdk.md","digest":"dff5cf11c39a099675900d07e8486c23bba4ec15a428217aa3cb150d4bcc29d2","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
 

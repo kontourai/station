@@ -16,9 +16,9 @@
 
     {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/connect/package.json","digest":"f9a3187cebc1e432ca28f10546e12fb42089b27fe8229b8c12bf90d996790b80","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    {"path":"packages/connect/package.json","digest":"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"packages/contracts/package.json","digest":"717e4af69f9407cbe0012749e12a0226ae67c274f1aa82aefc271ab83a08232a","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
+    {"path":"packages/contracts/package.json","digest":"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

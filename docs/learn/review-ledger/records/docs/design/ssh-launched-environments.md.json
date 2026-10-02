@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/connect/src/core/types.ts","digest":"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

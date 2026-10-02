@@ -14,9 +14,9 @@
   "sources": [
     {"path":"docs/design/instance-registry.md","digest":"6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"0dc1e36afaee9186e0164f601a59dde5434fc3d9f06a6c5fd06a7dbf08e8e133","revision":"93a6062e306f412f1c9382143b03d675c9450c1f"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd","revision":"193a4a5ece772653262138bf748d52abd753f667"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

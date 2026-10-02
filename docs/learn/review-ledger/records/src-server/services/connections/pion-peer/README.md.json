@@ -16,15 +16,15 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"b5cce8223164854715689def13c452fc70a03d2f3200526d856c92ae9b9172bb","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"c35e8d3412cd113680e56653d06f04dcae821359175a39339a2504a837969f2b","revision":"1e99a85dacdb704350016425b5bda1d77ba4e9cd"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 
-    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"e07aedf5e3b36a1ff86dd1afc49ab581b0c085e1ad8be78e834e9eccc2730b3b","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
+    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"1a17585842afc1a8268d1da8e37d13163d4f3ab85486152b9c51179b4a52c9f1","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"fe87d55c8a067d068c07d79d3d1f3e5dbd488db7795bea0a5eafd4913629903a","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 

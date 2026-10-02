@@ -36,15 +36,15 @@
 
     {"path":"scripts/self-hosted-connector-identity.ts","digest":"ee28b6effe541e06b4cce903e44fcbd2c3452649b0620e0a23391eb22cda977d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"b5cce8223164854715689def13c452fc70a03d2f3200526d856c92ae9b9172bb","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"c35e8d3412cd113680e56653d06f04dcae821359175a39339a2504a837969f2b","revision":"1e99a85dacdb704350016425b5bda1d77ba4e9cd"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 
-    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"e07aedf5e3b36a1ff86dd1afc49ab581b0c085e1ad8be78e834e9eccc2730b3b","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
+    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"1a17585842afc1a8268d1da8e37d13163d4f3ab85486152b9c51179b4a52c9f1","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"531ad6208755dc723e632d2405099689ff32b94fc99beb2e5fcd918957d8f7ef","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"12da49500aff281dfb3a5fe539b2686ba1bfce2a19885861f469066e55af63be","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"af8632846e17429a01b67f46fdf711ae2d0198db171a9615acb7ebc21341f8b3","revision":"d956082d3d2864711773914857b8098c60bdd972"},
 
     {"path":"tests/tauri-shell/native-relay-diagnostic-echo-webview.ts","digest":"b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -124,7 +124,7 @@
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"0dc1e36afaee9186e0164f601a59dde5434fc3d9f06a6c5fd06a7dbf08e8e133","revision":"93a6062e306f412f1c9382143b03d675c9450c1f"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd","revision":"193a4a5ece772653262138bf748d52abd753f667"},
 
     {"path":"src-desktop/src/native_application_peer.rs","digest":"5a339eb489bc0381ba25041849ae27c5a97b65b9d418123b38cba7e7d3ebfd36","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
@@ -156,7 +156,7 @@
 
     {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime.test.ts","digest":"b8a12b60f5212d7f3b7f8b6cff814bdc14923cf5ba1a31ddc9e20f3d56464e0c","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
-    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts","digest":"5267f48f9449f8856160739d2ee6909a9c0ef897d9602bcdaae3a87b1fe93e33","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts","digest":"e6ec2fe6f254369e7b0da6563ff205d63ab714186bbb24e1527919b7e191957d","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"},
 
     {"path":"src-server/services/connections/__tests__/native-v2-pion-application-adapter.test.ts","digest":"79faba367c87a83e9870dd5fa3f482f4f06ecd597285f4a5377ebc6412dd980c","revision":"d0ac835da93828bd3a2d5c92cd0a7c0550035061"},
 
@@ -168,9 +168,9 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayIceConfigurationBridge.ts","digest":"57a78aad56d01acac6859975bfbfdf7e563e5c2ec1e949aad899c6389800e4dc","revision":"00075624e6885ed90e12a9152dbea3f53d3eb3c3"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"8b340b4d12eb59e585b99d9b834e3a3e1d97b9aaca35e063b29374f692694a9b","revision":"d5eb7744278abf8bdc6d62b416e857c6321919a2"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"955f8efaf43a29a357443450d333ddec58fef434ed31959a63070187394b7ca3","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"},
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"18675ae9809376e059e1bf44499e0a2bad32eccfa45178af8e216594dc3fd77b","revision":"fc1298f7bac4dd9f42786551ea5f4761f631ac56"}
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"7fcc4a15eec894f8fb33c682218771bd02a1599d4d7d5268f9c07334e20bf43f","revision":"fa447997e733e00b082b05e7c709a08a38820b5d"}
   ],
 
   "checks": [

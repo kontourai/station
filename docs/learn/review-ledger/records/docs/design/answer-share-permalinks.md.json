@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/chat/ShareAnswerButton.tsx","digest":"31619a6ca447e6a2f40821ecdddc1320bd189d8ae33c7bcf5e8884352af035cc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-ui/src/utils/shareUiOrigin.ts","digest":"2678278a09bd74ba8d317c6d1d8f7ba13faef435e0a0844a6f4012105fc2210b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

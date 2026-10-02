@@ -9,20 +9,20 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"a66dd38d0b2ab50875d00f42bb25c550b95b6c0722c4b35315414980b99bf2c3","revision":"93a6062e306f412f1c9382143b03d675c9450c1f"},
+  "document": {"digest":"e67f6c0a80b737b9f707f67d11c6b342b4ae4334815738e945301ae707201fa0","revision":"193a4a5ece772653262138bf748d52abd753f667"},
 
   "sources": [
     {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.toml","digest":"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/capabilities/default.json","digest":"b6ce0ba74944574562d08ddd8f02698a222840af0581bf093c662a70f07c9ab1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"c35e8d3412cd113680e56653d06f04dcae821359175a39339a2504a837969f2b","revision":"1e99a85dacdb704350016425b5bda1d77ba4e9cd"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 
     {"path":"src-desktop/src/tray.rs","digest":"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-ui/src/platform/native/share.ts","digest":"8fe64933eb26db15da4ba9e587418ce15b43a4c29ff07d1c6c1e61b509aff6c8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/platform/native/tauri.ts","digest":"b109e4dabde3780874e51d616a0d742bd47ef11b7897847a5933c922cb9ebeac","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-ui/src/platform/native/tauri.ts","digest":"afd3f0bfb8119ba93e822ad672147cb1c454f71951a428fffbbf5b5cdcddc90b","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-ui/src/platform/native/types.ts","digest":"4ca1d8eb6b530c44755127f1a3dd62ac8c0241c41b1f9d8662336a79aaf29373","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"b5cce8223164854715689def13c452fc70a03d2f3200526d856c92ae9b9172bb","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
 
-    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"7111914934e5bdd2a236f497e695795402681ccd1ee4e7d9e54334c5a735574b","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
@@ -82,9 +82,19 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"12da49500aff281dfb3a5fe539b2686ba1bfce2a19885861f469066e55af63be","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"af8632846e17429a01b67f46fdf711ae2d0198db171a9615acb7ebc21341f8b3","revision":"d956082d3d2864711773914857b8098c60bdd972"},
 
-    {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"}
+    {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
+
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"9316d68e3d0ed2ff41caa916717394b6a4ea5245d84d07c981fa07f3f0e98001","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+
+    {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+
+    {"path":"src-desktop/build.rs","digest":"b7d0312b9f3e16056edbe52c217dc8381f0aec8be854844e5fb603393726e7fc","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+
+    {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+
+    {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b810e954f0908cbad89aacfc4477d984a87f3188324f44a64084510cdcacddea","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"}
   ],
 
   "checks": [

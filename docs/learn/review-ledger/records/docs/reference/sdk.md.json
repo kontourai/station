@@ -486,7 +486,7 @@
 
     {"path":"src-ui/src/lib/queryPersistence.ts","digest":"b6c8a7052c126e5452bb319e82bfcb1179413379941a32765468e2b1041ec62d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/main.tsx","digest":"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-ui/src/platform/PlatformSessionGate.tsx","digest":"35d3e16ce939595075ebf514e56bcfc26b1152f1076d1d4c153c248a3b0b1f4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -502,11 +502,11 @@
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"12da49500aff281dfb3a5fe539b2686ba1bfce2a19885861f469066e55af63be","revision":"5f4661b8e0d06b04a52f68d98893462d3bbffd92"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"af8632846e17429a01b67f46fdf711ae2d0198db171a9615acb7ebc21341f8b3","revision":"d956082d3d2864711773914857b8098c60bdd972"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"4f7082eec56d538dd187d47c08b63f8f76ae91088b25f6982acb6141c06aeaa9","revision":"9d206036da81c95f2a0a65b9e424a2b46180651c"},
+    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"a0749e9f35dbf8eb7510c22a9d57184c64480e3c1e34b4ecec9dc689958bea69","revision":"d956082d3d2864711773914857b8098c60bdd972"},
 
     {"path":"src-ui/src/views/settings/CoreUpdateCheck.tsx","digest":"741884aa974710daf98a46aa0f7cb7990b71847b52f748467ee584db96766471","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

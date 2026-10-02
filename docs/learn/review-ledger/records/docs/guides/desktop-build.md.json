@@ -96,15 +96,15 @@
 
     {"path":"scripts/write-native-client-build-manifest.mjs","digest":"c714550ba6e986fa63031d97b3ede83633078dfa964c8a2707faa534ac66152c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.lock","digest":"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.toml","digest":"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/build.rs","digest":"c84c7e3eb7611b715b601e3ff67863a60d4274198abe5605f8f347d9fd647883","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/build.rs","digest":"b7d0312b9f3e16056edbe52c217dc8381f0aec8be854844e5fb603393726e7fc","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -136,7 +136,7 @@
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/platform/native/tauri.ts","digest":"b109e4dabde3780874e51d616a0d742bd47ef11b7897847a5933c922cb9ebeac","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/platform/native/tauri.ts","digest":"afd3f0bfb8119ba93e822ad672147cb1c454f71951a428fffbbf5b5cdcddc90b","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-ui/src/views/settings/BuildProvenance.tsx","digest":"5c92a6ca7c7c0e1c117f9657404d50af386ceda9a26c7e77b161a72797cf38b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

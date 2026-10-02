@@ -20,15 +20,15 @@
 
     {"path":"packages/cli/src/commands/target-command.ts","digest":"fd308f3257b43fcce35e31beedc476be5e27db17cd257af61754eafd6be14ad4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/ios-simulator-build.mjs","digest":"4d51daa51536951d6ad0f4046146f4a77ac5a4a8ba3a8780eedd44f02a72f6f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"scripts/ios-simulator-build.mjs","digest":"3a813b6fcca91ac673f085f5863e09ad93c165aeadd0c225c507cb43681f2866","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/Cargo.lock","digest":"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-desktop/src/startup_readiness.rs","digest":"77c26585b925bf67038df2ff3aea842c9ef0c4262914bbf957b2ca30f0332f82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -36,7 +36,7 @@
 
     {"path":"src-server/runtime/bootstrap/readiness-handshake.ts","digest":"321dc2ec9238434fb5b52e7e263c71b64546db0bc56292c164d73ab6fc6fd449","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

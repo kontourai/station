@@ -76,7 +76,7 @@
 
     {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-ui/src/platform/PlatformProfileContext.tsx","digest":"726adb901507dc26d08f542e68f3d7e51734080a874356b3111476dbff56c714","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 

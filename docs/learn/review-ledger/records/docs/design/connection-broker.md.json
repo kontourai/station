@@ -50,9 +50,9 @@
 
     {"path":"src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts","digest":"5673579a96ac8ba2dc24c1a2d95bca847e7f86c83b4f3ecbf1215c0b7781872f","revision":"a7868266f630efa56f7a68b2d8b32fb41c90e611"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"c35e8d3412cd113680e56653d06f04dcae821359175a39339a2504a837969f2b","revision":"1e99a85dacdb704350016425b5bda1d77ba4e9cd"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2","revision":"a71a583813b3f137da6a9716acc7e9b198df5847"},
+    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
@@ -72,7 +72,7 @@
 
     {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"0dc1e36afaee9186e0164f601a59dde5434fc3d9f06a6c5fd06a7dbf08e8e133","revision":"93a6062e306f412f1c9382143b03d675c9450c1f"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd","revision":"193a4a5ece772653262138bf748d52abd753f667"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -82,7 +82,7 @@
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"8b340b4d12eb59e585b99d9b834e3a3e1d97b9aaca35e063b29374f692694a9b","revision":"d5eb7744278abf8bdc6d62b416e857c6321919a2"}
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"955f8efaf43a29a357443450d333ddec58fef434ed31959a63070187394b7ca3","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"}
   ],
 
   "checks": [

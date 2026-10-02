@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"src-ui/src/main.tsx","digest":"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"}
+    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"}
   ],
 
   "checks": [
