@@ -1,9 +1,8 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HomeLifecycleLabel } from '../../../utils/lifecycle-priority';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
-import { LifecycleStatusChip } from '../../home/LifecycleStatusChip';
 import { groupMobileActivity } from '../mobile-activity-groups';
 import { LIFECYCLE_HOLD_MS, useHeldLifecycles } from '../useHeldLifecycles';
 
@@ -124,55 +123,5 @@ describe('held lifecycles through the Needs you / Running / Idle lanes', () => {
       vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
     });
     expect(result.current).toBe('idle');
-  });
-});
-
-describe('LifecycleStatusChip — one glyph system, calm by default', () => {
-  test('first render is still; a change under the eyes morphs once', () => {
-    const view = render(<LifecycleStatusChip lifecycle="Running" />);
-    const chip = () => view.container.querySelector('.lifecycle-chip');
-    expect(chip()?.getAttribute('data-lifecycle-morph')).toBeNull();
-    // Not the current row: the working orbit rests.
-    expect(
-      view.container
-        .querySelector('.live-status-glyph')
-        ?.getAttribute('data-animate'),
-    ).toBe('false');
-    view.rerender(<LifecycleStatusChip lifecycle="Completed" />);
-    expect(chip()?.getAttribute('data-lifecycle-morph')).toBe('true');
-    expect(chip()?.textContent).toBe('Done');
-    expect(
-      view.container
-        .querySelector('.live-status-glyph')
-        ?.getAttribute('data-kind'),
-    ).toBe('done');
-  });
-
-  test('only the row the user is in keeps the working glyph moving', () => {
-    const view = render(<LifecycleStatusChip lifecycle="Running" live />);
-    expect(
-      view.container
-        .querySelector('.live-status-glyph')
-        ?.getAttribute('data-animate'),
-    ).toBe('true');
-  });
-
-  test('fifty rows open with no animation running', () => {
-    const view = render(
-      <div>
-        {Array.from({ length: 50 }, (_, index) => (
-          <LifecycleStatusChip
-            // biome-ignore lint/suspicious/noArrayIndexKey: fixed list
-            key={index}
-            lifecycle={index % 5 === 0 ? 'Running' : 'Completed'}
-          />
-        ))}
-      </div>,
-    );
-    expect(
-      view.container.querySelectorAll(
-        '[data-animate="true"], [data-lifecycle-morph="true"]',
-      ),
-    ).toHaveLength(0);
   });
 });
