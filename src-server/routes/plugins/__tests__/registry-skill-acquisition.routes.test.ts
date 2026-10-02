@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, mkdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -283,6 +283,47 @@ describe('GitHub skill acquisition through Registry routes', () => {
       expect((await install(app)).status).toBe(500);
       await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
       expect(skillService.listSkills()).toEqual([]);
+    },
+  );
+
+  test.each([
+    ['Greek sigma', 'Σ', 'ς'],
+    ['sharp s', 'ß', 'SS'],
+    ['ligature', 'ﬀ', 'ff'],
+  ])(
+    'keeps distinct directory identities for %s or refuses host filesystem aliases',
+    async (_name, first, second) => {
+      const probe = makeTempDir('registry-directory-alias-probe-');
+      await mkdir(join(probe, first));
+      let aliases = false;
+      try {
+        await mkdir(join(probe, second));
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !('code' in error) ||
+          error.code !== 'EEXIST'
+        )
+          throw error;
+        aliases = true;
+      }
+      const files = [
+        { path: `assets/${first}/first.txt`, bytes: Buffer.from('UPPER') },
+        { path: `assets/${second}/second.txt`, bytes: Buffer.from('lower') },
+      ];
+      networkFixture({ additionalFiles: files });
+      const { app, home, skillService } = setup();
+      expect((await app.request('/skills')).status).toBe(200);
+      expect((await install(app)).status).toBe(aliases ? 500 : 200);
+      if (aliases) {
+        await expect(access(join(home, 'skills/grill-me'))).rejects.toThrow();
+        expect(skillService.listSkills()).toEqual([]);
+      } else {
+        for (const file of files)
+          expect(
+            await readFile(join(home, 'skills/grill-me', file.path)),
+          ).toEqual(file.bytes);
+      }
     },
   );
 

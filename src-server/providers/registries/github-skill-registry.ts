@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import type {
   InstallResult,
   RegistryItem,
@@ -245,10 +245,22 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
         files.map((file) => file.path.slice(prefix.length)),
       );
       const skillDir = join(targetDir, id);
+      await mkdir(skillDir);
+      const createdDirectories = new Set<string>();
+      for (const file of files) {
+        const parts = file.path.slice(prefix.length).split('/').slice(0, -1);
+        for (let length = 1; length <= parts.length; length++) {
+          const directory = parts.slice(0, length).join('/');
+          if (createdDirectories.has(directory)) continue;
+          // A differently spelled filesystem alias must fail with EEXIST,
+          // rather than being reused by recursive mkdir.
+          await mkdir(join(skillDir, directory));
+          createdDirectories.add(directory);
+        }
+      }
       for (const file of files) {
         const filePath = join(skillDir, file.path.slice(prefix.length));
         const bytes = await this.fetchBlob(file, snapshot.commit);
-        await mkdir(dirname(filePath), { recursive: true });
         await writeFile(filePath, bytes, {
           flag: 'wx',
           mode: file.mode === '100755' ? 0o755 : 0o644,

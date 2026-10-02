@@ -2032,10 +2032,14 @@ not change the install result.
 
 For a GitHub Skill, the provider copies the selected directory's files from one
 catalog snapshot, including binary assets and executable files, through SkillService's
-validated staging/publication path. The existing portable package path policy refuses
-case/Unicode aliases and file/directory collisions before writes; files are created
-exclusively so acquisition cannot overwrite an existing staged path. Blob integrity,
-path validation, or acquisition failure prevents publication. Only files inside that directory are acquired; references to other Skills
+validated staging/publication path. Portable path preflight checks NFC-normalized,
+lowercased names and file/directory collisions. The provider then creates each planned
+parent directory exclusively, reusing only exact spellings created by that acquisition;
+this refuses additional aliases detected by the destination filesystem. Files are also
+created exclusively, so acquisition cannot overwrite a staged path. Blob integrity,
+path validation, or acquisition failure prevents publication. Mac route tests execute
+Greek sigma, sharp-s, and ligature directory alias refusals; Windows filesystem behavior
+has not been executed. Only files inside that directory are acquired; references to other Skills
 do not install those Skills automatically. This does not bind an old UI selection to a
 revision after a catalog refresh, and the route's bare ID does not distinguish
 equal-name entries across providers. The default runtime composes filesystem and
