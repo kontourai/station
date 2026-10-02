@@ -4,12 +4,13 @@
 use crate::native_relay_key_approval::{
     self, InvitationInput, NativeRelayKeyApprovalState, PendingCandidateDto,
 };
-use crate::native_relay_proof_key::NativeRelayProofKeyVault;
+use crate::native_relay_proof_key::{NativeProofKeyOwner, NativeRelayProofKeyVault};
 use crate::native_relay_redemption::{
-    native_relay_grant_vault, AppNativeRedemptionContextProvider, NativeRedemptionContext,
-    NativeRedemptionContextProvider, NativeRedemptionError, NativeRelayGrantRedemptionResult,
-    NativeRelayInvitationV2, NativeRelayRedemptionService, RedemptionResult,
-    UreqNativeBrokerTransport,
+    native_relay_grant_vault, observe_superseded_scope, validate_invitation_and_trust,
+    AppNativeRedemptionContextProvider, NativeRedemptionContext, NativeRedemptionContextProvider,
+    NativeRedemptionError, NativeRelayGrantRedemptionResult, NativeRelayGrantState,
+    NativeRelayInvitationV2, NativeRelayRecoveryResult, NativeRelayRedemptionService,
+    RedemptionResult, UreqNativeBrokerTransport,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -934,6 +935,159 @@ impl NativeRedemptionContextProvider for LinkContext<'_> {
             operation(current)
         })
     }
+}
+
+async fn link_recovery(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, NativeRelayLinkState>,
+    pending_id: String,
+    profile_name: String,
+    expected_profile_revision: u64,
+    expected_updated_at: u64,
+    reset: bool,
+) -> Result<NativeRelayRecoveryResult, String> {
+    native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if !cfg!(target_os = "ios") {
+        return Err(UNAVAILABLE.into());
+    }
+    let state = state.inner().clone();
+    let attempt = reserve_attempt(&state, &pending_id, &profile_name, window.label(), false)?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        check_saved_route(&app, &profile_name, expected_updated_at, &attempt.route)?;
+        let invitation: NativeRelayInvitationV2 =
+            serde_json::from_slice(&attempt.invitation).map_err(|_| MISSING.to_owned())?;
+        let base = AppNativeRedemptionContextProvider::new(app);
+        let context = LinkContext {
+            base: &base,
+            route: &attempt.route,
+            cancelled: &attempt.cancelled,
+        };
+        let keys = NativeRelayProofKeyVault::new();
+        let grants = native_relay_grant_vault();
+        let current = context
+            .with_current_context(&profile_name, |current| {
+                if current.profile.revision != expected_profile_revision {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let owner = NativeProofKeyOwner::new(
+                    &current.profile.app_identifier,
+                    current.profile.channel,
+                    &current.profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                let public = keys
+                    .restore(&owner)
+                    .map_err(|_| NativeRedemptionError::ProofKey)?;
+                validate_invitation_and_trust(&current, &invitation, now_ms(), Some(&public))?;
+                Ok(current)
+            })
+            .map_err(|_| "Station could not verify connection recovery ownership.".to_owned())?;
+        let owner = NativeProofKeyOwner::new(
+            &current.profile.app_identifier,
+            current.profile.channel,
+            &current.profile.client_instance_id,
+        )
+        .map_err(|_| UNAVAILABLE.to_owned())?;
+        let outcomes = if reset {
+            let http = UreqNativeBrokerTransport::new();
+            let service =
+                NativeRelayRedemptionService::new(&context, &keys, &http, &grants, now_ms);
+            service
+                .recover_link_cleanup(
+                    &profile_name,
+                    expected_profile_revision,
+                    &invitation,
+                    |owner, grant| {
+                        observe_superseded_scope(&keys, owner, &invitation, grant, now_ms())
+                    },
+                    (&attempt.cancelled, &attempt.commit_gate),
+                )
+                .map_err(|_| {
+                    "Station could not reset the connection invitation; cleanup may remain pending."
+                        .to_owned()
+                })?
+        } else {
+            Vec::new()
+        };
+        context
+            .with_current_context(&profile_name, |fresh| {
+                if fresh != current || attempt.cancelled.load(Ordering::Acquire) {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                Ok(NativeRelayRecoveryResult {
+                    state: NativeRelayGrantState::for_saved_profile(
+                        &fresh.profile,
+                        grants.metadata_for_profile_route(
+                            &owner,
+                            &fresh.profile.broker_origin,
+                            &fresh.profile.station_id,
+                            &fresh.profile.enrollment_id,
+                            now_ms(),
+                        )?,
+                        grants.cleanup_statuses_for_profile_route(
+                            &owner,
+                            &fresh.profile.broker_origin,
+                            &fresh.profile.station_id,
+                            &fresh.profile.enrollment_id,
+                        )?,
+                    ),
+                    outcomes,
+                })
+            })
+            .map_err(|_| "Station could not read connection recovery status.".to_owned())
+    })
+    .await
+    .map_err(|_| UNAVAILABLE.to_owned());
+    // Recovery neither consumes nor erases the pending invitation on failure.
+    finish_attempt(&state, &pending_id, false, false);
+    result?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_link_recovery_preview(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, NativeRelayLinkState>,
+    pending_id: String,
+    profile_name: String,
+    expected_profile_revision: u64,
+    expected_updated_at: u64,
+) -> Result<NativeRelayRecoveryResult, String> {
+    link_recovery(
+        window,
+        app,
+        state,
+        pending_id,
+        profile_name,
+        expected_profile_revision,
+        expected_updated_at,
+        false,
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_link_recovery_reset(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, NativeRelayLinkState>,
+    pending_id: String,
+    profile_name: String,
+    expected_profile_revision: u64,
+    expected_updated_at: u64,
+) -> Result<NativeRelayRecoveryResult, String> {
+    link_recovery(
+        window,
+        app,
+        state,
+        pending_id,
+        profile_name,
+        expected_profile_revision,
+        expected_updated_at,
+        true,
+    )
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]

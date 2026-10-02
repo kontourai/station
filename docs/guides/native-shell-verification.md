@@ -68,6 +68,23 @@ codes, with no response bodies or raw error text. The adapter still rejects
 multiple grants and foreign or malformed metadata; it never chooses a grant
 to make qualification proceed.
 
+When a linked invitation encounters multiple saved grants, **Reset connection
+invitation** first opens a management-only preview for the same saved route and
+installation. Operational status still refuses multiple grants. A second,
+explicit confirmation quarantines the matching routing records under the
+profile revision; it does not redeem the invitation or alter Station trust,
+Device approval or account state.
+
+Cleanup first attempts normal individual retirement. For an older generation
+only, the native host may authenticate a superseded-scope observation with the
+unconsumed bound invitation and its installation proof key. The journal records
+this distinct scope basis before exact local deletion. It does not claim that
+an individual grant was found or revoked. Profile, pending-link, trust, key and
+vault identity changes after the request refuse deletion. Unavailable or
+unsupported brokers, failed storage and equal/future generations remain pending.
+Qualify preview, explicit confirmation, pending status, restart recovery and
+replacement preservation in the installed shell before claiming this journey.
+
 ## Native foreground dispatch deadlines
 
 The native HTTP broker waits up to 60 seconds for response headers on

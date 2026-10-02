@@ -19,6 +19,7 @@ import { NativeRelayEnrollmentWizard } from '../../views/connections-hub/NativeR
 import { RelayRouteKeyApproval } from '../../views/connections-hub/RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from '../../views/connections-hub/RelayRouteProfileDialog';
 import { nativeProfileRepository } from '../PlatformProfileContext';
+import { NativeRelayConnectionRecovery } from './NativeRelayConnectionRecovery';
 import {
   type NativeRelayGrantRedemptionFailureCode,
   NativeRelayGrantStatusError,
@@ -116,6 +117,7 @@ function Review({
   const [routingFailure, setRoutingFailure] =
     useState<NativeRelayGrantRedemptionFailureCode>();
   const [error, setError] = useState<string | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
@@ -297,7 +299,9 @@ function Review({
                   <Button
                     variant="primary"
                     disabled={
-                      busy || delivery.invitation.expiresAt <= Date.now()
+                      busy ||
+                      recoveryBusy ||
+                      delivery.invitation.expiresAt <= Date.now()
                     }
                     pending={busy}
                     onClick={() => void redeem()}
@@ -326,6 +330,19 @@ function Review({
           </>
         )}
         {error ? <p role="alert">{error}</p> : null}
+        {connectionFailure?.code === 'grant-status-ambiguous' &&
+        delivery.kind === 'bound-invitation' &&
+        profile &&
+        selection ? (
+          <NativeRelayConnectionRecovery
+            selection={{
+              ...selection,
+              pendingId: delivery.pendingId,
+              expectedUpdatedAt: profile.updatedAt,
+            }}
+            onBusyChange={setRecoveryBusy}
+          />
+        ) : null}
         {error && connectionFailure ? (
           <details>
             <summary>Connection troubleshooting</summary>

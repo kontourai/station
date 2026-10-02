@@ -513,6 +513,169 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
   expect(host.store?.profiles[0].credentialRef).toBeUndefined();
 });
 
+it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
+  'explicit connection reset uses validated management metadata and preserves refusal for %s',
+  async (outcome) => {
+    const { profile, keyId, bound } = await configureBoundFlow(true);
+    host.launch = {
+      ...bound,
+      invitation: { ...bound.invitation, routingGeneration: 3 },
+    };
+    const trap = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    const grantRoute = {
+      brokerOrigin: route.brokerOrigin,
+      stationId: route.stationId,
+      enrollmentId: route.enrollmentId,
+      routingGeneration: 1,
+      grantId: 'abcdefghijklmnopqrstuv',
+    };
+    const metadata = {
+      route: grantRoute,
+      stationSigningKeyId: keyId,
+      stationSigningGeneration: 1,
+      expiresAt: Date.now() + 60_000,
+    };
+    const state = {
+      profileName: profile.name,
+      profileRevision: host.store?.revision,
+      stationId: route.stationId,
+      enrollmentId: route.enrollmentId,
+      grants: [
+        { metadata, expired: false },
+        {
+          metadata: {
+            ...metadata,
+            route: {
+              ...grantRoute,
+              routingGeneration: 2,
+              grantId: 'zyxwvutsrqponmlkjihgfe',
+            },
+          },
+          expired: true,
+        },
+      ],
+      cleanups: [],
+    };
+    const ordinaryInvoke = host.invoke.getMockImplementation();
+    host.invoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_relay_grant_status') return state;
+      if (command === 'station_native_relay_link_recovery_preview')
+        return {
+          state,
+          outcomes: [],
+          ...(outcome === 'unsafe-preview' ? { credential: trap } : {}),
+        };
+      if (command === 'station_native_relay_link_recovery_reset') {
+        const pending = outcome === 'pending';
+        return {
+          state: {
+            ...state,
+            grants: [],
+            cleanups: pending
+              ? [
+                  {
+                    cleanupId: '55555555-5555-4555-8555-555555555555',
+                    route: grantRoute,
+                    stagedAt: Date.now(),
+                    recordPresent: true,
+                    brokerRetired: false,
+                    localCleanupRequired: true,
+                    localCleanupComplete: false,
+                  },
+                ]
+              : [],
+          },
+          outcomes: [
+            {
+              route: grantRoute,
+              remoteBasis: pending
+                ? null
+                : {
+                    kind: 'superseded-generation-observed',
+                    observation: {
+                      version:
+                        'station-broker-native-superseded-scope-observed/v1',
+                      requestNonce: 'A'.repeat(43),
+                      scope: {
+                        stationId: route.stationId,
+                        enrollmentId: route.enrollmentId,
+                        routingGeneration: 1,
+                      },
+                      disposition: 'superseded-generation-not-admitted',
+                      leaseRevision: 3,
+                    },
+                  },
+              localCleanupComplete: !pending,
+              failure: pending ? 'brokerRejected' : null,
+            },
+          ],
+        };
+      }
+      return ordinaryInvoke?.(command, args);
+    });
+    render(
+      <NativeRelayLinkIntake>
+        <ProtectedRoot />
+      </NativeRelayLinkIntake>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Continue to device approval',
+      }),
+    );
+    await screen.findByText('Connection error: grant-status-ambiguous');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reset connection invitation' }),
+    );
+    if (outcome === 'unsafe-preview') {
+      await screen.findByText(/Station could not verify connection cleanup/);
+    } else {
+      await screen.findByText('Remove saved routing access?');
+      expect(screen.getByText(/Saved invitations: 2/)).toBeTruthy();
+      expect(
+        host.invoke.mock.calls.some(
+          ([command]) => command === 'station_native_relay_link_recovery_reset',
+        ),
+      ).toBe(false);
+      if (outcome === 'changed' && host.store) host.store.revision++;
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset connection invitation' }),
+      );
+      await screen.findByText(
+        outcome === 'changed'
+          ? /Station could not verify connection cleanup/
+          : outcome === 'pending'
+            ? /Connection cleanup is still pending/
+            : /Saved routing invitations removed/,
+      );
+    }
+    const resets = host.invoke.mock.calls.filter(
+      ([command]) => command === 'station_native_relay_link_recovery_reset',
+    );
+    expect(resets).toHaveLength(
+      outcome === 'observed' || outcome === 'pending' ? 1 : 0,
+    );
+    if (resets.length)
+      expect(resets[0][1]).toEqual({
+        pendingId: bound.pendingId,
+        profileName: profile.name,
+        expectedProfileRevision: state.profileRevision,
+        expectedUpdatedAt: profile.updatedAt,
+      });
+    expect(document.body.textContent).not.toContain(trap);
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_relay_link_redeem' ||
+          command === 'station_native_enrollment_resume' ||
+          command === 'station_native_enrollment_begin_prepare' ||
+          command === 'station_native_relay_key_approval_approve',
+      ),
+    ).toBe(false);
+    expect(host.account).toBe('opaque-account-session');
+  },
+);
+
 it.each([
   'ambiguous',
   'shape',

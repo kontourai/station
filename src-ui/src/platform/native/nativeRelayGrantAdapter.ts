@@ -1,5 +1,8 @@
 import { isStationProfileStore } from '@kontourai/station-contracts';
-import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import type {
+  SelfHostedBrokerNativeRouteInvitationV2,
+  SelfHostedBrokerSupersededNativeScopeObservedV1,
+} from '@kontourai/station-contracts/self-hosted-broker';
 import { invokeTauri } from './tauriInvoke';
 
 type RecordValue = Record<string, unknown>;
@@ -111,7 +114,39 @@ export type NativeRelayGrantRedemptionResult =
       };
     };
 
+type NativeRelayCleanupRemoteBasis =
+  | { kind: 'individual-grant-retired' }
+  | {
+      kind: 'superseded-generation-observed';
+      observation: SelfHostedBrokerSupersededNativeScopeObservedV1;
+    };
+interface NativeRelayRecoveryResult {
+  state: NativeRelayGrantState;
+  outcomes: Array<{
+    route: NativeRelayGrantRoute;
+    remoteBasis: NativeRelayCleanupRemoteBasis | null;
+    localCleanupComplete: boolean;
+    failure: NativeRelayGrantRedemptionFailureCode | null;
+  }>;
+}
+interface NativeRelayRecoverySelection {
+  pendingId: string;
+  profileName: string;
+  expectedUpdatedAt: number;
+  expectedRoute: Pick<
+    NativeRelayGrantRoute,
+    'brokerOrigin' | 'stationId' | 'enrollmentId'
+  >;
+}
+
 export interface NativeRelayGrantAdapter {
+  recoveryPreview(
+    input: NativeRelayRecoverySelection,
+  ): Promise<NativeRelayRecoveryResult>;
+  resetConnectionInvitation(
+    input: NativeRelayRecoverySelection & { expectedProfileRevision: number },
+  ): Promise<NativeRelayRecoveryResult>;
+
   status(input: {
     profileName: string;
     expectedRoute: Pick<
@@ -379,7 +414,7 @@ function parseCleanup(
   };
 }
 
-function parseGrantState(
+function parseGrantInventory(
   value: unknown,
   profileName: string,
   expectedRoute: Pick<
@@ -426,7 +461,6 @@ function parseGrantState(
       throw new NativeRelayGrantStatusError('metadata');
     }
   });
-  if (grants.length > 1) throw new NativeRelayGrantStatusError('ambiguous');
   const cleanups = arrayField(dto.cleanups, 'cleanup list', 64).map((item) => {
     try {
       return parseCleanup(item, expectedRoute);
@@ -455,6 +489,111 @@ function parseGrantState(
     grants,
     cleanups,
   };
+}
+
+function parseRecoveryResult(
+  value: unknown,
+  selection: NativeRelayRecoverySelection,
+  expectedRevision: number,
+): NativeRelayRecoveryResult {
+  const dto = record(value, 'recovery result');
+  exactKeys(dto, ['state', 'outcomes'], 'recovery result');
+  const state = parseGrantInventory(
+    dto.state,
+    selection.profileName,
+    selection.expectedRoute,
+  );
+  if (state.profileRevision !== expectedRevision)
+    throw new Error('Connection recovery status changed.');
+  const outcomes = arrayField(dto.outcomes, 'recovery outcomes', 32).map(
+    (value) => {
+      const entry = record(value, 'recovery outcome');
+      exactKeys(
+        entry,
+        ['route', 'remoteBasis', 'localCleanupComplete', 'failure'],
+        'recovery outcome',
+      );
+      const route = parseRoute(entry.route, 'recovery outcome');
+      if (!routeMatches(route, selection.expectedRoute))
+        throw new Error('Connection recovery scope changed.');
+      let remoteBasis: NativeRelayCleanupRemoteBasis | null = null;
+      if (entry.remoteBasis !== null) {
+        const basis = record(entry.remoteBasis, 'recovery basis');
+        if (basis.kind === 'individual-grant-retired') {
+          exactKeys(basis, ['kind'], 'recovery basis');
+          remoteBasis = { kind: 'individual-grant-retired' };
+        } else if (basis.kind === 'superseded-generation-observed') {
+          exactKeys(basis, ['kind', 'observation'], 'recovery basis');
+          const observation = record(basis.observation, 'scope observation');
+          exactKeys(
+            observation,
+            [
+              'version',
+              'requestNonce',
+              'scope',
+              'disposition',
+              'leaseRevision',
+            ],
+            'scope observation',
+          );
+          const scope = record(observation.scope, 'observed scope');
+          exactKeys(
+            scope,
+            ['stationId', 'enrollmentId', 'routingGeneration'],
+            'observed scope',
+          );
+          const nonce = stringField(
+            observation.requestNonce,
+            'observation nonce',
+            43,
+          );
+          if (
+            observation.version !==
+              'station-broker-native-superseded-scope-observed/v1' ||
+            observation.disposition !== 'superseded-generation-not-admitted' ||
+            !/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/u.test(nonce) ||
+            scope.stationId !== route.stationId ||
+            scope.enrollmentId !== route.enrollmentId ||
+            scope.routingGeneration !== route.routingGeneration
+          )
+            throw new Error(
+              'Connection recovery observation could not be verified.',
+            );
+          remoteBasis = {
+            kind: 'superseded-generation-observed',
+            observation: {
+              version: 'station-broker-native-superseded-scope-observed/v1',
+              requestNonce: nonce,
+              scope: {
+                stationId: route.stationId,
+                enrollmentId: route.enrollmentId,
+                routingGeneration: route.routingGeneration,
+              },
+              disposition: 'superseded-generation-not-admitted',
+              leaseRevision: integerField(
+                observation.leaseRevision,
+                'observed lease revision',
+              ),
+            },
+          };
+        } else
+          throw new Error('Connection recovery basis could not be verified.');
+      }
+      const localCleanupComplete = booleanField(
+        entry.localCleanupComplete,
+        'recovery local state',
+      );
+      const failure =
+        [...ERROR_CODES].find((code) => code === entry.failure) ?? null;
+      if (
+        (entry.failure !== null && failure === null) ||
+        (localCleanupComplete && (!remoteBasis || failure !== null))
+      )
+        throw new Error('Connection recovery outcome could not be verified.');
+      return { route, remoteBasis, localCleanupComplete, failure };
+    },
+  );
+  return { state, outcomes };
 }
 
 function parseInvitation(
@@ -789,11 +928,48 @@ export function createNativeRelayGrantAdapter(
         );
       }
       try {
-        return parseGrantState(response, profileName, expectedRoute);
+        const state = parseGrantInventory(response, profileName, expectedRoute);
+        if (state.grants.length > 1)
+          throw new NativeRelayGrantStatusError('ambiguous');
+        return state;
       } catch (cause) {
         if (cause instanceof NativeRelayGrantStatusError) throw cause;
         throw new NativeRelayGrantStatusError('shape');
       }
+    },
+    recoveryPreview: async (input) => {
+      const store = await readCurrentStore();
+      await assertCurrentRoute({
+        ...input,
+        expectedProfileRevision: store.revision,
+      });
+      const response = await invoke<unknown>(
+        'station_native_relay_link_recovery_preview',
+        {
+          pendingId: input.pendingId,
+          profileName: input.profileName,
+          expectedProfileRevision: store.revision,
+          expectedUpdatedAt: input.expectedUpdatedAt,
+        },
+      );
+      return parseRecoveryResult(response, input, store.revision);
+    },
+    resetConnectionInvitation: async (input) => {
+      await assertCurrentRoute(input);
+      const response = await invoke<unknown>(
+        'station_native_relay_link_recovery_reset',
+        {
+          pendingId: input.pendingId,
+          profileName: input.profileName,
+          expectedProfileRevision: input.expectedProfileRevision,
+          expectedUpdatedAt: input.expectedUpdatedAt,
+        },
+      );
+      return parseRecoveryResult(
+        response,
+        input,
+        input.expectedProfileRevision,
+      );
     },
     assertCurrentRoute,
     redeemLinked: async (input) => {

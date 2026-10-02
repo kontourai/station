@@ -31,10 +31,10 @@ pub(crate) mod native_device_binding_candidate;
 pub(crate) mod native_device_custody;
 pub(crate) mod native_device_proof_key;
 pub(crate) mod native_proof_key_core;
-mod native_relay_key_approval;
-mod native_relay_link_intake;
 #[cfg(target_os = "ios")]
 mod native_relay_ios_launch;
+mod native_relay_key_approval;
+mod native_relay_link_intake;
 pub(crate) mod native_relay_proof_key;
 mod native_relay_redemption;
 mod native_secure_entry;
@@ -11878,6 +11878,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_link_intake::station_native_relay_link_cancel,
         native_relay_link_intake::station_native_relay_link_begin,
         native_relay_link_intake::station_native_relay_link_redeem,
+        native_relay_link_intake::station_native_relay_link_recovery_preview,
+        native_relay_link_intake::station_native_relay_link_recovery_reset,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -11978,6 +11980,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_link_intake::station_native_relay_link_cancel,
         native_relay_link_intake::station_native_relay_link_begin,
         native_relay_link_intake::station_native_relay_link_redeem,
+        native_relay_link_intake::station_native_relay_link_recovery_preview,
+        native_relay_link_intake::station_native_relay_link_recovery_reset,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
