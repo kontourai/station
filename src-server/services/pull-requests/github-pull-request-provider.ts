@@ -219,6 +219,10 @@ function normalizeGitHubBranchMergeability(
   return {
     ref: String(value.number),
     sourceBranch: value.headRefName,
+    ...(typeof value.headRepositoryOwner?.login === 'string' &&
+    value.headRepositoryOwner.login
+      ? { sourceOwner: value.headRepositoryOwner.login }
+      : {}),
     mergeability: githubMergeability(value.mergeable),
   };
 }
@@ -541,7 +545,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--limit',
         String(GITHUB_MERGEABILITY_LIST_LIMIT + 1),
         '--json',
-        'number,headRefName,mergeable',
+        'number,headRefName,mergeable,headRepositoryOwner',
       ],
       true,
       (parsed) => {

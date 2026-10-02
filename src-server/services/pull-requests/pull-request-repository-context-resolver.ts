@@ -245,19 +245,24 @@ export class PullRequestRepositoryContextResolver {
         available: false,
         reason: `Checkout uses unsupported forge ${unsupportedForge}`,
       };
-    const identity = {
-      repository: {
-        ...candidates[0].repository,
-        remote: candidates[0].remote.url,
-      },
-      workingDirectory,
-    };
     const branchState = await this.readBranchState(
       git,
       workingDirectory,
       candidates[0].remote,
       isolation,
     );
+    const pushTargetOwner = await this.readPushTargetOwner(
+      git,
+      workingDirectory,
+    );
+    const identity = {
+      ...(pushTargetOwner ? { pushTargetOwner } : {}),
+      repository: {
+        ...candidates[0].repository,
+        remote: candidates[0].remote.url,
+      },
+      workingDirectory,
+    };
     if ('refused' in branchState)
       return input.requireBranchState === false
         ? { available: true, context: identity }
@@ -266,6 +271,38 @@ export class PullRequestRepositoryContextResolver {
       available: true,
       context: { ...identity, ...branchState },
     };
+  }
+
+  private async readPushTargetOwner(
+    git: typeof execGit,
+    cwd: string,
+  ): Promise<string | undefined> {
+    const options = { cwd, timeout: PULL_REQUEST_RESOLVER_GIT_TIMEOUT_MS };
+    const config = async (key: string) => {
+      try {
+        return (await git(['config', '--get', key], options)).stdout.trim();
+      } catch {
+        return undefined;
+      }
+    };
+    try {
+      const branch = (
+        await git(['symbolic-ref', '--quiet', '--short', 'HEAD'], options)
+      ).stdout.trim();
+      if (!branch) return undefined;
+      const remote =
+        (await config(`branch.${branch}.pushRemote`)) ||
+        (await config('remote.pushDefault')) ||
+        (await config(`branch.${branch}.remote`)) ||
+        'origin';
+      if (remote === '.') return undefined;
+      const url = (
+        await git(['remote', 'get-url', '--push', remote], options)
+      ).stdout.trim();
+      return providerRepository(url)?.owner;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
