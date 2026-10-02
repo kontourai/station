@@ -719,3 +719,13 @@
   font-size: 0.8rem;
   line-height: 1.5;
 }
+
+.station-connect-row__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-3);
+}
+.station-connect-row__details .station-connect-btn {
+  min-height: 44px;
+}

@@ -118,7 +118,9 @@ function renderHeader(
 
 function renderConnButton() {
   renderHeader();
-  return screen.getByRole('button', { name: /^Manage Stations/ });
+  return screen.getByRole('button', {
+    name: /^(Manage Stations|Choose Station)/,
+  });
 }
 
 describe('HeaderActions attention badge', () => {
@@ -197,12 +199,14 @@ describe('HeaderActions — self-describing connection surface', () => {
     pendingApprovalRecord = null;
   });
 
-  test('holding the connection shows its name without also opening the manager', () => {
+  test('holding shows the name; tapping opens the chooser before managing', async () => {
     vi.useFakeTimers();
     try {
       const openConnections = vi.fn();
       renderHeader(vi.fn(), openConnections);
-      const button = screen.getByRole('button', { name: /^Manage Stations/ });
+      const button = screen.getByRole('button', {
+        name: /^(Manage Stations|Choose Station)/,
+      });
       const startPress = () =>
         fireEvent(
           button,
@@ -228,7 +232,13 @@ describe('HeaderActions — self-describing connection surface', () => {
 
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(screen.queryByRole('tooltip')).toBeNull();
+      vi.useRealTimers();
       fireEvent.click(button);
+      await screen.findByRole('menu', { name: 'Choose Station' });
+      expect(openConnections).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Manage Stations' }),
+      );
       expect(openConnections).toHaveBeenCalledTimes(1);
     } finally {
       cleanup();
@@ -247,9 +257,9 @@ describe('HeaderActions — self-describing connection surface', () => {
     expect(button.classList).toContain('app-toolbar__conn--compact');
     // No 'Default'-name special-casing: identity is always named.
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Default',
+      'Choose Station — Connected · Default',
     );
-    expect(button.title).toBe('Manage Stations — Connected · Default');
+    expect(button.title).toBe('Choose Station — Connected · Default');
     // The dot is still the state channel that survives a device with no hover.
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
@@ -354,8 +364,10 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     // on (`/^Manage Stations/`, tests/connect-modal.spec.ts), not the title —
     // and the healthy compact chip now keeps its saved label in visible text
     // and the name for assistive technology.
-    const button = screen.getByRole('button', { name: /^Manage Stations/ });
-    expect(button.title).toBe('Manage Stations — Connected · Default');
+    const button = screen.getByRole('button', {
+      name: /^(Manage Stations|Choose Station)/,
+    });
+    expect(button.title).toBe('Choose Station — Connected · Default');
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
     );
@@ -401,7 +413,9 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     connectionStatus = 'error';
     connectionReason = 'unreachable';
     renderHeader();
-    fireEvent.click(screen.getByRole('button', { name: /^Manage Stations/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^(Manage Stations|Choose Station)/ }),
+    );
     expect(recheck).toHaveBeenCalledTimes(1);
 
     recheck.mockClear();
@@ -542,7 +556,7 @@ describe('HeaderActions — desktop sidecar state', () => {
     const button = renderConnButton();
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Kontour',
+      'Choose Station — Connected · Kontour',
     );
     expect(button.title).toBe(button.getAttribute('aria-label'));
   });

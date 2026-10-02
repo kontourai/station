@@ -2266,3 +2266,26 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.app-toolbar__station-switcher {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  width: min(280px, calc(100vw - 24px));
+}
+.station-switcher__profiles {
+  max-height: min(52vh, calc(100dvh - 180px));
+  overflow-y: auto;
+}
+.station-switcher__row {
+  min-height: 44px;
+}
+.station-switcher__identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.station-switcher__status {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}

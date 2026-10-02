@@ -566,7 +566,7 @@ describe.skipIf(!chromiumAvailable)(
 
       const desktop = await inventory({ width: 1280, height: 400 });
       expect(desktop).toEqual([
-        'Manage Stations — Connected · Default',
+        'Choose Station — Connected · Default',
         'Notifications',
         'Profile and settings',
       ]);
@@ -576,7 +576,7 @@ describe.skipIf(!chromiumAvailable)(
       // compact chip at both widths; the accessible name also carries status.
       const phone = await inventory({ width: 390, height: 600 });
       expect(phone).toEqual([
-        'Manage Stations — Connected · Default',
+        'Choose Station — Connected · Default',
         'Notifications',
         'More actions',
       ]);

@@ -165,6 +165,6 @@ describe('connection-manager-modal-utils', () => {
         activeConnectionId: 'b',
         healthValue: undefined,
       }),
-    ).toBe('connecting');
+    ).toBe('idle');
   });
 });

@@ -13,6 +13,7 @@ import {
   loadPendingExchange,
   type PendingPairingExchange,
   retryLocalSelfProvisionAfterRejection,
+  useConnectionStatus,
   useConnections,
 } from '@kontourai/station-connect';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
@@ -36,6 +37,7 @@ import {
   bannerStore,
 } from '../contexts/banner-store';
 import { useNavigation } from '../contexts/NavigationContext';
+import { navigationStore } from '../contexts/navigation-store';
 import {
   shouldRenderSetupLauncher,
   shouldRenderUsageTelemetryDisclosure,
@@ -53,7 +55,11 @@ import {
   type OpenConnectionsModalDetail,
 } from '../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../lib/saved-connections';
-import { checkServerHealthDetailed } from '../lib/serverHealth';
+import {
+  checkServerHealth,
+  checkServerHealthDetailed,
+  probeServerConnection,
+} from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { reconnectLocalService } from '../platform/native/localServiceReconnect';
 import { invokeTauri } from '../platform/native/tauriInvoke';
@@ -105,6 +111,11 @@ const loadBundledServiceBanner = () =>
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const { refetch } = useSystemStatus();
   const { apiBase, activeConnection, connections } = useConnections();
+  const activeHealth = useConnectionStatus({
+    checkHealth: checkServerHealth,
+    probeEndpoint: probeServerConnection,
+    pollInterval: 10_000,
+  });
   // COMPOSITION BOUNDARY (hosted connect-modal regression): this gate mounts
   // ABOVE `AuthorityQueryProvider` inside `RecoveryQueryBoundary`, so the
   // open access-request flow survives activation transitions that replace
@@ -836,6 +847,18 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setPairingLinkError(undefined);
         }}
         checkHealth={checkServerHealthDetailed}
+        activeHealth={
+          activeConnection
+            ? {
+                connectionId: activeConnection.id,
+                status: activeHealth.status,
+                reason: activeHealth.reason,
+              }
+            : undefined
+        }
+        guardConnectionChange={(proceed) =>
+          navigationStore.runNavigationGuards(proceed)
+        }
         checkCompatibility={checkHostCompatibility}
         pairingClientChannel={
           profile.channel === 'dev' ? 'stable' : profile.channel
