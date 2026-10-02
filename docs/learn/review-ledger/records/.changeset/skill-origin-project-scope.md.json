@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/skill-origin-project-scope.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"bf713373c5016553857ef3f4579017be5bea389d0b0981580e3650d5ddba1f66","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

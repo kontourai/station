@@ -30,6 +30,7 @@ import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
 const showSurface = vi.hoisted(() => vi.fn());
+const showSurfacePage = vi.hoisted(() => vi.fn());
 // Mutable so the authority-switching test can move the mounted Home between
 // two same-origin authorities (and to none).
 const authorityRef = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
+  useShowSurfacePage: () => showSurfacePage,
 }));
 
 import { HomeView } from '../views/HomeView';
@@ -336,6 +338,7 @@ describe('HomeView', () => {
 
   beforeEach(() => {
     showSurface.mockClear();
+    showSurfacePage.mockClear();
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -364,9 +367,15 @@ describe('HomeView', () => {
     window.addEventListener('station:open-new-chat', newChat, { once: true });
     renderHomeView({ continuation: null, onNavigate });
 
-    expect(screen.getByText('Codex · gpt-5.3-codex')).toBeTruthy();
+    expect(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toBeTruthy();
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me plan my day' } },
+    );
     expect(screen.queryByText(/Default Model/i)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Start direct chat/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Start a chat/i }));
     expect(newChat).toHaveBeenCalledTimes(1);
     fireEvent.click(
       screen.getByRole('button', { name: /Open local project/i }),
@@ -395,19 +404,15 @@ describe('HomeView', () => {
     });
 
     expect(
-      screen.getByRole('status', { name: 'Loading Home actions' }),
+      screen.getByRole('status', { name: 'Finding available ways to help' }),
     ).toBeTruthy();
-    expect(
-      container.querySelectorAll(
-        '.home-view__actions--loading > .skeleton--block',
-      ),
-    ).toHaveLength(3);
+    expect(container.querySelector('.home-view__goal textarea')).toBeTruthy();
     expect(screen.queryByText('No agent is ready yet')).toBeNull();
     expect(
-      screen.queryByRole('button', { name: /Start direct chat/i }),
-    ).toBeNull();
+      screen.getByRole('button', { name: /Start a chat/i }),
+    ).toHaveProperty('disabled', true);
     expect(
-      screen.queryByRole('button', { name: /Set up an agent/i }),
+      screen.queryByRole('button', { name: /Connect an AI app/i }),
     ).toBeNull();
   });
 
@@ -551,9 +556,7 @@ describe('HomeView', () => {
     ];
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
-    expect(
-      screen.getAllByText(/Agent not reported · Model not reported/).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
     fireEvent.click(
       screen.getByRole('button', { name: /Continue most recent work/i }),
     );
@@ -608,7 +611,7 @@ describe('HomeView', () => {
   // #2310 (verifier finding): the partition routes a Draft ONLY to `drafts`,
   // so if Home stopped rendering that section the row would vanish from Home
   // with every other test green. Render it and find the row inside it.
-  test('Home lists a Draft under its own Drafts section, and not under Active now', () => {
+  test('Home lists a Draft under its own Drafts section, and not under a live lane', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
     fixtures.defaultModelLabel = 'Model not reported';
@@ -647,9 +650,11 @@ describe('HomeView', () => {
     expect(
       within(drafts as HTMLElement).getByText('Never prompted title'),
     ).toBeTruthy();
-    const active = screen.getByRole('region', { name: /Active now/ });
-    expect(within(active).queryByText('Never prompted title')).toBeNull();
-    expect(within(active).getByText('Worked session title')).toBeTruthy();
+    // The worked session has no turn in flight: it is Idle, not Running.
+    const idle = screen.getByRole('region', { name: /^Idle/ });
+    expect(within(idle).queryByText('Never prompted title')).toBeNull();
+    expect(within(idle).getByText('Worked session title')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /^Running/ })).toBeNull();
   });
 
   // #2312: a Draft is discarded by the SERVER (so every device agrees), from
@@ -869,7 +874,7 @@ describe('HomeView', () => {
   });
 
   /**
-   * #1536 C2: three doors to one room. Home offered the "Start direct chat"
+   * #1536 C2: three doors to one room. Home offered the "Start a chat"
    * action card, a "Start your first chat" button inside this empty state, and
    * the dock's own "Start a chat". The empty state now names the card instead
    * of being a third one.
@@ -884,11 +889,13 @@ describe('HomeView', () => {
       screen.getByText(/Your chats and project work will appear here/),
     ).toBeTruthy();
     // The card it names is the one that stays.
-    expect(screen.getByText('Start direct chat')).toBeTruthy();
-    expect(screen.getByText('Write a message and begin')).toBeTruthy();
+    expect(screen.getByText('Start a chat')).toBeTruthy();
+    expect(
+      screen.getAllByRole('textbox', { name: 'What would you like done?' }),
+    ).toHaveLength(1);
   });
 
-  test('separates Active now from terminal Recently finished work with counts and compact cwd metadata', () => {
+  test('separates Running from terminal Recently finished work with counts', () => {
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -898,7 +905,7 @@ describe('HomeView', () => {
         lifecycleState: 'running',
         hasActiveTurn: true,
         displayTitle: 'Keep working',
-        cwd: '/Users/brian/dev/github/kontourai/station',
+        cwd: '/Users/me/dev/github/kontourai/station',
         createdAt: '2026-07-30T00:00:00Z',
         updatedAt: '2026-07-30T00:00:00Z',
         isLoaded: true,
@@ -923,12 +930,14 @@ describe('HomeView', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const active = screen.getByRole('region', { name: 'Active now (1)' });
+    const active = screen.getByRole('region', { name: 'Running (1)' });
     const recentlyFinished = screen.getByRole('region', {
       name: 'Recently finished (1)',
     });
     expect(within(active).getByText('Keep working')).toBeTruthy();
-    expect(within(active).getByText(/…\/kontourai\/station/)).toBeTruthy();
+    expect(
+      within(active).getByText('Running', { selector: '.inbox-row__word' }),
+    ).toBeTruthy();
     expect(
       within(recentlyFinished).getByText('Repair the failed run'),
     ).toBeTruthy();
@@ -947,7 +956,7 @@ describe('HomeView', () => {
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -976,7 +985,7 @@ describe('HomeView', () => {
       screen.getAllByText(/Agent unavailable · Model unavailable/).length,
     ).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
     fireEvent.click(
@@ -1178,7 +1187,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       }
     });
 
-    test('a settled failed row retains its lifecycle chip and compact cwd metadata', () => {
+    test('a settled failed row still says Failed', () => {
       fixtures.sessions = [
         {
           threadId: 'settled-failed-thread',
@@ -1186,7 +1195,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
           status: 'closed',
           lifecycleState: 'failed',
           displayTitle: 'Repair the settled failure',
-          cwd: '/Users/brian/dev/github/kontourai/station',
+          cwd: '/Users/me/dev/github/kontourai/station',
           createdAt: '2026-07-28T14:00:00Z',
           updatedAt: '2026-07-28T14:00:00Z',
           isLoaded: true,
@@ -1205,7 +1214,6 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       expect(
         within(earlier).getByText('Repair the settled failure'),
       ).toBeTruthy();
-      expect(within(earlier).getByText(/…\/kontourai\/station/)).toBeTruthy();
       expect(within(earlier).getByText('Failed')).toBeTruthy();
     });
   });
@@ -1287,11 +1295,14 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     expect(within(recent).getByText('Brian media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
-    // Both remote items render the "Remote session" kind label.
-    expect(within(recent).getAllByText(/Remote session/).length).toBe(2);
     // The local session's own row must still render, unmarked by any
-    // environment badge, using the plain (non-remote) "Session" kind label.
-    expect(within(recent).getAllByText(/Session · No project/).length).toBe(1);
+    // machine: exactly two rows carry one.
+    expect(within(recent).getAllByTestId('inbox-row')).toHaveLength(3);
+    expect(
+      recent.querySelectorAll(
+        '.inbox-row__chip--remote, .inbox-row__slim-remote',
+      ),
+    ).toHaveLength(2);
 
     // archive#1097: REMOTE_SESSION (env-a, "Brian
     // media") is the single most-recent item across every environment here
@@ -1472,7 +1483,11 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    expect(document.querySelector('.home-view__environment-badge')).toBeNull();
+    expect(
+      document.querySelector(
+        '.inbox-row__chip--remote, .inbox-row__slim-remote',
+      ),
+    ).toBeNull();
     expect(document.querySelector('.home-view__remote-note')).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import {
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+import { toastStore } from '../../contexts/ToastContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   handleRequestDeliveryEvent,
@@ -158,6 +159,13 @@ export function handleOrchestrationEvent(
     // #2459: the Agents pane's "All" scope — every session's engine
     // subagents, including sessions no chat has open (a CLI delegate).
     childWorkGlobalStore.ingest(apiBase, event);
+    // A settled request's approval toast goes whether or not any chat still
+    // routes this thread: the toast (and the header "Approval needed" count
+    // built from it) is global, and the chat that raised it may be closed
+    // or rebound. `handleRequestResolvedEvent` does the chat's own
+    // bookkeeping when there is one.
+    if (event.method === 'request.resolved')
+      toastStore.dismissApprovalRequest(event.threadId, event.requestId);
   }
 
   if (replayThread) {

@@ -172,7 +172,13 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   // materialization and scroll correction instead of looking for a recycled
   // DOM node.
   useLayoutEffect(() => {
-    if (!revealRowId || revealedRowRef.current === revealRowId) return;
+    // A cleared request forgets the last reveal, so asking for the same row
+    // again (a second tap on the approval pill) scrolls to it again.
+    if (!revealRowId) {
+      revealedRowRef.current = undefined;
+      return;
+    }
+    if (revealedRowRef.current === revealRowId) return;
     const index = rows.findIndex((row) => row.id === revealRowId);
     if (index < 0) return;
     virtualizerRef.current.scrollToIndex(index, { align: 'center' });

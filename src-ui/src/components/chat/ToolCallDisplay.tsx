@@ -1,4 +1,8 @@
-import { toolRequestGrantLabel } from '@kontourai/station-shared/tool-request-preview';
+import {
+  type ToolRequestSessionGrant,
+  toolRequestGrantLabel,
+  toolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import {
@@ -16,7 +20,7 @@ import {
 } from './bounded-tool-result';
 import {
   callLabel,
-  classifyToolName,
+  classifyToolCall,
   isToolCallAwaitingApproval,
   type ToolCallKind,
   toolCallPhase,
@@ -35,6 +39,8 @@ export interface ToolCallData {
   toolCallId?: string;
   name?: string;
   toolName?: string;
+  /** The engine's own category (ACP `ToolKind`), when it reported one. */
+  toolKind?: string;
   server?: string;
   originalName?: string;
   purpose?: string;
@@ -49,6 +55,12 @@ export interface ToolCallData {
   outputTruncated?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
+  /** #2316: the thread of the request that set `approvalId`. */
+  approvalThreadId?: string;
+  /** See `MessagePart.approvalToolName` — what the session grant names. */
+  approvalToolName?: string;
+  /** #2915/#2916: what a session answer grants; see `MessagePart`. */
+  approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -80,7 +92,7 @@ interface ToolCallDisplayProps {
   showDetails?: boolean;
 }
 
-const KIND_GLYPH: Record<
+export const KIND_GLYPH: Record<
   ToolCallKind,
   React.ComponentType<{ className?: string }>
 > = {
@@ -148,7 +160,11 @@ function ToolCallDisplayComponent({
   const failed = Boolean(error) || state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(toolCall);
 
-  const kind = classifyToolName(toolName);
+  const kind = classifyToolCall({
+    toolName,
+    toolKind: toolCall.toolKind,
+    args,
+  });
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
@@ -242,8 +258,24 @@ function ToolCallDisplayComponent({
     </>
   );
 
+  // What a session grant would be for: the tool name the REQUEST reported
+  // (projected as `approvalToolName`), never the row's `toolName`, which for a
+  // nameless ACP or Codex call is display text — a whole command line. A
+  // registry-route part carries no request binding and names its own tool.
+  const grantToolName = toolCall.approvalThreadId
+    ? toolCall.approvalToolName
+    : toolCall.toolName;
+  // The header "Approval needed" pill brings the user here: an answerable
+  // card names the request it answers.
+  const answerable = awaitingApproval && Boolean(onApprove);
   return (
-    <div className={revealClass ? `tool-call ${revealClass}` : 'tool-call'}>
+    <div
+      className={revealClass ? `tool-call ${revealClass}` : 'tool-call'}
+      data-approval-thread={
+        answerable ? (toolCall.approvalThreadId ?? undefined) : undefined
+      }
+      data-approval-id={answerable ? toolCall.approvalId : undefined}
+    >
       <div className="tool-call__row">
         {hasDetail && allowDetails ? (
           <button
@@ -266,7 +298,13 @@ function ToolCallDisplayComponent({
           <div className="tool-call__actions">
             <ToolApprovalButtons
               onApprove={onApprove}
-              toolName={toolCall.toolName}
+              grantToolName={grantToolName}
+              sessionGrant={
+                // A part without the projected grant (a registry-route
+                // request) is judged by its tool name alone.
+                toolCall.approvalSessionGrant ??
+                toolRequestSessionGrant({ toolName: grantToolName })
+              }
             />
           </div>
         )}
@@ -306,10 +344,13 @@ function ToolCallDisplayComponent({
  */
 function ToolApprovalButtons({
   onApprove,
-  toolName,
+  grantToolName,
+  sessionGrant,
 }: {
   onApprove: ToolApprovalHandler;
-  toolName?: string;
+  /** The request's reported tool name — never the row's display name. */
+  grantToolName?: string;
+  sessionGrant: ToolRequestSessionGrant;
 }) {
   const [phase, setPhase] = useState<
     'idle' | 'sending' | 'sent' | 'already-settled'
@@ -343,6 +384,8 @@ function ToolApprovalButtons({
     );
   };
   const busy = phase !== 'idle';
+  // #2915/#2916: undefined where no session grant is offered.
+  const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   return (
     <>
       <button
@@ -353,16 +396,19 @@ function ToolApprovalButtons({
       >
         Allow Once
       </button>
-      <button
-        type="button"
-        onClick={() => decide('trust')}
-        disabled={busy}
-        className="tool-call__approve-btn tool-call__approve-btn--secondary"
-      >
-        {/* #2316: the same words as the toast for the same grant — every
-            later call to this tool in this session, not "always". */}
-        {toolRequestGrantLabel(toolName)}
-      </button>
+      {grantLabel && (
+        <button
+          type="button"
+          onClick={() => decide('trust')}
+          disabled={busy}
+          className="tool-call__approve-btn tool-call__approve-btn--secondary"
+        >
+          {/* #2316: the same words as the toast and the inbox card for the
+              same grant. It names the REQUEST's tool, never the row's
+              `toolName`, which can be an ACP title — a whole command line. */}
+          {grantLabel}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => decide('deny')}

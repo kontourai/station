@@ -22,9 +22,11 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
-const { handleRequestOpenedEvent, handleRequestDeliveryEvent } = await import(
-  '../approvalHandlers'
-);
+const {
+  handleRequestOpenedEvent,
+  handleRequestDeliveryEvent,
+  handleRequestResolvedEvent,
+} = await import('../approvalHandlers');
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -116,6 +118,115 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     ]);
   });
 
+  test('#2916: a plan exit offers no session grant', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: 'ExitPlanMode',
+        toolInput: { plan: 'Step 1' },
+      }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Deny',
+    ]);
+  });
+
+  const folderRule = {
+    type: 'addRules',
+    rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+    behavior: 'allow',
+    destination: 'session',
+  };
+  test.each([
+    [
+      'a Claude read-only tool with the engine folder rule',
+      { toolName: 'Grep', suggestions: [folderRule] },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Claude read-only tool with nothing to forward (an ask rule)',
+      { toolName: 'Read' },
+      undefined,
+    ],
+    [
+      'a Bash read outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/etc/hosts',
+        suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'Read', ruleContent: '//etc/**' }],
+            behavior: 'allow',
+            destination: 'session',
+          },
+        ],
+      },
+      'Allow reading this folder for this session',
+    ],
+    [
+      'a Bash redirect writing outside the working directories',
+      {
+        toolName: 'Bash',
+        blockedPath: '/work/b/out.txt',
+        suggestions: [
+          {
+            type: 'addDirectories',
+            directories: ['/work/b'],
+            destination: 'session',
+          },
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Allow access to this folder for this session',
+    ],
+    [
+      'a plain Claude file edit',
+      {
+        toolName: 'Edit',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      'Auto-accept file edits for this session',
+    ],
+    [
+      'a file edit asked in plan mode',
+      {
+        toolName: 'Edit',
+        permissionMode: 'plan',
+        suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+      },
+      undefined,
+    ],
+    [
+      'a sensitive-file edit with nothing to forward',
+      { toolName: 'Edit', suggestions: [] },
+      undefined,
+    ],
+    [
+      'a Bash call forced by an ask rule',
+      {
+        toolName: 'Bash',
+        matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
+      },
+      undefined,
+    ],
+  ])('#2915: labels the session grant for %s', (_case, payload, label) => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...payload, toolInput: { path: '/work/b' } }),
+    );
+
+    expect(approvalToast().actions.map((action) => action.label)).toEqual(
+      label ? ['Allow Once', label, 'Deny'] : ['Allow Once', 'Deny'],
+    );
+  });
+
   test('reads an MCP wire name as a person would in the grant label', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',
@@ -140,7 +251,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.toolName).toBe('Allow Bash');
-    expect(toast.actions[1].label).toBe('Allow this tool for this session');
+    expect(toast.actions[1].label).toBe('Allow for this session');
     expect(toast.toolPreview).toBeUndefined();
   });
 
@@ -175,7 +286,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.toolPreview).toBe('git status');
-    expect(toast.actions[1].label).toBe('Allow this tool for this session');
+    expect(toast.actions[1].label).toBe('Allow for this session');
   });
 
   // Codex has no Station pre-tool seam, so its payload is the app-server's raw
@@ -420,6 +531,111 @@ describe('#2344: the toast reports what happened to its answer', () => {
     }
   });
 
+  test('an answered request stops waiting on the user at the click', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Allow Once');
+
+    // Marked answered before the engine's `request.resolved` arrives, and
+    // never taken back: the decision was delivered.
+    const answered = updateChat.mock.calls
+      .map(([, patch]) => patch.answeredApprovals)
+      .filter((value) => value !== undefined);
+    expect(answered).toEqual([['req-1']]);
+  });
+
+  test('a decision that was not delivered waits on the user again', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValue(
+      new Error('Station is not reachable.'),
+    );
+    vi.mocked(inspectAttentionRequest).mockResolvedValue({
+      state: 'open',
+    } as never);
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+
+    await click('Deny');
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
+
+    const answered = updateChat.mock.calls
+      .map(([, patch]) => patch.answeredApprovals)
+      .filter((value) => value !== undefined);
+    expect(answered).toEqual([['req-1'], []]);
+  });
+
+  test('a request that opens again under an answered id waits on the user again', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+      answeredApprovals: ['req-1'],
+    });
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+    expect(updateChat).toHaveBeenCalledWith(
+      'thread-1',
+      expect.objectContaining({
+        pendingApprovals: ['req-1'],
+        answeredApprovals: [],
+      }),
+    );
+  });
+
+  test('a re-delivered open for a request already pending keeps its answer', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: ['req-1'],
+      answeredApprovals: ['req-1'],
+    });
+    updateChat.mockClear();
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+    );
+    for (const [, patch] of updateChat.mock.calls) {
+      expect(patch.answeredApprovals).toBeUndefined();
+    }
+  });
+
+  test('the resolution takes the request off the answered list', () => {
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: ['req-1', 'req-2'],
+      answeredApprovals: ['req-1'],
+    });
+    updateChat.mockClear();
+
+    handleRequestResolvedEvent({
+      provider: 'claude',
+      threadId: 'thread-1',
+      createdAt: '2026-09-05T00:00:01.000Z',
+      method: 'request.resolved',
+      requestId: 'req-1',
+      status: 'approved',
+    } as unknown as Parameters<typeof handleRequestResolvedEvent>[0]);
+
+    expect(updateChat).toHaveBeenCalledWith(
+      'thread-1',
+      expect.objectContaining({
+        pendingApprovals: ['req-2'],
+        answeredApprovals: [],
+      }),
+    );
+  });
+
   test('an accepted decision adds no notice of its own', async () => {
     vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
     handleRequestOpenedEvent(
@@ -507,4 +723,62 @@ describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () =
       ],
     });
   });
+});
+
+test('nonblocking question events do not pause or revive chat and do not keep another approval waiting', () => {
+  updateChat.mockClear();
+  showToolApproval.mockClear();
+  getChatForExecutionSession.mockReturnValue({
+    title: 'Conversation',
+    pendingApprovals: [],
+    orchestrationStatus: 'running',
+  });
+  handleRequestOpenedEvent('http://localhost:1', {
+    eventId: 'async-open',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:00Z',
+    method: 'request.opened',
+    requestId: 'async-q',
+    requestType: 'approval',
+    title: 'Question',
+    blocking: false,
+  });
+  expect(updateChat).not.toHaveBeenCalled();
+  expect(showToolApproval).not.toHaveBeenCalled();
+  getChatForExecutionSession.mockReturnValue({
+    pendingApprovals: ['permission'],
+    orchestrationStatus: 'awaiting-approval',
+  });
+  handleRequestResolvedEvent({
+    eventId: 'permission-close',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:01Z',
+    method: 'request.resolved',
+    requestId: 'permission',
+    status: 'approved',
+  });
+  expect(updateChat.mock.lastCall?.[1]).toMatchObject({
+    pendingApprovals: [],
+    orchestrationStatus: 'running',
+  });
+  updateChat.mockClear();
+  getChatForExecutionSession.mockReturnValue({
+    pendingApprovals: [],
+    orchestrationStatus: 'idle',
+  });
+  handleRequestResolvedEvent({
+    eventId: 'async-close',
+    provider: 'codex',
+    threadId: 'thread-1',
+    createdAt: '2026-09-29T10:00:02Z',
+    method: 'request.resolved',
+    requestId: 'async-q',
+    status: 'cancelled',
+    blocking: false,
+  });
+  expect(updateChat.mock.lastCall?.[1]).not.toHaveProperty(
+    'orchestrationStatus',
+  );
 });

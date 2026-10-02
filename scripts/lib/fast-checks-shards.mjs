@@ -13,10 +13,21 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Shards in the `fast-checks-shard` matrix. ci.yml's matrix and its `--shard`
- * denominator are pinned to this value by ci-workflow-contract.test.ts.
+ * Maximum adaptive shards; older candidates retain the four-way fallback.
  */
 export const FAST_CHECKS_SHARD_COUNT = 4;
+// #3101, 2026-10-01: sampled shards spent 1.4 min setting up for 0.2 min
+// of tests (86% setup) in a 20-job pool. Without duration estimates, use
+// 40 files per runner as an initial proxy; tune from hosted plan/run data.
+const FAST_CHECKS_FILES_PER_SHARD = 40;
+export function fastChecksShardCount(fileCount) {
+  if (!Number.isInteger(fileCount) || fileCount < 0)
+    throw new Error('fast-checks file count must be a non-negative integer');
+  return Math.min(
+    FAST_CHECKS_SHARD_COUNT,
+    Math.max(1, Math.ceil(fileCount / FAST_CHECKS_FILES_PER_SHARD)),
+  );
+}
 const FAST_CHECKS_MAX_SHARD_COUNT = 16;
 export const FAST_CHECKS_PLAN_KIND = 'station-fast-checks-plan';
 /**
@@ -233,12 +244,20 @@ function sameList(left, right) {
  * `planText` the downloaded plan (undefined when absent); `receipts` every
  * downloaded receipt file as `{ path, text }`. Returns findings; empty means
  * the required check may pass.
+ * @param {{
+ *   needs?: Record<string, { result?: string }>;
+ *   planText?: string;
+ *   receipts: Array<{ path: string; text: string }>;
+ *   shardCount?: number;
+ *   runId?: string;
+ *   headSha: string;
+ * }} options
  */
 export function verifyFastChecks({
   needs,
   planText,
   receipts,
-  shardCount = FAST_CHECKS_SHARD_COUNT,
+  shardCount = undefined,
   runId,
   headSha,
 }) {
@@ -272,6 +291,9 @@ export function verifyFastChecks({
     findings.push(
       `plan was computed for ${plan.headSha}, not the checked-out ${headSha}`,
     );
+  shardCount ??= plan.shardCount;
+  if (shardCount > FAST_CHECKS_SHARD_COUNT)
+    findings.push(`plan exceeds the maximum ${FAST_CHECKS_SHARD_COUNT} shards`);
   if (plan.shardCount !== shardCount)
     findings.push(
       `plan is split ${plan.shardCount} ways, not the required ${shardCount}`,

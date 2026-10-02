@@ -1,4 +1,6 @@
+import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import type { ToolRequestSessionGrant } from './tool-request-preview.js';
 
 /**
  * Canonical conversation message shape — the single shared contract every
@@ -24,6 +26,13 @@ export interface MessagePart {
   /** Durable terminal tool-result event identity, never a tool-call id. */
   sourceEventId?: string;
   toolName?: string;
+  /**
+   * The engine's own category for the call (ACP `ToolKind`), when it reported
+   * one. Carried so a renderer classifies by what the engine said rather than
+   * by guessing from `toolName`, which for a nameless ACP call is its human
+   * title — often a whole shell command.
+   */
+  toolKind?: EngineToolKind;
   purpose?: string;
   /**
    * Strands persistence writer shape; see
@@ -90,6 +99,20 @@ export interface MessagePart {
    */
   approvalEventId?: string;
   /**
+   * The tool name that `request.opened`'s payload reported, if any — the name
+   * an adapter records a session grant under. The session-grant button names
+   * THIS, never `toolName`: for a nameless ACP or Codex call `toolName` is
+   * display text (the whole command line), and the grant is not for it. Set
+   * only next to `approvalThreadId`.
+   */
+  approvalToolName?: string;
+  /**
+   * #2915/#2916: what a session answer to that request grants, computed from
+   * its payload with `toolRequestSessionGrantFromPayload` — the inline card's
+   * session option and label. Set only next to `approvalEventId`.
+   */
+  approvalSessionGrant?: ToolRequestSessionGrant;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated
@@ -110,6 +133,8 @@ export interface ConversationMessage {
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
+    /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
+    steerInterruptedRun?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */

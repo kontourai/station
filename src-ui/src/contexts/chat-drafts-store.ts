@@ -39,6 +39,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isStoredAttachment(value: unknown): value is FileAttachment {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.type === 'string' &&
+    typeof value.size === 'number' &&
+    typeof value.data === 'string'
+  );
+}
+
 function readSessionDrafts(value: unknown): StoredDrafts {
   if (!isRecord(value)) return {};
   const result: StoredDrafts = {};
@@ -97,6 +108,16 @@ function readState(): StoredState {
       portable: portable
         .map((draft) => ({
           ...draft,
+          // Elements too, not just the array: a restored attachment is read
+          // as `type.startsWith(...)` and handed to the composer, so one entry
+          // in an older or corrupt shape would throw inside render.
+          attachments: draft.attachments.filter(isStoredAttachment),
+          droppedImageNames: draft.droppedImageNames.filter(
+            (name): name is string => typeof name === 'string',
+          ),
+          unreadableImageNames: draft.unreadableImageNames.filter(
+            (name): name is string => typeof name === 'string',
+          ),
           ...(Array.isArray(draft.quotes)
             ? {
                 quotes: draft.quotes

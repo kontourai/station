@@ -1,0 +1,79 @@
+{
+  "path": "docs/design/session-tape-replay.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
+
+  "limits": "Browser-matrix descriptions name source coverage, not a newly executed full Playwright matrix. No live engine steering or physical native-device result; redaction preserves protocol fields and is not arbitrary sensitive-text detection.",
+
+  "document": {"digest":"669b634eb401108523aa67d5194ac3680de5021fbb3c995494c42ee82597e11f","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+
+  "sources": [
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+
+    {"path":"src-server/providers/adapters/acp-steer.ts","digest":"df5aea2d6a0c2d6f8aace66a72bb8b748511b0221d8ee00cb6cc9a5ed98461dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"15b1e2490e7c8a652bffaf3a16a297d9df3de75f6d8c61c00fc8f8a993f68c6a","revision":"e7bb11891396b509d47e7c0ba3ba9066a74a03db"},
+
+    {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"885839611cb542e2c92b70669966faa7c20be3d8c25e046f58b0dcde15b26fbc","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+
+    {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"eca9a7366659e1c3d1ef6322bd63ea602a1508cfa01cfa896cde33cc45422d03","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"},
+
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/controller.ts","digest":"967105e5dad4144cbe9377c2e66302377ac84a747c34ceffd44e2cb60a44b7be","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/limits.ts","digest":"a3b52e42ccb19c27e5c5d55a5d9556d08e6db5d50d7f9eca03465b04d25fb309","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/player.ts","digest":"d2eaa4b44ef50425e027220d2ddd61e6911a8d50165e869e3284dfcd448abec5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/recorder.ts","digest":"01535f396f8cbe6da540f6b1a90f204ed1e4df9761ac695261d8552f428953af","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/render-observation.ts","digest":"5d2e9be191b57e0fe116ad7ffd5a2cbe3094af043044d753650e748add86f2f1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/replay-registry.ts","digest":"20dfdc2906451ec51422bac0e2fcd67c6d67037e4f2f42750b8b1b7b10f8c84f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/scroll-observation.ts","digest":"547bef3e5c4b1bff5b27d472cec12b3b60f5dab04c778550418d45f67d9376b8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/tape-file.ts","digest":"4d194fb74aea404db9f8b4e10b1e35252d6f60e6d4e15ad4053e328fb07eb931","revision":"3776fa57d13e3e8510939221d17e2745ad5dfa49"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/tape-validation.ts","digest":"9ebdba0019e4643b14ef3bd496c878297eec075251beb9a806c5ba7aa6c787d7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/orchestration/replay/timeline.ts","digest":"e4ef9cf2e00be49810869092c67c0f9b6358a31429fcee394d313b8eaf9baabb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/index.css","digest":"90b1c018d688ca649437e24b009fc0e2365ef542f64c2b045735af3e21cc93dd","revision":"f9492a9202fc45b0776176178d0f5007a172f2d6"},
+
+    {"path":"tests/chat-replay.spec.ts","digest":"22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "39 tape import/player/archive/render-invariant and mounted timeline tests passed across five files. Read browser matrix and actual adapter delivery owners.",
+
+    "Landing delta 622565ef7: Codex reply matching does not alter turn/steer arguments, event folding, replay isolation or recorded tape limits. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
+
+    "Reviewed landing deltas through 111744681: Opaque proxy/error pages are not terminal Station refusals; uncertain queued sends remain queued. Stored reasons use the formatter, but not every ephemeral notice strips schema keys. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Landing review through 64452b7f0:  Added the separate compact reasoning disclosure description. Disclosure state, word counting and user choice are unchanged; this is distinct from activity timers. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through e0314c727: the page's own edits add the ReasoningSection disclosure and move the promotion backlog to #2899. Checked against ReasoningSection.tsx (summary row with word count, user-open/user-closed intent) and index.css (indented left-border body), and against the removal of EXTENSION_NOTIFICATION_PROMOTIONS from source (#2900). #2899's live state was not fetched because of the GitHub API rate limit; its reference comes from the #2900 commit. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: in active-chats-state.ts, #2904 only adds an optional fullAccessRefusal field to EphemeralMessage, rendered by FullAccessRefusalCard. Tape limits, replay registration and persistence exclusion, fold and effect fences, and fork identity are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added Codex approvalAcknowledgement and replyToApproval, an unacknowledgedDecisions ChatUIState field, and request.delivery dispatch in eventHandlers.ts. The replay coverage, redaction and steer-mechanism claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

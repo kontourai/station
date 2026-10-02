@@ -1,0 +1,61 @@
+{
+  "path": "docs/design/event-store-ledger-migration.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed extraction dispositions, durable turn/recovery/credential owners and their actual EventStore/module composition. Added reserved/commit-pending states and the startup-scan unavailable-as-empty limitation tracked in #2823.",
+
+  "limits": "Source and recorded module-fixture evidence, not a new live provider, cross-process recovery or storage durability drill.",
+
+  "document": {"digest":"6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+
+    {"path":"src-server/services/orchestration/adoption-ledger.ts","digest":"fdf620001ececec0d9dd14dce71f3507a1adcf608c80122c216912b667d4fcd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/orchestration/credential-application-ledger.ts","digest":"8f71d87f612df13ba98caf8de0bf13857b8f06f0c71a30c07c5e2c5938fdb97a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"95305152b73953e172ef0a1a26211c040f3b58ec002a24cf0e8f0dcb1e236f97","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+
+    {"path":"src-server/services/orchestration/recovery-ledger.ts","digest":"c590c5a7b9ba3d8b7fb6233fe271f3ffcf9e4a6a548d331726e1a49378bd2079","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/sqlite-turn-dedup-persistence.ts","digest":"dd4704321e56b2630b303fe4d5db15ca03dcc7931125a0a7a9fa62b23fa3c97a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/turn-deduplicator.ts","digest":"f9e66186b33b08c0dfd799a40ac5812eccd3d6037d27aa93d226e17fd0f9eeae","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Read RecoveryLedger and credential application owner, actual SQLite transition/composition regions and credential stage caller; prior module review records carry their focused execution evidence.",
+
+    "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries. The document's recovery-ledger/credential anchor still resolves, and it references neither removed module, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added read-only EventStore queries: latestApprovalModeDecision now also returns the actor, plus approvalModeDecisionThreadsByDevice, hostStartThreadsGrantedByDevice, conversationTitle and unattributedFullAccessDecisionThreads. attached-session-adoption now takes an AdoptionConfinement {stamp, grantor} and writes the grantor metadata. orchestration-service uses both for the revocation reset. Adoption still commits through AdoptionLedger with the receipt coupling unchanged. The doc explicitly does not claim every EventStore method has moved, so the new query methods fit its dispositions, and the RecoveryLedger/credential claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

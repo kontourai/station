@@ -16,7 +16,7 @@ import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
 import { createUnattendedGrantRoutes } from '../unattended-grants-routes.js';
 
-const OPERATOR = 'brian';
+const OPERATOR = 'casey';
 const PRINCIPAL = '{"kind":"scheduled-job","jobId":"daily"}';
 const TOOL = 'reports.send';
 

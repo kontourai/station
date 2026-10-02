@@ -25,9 +25,9 @@ import type { SelectableModel } from '../utils/modelCapabilities';
 describe('chat-dock-utils', () => {
   test('splitWorkingDirectoryPath trims trailing slashes and preserves parent paths', () => {
     expect(
-      splitWorkingDirectoryPath('/Users/brian/dev/workspace/project/'),
+      splitWorkingDirectoryPath('/Users/me/dev/workspace/project/'),
     ).toEqual({
-      parentPath: '/Users/brian/dev/workspace/',
+      parentPath: '/Users/me/dev/workspace/',
       leafName: 'project',
       hasWorkingDirectory: true,
     });
@@ -582,16 +582,14 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
     sessionDisplayCwd: null,
     sessionProjectSlug: undefined,
     dockProjectSlug: 'demo',
-    dockProjectWorkingDirectory: '/Users/brian/dev/demo',
+    dockProjectWorkingDirectory: '/Users/me/dev/demo',
   } as Parameters<typeof resolveDockProjectContextDirectory>[0];
 
   test("names the bound project's directory when no session reports one", () => {
     // The audited case: the dock is collapsed with nothing open, so there is
     // no session — and the row said "Home folder" beside a badge naming a
     // project whose directory is set.
-    expect(resolveDockProjectContextDirectory(base)).toBe(
-      '/Users/brian/dev/demo',
-    );
+    expect(resolveDockProjectContextDirectory(base)).toBe('/Users/me/dev/demo');
   });
 
   test("prefers the session's own directory over the bound project's", () => {
@@ -643,7 +641,7 @@ describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
         sessionDisplayCwd: null,
         sessionProjectSlug: undefined,
       }),
-    ).toBe('/Users/brian/dev/demo');
+    ).toBe('/Users/me/dev/demo');
     // And it stays subordinate to the session's own directory when it has one.
     expect(
       resolveDockProjectContextDirectory({

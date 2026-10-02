@@ -142,6 +142,75 @@ describe('approval inbox notifications', () => {
     });
   });
 
+  test('#2916: a plan exit is persisted without a session-grant action', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: { toolName: 'ExitPlanMode', toolInput: { plan: 'Step 1' } },
+        provider: 'claude',
+        requestId: 'req-plan-exit',
+        requestType: 'approval',
+        threadId: 'thread-plan-exit',
+        title: 'Allow ExitPlanMode',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
+      'accept',
+      'decline',
+    ]);
+  });
+
+  test('#2915: a Claude file edit is persisted without the auto-accept action, which only the command route can honour', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: {
+          toolName: 'Edit',
+          toolInput: { file_path: '/work/a/x.ts' },
+          suggestions: [
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+        },
+        provider: 'claude',
+        requestId: 'req-edit-inbox',
+        requestType: 'approval',
+        threadId: 'thread-edit-inbox',
+        title: 'Allow Edit',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
+      'accept',
+      'decline',
+    ]);
+  });
+
+  test('#2915: a Claude read with nothing to forward is persisted without a session-grant action', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: { toolName: 'Read', toolInput: { file_path: '/work/b/x' } },
+        provider: 'claude',
+        requestId: 'req-read-ask-rule',
+        requestType: 'approval',
+        threadId: 'thread-read-ask-rule',
+        title: 'Allow Read',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
+      'accept',
+      'decline',
+    ]);
+  });
+
   describe('#1545: the persisted standing-grant label says what it grants', () => {
     // This label is stored ON the notification and rendered verbatim by
     // `AttentionCard`'s `ApprovalActions`, so a bare "Allow for Session" here is
@@ -165,12 +234,29 @@ describe('approval inbox notifications', () => {
         'Allow Bash for this session',
       ],
       [
+        // #2915: a Claude read-only tool's session grant is its folder rule.
+        'a Claude read-only tool as the folder grant it is',
+        {
+          toolName: 'Read',
+          toolInput: { file_path: '/work/b/x' },
+          suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Read', ruleContent: '//work/b/**' }],
+              behavior: 'allow',
+              destination: 'session',
+            },
+          ],
+        },
+        'Allow reading this folder for this session',
+      ],
+      [
         // ACP publishes `rawInput` and `toolCallId` and no tool name. Stay
         // generic rather than reaching for `event.title`, which is adapter
         // display text — for Codex the literal shell command.
         'no reported tool name at all',
         { rawInput: { command: 'git status' } },
-        'Allow this tool for this session',
+        'Allow for this session',
       ],
     ])('names %s', async (_case, payload, expected) => {
       await emit('orchestration:event', {

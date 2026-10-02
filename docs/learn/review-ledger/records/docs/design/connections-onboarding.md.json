@@ -1,0 +1,95 @@
+{
+  "path": "docs/design/connections-onboarding.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "document": {"digest":"247977307a3926fe31b74f40bc02f0b0b3fecbe7a7ef43076cebecd22da2e1b4","revision":"9c6e16f5491ef7b01bdb869be38a462648992e77"},
+
+  "sources": [
+    {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/acp-mcp-passthrough.ts","digest":"bae3c16d36044bd319ec404432f98469e5140297f7875f2e139b95ea1b5e16b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
+
+    {"path":"src-server/providers/adapters/claude-skills-materialization.ts","digest":"221b6098abf237f280d14480d9afc6913973b9a94b47593999ba70ff731f0280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/providers/app-home/app-home-profiles.ts","digest":"ec6964af951874bed74c286d74a508b587ceee01b84149b62f2e6b61074cae33","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/providers/app-home/credential-profile-registry.ts","digest":"e3293a071e21174d69a03a1fbd16b0085f7e8ead35b2484e8e045b2bebe85fdc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/auth/claude-auth.ts","digest":"87dfd10433dabfd92ce895d165bcf9c9c7256c147a807748f8edcc1c04540dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/auth/codex-auth.ts","digest":"0e42dcc356630371b5f937c32e50dd7e61eb3b84c4b1f7f3c597fa82ba6bb546","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/connection-factories.ts","digest":"ffe4299b664b2796f92b54d074ac3c3d2549efddece383a10b8279aa3d77c460","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/llm/bedrock-llm-provider.ts","digest":"4e0d42ecb462f8c7c4bb831c25cb700abf06252b39164ca6c0fff13eb1712046","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/connections/app-home.ts","digest":"ed7412dd78667321bec46937a4bc7a1fa92f1e9a3b27c344fbeea55345a20b5a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/services/acp/acp-process.ts","digest":"07d4606232bc0f0024486ba05c03932c845f2d030656a9861236c1540d20cd46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/connections/connection-recovery-policy.ts","digest":"a44fd5712188a1b3780c66a55ec214794c832d70b972e3f8348c07f755fb593e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/credential-application-ledger.ts","digest":"8f71d87f612df13ba98caf8de0bf13857b8f06f0c71a30c07c5e2c5938fdb97a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/credential-profile-recovery.ts","digest":"920690d6ea2ad7e9e659e82f066138bec0d26e255708419977dc246fb2767b30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+
+    {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/first-run/FirstRunHomeChapter.tsx","digest":"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172","revision":"7d1b3d94166917be8991f72c799f4dc8d87dc45d"},
+
+    {"path":"src-ui/src/components/first-run/first-run-gate.ts","digest":"5098d3dda3a9db7da3e7e8d1552641aaac680ed467bb5c28f151844f18908efc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/ConnectionsHub.tsx","digest":"5c0aa36c80d1c78197030068ba0151e39fbe2bf4566dc492e3555b0ce3046567","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/connections-hub/connection-sections.ts","digest":"17a37fa100b2b48f145ddc98798fa5bdbc326bf65701f92a597bee9f9c9ce12c","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
+
+    {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+
+    {"path":"src-ui/src/components/modals/AutomaticEnginePreparation.tsx","digest":"05dad7302ef1ac516f913814eb4e3bc16f1f694ab65d2d6ad232dd1533fd4fa9","revision":"d93991f52363d8d7d2a1fa12938ba5783158b27c"}
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Landing delta 622565ef7: Codex reply matching now preserves peer ID types; spawn environment, profile/source-home precedence and retained historical observations are unchanged. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: claude-adapter.ts removed the unused stdio `mintStationControlCallerToken` fallback and kept in-process station-control. The document makes no stdio caller-token claim for Claude, and its spawn-environment, ACP station-control header-token and capability-matrix statements remain accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor: it refuses unattributed grants in prepareStart and in adoption, records the grantor metadata beside host stamps, applies a stamp whose device grantor is no longer current as workspace, and resets full access on revocation. The documented spawn environment, app-home profile selection, source-affinity resumes, first-run persistence and ACP/skills passthrough are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 changed Claude/Codex adapter approval acknowledgement and Codex transport reply/acknowledgement handling only. spawnCodexProcess, env layering and app-home wiring are untouched; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: config-loader-app.ts only deleted the caller-less updateAppConfigFile; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

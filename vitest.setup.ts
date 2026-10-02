@@ -3,7 +3,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stationTempRoot } from '@kontourai/station-shared/temp-dir';
 import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
+import {
+  preserveJobEventEnvironment,
+  scrubEventScopedEnvironment,
+} from './scripts/lib/ci-event-environment.mjs';
 import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sqlite-fixture-durability.js';
+
+/**
+ * First, before any test module is imported: a test must see the same
+ * environment in a pull request, in the merge queue and locally, so the
+ * triggering event's variables (`GITHUB_EVENT_NAME`, `GITHUB_REF`, the base
+ * SHAs the workflows derive from it) never reach a test worker (#2922). A
+ * test that needs an event sets it explicitly.
+ */
+// The real-ledger freshness checks read the job's own event through
+// `JOB_ENV` (scripts/__tests__/helpers/freshness-env.ts); keep it for them.
+preserveJobEventEnvironment(process.env);
+scrubEventScopedEnvironment(process.env);
 
 installNodeHttpCompatibility();
 

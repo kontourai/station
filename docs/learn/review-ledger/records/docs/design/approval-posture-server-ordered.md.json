@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/approval-posture-server-ordered.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Accepted design with dated baseline, implementation history, authority decisions, and recorded tests.",
+
+  "limits": "Current posture resolution and orchestration callers were checked for routing only; no comprehensive authorization, recovery, cross-device, or engine-posture proof.",
+
+  "document": {"digest":"fe178e2a287aee8f785b5e839f67a71aea98ea80cfd27b832e2c4c36fc551e2a","revision":"de3ec944a2f6b587c5cc22e95f6847bd26d1cc8c"},
+
+  "sources": [
+    {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"}
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Reviewed integration deltas: Reviewed frozen upstream Default/full-access additions against runtime provider resolution, Agent write routes, orchestration pick checks and confinement callers. Existing dated design classification remains; removed obsolete unchanged-bytes claim. src-server/services/orchestration/approval-posture.ts: Effective-default resolution handles Project Default that reaches never/full-access on host, requiring the existing grant. Recorded Default still follows later Project default edits as the accepted residual; no assertion of immutable future policy. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/security/coding-authority.ts: Adds typed full_access_not_granted refusal with403 identity; no new authority or scope.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 adds grantor-bearing FullAccessGrant with UnattributedFullAccessGrantError (coding-authority), decision actor and threadId plus fullAccessDefaultSource (approval-posture), and resetFullAccessGrantedBy, live grantor re-confinement and the grantor-stamp respawn carry-forward (orchestration-service). Main's merged prose on the structured refusal, granting and revoking, and revocation reset matches the code, including: the reset outcomes; the unattributed host-start cap of 50 plus a total; sanitized titles (256 characters); resetFullAccess re-runs; and an idempotent DELETE on an already revoked device, since revokeDevice returns without error when revokedAt is already set. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

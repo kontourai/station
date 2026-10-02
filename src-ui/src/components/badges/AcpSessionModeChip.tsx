@@ -41,8 +41,16 @@ export function AcpSessionModeChip({
         }`}
         onClick={() => setIsSheetOpen((open) => !open)}
       >
-        <span className="chat-input__approval-chip-label" aria-hidden="true">
-          {selectedLabel}
+        {/* Captioned like its Agent and Model neighbours: a bare engine mode
+            name ("build", "plan") in the rail said nothing about what it
+            selects. */}
+        <span className="chat-input__chip-stack">
+          <span className="chat-input__chip-caption" aria-hidden="true">
+            Mode
+          </span>
+          <span className="chat-input__approval-chip-label" aria-hidden="true">
+            {selectedLabel}
+          </span>
         </span>
         <ArrowDownGlyph className="choice-caret" />
       </button>

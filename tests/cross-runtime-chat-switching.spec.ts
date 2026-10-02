@@ -777,7 +777,7 @@ async function seedCrossRuntimeRoutes(
             status: 'completed',
             controlMode: 'station-owned',
             model: 'gpt-5-codex',
-            cwd: '/Users/brian/dev/github/kontourai/station',
+            cwd: '/Users/me/dev/github/kontourai/station',
             createdAt: '2026-08-02T15:00:00.000Z',
             updatedAt: '2026-08-02T15:01:00.000Z',
             isLoaded: false,
@@ -1334,7 +1334,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       documentWidth: document.documentElement.scrollWidth,
       bodyWidth: document.body.scrollWidth,
       taskRight: document
-        .querySelector('.home-view__task-copy')
+        .querySelector('.home-view__recent [data-testid="inbox-row"]')
         ?.getBoundingClientRect().right,
     }));
     expect(bounds.documentWidth).toBeLessThanOrEqual(bounds.innerWidth);

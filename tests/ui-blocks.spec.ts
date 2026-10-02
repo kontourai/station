@@ -257,24 +257,24 @@ test.describe('Structured UI blocks', () => {
     ).toBeVisible();
 
     // Required-field guard fires before any send.
-    await page.getByRole('button', { name: 'Approve' }).click();
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
     await expect(page.getByText('"Reviewer" is required.')).toBeVisible();
     expect(sentBody).toBeNull();
 
     // Fill and submit.
-    await page.getByLabel('Reviewer').fill('brian');
+    await page.getByLabel('Reviewer').fill('casey');
     await page.getByText('Sign off').click();
-    await page.getByRole('button', { name: 'Approve' }).click();
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
 
     // Form locks after submit, and the tagged structured turn was sent.
     await expect(page.getByRole('button', { name: 'Submitted' })).toBeVisible();
     await expect.poll(() => sentBody).not.toBeNull();
     const turn = JSON.parse(sentBody as unknown as string).message as string;
     expect(turn).toContain('Submitted form "Approve gate":');
-    expect(turn).toContain('- Reviewer: brian');
+    expect(turn).toContain('- Reviewer: casey');
     expect(turn).toContain('- Sign off: yes');
     expect(turn).toContain('__stationFormSubmission');
-    expect(turn).toContain('"reviewer": "brian"');
+    expect(turn).toContain('"reviewer": "casey"');
 
     releaseResponse();
     await responseFulfilled;

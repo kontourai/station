@@ -1,0 +1,7 @@
+{
+  "revision": "593ad7b9784750d2f8e56708fdba58e8a9484f37",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed merged ConfigLoader built-in probe repair through reconnect route and locked update callback. Incoming native Device proof API documentation and sources are preserved; command/args/env remain runtime-owned and excluded from durable builtin config. Probe success/failure mutation evidence and real Station Docs/Control receipts retained; post-merge revalidation follows."}
+  ]
+}

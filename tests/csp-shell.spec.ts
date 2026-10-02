@@ -137,16 +137,14 @@ test('boots the built shell under CSP and opens its connection recovery UI', asy
   expect(response?.headers()['content-security-policy']).toContain(
     "script-src 'self' 'nonce-",
   );
-  const connectionControl = page.getByRole('button', {
-    // archive#3311 made the connection control self-describing: its
-    // accessible name now carries the state and the connection identity
-    // ("Manage Stations — Connected · <name>"), so this matches by prefix.
-    // The bare string is still the control’s `title` (archive#3297).
-    name: /^Manage Stations/,
-  });
+  const connectionControl = page.getByTestId('app-toolbar-connection');
   await expect(connectionControl).toBeVisible({ timeout: 15_000 });
   await expect(connectionControl.getByText('CSP Station')).toBeVisible();
   await connectionControl.click();
+  await page
+    .getByRole('menu', { name: 'Choose Station', exact: true })
+    .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+    .click();
   await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
   browserHealth.assertHealthy();
 });

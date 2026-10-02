@@ -147,9 +147,9 @@ describe('credential usage — Codex', () => {
     if (usage.status !== 'ok') return;
     expect(usage.planLabel).toBe('Pro');
     expect(usage.windows.map((w) => [w.label, w.usedPercent])).toEqual([
-      ['5-hour limit', 100],
-      ['GPT-5.3-Codex-Spark (5-hour)', 0],
-      ['GPT-5.3-Codex-Spark (weekly)', 1],
+      ['Primary limit', 100],
+      ['GPT-5.3-Codex-Spark · primary', 0],
+      ['GPT-5.3-Codex-Spark · secondary', 1],
     ]);
     // epoch seconds -> ISO (1787463023 is 2026-08-23T05:30:23Z)
     expect(usage.windows[0]?.resetsAt).toBe('2026-08-23T05:30:23.000Z');
@@ -345,5 +345,371 @@ describe('adversarial 200 bodies degrade to unknown, never throw', () => {
     expect(usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([
       ['seven-day', 30],
     ]);
+  });
+});
+
+test('Claude quota borrows only the selected secure-store credential without exposing it', async () => {
+  const secure = vi.fn(async () => CLAUDE_CREDS);
+  const fetch = jsonFetch(CLAUDE_USAGE);
+  const usage = await readClaudeUsage(
+    '/selected-account',
+    deps({
+      readTextFile: async () =>
+        JSON.stringify({ claudeAiOauth: { accessToken: 'stale-file-token' } }),
+      readClaudeSecureCredentials: secure,
+      fetch,
+    }),
+  );
+  expect(secure).toHaveBeenCalledWith('/selected-account');
+  expect(usage.status).toBe('ok');
+  expect(JSON.stringify(usage)).not.toContain('tok-claude');
+  expect(fetch).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer tok-claude' }),
+    }),
+  );
+});
+
+test('Codex nested CLI credentials retain their account selector when reading quota', async () => {
+  const fetch = jsonFetch(CODEX_USAGE);
+  const usage = await readCodexUsage(
+    '/selected-account',
+    deps({
+      readTextFile: async () =>
+        JSON.stringify({
+          tokens: {
+            access_token: 'nested-token',
+            account_id: 'nested-account',
+          },
+        }),
+      fetch,
+    }),
+  );
+  expect(usage.status).toBe('ok');
+  expect(fetch).toHaveBeenCalledWith(
+    expect.any(String),
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: 'Bearer nested-token',
+        'Chatgpt-Account-Id': 'nested-account',
+      }),
+    }),
+  );
+  expect(JSON.stringify(usage)).not.toContain('nested-token');
+});
+
+// Values are synthetic; the field shape was observed from wham/usage on 2026-10-01.
+test('preserves weekly-only Codex buckets, account credits and model metadata without leaking unhandled values', async () => {
+  const usage = await readCodexUsage(
+    '/profile',
+    deps({
+      readTextFile: vi.fn(async () => CODEX_CREDS),
+      fetch: jsonFetch({
+        user_id: 'user-test',
+        account_id: 'account-test',
+        email: 'person@example.test',
+        plan_type: 'pro',
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          primary_window: {
+            used_percent: 42,
+            limit_window_seconds: 604800,
+            reset_after_seconds: 3600,
+            reset_at: 1787463023,
+          },
+          secondary_window: null,
+        },
+        additional_rate_limits: [
+          {
+            limit_name: 'Reserve',
+            metered_feature: 'reserve',
+            normal_model_slug: 'gpt-5.3-codex',
+            rate_limit: {
+              allowed: false,
+              limit_reached: true,
+              primary_window: {
+                used_percent: 100,
+                limit_window_seconds: 604800,
+              },
+            },
+          },
+        ],
+        model_usage: {
+          'gpt-5.3-codex': {
+            available: false,
+            available_at: null,
+            credits_would_enable: true,
+          },
+        },
+        chatpass: {
+          windows: [
+            {
+              used_percent: 10,
+              limit_window_seconds: 86400,
+              reset_at: 1787463023,
+            },
+          ],
+        },
+        credits: {
+          has_credits: true,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: '12.50',
+          approx_local_messages: [10, 20],
+          approx_cloud_messages: [2, 5],
+        },
+        spend_control: { reached: false, individual_limit: 100 },
+        rate_limit_reset_credits: {
+          available_count: 2,
+          applicable_available_count: 1,
+        },
+        promo: { secret: 'PROMO_PRIVATE' },
+        future: { token: 'NEVER_RETURN_THIS' },
+      }),
+    }),
+  );
+  expect(usage.status).toBe('ok');
+  if (usage.status !== 'ok') throw new Error('Expected quota');
+  expect(usage.windows).toEqual([
+    {
+      id: 'primary',
+      label: 'Weekly limit',
+      usedPercent: 42,
+      durationSeconds: 604800,
+      resetAfterSeconds: 3600,
+      resetsAt: '2026-08-23T05:30:23.000Z',
+      allowed: true,
+      limitReached: false,
+    },
+    {
+      id: 'Reserve-primary',
+      label: 'Reserve · weekly',
+      usedPercent: 100,
+      durationSeconds: 604800,
+      allowed: false,
+      limitReached: true,
+      model: 'gpt-5.3-codex',
+      meteredFeature: 'reserve',
+    },
+    {
+      id: 'chatpass-0',
+      label: 'Chat pass · 1-day',
+      usedPercent: 10,
+      durationSeconds: 86400,
+      resetsAt: '2026-08-23T05:30:23.000Z',
+    },
+  ]);
+  expect(usage.metadata).toEqual({
+    identity: {
+      email: 'person@example.test',
+      accountId: 'account-test',
+      userId: 'user-test',
+    },
+    credits: {
+      available: true,
+      unlimited: false,
+      overageLimitReached: false,
+      balance: 12.5,
+      approximateLocalMessages: [10, 20],
+      approximateCloudMessages: [2, 5],
+    },
+    resetCredits: { available: 2, applicable: 1 },
+    models: [
+      {
+        id: 'gpt-5.3-codex',
+        available: false,
+        availableAt: undefined,
+        creditsWouldEnable: true,
+      },
+    ],
+    capture: {
+      source: 'codex-wham-usage',
+      credentialStorage: 'file',
+      unhandledFields: ['future.token'],
+      excludedFields: ['promo.secret', 'spend_control.individual_limit'],
+      truncated: false,
+    },
+  });
+  expect(JSON.stringify(usage)).not.toMatch(
+    /NEVER_RETURN_THIS|PROMO_PRIVATE|tok-codex/,
+  );
+});
+
+test('captures Claude model-specific windows and extra usage while reporting response drift', async () => {
+  const usage = await readClaudeUsage(
+    '/profile',
+    deps({
+      readTextFile: vi.fn(async () => CLAUDE_CREDS),
+      fetch: jsonFetch({
+        five_hour: { utilization: 10, resets_at: AT },
+        seven_day_sonnet: { utilization: 30, resets_at: AT },
+        seven_day_opus: null,
+        extra_usage: {
+          is_enabled: true,
+          used_credits: 0,
+          monthly_limit: 5000,
+          utilization: 0,
+          spend_limit_reached: false,
+        },
+        future_window: { utilization: 99 },
+      }),
+    }),
+  );
+  expect(usage.status).toBe('ok');
+  if (usage.status !== 'ok') throw new Error('Expected quota');
+  expect(usage.windows.find((w) => w.id === 'seven_day_sonnet')).toEqual({
+    id: 'seven_day_sonnet',
+    label: 'Weekly · Sonnet',
+    usedPercent: 30,
+    durationSeconds: 604800,
+    resetsAt: AT,
+  });
+  expect(usage.metadata?.extraUsage).toEqual({
+    enabled: true,
+    used: 0,
+    monthlyLimit: 5000,
+    usedPercent: 0,
+    limitReached: false,
+  });
+  expect(usage.metadata?.capture.unhandledFields).toEqual([
+    'future_window.utilization',
+  ]);
+});
+
+test('preserves Codex credits and shape gaps when quota windows are unavailable', async () => {
+  const usage = await readCodexUsage(
+    '/profile',
+    deps({
+      readTextFile: vi.fn(async () => CODEX_CREDS),
+      fetch: jsonFetch({
+        plan_type: 'pro',
+        rate_limit: {
+          allowed: true,
+          primary_window: null,
+          secondary_window: null,
+        },
+        credits: { unlimited: true, balance: '12.50' },
+        future_limit: { used: 4 },
+      }),
+    }),
+  );
+  expect(usage.status).toBe('unknown');
+  expect(usage.planLabel).toBe('Pro');
+  expect(usage.metadata?.credits).toMatchObject({
+    unlimited: true,
+    balance: 12.5,
+  });
+  expect(usage.metadata?.capture.unhandledFields).toEqual([
+    'future_limit.used',
+  ]);
+});
+
+test('reports omitted models and unhandled nested availability as incomplete capture', async () => {
+  const models = Object.fromEntries(
+    Array.from({ length: 33 }, (_, index) => [
+      `model-${index}`,
+      {
+        available: true,
+        ...(index === 0 ? { future: { available: false } } : {}),
+      },
+    ]),
+  );
+  const usage = await readCodexUsage(
+    '/profile',
+    deps({
+      readTextFile: vi.fn(async () => CODEX_CREDS),
+      fetch: jsonFetch({ model_usage: models }),
+    }),
+  );
+  expect(usage.metadata?.models).toHaveLength(32);
+  expect(usage.metadata?.capture.truncated).toBe(true);
+  expect(usage.metadata?.capture.unhandledFields).toEqual([
+    'model_usage[].future.available',
+  ]);
+});
+
+// Sanitized field shape from the successful macOS secure-store probe on 2026-10-01.
+test('captures Claude spending units, weekly breakdown and active limit details from the live shape', async () => {
+  const usage = await readClaudeUsage(
+    '/selected',
+    deps({
+      readClaudeSecureCredentials: async () => CLAUDE_CREDS,
+      fetch: jsonFetch({
+        five_hour: { utilization: 20, resets_at: AT },
+        extra_usage: {
+          is_enabled: false,
+          user_disabled: true,
+          spend_limit_reached: false,
+          credits_ever_enabled: true,
+        },
+        limits: [
+          {
+            kind: 'session',
+            group: 'included',
+            percent: 20,
+            severity: 'normal',
+            resets_at: AT,
+            is_active: true,
+            scope: null,
+          },
+        ],
+        spend: {
+          used: { amount_minor: 1234, currency: 'USD', exponent: 2 },
+          enabled: false,
+          percent: 0,
+          severity: 'normal',
+          can_purchase_credits: true,
+          can_toggle: false,
+          disclaimer: 'Provider spending information',
+        },
+        member_dashboard_available: true,
+        seven_day_breakdown: {
+          as_of: AT,
+          window_started_at: AT,
+          rows: [{ key: 'code', display_name: 'Claude Code', percent: 12.5 }],
+        },
+      }),
+    }),
+  );
+  expect(usage.status).toBe('ok');
+  expect(usage.metadata?.spending).toMatchObject({
+    used: { amountMinor: 1234, currency: 'USD', exponent: 2 },
+    enabled: false,
+    usedPercent: 0,
+    canPurchaseCredits: true,
+    canToggle: false,
+    disclaimer: 'Provider spending information',
+  });
+  expect(usage.metadata?.extraUsage).toMatchObject({
+    userDisabled: true,
+    everEnabled: true,
+  });
+  expect(usage.metadata?.limitDetails).toEqual([
+    {
+      kind: 'session',
+      group: 'included',
+      usedPercent: 20,
+      severity: 'normal',
+      resetsAt: AT,
+      active: true,
+      model: undefined,
+      modelId: undefined,
+      surface: undefined,
+    },
+  ]);
+  expect(usage.metadata?.weeklyBreakdown).toEqual({
+    asOf: AT,
+    windowStartedAt: AT,
+    rows: [{ key: 'code', label: 'Claude Code', usedPercent: 12.5 }],
+  });
+  expect(usage.metadata?.memberDashboardAvailable).toBe(true);
+  expect(usage.metadata?.capture).toEqual({
+    source: 'claude-oauth-usage',
+    credentialStorage: 'secure-store',
+    unhandledFields: [],
+    excludedFields: [],
+    truncated: false,
   });
 });

@@ -1164,9 +1164,13 @@ describe('scoped audit policy composition', () => {
   });
 
   it('does not report production residuals unused after only a full-graph audit', () => {
+    const committed = committedConfig();
     const result = evaluateAuditPolicy(
       [{ scope: 'root', reachability: 'full', audit: cleanAudit() }],
-      committedConfig(),
+      // A clean audit leaves every committed exception unused too; the
+      // assertion is about residuals, so compose from the committed file
+      // with only its exceptions cleared rather than assuming it ships none.
+      { ...committed, exceptions: [] },
       { now: NOW },
     );
     expect(result.exceptionErrors).toEqual([]);
@@ -1188,7 +1192,11 @@ describe('scoped audit policy composition', () => {
     const result = evaluateAuditPolicy(documents, config, { now: NOW });
     expect(result.ok).toBe(false);
     expect(result.exceptionErrors).toEqual([
-      expect.stringContaining('unused exception for root:'),
+      // Every committed exception (plus the one pushed above) is unused by
+      // the clean audit, so the count follows the file's own shape.
+      ...config.exceptions.map(() =>
+        expect.stringContaining('unused exception for root:'),
+      ),
       ...config.residuals.map(() =>
         expect.stringContaining('unused residual for root:'),
       ),

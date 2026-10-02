@@ -1,0 +1,7 @@
+{
+  "revision": "63055062f4e1fef01fc321be8dc8c16a108961b6",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-read useGitStatusQuery and useGitLogQuery against projectData.ts and the changed coding routes: refusals (409 git-dir-outside-project, repository-config-refused, object-not-available; 403 outside-project) are success:false envelopes, which the hooks map to null and [] as documented. No prose change."}
+  ]
+}

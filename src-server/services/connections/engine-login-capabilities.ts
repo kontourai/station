@@ -16,18 +16,10 @@
  * derives the mechanism list FROM that evidence rather than beside it, so
  * there is no second field that can disagree with it.
  *
- * Two mechanisms, not four. `device-code` and `api-key-stdin` each have a
- * literal token in the CLI's own help. `browser-oauth` and `none` do not:
- * nothing either CLI prints says "this opens a browser", and reporting it
- * would be exactly the asserted-but-underived capability this module exists
- * to avoid. Absence of `device-code` evidence is reported as absence.
- *
- * Observed live on macOS 2026-09-11 (the strings the fixtures replay):
- *
- *   codex login --help        ->  "--device-auth", "--with-api-key"
- *   claude auth login --help  ->  "--claudeai", "--console", "--sso" — and
- *                                 no device or stdin token, so claude
- *                                 declares neither mechanism.
+ * Codex advertises device-code and API-key stdin flags. Claude's --claudeai
+ * flag selects its subscription browser flow; a live isolated probe on
+ * 2026-10-01 also confirmed the URL and "Paste code here" prompt. The relay
+ * still requires both at runtime before accepting a code.
  */
 import {
   type CliCommandResult,
@@ -44,7 +36,10 @@ import {
  * full space of ways an engine can be signed in — only the ones whose presence
  * a literal token in the CLI's own output establishes.
  */
-export type EngineLoginMechanism = 'device-code' | 'api-key-stdin';
+export type EngineLoginMechanism =
+  | 'device-code'
+  | 'api-key-stdin'
+  | 'browser-code';
 
 export interface EngineLoginMechanismEvidence {
   readonly mechanism: EngineLoginMechanism;
@@ -112,7 +107,13 @@ const LOGIN_MATCHERS: readonly EngineLoginMatcher[] = [
 function probeFor(engine: EnrolmentEngine): EngineLoginProbe {
   return {
     helpArgs: [...enrolmentLoginArgs(engine), '--help'],
-    matchers: LOGIN_MATCHERS,
+    matchers:
+      engine === 'claude'
+        ? [
+            ...LOGIN_MATCHERS,
+            { mechanism: 'browser-code', pattern: /(--claudeai\b)/ },
+          ]
+        : LOGIN_MATCHERS,
   };
 }
 

@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 105,
+  "pageLocalMediaQueryCeiling": 106,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -140,6 +140,10 @@
     "src-ui/src/components/setup/ExistingSetupImportStepper.css": {
       "count": 1,
       "reason": "The embedded setup-import workflow stacks its own heading and full-width Review import control inside both First Run and Settings; neither host nor the shared action-row primitive owns that internal heading geometry."
+    },
+    "src-ui/src/components/status/live-status.css": {
+      "count": 1,
+      "reason": "The shared chat status pill's own 44px touch floor for its actionable (button) form, at phone width or on a coarse pointer. Nothing above it owns this control's box: it floats over the pane, outside any __actions container the shared mobile rule reaches."
     },
     "src-ui/src/components/usage-stats/UsageRollupPanel.css": {
       "count": 1,

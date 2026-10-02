@@ -1,0 +1,7 @@
+{
+  "revision": "335893e0b2f5e87d0ccd02115fd0cfa760b215c1",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Merged bytes after #2994 (reading-status header and amendment note): this branch's edit — the presence section no longer says Activity shows collaborators and names useLiveActivityQuery as the tray's source — is unchanged and matches ProjectSidebarPresenceTray; #2994's header changes do not touch that section."}
+  ]
+}

@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
-import { ErrorState, SkeletonList } from '../state';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import './ConversationPullRequestLinks.css';
 
 const EMPTY: PullRequestLinkIdentity = {
@@ -35,8 +35,15 @@ export function ConversationPullRequestLinks({
   suggested,
   derived = [],
   onOpen,
+  linkFormCollapsed = false,
 }: {
   conversationId: string;
+  /**
+   * Start the manual link form closed behind its "Link a pull request"
+   * disclosure. The pull requests panel keeps it open (linking is that
+   * panel's job); a session's Details, where it is a rare action, collapses it.
+   */
+  linkFormCollapsed?: boolean;
   suggested?: Partial<PullRequestLinkIdentity>;
   derived?: ConversationPullRequestLinkObservation[];
   onOpen?: (link: ConversationPullRequestLinkObservation) => void;
@@ -126,11 +133,6 @@ export function ConversationPullRequestLinks({
           Refresh
         </Button>
       </header>
-      <p>
-        Explicit links are conversation navigation. Branch-derived matches and
-        Task-declared outputs keep their existing provenance and are not changed
-        here.
-      </p>
       {links.isPending ? (
         <SkeletonList count={1} label="Reading linked pull requests" />
       ) : links.error ? (
@@ -139,6 +141,8 @@ export function ConversationPullRequestLinks({
           title="Linked pull requests unavailable"
           description={links.error.message}
         />
+      ) : visibleLinks.length === 0 ? (
+        <Empty label="Nothing is linked to this conversation yet." />
       ) : (
         <ul>
           {visibleLinks.map((link) => (
@@ -186,73 +190,90 @@ export function ConversationPullRequestLinks({
           ))}
         </ul>
       )}
-      <div className="conversation-pr-links__form">
-        <label>
-          Provider
-          <input
-            className="editor-input"
-            value={draft.provider}
-            onChange={(event) =>
-              setDraft({ ...draft, provider: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Host
-          <input
-            className="editor-input"
-            value={draft.host}
-            onChange={(event) =>
-              setDraft({ ...draft, host: event.target.value })
-            }
-          />
-        </label>
-        <label>
-          Owner
-          <input
-            className="editor-input"
-            value={draft.repository.owner}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                repository: { ...draft.repository, owner: event.target.value },
-              })
-            }
-          />
-        </label>
-        <label>
-          Repository
-          <input
-            className="editor-input"
-            value={draft.repository.name}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                repository: { ...draft.repository, name: event.target.value },
-              })
-            }
-          />
-        </label>
-        <label>
-          Pull request number
-          <input
-            className="editor-input"
-            inputMode="numeric"
-            value={draft.ref}
-            onChange={(event) =>
-              setDraft({ ...draft, ref: event.target.value })
-            }
-          />
-        </label>
-        <Button
-          disabled={!canLink}
-          pending={pending?.startsWith('link:')}
-          pendingLabel="Linking"
-          onClick={() => void mutate('link', draft)}
-        >
-          Link pull request
-        </Button>
-      </div>
+      {/* The manual link form sits in its own disclosure: open where linking
+          is the surface's job, collapsed where it is a rare action so the
+          section leads with what IS linked, not with five empty fields. */}
+      <details
+        className="conversation-pr-links__add"
+        open={!linkFormCollapsed || undefined}
+      >
+        <summary>Link a pull request</summary>
+        <p>
+          A link you add here is for navigating this conversation. Matches
+          derived from the current branch and outputs a Task declared keep their
+          own provenance and are not changed here.
+        </p>
+        <div className="conversation-pr-links__form">
+          <label>
+            Provider
+            <input
+              className="editor-input"
+              value={draft.provider}
+              onChange={(event) =>
+                setDraft({ ...draft, provider: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Host
+            <input
+              className="editor-input"
+              value={draft.host}
+              onChange={(event) =>
+                setDraft({ ...draft, host: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Owner
+            <input
+              className="editor-input"
+              value={draft.repository.owner}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  repository: {
+                    ...draft.repository,
+                    owner: event.target.value,
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            Repository
+            <input
+              className="editor-input"
+              value={draft.repository.name}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  repository: { ...draft.repository, name: event.target.value },
+                })
+              }
+            />
+          </label>
+          <label>
+            Pull request number
+            <input
+              className="editor-input"
+              inputMode="numeric"
+              value={draft.ref}
+              onChange={(event) =>
+                setDraft({ ...draft, ref: event.target.value })
+              }
+            />
+          </label>
+          <Button
+            disabled={!canLink}
+            pending={pending?.startsWith('link:')}
+            pendingLabel="Linking"
+            onClick={() => void mutate('link', draft)}
+          >
+            Link pull request
+          </Button>
+        </div>
+      </details>
       {mutationError && <p role="alert">{mutationError}</p>}
     </section>
   );

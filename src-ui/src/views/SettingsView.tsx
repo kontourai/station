@@ -990,8 +990,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               </select>
               <span className="settings__field-hint">
                 A project can override its new-chat workspace and its default
-                model connection and model. Every other setting on this page
-                belongs to the Station.
+                model connection and model. Other settings keep the Station or
+                device scope shown in their section.
               </span>
             </div>
 
@@ -1867,23 +1867,59 @@ function SettingsSectionNav({
     hrefForSection,
     APP_DESTINATION_REGISTRY.getSettingsNav(flags),
   );
+  const navigateToItem = (key: string) => {
+    if (!key.startsWith(NAV_ONLY_KEY_PREFIX)) {
+      navigateToSection(key);
+      return;
+    }
+    // Route changes go through the registered unsaved-changes guard once.
+    const target = items.find((item) => item.key === key);
+    if (target) navigate(target.href);
+  };
+  const groups = items.reduce<
+    { label: string | undefined; items: SectionNavItem[] }[]
+  >((result, item) => {
+    if (item.groupLabel || result.length === 0) {
+      result.push({ label: item.groupLabel, items: [] });
+    }
+    result[result.length - 1]!.items.push(item);
+    return result;
+  }, []);
   return (
-    <SectionNav
-      className="settings__section-nav section-nav--rail"
-      aria-label="Settings sections"
-      items={items}
-      activeKey={activeSection}
-      onNavigate={(key) => {
-        if (!key.startsWith(NAV_ONLY_KEY_PREFIX)) {
-          navigateToSection(key);
-          return;
-        }
-        // The canonical `navigate`, so the page's unsaved-changes guard is
-        // asked exactly once — leaving Settings with a pending edit through
-        // this row must behave like leaving it any other way (src-ui/AGENTS.md).
-        const target = items.find((item) => item.key === key);
-        if (target) navigate(target.href);
-      }}
-    />
+    <>
+      <label className="settings__mobile-section-picker">
+        Settings section
+        <select
+          className="editor-select"
+          value={activeSection}
+          onChange={(event) => navigateToItem(event.target.value)}
+        >
+          {groups.map((group) =>
+            group.label ? (
+              <optgroup key={group.label} label={group.label}>
+                {group.items.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : (
+              group.items.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))
+            ),
+          )}
+        </select>
+      </label>
+      <SectionNav
+        className="settings__section-nav section-nav--rail"
+        aria-label="Settings sections"
+        items={items}
+        activeKey={activeSection}
+        onNavigate={navigateToItem}
+      />
+    </>
   );
 }

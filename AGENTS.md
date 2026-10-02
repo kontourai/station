@@ -44,7 +44,10 @@ queue is part of it. What that means in practice:
       position state pullRequest { number } } } } } }'
   ```
 - **The queue batches** (3 builds, 3 merges, `ALLGREEN`); a red entry is
-  removed and those behind it rebuild. Waiting PRs mean it is working.
+  removed and those behind it rebuild.
+- **Automate with the app token, not your quota**
+  ([setup](docs/guides/development.md#github-automation-token)); read PR and
+  check status over REST (`gh api repos/...`).
 - **Arm, confirm once with the query above, then stop.** Never poll the queue;
   a red or conflicted dequeue shows only on the PR itself.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,

@@ -342,6 +342,12 @@ function applyKeypress(
         type: 'respond-approval',
         threadId: focusedThreadId,
         requestId: selected.requestId,
+        ...(selected.requestEventId &&
+        !selected.isQuestion &&
+        (selected.requestType === 'approval' ||
+          selected.requestType === 'permission')
+          ? { expectedRequestEventId: selected.requestEventId }
+          : {}),
         decision,
       },
     };

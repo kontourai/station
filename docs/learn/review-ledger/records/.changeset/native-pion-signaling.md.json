@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/native-pion-signaling.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"a2a034ddbe2806b9c3610cd398dd5db41d930be9dd046cb4b8771b31f42a157c","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

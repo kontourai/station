@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/agent-engine-unification.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Original unification decisions, historical capability snapshots, and later implementation amendments.",
+
+  "limits": "Current matrix/resolver ownership was checked; every adapter channel, UI field, dated probe, and slice completion claim was not revalidated.",
+
+  "document": {"digest":"ecc9aa076720d9e69500c50a1c4bcc098cd9853aac1b72c79ef704c01b031072","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+  "sources": [
+    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009","revision":"69eb5db90072c149c16115135f495ac538155e71"}
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Verified renamed Codex spawn owner preserves full process environment and selected app-home override semantics."
+  ]
+}
