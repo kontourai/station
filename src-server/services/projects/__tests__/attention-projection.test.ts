@@ -2543,7 +2543,7 @@ describe('device pairing requests need attention (#765 D5)', () => {
         // No viewer capability supplied — an unknown caller fails closed:
         // the projection must never claim decidability nothing derived.
         viewerCanDecide: false,
-        openHref: '/connections',
+        openHref: '/notifications?pairing=pair-req-1',
         source: { requestId: 'pair-req-1' },
       },
     ]);
@@ -2715,7 +2715,7 @@ describe('Station cannot run its own Agent (#1536 D8)', () => {
       expect.objectContaining({
         id: 'setup-incomplete:model-connection:station',
         kind: 'setup-incomplete',
-        title: 'Station cannot run yet',
+        title: 'Agent “Station” needs setup',
         body: 'No enabled LLM provider connection is configured.',
         openHref: '/connections/models',
         source: { requirement: 'model-connection', agentSlug: 'station' },

@@ -49,7 +49,10 @@ async function openComposer(
 ) {
   await page.goto('/');
   await dismissSetupLauncher(page);
-  await page.getByRole('button', { name: /^Start direct chat/ }).click();
+  await page
+    .locator('.home-view__actions')
+    .getByRole('button', { name: /Chat options/i })
+    .click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();

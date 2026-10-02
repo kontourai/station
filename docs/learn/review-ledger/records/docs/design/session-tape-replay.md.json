@@ -18,7 +18,11 @@
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
+    {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
     {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"15b1e2490e7c8a652bffaf3a16a297d9df3de75f6d8c61c00fc8f8a993f68c6a","revision":"e7bb11891396b509d47e7c0ba3ba9066a74a03db"},
+
+    {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"885839611cb542e2c92b70669966faa7c20be3d8c25e046f58b0dcde15b26fbc","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
@@ -46,13 +50,9 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/timeline.ts","digest":"e4ef9cf2e00be49810869092c67c0f9b6358a31429fcee394d313b8eaf9baabb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"tests/chat-replay.spec.ts","digest":"22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
 
-    {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/index.css","digest":"d65804ed9f4ae74a434ee49ee133cf43f1f88156fff336c2219e1a007ff2ed3a","revision":"0653a461551761371d15a53b37db51d7d0068bfb"},
-
-    {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"tests/chat-replay.spec.ts","digest":"22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

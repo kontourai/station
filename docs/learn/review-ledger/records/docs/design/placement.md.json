@@ -28,47 +28,45 @@
 
     {"path":"packages/sdk/src/components/LayoutHeader.tsx","digest":"e8fa75ca2b662a2b0befe9c660d4e2f264f387a9dccac7dce0a7734d9c1bca10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
-
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
-
-    {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"d50ca5c63c0008b1b6783894ad8971f1bbf9c3ba7bc4c34eb1aacfc2e515226b","revision":"791bf6c6aae390aadba2c5bc9e11cf6db0e3e893"},
 
     {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"7027af11f0680b7e754e6135e223f27127ae0c5bbc8a8f73cd27768a9e1e4951","revision":"44df12cb45be5c8adced267ed109a944113cdfa5"},
+    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
+
+    {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"d50ca5c63c0008b1b6783894ad8971f1bbf9c3ba7bc4c34eb1aacfc2e515226b","revision":"791bf6c6aae390aadba2c5bc9e11cf6db0e3e893"},
+
+    {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"8b2afcd595e892421e4f0dc767d1b776074be7b78127b2d6607954bf454a5056","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/chat.css","digest":"efe79b839097525390373d673582b054140651d48c5ecd946fb47610d25510ef","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
 
     {"path":"src-ui/src/components/chat/ChatMarkdownAnchor.tsx","digest":"58bb0fa41719b1f9bf314506cc756eb6a6ccf6a71b3c55fa2579af09b31363ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat/MarkdownLinkContext.ts","digest":"1bf70d0065b6b9678f1369a79141b4073267cf68fbb08d9037a576d373d17c56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/chat/chat.css","digest":"e1c6504a34f0fae12a91945517b269ae43931105d1163c526cb5b9e6c97931ae","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
-
     {"path":"src-ui/src/components/dialog-history.ts","digest":"afd018b2d29cd8242ec7c02dc01fe0cd53bb765ba84f6ee919f0c92da2d54a8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/header/RegionToolbarControls.tsx","digest":"1c97058bfab1e930795e2807b2b20f00d7536bf91c09e53d221505be630c7d08","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
     {"path":"src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx","digest":"470ea53ccefa5a886d452dc8220efbd61980d55325e84fa5288420595923dab0","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
+    {"path":"src-ui/src/components/header/RegionToolbarControls.tsx","digest":"1c97058bfab1e930795e2807b2b20f00d7536bf91c09e53d221505be630c7d08","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
+
     {"path":"src-ui/src/components/header/useRegionSurfaceMenu.ts","digest":"f3b5b6862088c6622a7730b1221ce2bdafb0931a36252ebcd7680c886b79e842","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx","digest":"c56b19ab7cd39b42f1336884553e107ccb701e6ed1bf2bc3ed4ccb2085ac7508","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx","digest":"756aadc751086e43c7c862b7c1d5fa7750a29622c999a451b9ec4f8b9429f0c9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-open.ts","digest":"a4f56cc7926d499d1611ee24a5a707ff985fc26e4d1282b3acb0083b0f3fd845","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/project-sidebar/pill-region-placement.ts","digest":"25fbfd594288f945664092139e20c1e37c1a74888cdddb1bf7826b0a7bf3a296","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"cfe2b91b0e6b975623897be596556ed668fe3025983972e043ba0a54526ae934","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx","digest":"c56b19ab7cd39b42f1336884553e107ccb701e6ed1bf2bc3ed4ccb2085ac7508","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx","digest":"756aadc751086e43c7c862b7c1d5fa7750a29622c999a451b9ec4f8b9429f0c9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx","digest":"adbfc13058751ddc325188504ed102282546456b531287a3ae12b773c0b900e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -82,6 +80,8 @@
 
     {"path":"src-ui/src/contexts/navigation-store.ts","digest":"d0cc105841ca2405afd67e7724376d98be9246bb0d62a663bfd2684218402a33","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
+    {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"cfe2b91b0e6b975623897be596556ed668fe3025983972e043ba0a54526ae934","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
+
     {"path":"src-ui/src/contexts/useDismissPhoneLayer.ts","digest":"9ebdbb98dd1fe419fb92f7ee1210efbe7bd141c53697ddf9453478d9e8ff3720","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/contexts/useOpenInRegion.ts","digest":"9486a13c0b8dca422202e5837e85b612314c94d6410cd7d9c97a6fdc39e213ed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -92,11 +92,11 @@
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/hooks/useLongPress.ts","digest":"934aeb76548e960ed8a365b610a0dff8c71d073102ff0d9cd8ddd4692aab63f4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/hooks/useLongPress.ts","digest":"f559399edd7656e922502582eaba09ab20d9c25ea91c142c9b0d65b1b9f3d3df","revision":"9dbe4f65b46fcab127f36e9d878a2c535f381fec"},
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"d65804ed9f4ae74a434ee49ee133cf43f1f88156fff336c2219e1a007ff2ed3a","revision":"0653a461551761371d15a53b37db51d7d0068bfb"},
+    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -114,20 +114,6 @@
 
     {"path":"src-ui/src/views/PersonalBoardView.tsx","digest":"ea91263596a16ded25be80f4679e8f4afd48340cd36a6cdcc0cb60246312248e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","digest":"b25d6b5a453cac24f77ec5495a7fc515ead1ebe098b9ab6d55279a0dd7b7d807","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/LayoutPaneTitles.tsx","digest":"8b0bd7bea8418658402853a12ddb81d06d340f87ce812b5c13221bc1cca16b14","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/LayoutWorkspacePane.tsx","digest":"bf99e5dffd3076e544ce9d30aa06a2b8a96ee5c193c93a07f68f911c5c5f271c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionChooserPanel.tsx","digest":"58d435aeb106f76ced1195bb9220b4d1db306d209746863aea1e10a84b32837a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionChromeBar.tsx","digest":"38ed2ff9111e6b3f8d8fc4dc63b13897d25adea847d3ac0f7a2427f0058a55e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionEmptyChooser.tsx","digest":"b5db980bb3d0f19a6896f1fda56901525b0fae2af762a5ac0a920ff6d87f8b9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"6bebef5e8aaae046ffc950b9539faf38e131164ea1242f9d2e9216678e12119d","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
-
     {"path":"src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx","digest":"8560e54fa82f7309fd7189b7f99919bdfc828e79455d3f378aeef269cf3ceb9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionEmptyChooser.test.tsx","digest":"8088c3f795451158675d442af0a8cb9964b60b2e33d1ab369e457e655ae45ddb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -141,6 +127,20 @@
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx","digest":"466d25073741824d65a8de1be3b0d6ec94bd32c2716731ca2b170c99834dd27f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","digest":"dbb42796254704a45f20aeff3d4f14aad76f5a2a35303827559ac3e22dc21d06","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","digest":"b25d6b5a453cac24f77ec5495a7fc515ead1ebe098b9ab6d55279a0dd7b7d807","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/LayoutPaneTitles.tsx","digest":"8b0bd7bea8418658402853a12ddb81d06d340f87ce812b5c13221bc1cca16b14","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/LayoutWorkspacePane.tsx","digest":"bf99e5dffd3076e544ce9d30aa06a2b8a96ee5c193c93a07f68f911c5c5f271c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionChooserPanel.tsx","digest":"58d435aeb106f76ced1195bb9220b4d1db306d209746863aea1e10a84b32837a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionChromeBar.tsx","digest":"38ed2ff9111e6b3f8d8fc4dc63b13897d25adea847d3ac0f7a2427f0058a55e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionEmptyChooser.tsx","digest":"b5db980bb3d0f19a6896f1fda56901525b0fae2af762a5ac0a920ff6d87f8b9e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"6bebef5e8aaae046ffc950b9539faf38e131164ea1242f9d2e9216678e12119d","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
 
     {"path":"src-ui/src/workspace-panes/useDockProject.ts","digest":"c23ae2160b25f249c27c5e83f6d3df8f0994de980b8d84b4d225ca6db9394260","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

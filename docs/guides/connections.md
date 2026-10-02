@@ -31,6 +31,12 @@ saved settings from a check that actually reached the provider:
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
 
+When adding a Model connection, **Create** saves it and immediately checks the
+provider. OpenAI's service requires an API key. For a custom endpoint, follow
+that server's authentication requirements; some permit anonymous access or
+host-managed credentials. Blank fields alone do not establish readiness. A
+refused check retains its reason so you can correct the settings and retry.
+
 **Test Connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
@@ -163,9 +169,34 @@ exchange, every provider plan or Windows secure-store behavior.
 
 ## Saved Station addresses
 
-Open **Manage Stations** in the header to inspect the computers this client
-connects to. Each address wraps on narrow screens so its port stays visible.
-The row's **More actions** menu provides **Copy address** and **Edit Station**.
+Tap the connection dot on a phone, or the connection name on desktop, to
+choose a Station. A checkmark identifies the current Station, whose status is
+live. The chooser does not probe inactive Stations; they say **Not checked**
+unless a saved access or connection error needs attention. Holding the phone's
+dot shows its saved name without switching or opening the chooser.
+
+Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
+**Switch to this Station** and **Edit Station**; inspecting a row does not
+switch the active connection. Switching respects unsaved-work decisions.
+Each address wraps on narrow screens so its port stays visible. The row's
+**More actions** menu provides **Copy address** and **Check reachability**.
+Expand the row's details to select its address text, or use **Copy address**
+to copy the full address directly.
+For the current saved Station, **Reconnect** opens its access-request flow
+even when this device is already paired, so you can request fresh approval.
+It is not offered for an inactive Station or a connection managed by the
+native host. Completing reauthorization still requires Station approval.
+The manager uses the current Station's live status; inactive rows show
+**Not checked** until checked there. Connections with valid saved access do
+not prompt for another access request. A rejected or missing credential still
+offers the appropriate access remedy.
+
+Use an HTTPS address when connecting another device. An HTTP address requires
+**Allow an unencrypted connection** before requesting access, including a
+`localhost` address in a native app. The exception is numeric loopback
+(`127.0.0.1` or `[::1]`), or the browser session on the Station that served its
+page. The choice applies only to that exact origin on this device; approval
+and pairing are still required.
 
 Native clients save edits through the shared profile store. A name change
 preserves pairing and updates references to that profile, including its default
@@ -234,8 +265,10 @@ replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer
 generation and different key before trust can be restored.
 
-In the browser, **Connections → Computers → Broker routes** first has a **Station
-signing key** step. A fresh browser with no Device cookie can reach the same
+In the browser, open **Connections → Computers → Broker routes → Advanced:
+broker setup** to start the **Station signing key** step. This disclosure stays
+closed for ordinary direct-address and pairing use; saved route actions remain
+outside it. A fresh browser with no Device cookie can reach the same
 setup from **Connect to a Station → Use a broker invitation**. The operator can run
 `npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
 send its public JSON report through a separate trusted channel. Compare the
