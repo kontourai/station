@@ -13,6 +13,19 @@ import {
   type ApplicationChannel,
   createApplicationChannelFetch,
 } from './applicationChannel.js';
+import {
+  captureNativeEnrollmentFailure,
+  type NativeEnrollmentFailureDiagnostic,
+  type NativeEnrollmentFailureStage,
+  nativeEnrollmentCleanupCode,
+} from './nativeEnrollmentFailure.js';
+
+export {
+  captureNativeEnrollmentFailure,
+  type NativeEnrollmentFailureDiagnostic,
+  nativeEnrollmentFailureDiagnostic,
+} from './nativeEnrollmentFailure.js';
+
 import { raceOwnedLifetime } from './browserTransportWait.js';
 
 const PATHS = new Set<string>([
@@ -138,7 +151,7 @@ export function createNativeEnrollmentExchange(
     } catch (error) {
       if (input.signal.aborted)
         void opening.then((late) => late.close()).catch(() => {});
-      throw error;
+      throw captureNativeEnrollmentFailure(error, 'peer-open');
     }
     const lifetime = new AbortController();
     const peer = Object.freeze({ ...opened.peer });
@@ -151,13 +164,21 @@ export function createNativeEnrollmentExchange(
       await raceOwnedLifetime(opened.assertCurrent(), signal);
       signal.throwIfAborted();
     };
+    let stage: NativeEnrollmentFailureStage = 'currentness';
+    let httpStatus: number | undefined;
+    let failed = false;
+    let primary: unknown;
+    let acceptedResult!: T;
     try {
       await assertCurrent();
+      stage = 'host-prepare';
       const prepared = copyPrepared(
         await raceOwnedLifetime(prepare(peer.peerHandle), signal),
         peer,
       );
+      stage = 'currentness';
       await assertCurrent();
+      stage = 'application-request';
       const fetch = createApplicationChannelFetch({
         origin: peer.stationAudience,
         signal,
@@ -173,24 +194,72 @@ export function createNativeEnrollmentExchange(
           signal,
         },
       );
+      httpStatus = response.status;
+      stage = 'application-response';
       const value = await readBoundedResponse(response, signal);
+      stage = 'currentness';
       await assertCurrent();
+      stage = 'host-accept';
       // Core closes its one-request channel at EOF. Host acceptance verifies
       // the retained request capture and current owners, not RTC liveness.
       const accepted = await raceOwnedLifetime(
         accept(prepared.requestHandle, value, response.status),
         signal,
       );
+      stage = 'currentness';
       await assertCurrent();
-      return accepted;
+      acceptedResult = accepted;
+    } catch (cause) {
+      failed = true;
+      primary = captureNativeEnrollmentFailure(cause, stage, httpStatus);
     } finally {
       clearTimeout(timer);
       lifetime.abort();
+      const cleanup: NonNullable<
+        NativeEnrollmentFailureDiagnostic['cleanup']
+      >[number][] = [];
+      let cleanupFailure: Error | undefined;
       try {
         opened.channel.close();
-      } finally {
+      } catch (cause) {
+        cleanup.push({
+          stage: 'channel-close',
+          code: nativeEnrollmentCleanupCode(cause),
+        });
+        cleanupFailure = captureNativeEnrollmentFailure(
+          cause,
+          'channel-close',
+          httpStatus,
+        );
+      }
+      try {
         await opened.close();
+      } catch (cause) {
+        cleanup.push({
+          stage: 'peer-close',
+          code: nativeEnrollmentCleanupCode(cause),
+        });
+        cleanupFailure ??= captureNativeEnrollmentFailure(
+          cause,
+          'peer-close',
+          httpStatus,
+        );
+      }
+      if (cleanupFailure) {
+        if (failed)
+          captureNativeEnrollmentFailure(primary, stage, httpStatus, cleanup);
+        else {
+          failed = true;
+          primary = captureNativeEnrollmentFailure(
+            cleanupFailure,
+            'peer-close',
+            httpStatus,
+            cleanup,
+          );
+        }
       }
     }
+    if (failed) throw primary;
+    return acceptedResult;
   };
 }

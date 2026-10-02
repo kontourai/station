@@ -1,3 +1,8 @@
+import {
+  captureNativeEnrollmentFailure,
+  type NativeEnrollmentFailureDiagnostic,
+  nativeEnrollmentFailureDiagnostic,
+} from '@kontourai/station-connect/native-enrollment';
 import type { StationProfile } from '@kontourai/station-contracts';
 import type { NativeRelayEnrollmentHostResumeAttempt } from '@kontourai/station-contracts/native-relay-enrollment';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -98,6 +103,8 @@ export function NativeRelayEnrollmentWizard({
   const [invitation, setInvitation] = useState('');
   const [registerAccount, setRegisterAccount] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [beginDiagnostic, setBeginDiagnostic] =
+    useState<NativeEnrollmentFailureDiagnostic>();
   const [notice, setNotice] = useState<string | null>(null);
   const clientRef = useRef<EnrollmentClient | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
@@ -204,6 +211,7 @@ export function NativeRelayEnrollmentWizard({
   const begin = useMutation({
     mutationFn: async () => {
       setError(null);
+      setBeginDiagnostic(undefined);
       setNotice(null);
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -229,7 +237,7 @@ export function NativeRelayEnrollmentWizard({
         clientRef.current = null;
         if (client && !terminalRef.current)
           await client.abort().catch(() => undefined);
-        throw cause;
+        throw captureNativeEnrollmentFailure(cause, 'begin-preflight');
       }
     },
     onSuccess: (result) => {
@@ -239,6 +247,7 @@ export function NativeRelayEnrollmentWizard({
       void queryClient.invalidateQueries({ queryKey: recoveryKey });
     },
     onError: (cause) => {
+      setBeginDiagnostic(nativeEnrollmentFailureDiagnostic(cause));
       reportEnrollmentFailure(cause, setError);
       void queryClient.invalidateQueries({ queryKey: recoveryKey });
     },
@@ -247,6 +256,7 @@ export function NativeRelayEnrollmentWizard({
   const resume = useMutation({
     mutationFn: async (selectedHandle: string) => {
       setError(null);
+      setBeginDiagnostic(undefined);
       setNotice(null);
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -458,6 +468,7 @@ export function NativeRelayEnrollmentWizard({
     setInvitation('');
     setRegisterAccount(false);
     setError(null);
+    setBeginDiagnostic(undefined);
     setNotice(null);
     begin.reset();
     login.reset();
@@ -740,6 +751,22 @@ export function NativeRelayEnrollmentWizard({
       ) : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
+      {error && beginDiagnostic ? (
+        <details>
+          <summary>Device setup troubleshooting</summary>
+          <p>
+            Stage: {beginDiagnostic.stage}. Code: {beginDiagnostic.code}.
+          </p>
+          {beginDiagnostic.httpStatus === undefined ? null : (
+            <p>HTTP status: {beginDiagnostic.httpStatus}</p>
+          )}
+          {beginDiagnostic.cleanup?.map((failure) => (
+            <p key={failure.stage}>
+              Cleanup: {failure.stage}. Code: {failure.code}.
+            </p>
+          ))}
+        </details>
+      ) : null}
       {(attemptStartedRef.current &&
         phase !== 'configured' &&
         phase !== 'verifying' &&

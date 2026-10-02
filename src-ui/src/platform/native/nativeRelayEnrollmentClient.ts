@@ -1,4 +1,7 @@
-import { createNativeEnrollmentExchange } from '@kontourai/station-connect/native-enrollment';
+import {
+  captureNativeEnrollmentFailure,
+  createNativeEnrollmentExchange,
+} from '@kontourai/station-connect/native-enrollment';
 import {
   NATIVE_RELAY_ENROLLMENT_PATHS,
   NATIVE_RELAY_ENROLLMENT_VERSION,
@@ -283,7 +286,13 @@ export function createNativeRelayEnrollmentClient(
   };
 
   return Object.freeze({
-    recovery: recoveryProjection,
+    recovery: async () => {
+      try {
+        return await recoveryProjection();
+      } catch (cause) {
+        throw captureNativeEnrollmentFailure(cause, 'recovery');
+      }
+    },
     resume: async (selectedHandle: string) => {
       signal.throwIfAborted();
       if (busy) throw new Error('native_enrollment_operation_pending');

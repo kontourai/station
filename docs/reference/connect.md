@@ -36,6 +36,24 @@ authentication, Device approval and Project membership remain separate.
 Android does not register the relay-secret association. Source composition
 does not qualify an installed native or collaborator journey.
 
+## Native Device setup failure diagnostics
+
+The `/native-enrollment` exchange retains the primary operation failure while
+attempting both channel and host-peer cleanup. Cleanup failures remain separate
+and a cleanup-only failure rejects the operation. The native Device setup UI
+can show an optional troubleshooting disclosure containing a fixed operation
+stage, an allowlisted code (or `unknown`), an integer HTTP status when a response
+was received, and at most two cleanup stage/code entries. It displays no raw
+error text, response body, URL, proof, credential or owner identifier.
+
+These fields identify the local failing boundary, not a verified server cause.
+`peer-open` includes binding, ICE and peer admission; a missing HTTP status does
+not establish whether the server received an earlier request. This diagnostic
+adds no retries, admission authority or native command inputs. Caller tests
+exercise rejection and cleanup through application channels and the mounted
+setup UI; they do not diagnose an earlier installed attempt or prove a successful
+Device enrollment.
+
 ## Application channel request preparation
 
 The `/application-channel` entry exports `ApplicationChannel`,

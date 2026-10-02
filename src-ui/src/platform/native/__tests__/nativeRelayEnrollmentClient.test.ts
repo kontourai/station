@@ -1,8 +1,10 @@
 // @vitest-environment node
+
 import {
   type ApplicationChannel,
   serveApplicationChannel,
 } from '@kontourai/station-connect/application-channel';
+import { nativeEnrollmentFailureDiagnostic } from '@kontourai/station-connect/native-enrollment';
 import {
   NATIVE_RELAY_ENROLLMENT_BASE_PATH,
   NATIVE_RELAY_ENROLLMENT_VERSION,
@@ -26,7 +28,9 @@ const VERSION = NATIVE_RELAY_ENROLLMENT_VERSION;
 
 beforeEach(() => vi.clearAllMocks());
 
-function fixture() {
+function fixture(
+  options: { status?: number; challengeFailure?: unknown } = {},
+) {
   const lifetime = new AbortController();
   let liveRevision = 7;
   let peerSequence = 0;
@@ -71,10 +75,13 @@ function fixture() {
       fetch: async (request) => {
         const path = new URL(request.url).pathname;
         requests.push({ path, body: await request.text() });
-        return Response.json({
-          state: path.endsWith('/login') ? 'pending' : 'response',
-          path,
-        });
+        return Response.json(
+          {
+            state: path.endsWith('/login') ? 'pending' : 'response',
+            path,
+          },
+          { status: options.status ?? 200 },
+        );
       },
     });
     return {
@@ -110,6 +117,11 @@ function fixture() {
           body: '{"host":"exact"}',
         };
       }
+      if (
+        command.endsWith('_challenge_accept') &&
+        options.challengeFailure !== undefined
+      )
+        throw options.challengeFailure;
       if (command.endsWith('_challenge_accept'))
         return {
           version: VERSION,
@@ -326,4 +338,20 @@ test('a recreated client resumes the exact host journal attempt without allocati
     f.calls.filter((call) => call.command.endsWith('_begin_prepare')),
   ).toHaveLength(1);
   expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
+});
+
+test('Device Begin retains HTTP status and allowlisted host refusal from the real channel exchange', async () => {
+  const failure = new Error('native_enrollment_operation_refused');
+  const f = fixture({ status: 409, challengeFailure: failure });
+  await expect(f.client.begin()).rejects.toBe(failure);
+  expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
+    stage: 'host-accept',
+    code: 'native_enrollment_operation_refused',
+    httpStatus: 409,
+  });
+  expect(f.requests).toHaveLength(1);
+  await f.client.abort();
+  expect(
+    f.calls.some((call) => call.command === 'station_native_enrollment_abort'),
+  ).toBe(true);
 });

@@ -1108,6 +1108,35 @@ describe('RelayRouteProfiles', () => {
     ).toBe(false);
   });
 
+  test('Device Begin troubleshooting excludes raw host error text and does not show a candidate', async () => {
+    configureEnrollmentReadyRoute();
+    const original = mocks.enrollmentInvoke.getMockImplementation()!;
+    const trap = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_enrollment_begin_prepare')
+        throw new Error(trap);
+      return original(command, args);
+    });
+    renderRoutes();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Request device access' }),
+    );
+    await screen.findByRole('alert');
+    expect(
+      await screen.findByText('Device setup troubleshooting'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Stage: begin-preflight. Code: unknown/),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain(trap);
+    expect(screen.queryByText('Device request details')).toBeNull();
+    expect(
+      mocks.enrollmentInvoke.mock.calls.filter(
+        ([command]) => command === 'station_native_enrollment_begin_prepare',
+      ),
+    ).toHaveLength(1);
+  });
+
   test('requires explicit resume selection and runs begin only for the selected saved attempt', async () => {
     configureEnrollmentReadyRoute();
     mocks.recoveryAttempts.push({

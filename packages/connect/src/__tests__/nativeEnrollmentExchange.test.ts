@@ -11,6 +11,7 @@ import {
 import {
   createNativeEnrollmentExchange,
   type NativeEnrollmentOpenedPeer,
+  nativeEnrollmentFailureDiagnostic,
 } from '../core/nativeEnrollmentExchange.js';
 
 const PEER_HANDLE = 'p'.repeat(43);
@@ -194,7 +195,67 @@ describe('native enrollment one-request exchange', () => {
         async () => ({ ...prepared(), peerHandle: 'x'.repeat(43) }),
         vi.fn(),
       ),
-    ).rejects.toThrow('channel_cleanup_failed');
+    ).rejects.toThrow('native_enrollment_request_invalid');
+    expect(f.close).toHaveBeenCalledOnce();
+  });
+  test('keeps acceptance failure and HTTP status when both cleanup owners fail without exposing traps', async () => {
+    const secret = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    const f = fixture(() =>
+      Response.json({ message: secret }, { status: 403 }),
+    );
+    const primary = new Error('native_enrollment_operation_refused');
+    const accept = vi.fn(
+      async (_handle: string, body: unknown, status: number) => {
+        expect(body).toEqual({ message: secret });
+        expect(status).toBe(403);
+        throw primary;
+      },
+    );
+    f.channel.close = () => {
+      throw new Error(secret);
+    };
+    f.close.mockRejectedValueOnce(new Error(secret));
+    let failure: unknown;
+    try {
+      await f.exchange(async () => prepared(), accept);
+    } catch (cause) {
+      failure = cause;
+    }
+    expect(failure).toBe(primary);
+    expect(f.close).toHaveBeenCalledOnce();
+    expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
+      stage: 'host-accept',
+      code: 'native_enrollment_operation_refused',
+      httpStatus: 403,
+      cleanup: [
+        { stage: 'channel-close', code: 'unknown' },
+        { stage: 'peer-close', code: 'unknown' },
+      ],
+    });
+    expect(
+      JSON.stringify(nativeEnrollmentFailureDiagnostic(failure)),
+    ).not.toContain(secret);
+  });
+
+  test('cleanup failure rejects an otherwise accepted operation and sanitizes the raw rejection', async () => {
+    const f = fixture();
+    f.close.mockRejectedValueOnce('password=SECRET');
+    let failure: unknown;
+    try {
+      await f.exchange(
+        async () => prepared(),
+        async () => 'accepted',
+      );
+    } catch (cause) {
+      failure = cause;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
+      stage: 'peer-close',
+      code: 'unknown',
+      httpStatus: 200,
+      cleanup: [{ stage: 'peer-close', code: 'unknown' }],
+    });
     expect(f.close).toHaveBeenCalledOnce();
   });
 });
