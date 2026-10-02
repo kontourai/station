@@ -117,7 +117,7 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
       }),
     );
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=knowledge');
     await page.waitForSelector('#section-knowledge', { timeout: 15_000 });
     const section = page.locator('#section-knowledge');
 

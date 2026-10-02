@@ -1415,7 +1415,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // The panel's rows: Home and Activity, both at the touch floor.
       // `exact` because the drawer header's own control is "Station home",
       // which a substring match also resolves.
-      for (const label of ['Home', 'Activity']) {
+      for (const label of ['Home', 'Activity', 'Schedule', 'Customize']) {
         const item = navigation.getByRole('button', {
           name: label,
           exact: true,
@@ -1428,14 +1428,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
       // Neither group header survives, and neither do the rows they held.
       for (const gone of [
-        'Customize',
         'System',
         'Agents',
         'Connections',
         'Skills',
         'Registry',
         'Plugins',
-        'Schedule',
         'Developer',
       ]) {
         await expect(
