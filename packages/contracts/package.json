@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./native-relay-link": "./src/native-relay-link.ts",
     "./relay-ice": "./src/relay-ice.ts",
     "./self-hosted-broker": "./src/self-hosted-broker.ts",
     "./connection-proof": "./src/connection-proof.ts",

@@ -33,6 +33,7 @@ use std::io::Write;
 #[cfg(test)]
 use std::net::TcpListener;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(test)]
 use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard};
@@ -122,7 +123,7 @@ pub(crate) fn with_native_relay_route_operation_lock<T>(
     operation()
 }
 
-type RedemptionResult<T> = Result<T, NativeRedemptionError>;
+pub(crate) type RedemptionResult<T> = Result<T, NativeRedemptionError>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -449,33 +450,39 @@ fn approved_station_trust(
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeRelayInvitationV2 {
-    version: String,
-    broker_origin: String,
-    scope: NativeRelayScopeV2,
-    station_signing_key_id: String,
-    station_signing_generation: u64,
-    surface: NativeRelayClientSurfaceV2,
-    invitation_id: String,
+    pub(crate) version: String,
+    pub(crate) broker_origin: String,
+    pub(crate) scope: NativeRelayScopeV2,
+    pub(crate) station_signing_key_id: String,
+    pub(crate) station_signing_generation: u64,
+    pub(crate) surface: NativeRelayClientSurfaceV2,
+    pub(crate) invitation_id: String,
     invitation_secret: SecretText,
-    expires_at: u64,
+    pub(crate) expires_at: u64,
+}
+
+impl NativeRelayInvitationV2 {
+    pub(crate) fn link_secret_valid(&self) -> bool {
+        valid_opaque(self.invitation_secret.expose()) && valid_safe_id(&self.invitation_id)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct NativeRelayScopeV2 {
-    station_id: String,
-    enrollment_id: String,
-    routing_generation: u64,
+pub(crate) struct NativeRelayScopeV2 {
+    pub(crate) station_id: String,
+    pub(crate) enrollment_id: String,
+    pub(crate) routing_generation: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct NativeRelayClientSurfaceV2 {
-    kind: String,
-    app_identifier: String,
-    channel: String,
-    client_instance_id: String,
-    key_thumbprint: String,
+pub(crate) struct NativeRelayClientSurfaceV2 {
+    pub(crate) kind: String,
+    pub(crate) app_identifier: String,
+    pub(crate) channel: String,
+    pub(crate) client_instance_id: String,
+    pub(crate) key_thumbprint: String,
 }
 
 struct SecretText(Zeroizing<String>);
@@ -4328,6 +4335,12 @@ mod tests {
         .unwrap()
     }
 
+    fn write_native_retire_receipt(socket: &mut std::net::TcpStream, status: u16) {
+        let receipt = br#"{"version":"station-broker-native-grant-retire/v2","retired":true}"#;
+        write!(socket, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", receipt.len()).unwrap();
+        socket.write_all(receipt).unwrap();
+    }
+
     fn read_request(socket: &mut std::net::TcpStream) -> Vec<u8> {
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
@@ -4660,6 +4673,172 @@ mod tests {
             .metadata(&prepared.owner, &metadata.route, NOW)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn supersession_after_actual_grant_record_write_quarantines_and_compensates_that_grant() {
+        struct BlockedGrantWrite {
+            inner: MemoryNativeGrantBackend,
+            reached: Sender<()>,
+            resume: Receiver<()>,
+            blocked_once: bool,
+        }
+        impl NativeGrantBackend for BlockedGrantWrite {
+            fn get(&mut self, account: &str) -> RedemptionResult<Option<Zeroizing<String>>> {
+                self.inner.get(account)
+            }
+            fn set(&mut self, account: &str, value: &str) -> RedemptionResult<()> {
+                self.inner.set(account, value)?;
+                if !self.blocked_once && account.starts_with(GRANT_ACCOUNT_PREFIX) {
+                    self.blocked_once = true;
+                    self.reached
+                        .send(())
+                        .map_err(|_| NativeRedemptionError::GrantStore)?;
+                    self.resume
+                        .recv_timeout(Duration::from_secs(2))
+                        .map_err(|_| NativeRedemptionError::GrantStore)?;
+                }
+                Ok(())
+            }
+            fn delete(&mut self, account: &str) -> RedemptionResult<()> {
+                self.inner.delete(account)
+            }
+        }
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let prepared = prepared(origin, 7);
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let request = read_request(&mut socket);
+            let (_, body) = request_header_body(&request);
+            let grant = grant_body(body, NOW + 3_600_000);
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", grant.len()).unwrap();
+            socket.write_all(&grant).unwrap();
+            drop(socket);
+            let (mut socket, _) = listener.accept().unwrap();
+            let request = read_request(&mut socket);
+            let (header, _) = request_header_body(&request);
+            assert!(String::from_utf8_lossy(header)
+                .starts_with("POST /broker/v1/native/grants/retire HTTP/1.1"));
+            write_native_retire_receipt(&mut socket, 200);
+        });
+        let (reached_tx, reached_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let backend = MemoryNativeGrantBackend::default();
+        let grants = NativeRelayGrantVault::new(BlockedGrantWrite {
+            inner: backend.clone(),
+            reached: reached_tx,
+            resume: resume_rx,
+            blocked_once: false,
+        });
+        let transport = UreqNativeBrokerTransport::new();
+        let service = NativeRelayRedemptionService::new(
+            prepared.authority.as_ref(),
+            &prepared.proof_keys,
+            &transport,
+            &grants,
+            || NOW,
+        );
+        let cancelled = AtomicBool::new(false);
+        let gate = Mutex::new(());
+        let failure = std::thread::scope(|scope| {
+            let redeem = scope.spawn(|| {
+                service.redeem_with_cancellation(
+                    "Local",
+                    7,
+                    prepared.invitation,
+                    Some((&cancelled, &gate)),
+                )
+            });
+            reached_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("the actual grant record was written before supersession");
+            cancelled.store(true, Ordering::Release);
+            resume_tx.send(()).unwrap();
+            redeem.join().unwrap().unwrap_err()
+        });
+        assert_eq!(failure.primary, NativeRedemptionError::StaleProfile);
+        assert_eq!(failure.cleanup, NativeGrantCleanupDisposition::Complete);
+        assert!(grants
+            .metadata_for_context(&prepared.owner, &prepared.authority.0.lock().unwrap(), NOW)
+            .unwrap()
+            .is_empty());
+        assert!(grants.pending_cleanups(&prepared.owner).unwrap().is_empty());
+        assert!(!backend
+            .shared
+            .lock()
+            .unwrap()
+            .values
+            .keys()
+            .any(|account| account.starts_with(GRANT_ACCOUNT_PREFIX)));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancelled_link_redemption_retires_late_broker_grant_without_activating_it() {
+        for retire_status in [200, 503] {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let prepared = prepared(origin, 7);
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let cancel_at_response = cancelled.clone();
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let redeem = read_request(&mut socket);
+                let (_, body) = request_header_body(&redeem);
+                let grant = grant_body(body, NOW + 3_600_000);
+                cancel_at_response.store(true, Ordering::Release);
+                write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", grant.len()).unwrap();
+                socket.write_all(&grant).unwrap();
+                drop(socket);
+                let (mut socket, _) = listener.accept().unwrap();
+                let retire = read_request(&mut socket);
+                let (header, _) = request_header_body(&retire);
+                assert!(String::from_utf8_lossy(header)
+                    .starts_with("POST /broker/v1/native/grants/retire HTTP/1.1"));
+                write_native_retire_receipt(&mut socket, retire_status);
+            });
+            let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+            let transport = UreqNativeBrokerTransport::new();
+            let service = service(
+                &prepared.authority,
+                &prepared.proof_keys,
+                &transport,
+                &grants,
+            );
+            let gate = Mutex::new(());
+            let failure = service
+                .redeem_with_cancellation(
+                    "Local",
+                    7,
+                    prepared.invitation,
+                    Some((&cancelled, &gate)),
+                )
+                .unwrap_err();
+            assert_eq!(failure.primary, NativeRedemptionError::StaleProfile);
+            assert!(grants
+                .metadata_for_context(&prepared.owner, &prepared.authority.0.lock().unwrap(), NOW)
+                .unwrap()
+                .is_empty());
+            if retire_status == 200 {
+                assert_eq!(failure.cleanup, NativeGrantCleanupDisposition::Complete);
+                assert!(failure.recovery.is_none());
+            } else {
+                assert_eq!(
+                    failure.cleanup,
+                    NativeGrantCleanupDisposition::Pending {
+                        local_revoke_failed: false,
+                        broker_retire_failed: true,
+                        custody_failed: false
+                    }
+                );
+                assert_eq!(
+                    failure.recovery.as_ref().unwrap().credential_status,
+                    NativeGrantRecoveryCredentialStatus::DurablePending
+                );
+            }
+            server.join().unwrap();
+        }
     }
 
     #[test]
@@ -6774,6 +6953,24 @@ where
         expected_profile_revision: u64,
         invitation: NativeRelayInvitationV2,
     ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
+        self.redeem_with_cancellation(profile_name, expected_profile_revision, invitation, None)
+    }
+
+    pub(crate) fn redeem_with_cancellation(
+        &self,
+        profile_name: &str,
+        expected_profile_revision: u64,
+        invitation: NativeRelayInvitationV2,
+        cancellation: Option<(&AtomicBool, &Mutex<()>)>,
+    ) -> Result<NativeRelayGrantMetadata, NativeRedemptionFailure> {
+        let check_cancelled = || {
+            if cancellation.is_some_and(|(cancelled, _)| cancelled.load(Ordering::Acquire)) {
+                Err(NativeRedemptionError::StaleProfile)
+            } else {
+                Ok(())
+            }
+        };
+        check_cancelled()?;
         let _route_operation_guard =
             native_relay_route_operation_guard().map_err(NativeRedemptionFailure::from)?;
         let before = self
@@ -6850,6 +7047,7 @@ where
                 validate_profile_context(&current)?;
                 validate_invitation_and_trust(&current, &invitation, (self.now)(), Some(&public))
             })?;
+        check_cancelled()?;
         let response = self
             .http
             .redeem(&before.profile.broker_origin, &request_body)?;
@@ -6865,6 +7063,16 @@ where
         let commit_result = self
             .context_provider
             .with_current_context(profile_name, |current| {
+                // Cancel and grant commit share this fence. Network I/O never
+                // holds it, so cancellation can reject a late broker reply.
+                let _commit_guard = match cancellation {
+                    Some((_, gate)) => Some(
+                        gate.lock()
+                            .map_err(|_| NativeRedemptionError::StaleProfile)?,
+                    ),
+                    None => None,
+                };
+                check_cancelled()?;
                 if current != before || current.profile.revision != expected_profile_revision {
                     return Err(NativeRedemptionError::StaleProfile);
                 }
@@ -6885,6 +7093,7 @@ where
                 if metadata.route != route {
                     return Err(NativeRedemptionError::GrantInvalid);
                 }
+                check_cancelled()?;
                 Ok(metadata)
             });
         if let Err(primary) = commit_result {
