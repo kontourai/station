@@ -11,6 +11,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { STATION_CONTROL_MCP_PATH } from '../../../routes/mcp/station-control-mcp-route.js';
 import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import {
@@ -86,6 +87,10 @@ vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
 }));
 
 const registryFileEnv = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
+
+// New temp directories go through the tracker, which removes them in an
+// after-hook whether or not the test passed (#2421).
+const makeTempDir = trackTempDirs();
 
 /**
  * A stand-in for an unstubbed member that is callable at EVERY depth.
@@ -291,8 +296,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
   // boundary (mocked out above), so only composition's own early install can
   // mark its refusal as this Station's answer.
   test("marks the hosted tenant gate's refusal as this Station's own answer", async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-runtime-routes-'));
-    directories.push(homeDir);
+    const homeDir = makeTempDir('station-runtime-routes-');
     const registryPath = join(homeDir, 'tenants.json');
     writeFileSync(
       registryPath,
