@@ -609,7 +609,7 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
         page.getByRole('heading', { name: 'Activity', exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole('heading', { name: 'Running', exact: true }),
+        page.getByText('Running · 2', { exact: true }),
       ).toBeVisible();
       expect(await documentFitsViewportWidth(page)).toBe(true);
       await page.screenshot({
