@@ -259,6 +259,7 @@ export function handleToolStartedEvent(
 ) {
   upsertToolPartOnEventTurn(event, {
     toolName: event.toolName,
+    ...(event.toolKind !== undefined ? { toolKind: event.toolKind } : {}),
     purpose: toolPurposeView(event),
     args: event.arguments || {},
     state: 'running',
@@ -316,6 +317,7 @@ export function handleToolCompletedEvent(
   const policyDenied = event.policyDenied === true;
   const updates = {
     toolName: event.toolName,
+    ...(event.toolKind !== undefined ? { toolKind: event.toolKind } : {}),
     purpose: toolPurposeView(event),
     sourceEventId: event.eventId,
     state:

@@ -425,6 +425,179 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The one exception is `GET /api/coding/repos` without a Project, which the
   New Project form uses to ask about a folder that is not a Project yet: it
   answers the operator in person only.
+- **git acts on the Project's own repository, never one a folder points
+  at.** A Project's folders are member-writable, and git picks its
+  repository from the folder it runs in. A `.git` file naming another
+  repository, a symlinked `.git`, a git directory whose entries are links
+  into another repository (down to a single linked loose object) or that
+  borrows its objects (`objects/info/alternates`), and a git directory whose
+  `core.worktree` names a folder above the Project would each make status,
+  log, diff, branches or the repository listing report another repository on
+  the host, and make checkout move that repository's branch and write its
+  files into the Project. So those routes run one discovery, check the pair
+  it reports with
+  [the same verdict Commit and Push require](../../src-server/services/projects/git-directory-confinement.ts),
+  and name that pair (`--git-dir`/`--work-tree`) on every later call
+  ([`git-read-repository.ts`](../../src-server/services/projects/git-read-repository.ts)).
+  The repository that contains the Project from above is used only when the
+  folder above reports the same pair itself. A refused folder answers `409
+  git-dir-outside-project` with a reason that names no host path; the
+  repository listing still lists it, without a branch. Worktree
+  provisioning, its preflight, the independent-review workspace and the
+  review lens policy read require the same of the folder they are given.
+  Checkpoint capture, restore, the checkpoint reads and the delete and
+  prune paths resolve the folder's repository once the same way and run
+  every git call on the Station-owned directory described below; the
+  delete and prune remove files only under the common directory that
+  check reported, through folders that are ordinary folders. STILL OPEN:
+  the pull-request repository context, the workspace identity key, the
+  Task workspace binding and the Project identity and resource reads of a
+  checkout's remotes still let git discover the repository from the folder.
+  They read (a branch name, a remote address, a repository root) and write
+  nothing; through a planted `.git` they report another repository's.
+- **A read runs git on a git directory Station owns, not the repository's.**
+  A repository's config can name programs (a clean filter, a diff driver,
+  an external diff), and it can be rewritten in place, or have a
+  `config.worktree` created beside it, between Station judging it and git
+  reading it. A read therefore builds a git directory of its own
+  ([`git-read-repository.ts`](../../src-server/services/projects/git-read-repository.ts)):
+  the repository's configuration as `git config --list` reported it once
+  (includes resolved, per-worktree configuration folded in,
+  `extensions.worktreeConfig` not carried, so git opens no included file
+  and no `config.worktree` later), its HEAD, a copy of its index, and
+  `objects`, `refs` and `packed-refs` linked back to the repository.
+  `info/attributes`, hooks and reflogs are not carried; in-tree
+  `.gitattributes` can only select a filter or driver the copy does not
+  define. Every command that prints a diff also runs with `--no-ext-diff`
+  and `--no-textconv`. The File Preview's per-file Changes read
+  (`POST /api/projects/:slug/file-preview/changes`) is the same read: it
+  resolves the file's folder against the Project (or the Session's own
+  checkout) the same way, runs its `diff` on the same kind of directory,
+  and answers `503 repository-busy` as below; deterministic tests drive a
+  `.git` file, a linked `.git`, alternates, `core.worktree` above the
+  Project, each program key, and a `config.worktree`, a `.git/config` and
+  a `.git` swapped between the judgement and `git diff` through that route.
+  Measured this round (git 2.50.1, APFS, a process
+  flipping every 20 ms): with `.git/config` rewritten in place to name a
+  clean filter, the planted program ran on 0 of 100 reads (51 answered
+  `repository-config-refused`, 47 `repository-busy`, 2 read the clean
+  config); with a `config.worktree` naming it created and removed under
+  `extensions.worktreeConfig`, 0 of 100 (32 refused, 68 busy). Checkpoint
+  capture, restore and the checkpoint reads run on the same kind of
+  directory; with `.git/config` rewritten every 30 ms, a planted clean
+  filter ran on 0 of 60 automatic captures (38 captured, 22 refused).
+- **A write that must land in the repository (checkout, a `worktree add`
+  for provisioning or the independent review) runs git with its own git
+  directory named and Station's copy as the common directory**
+  (`GIT_COMMON_DIR`). git reads its configuration from the common directory,
+  so the judged copy is the only configuration it has, while HEAD, the
+  index and the HEAD reflog are written where they live, and a new branch,
+  its reflog and a new worktree's entry go through the copy's links into
+  the repository (git names the entry by its real path; measured on
+  git 2.50.1). Measured this round with `.git/config` rewritten in place
+  every 30 ms to name a smudge filter: the previous round's checkout ran it
+  on 41 of 100 checkouts, this one on 0 of 100 (68 checked out, 32 refused
+  the config they met). Deterministic tests rewrite the config after the
+  judgement and before `checkout` and `worktree add` start, and show the
+  checkout, branch and reflog in the repository itself.
+- **A read is checked again after it ran.** git opens the copy's links by
+  path when it runs, so a `.git` swapped after the check, or a folder above
+  the repository renamed away and another put in its place, would still be
+  followed. After a read the routes compare the identity and change times
+  of every folder from the member-writable root down to the repository, the
+  `.git` entry, every directory the check listed, and the files that steer
+  git (`commondir`, `config`, `config.worktree`, `info/attributes`,
+  `packed-refs`, `HEAD`) with what they were before, discard the output on
+  any difference and read again, up to four times; a repository that keeps
+  changing answers `503 repository-busy` with `Retry-After`, which is not a
+  refusal. Measured this round, 500 requests each over status, log, diff,
+  branches and the listing, with nothing of the outside repository in any
+  answer: `.git` flipped between the member's repository and a file naming
+  another (2913 flips), a link to another (2779 flips), and the folder
+  above the repository swapped for one holding such a file (633 flips). The
+  cost: a repository being written continuously reads as changing. A commit
+  every 0.5 s and a `git add` every 0.2 s were answered on 60 of 60 reads
+  each; a tight loop writing a new object every few milliseconds was
+  answered `repository-busy` on 60 of 60. This is a detection, not an
+  atomic open. It relies on the file system recording change times: a
+  folder directly inside the member-writable root is watched by its own
+  change time, which a rename updates on APFS (measured). It does not cover
+  a hard link to another repository's object, which takes an account that
+  can already read it.
+- **A write is checked immediately before it starts, not made atomic, and
+  the moment between that check and git opening the path is open.** A
+  checkout writes HEAD and the index by the repository's own path. Measured
+  this round, 300 checkouts each, `.git` flipped with a 30 ms dwell on each
+  side: swapped for a file naming another repository, the previous round
+  moved that repository's HEAD on 39 of 300, this round on 0 of 300 (git
+  failed on 113 of them); swapped for a link to it, 24 of 300 before and
+  between 0 and 15 of 300 across six runs now (2, 3, 12, 0, 1 and 15; the
+  rate rises with host load, up to about 5%), each reported as
+  `repository-changed-during-write`;
+  with a 200 ms/50 ms dwell, 2 of 300 before this round. No file of the
+  other repository was written into the Project in any of these runs. The
+  numbers fell because the pre-write check is now followed directly by the
+  spawn; they are not zero and are not claimed to be. A checkpoint capture
+  builds its objects in a Station-owned directory
+  (`GIT_OBJECT_DIRECTORY`) and moves them into the repository only after
+  the check: under the link flip the previous round wrote 43 of the
+  Project's objects into the other repository over 80 captures and no ref;
+  this round 0 objects and 0 refs (46 captures refused, 30 degraded, 4
+  refused for HEAD state). The move and the ref write still go by path,
+  as do a checkpoint delete or prune (`rm` under the common directory that
+  was checked) and the branch and worktree entry a `worktree add` writes.
+  Closing these needs git, and Station, to act on an already-opened
+  directory, which neither does.
+- **A nested repository is never entered or reported.** A submodule's git
+  directory and config are the member's own, and with `diff.submodule` set
+  git runs another git inside it. Every command runs with
+  `--ignore-submodules=all`, `diff.ignoreSubmodules=all` and
+  `status.submoduleSummary=false`, so a changed submodule does not appear in
+  status or diff at all, and neither Commit nor a checkpoint records a
+  nested repository's commit (a nested `.git` file can name any repository
+  on the host, whose commit id would otherwise be published).
+- **A Project has worktrees only when its repository is its own.** The
+  registered-worktree reach above is git's worktree list as seen from the
+  Project's folder. A `.git` planted at the Project's root naming another
+  repository would make that repository's checkouts "worktrees of the
+  Project", so
+  [the listing](../../src-server/services/projects/verified-worktrees.ts)
+  answers only when the Project's own repository passes the verdict above;
+  otherwise the Project has none, and every route (file reads and edits,
+  `/exec`, checkout, git reads, a session's workspace directory) answers
+  `403 outside-project` for them. STILL OPEN, by choice: a linked worktree
+  is vouched for by its registration in the repository it belongs to, and a
+  registration left behind by a worktree that was removed without `git
+  worktree prune` vouches for whoever recreates that folder's `.git` file.
+  Station cannot tell that file from the one git wrote.
+- **No git read fetches, and none runs a repository's credential helper.**
+  A repository can declare itself a partial clone with an object missing;
+  any command that touches the object would then fetch it from the
+  repository's own remote and run its own `credential.helper` as the
+  operator. [The git runner](../../src-server/utils/git-exec.ts) gives every
+  command that is not itself a network command no transport
+  (`GIT_ALLOW_PROTOCOL`), no lazy fetch (`GIT_NO_LAZY_FETCH`) and no
+  credential helper. A genuine partial clone (`--filter=blob:none`) is
+  therefore read like any other repository, and a read that needs an object
+  it has not fetched answers `409 object-not-available` instead of fetching.
+  The coding reads, checkout, checkpoints, worktree provisioning and the
+  review workspace also refuse a repository whose own configuration sets an
+  unrecognised `extensions.*` or a key naming a program, a network target
+  or a file git reads by name
+  ([the list and its basis](../../src-server/services/projects/git-repository-config.ts));
+  an `include.path` of a file inside the repository is admitted (resolved
+  once into the copy), one from outside is refused by that name. Commit and
+  Push, which read the repository's configuration themselves and are
+  network commands, refuse every include, a partial clone and every
+  `http.*` key as well. A refusal names the keys and the command that
+  removes them, and for `filter.lfs.*` (`git lfs install --local`) the
+  global install that applies by design. Measured this round on git 2.50.1
+  only. NOT_VERIFIED: older git (`GIT_NO_LAZY_FETCH` is ignored before
+  git 2.45, where the refused transport and the cleared helper are what is
+  relied on; the copy relies on `GIT_COMMON_DIR`, git 2.5 and later, and on
+  `worktree add` naming the new entry by its real path through a link,
+  seen on 2.50.1), newer git, and Git LFS itself (a global `filter.lfs.*`
+  is the operator's configuration and runs as in a terminal; not run here).
 - **Choosing a Project's folder takes the same authority as running
   commands.** The folder is what every route above is confined to, so setting
   `workingDirectory` on `POST /api/projects` or changing it on `PUT
@@ -442,6 +615,26 @@ separately admitted engine shell or make same-OS-user execution isolated.
 
 What this does not close, stated so nobody assumes it does:
 
+- **Still exposed in the git confinement**, each measured as stated above
+  unless marked NOT_VERIFIED: a `.git` swapped in the moment between the
+  pre-write check and git opening it moves another repository's HEAD on a
+  checkout (0 to 15 of 300 under a 30 ms link flip, rising with host load); the move of a checkpoint's
+  objects, its ref write, its delete and prune, and the branch and worktree
+  entry a `worktree add` writes go by path after the check (0 of 80
+  captures reached another repository under that flip; the `worktree add`
+  writes were not flipped this round); objects are read through links, so a
+  swap during a checkout can serve another repository's content into the
+  files it writes (0 of 600 checkouts wrote one here); a hard link to
+  another repository's object is not a link to the check; a continuously
+  written repository is answered `repository-busy`; a FIFO planted as
+  `.git/config` holds a read for git's 10 s deadline and answers 504; a
+  git failure's `400` body quotes git's command line, host paths included,
+  as it did before this work. NOT_VERIFIED: Linux file systems (ext4, XFS,
+  Btrfs document the change-time behaviour relied on, and a coarse-clock
+  stamp could miss a swap-and-restore inside one tick), Windows (the tests
+  skip there; junctions stand in for links), git other than 2.50.1,
+  hard-linked object stores, Git LFS, reftable repositories as linked
+  worktrees (refused), a Project that is a submodule's checkout.
 - `terminal:operate` (in the `standard` preset) already opens an interactive
   shell on this host. A `standard` device therefore runs commands whatever the
   Run commands switch says: the switch narrows only devices without the

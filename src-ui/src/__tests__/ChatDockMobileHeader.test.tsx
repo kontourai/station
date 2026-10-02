@@ -85,6 +85,8 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    activeCount?: number;
+    unreadCount?: number;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -124,8 +126,8 @@ function renderHeader(
           : { name: 'Codex', slug: 'codex' }
       }
       branchLabel={overrides.branchLabel ?? null}
-      activeCount={0}
-      unreadCount={0}
+      activeCount={overrides.activeCount ?? 0}
+      unreadCount={overrides.unreadCount ?? 0}
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
       onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
       onToggleSidebar={vi.fn()}
@@ -198,6 +200,31 @@ describe('mobile conversation focus', () => {
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Switch task/ })).toBeTruthy();
   });
+  test('the activity dot on chat actions says what it means', () => {
+    renderHeader({ activeCount: 2, unreadCount: 1 });
+    const trigger = screen.getByRole('button', { name: 'Chat actions' });
+    // Name unchanged; the dot's meaning is the description, for a screen
+    // reader, and the tooltip, for a pointer.
+    const describedBy = trigger.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy ?? '')?.textContent).toBe(
+      '2 chats working, 1 unread',
+    );
+    expect(trigger.getAttribute('title')).toBe(
+      'Chat actions — 2 chats working, 1 unread',
+    );
+    expect(
+      trigger.querySelector('.chat-dock__mobile-activity-dot'),
+    ).not.toBeNull();
+  });
+
+  test('no activity means no dot and no description', () => {
+    renderHeader();
+    const trigger = screen.getByRole('button', { name: 'Chat actions' });
+    expect(trigger.getAttribute('aria-describedby')).toBeNull();
+    expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
+  });
+
   test('keeps New chat callable from the actions sheet', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat });

@@ -58,6 +58,9 @@ vi.mock('../../lib/serverHealth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/serverHealth')>()),
   checkServerHealth: vi.fn(),
   checkServerHealthDetailed: vi.fn(),
+  probeServerConnection: vi.fn<
+    typeof import('../../lib/serverHealth').probeServerConnection
+  >(() => new Promise(() => {})),
 }));
 vi.mock('../../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => null,

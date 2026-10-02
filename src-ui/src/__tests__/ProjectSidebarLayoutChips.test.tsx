@@ -87,6 +87,10 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
 }));
 vi.mock('../contexts/open-chats-store', () => ({
   useOpenChats: () => [],
+  useOpenChatInbox: () => ({
+    items: [],
+    currentSessionIdByConversation: new Map(),
+  }),
   openChatsStore: {
     focus: vi.fn(),
     openCollection: vi.fn(),
@@ -151,6 +155,23 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useProjectLayoutsQuery: () => layouts,
+  usePersonalLayoutsQuery: () => ({ data: [] }),
+  useCreatePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useUpdatePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useDeletePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  usePromotePersonalLayoutMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   useFeaturePreviewsQuery: () => ({ data: [] }),
   useBoardAvailabilityQuery: () => boardAvailability,

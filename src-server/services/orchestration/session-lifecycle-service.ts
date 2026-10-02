@@ -18,6 +18,7 @@ import {
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
   formatProviderQuotaEventText,
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
@@ -181,12 +182,20 @@ export function projectSessionLifecycle(options: {
     }
   }
 
+  // #3071: a request whose own turn was aborted is not waiting on anyone,
+  // whatever the session's state becomes afterwards. Without this the
+  // state-based reconciliation below un-settles it as soon as a later event
+  // makes the session resumable again: interrupted-turn recovery stamps
+  // `needs_input` after its abort, and the dead turn's approval then
+  // relabelled the session `review_pending` over that stamp.
+  const settledRequestIds = requestIdsSettledByTurnAbort(options.events);
   const pendingReviewFromLog = options.events.some(
     (event) =>
       event.method === 'request.opened' &&
       event.blocking !== false &&
       event.requestType !== 'input' &&
-      !resolvedRequestIds.has(event.requestId),
+      !resolvedRequestIds.has(event.requestId) &&
+      !settledRequestIds.has(event.requestId),
   );
   // archive#1296: a request that predates the session's own ending
   // (turn.completed / session.exited / a manual terminal

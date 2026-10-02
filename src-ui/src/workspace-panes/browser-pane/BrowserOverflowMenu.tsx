@@ -8,9 +8,9 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { IconButton } from '../../components/IconButton';
 import { ArrowLeftGlyph } from '../../components/icons/Glyph';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
-import { BrowserIconButton } from './BrowserIconButton';
 
 /**
  * The Browser pane's `⋯` menu (#90): what a browser keeps out of its toolbar.
@@ -199,7 +199,7 @@ export function BrowserOverflowMenu({
 
   return (
     <>
-      <BrowserIconButton
+      <IconButton
         ref={triggerRef}
         aria-label={label}
         title={label}
@@ -209,7 +209,7 @@ export function BrowserOverflowMenu({
         onClick={() => (open ? close() : setOpen(true))}
       >
         {children}
-      </BrowserIconButton>
+      </IconButton>
       {open
         ? createPortal(
             <>

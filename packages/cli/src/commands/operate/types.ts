@@ -78,6 +78,14 @@ export interface OperateApproval {
   threadId: string;
   requestId: string;
   requestType: string;
+  /** The `request.opened` event this row was folded from. */
+  requestEventId?: string;
+  /**
+   * The request carries a questionnaire. A keypress decision on it is sent
+   * unbound, so the server's "inspect the question first" guard still
+   * applies.
+   */
+  isQuestion?: true;
   title: string;
   toolName?: string;
   toolInput?: unknown;
@@ -299,6 +307,12 @@ export type OperateIntent =
       type: 'respond-approval';
       threadId: string;
       requestId: string;
+      /**
+       * Binds the decision to the request the pane showed (#3071), for an
+       * approval or permission. The server then refuses one that was
+       * resolved, re-opened or settled since.
+       */
+      expectedRequestEventId?: string;
       decision: ApprovalDecision;
     }
   | { type: 'refresh-focus'; threadId: string }

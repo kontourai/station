@@ -9,14 +9,14 @@
 
   "limits": "Historical consumer sweep and remaining requirements are not current exhaustive ownership/authorization verification. No physical-peer execution/membership/provider continuation or full worktree/lease audit.",
 
-  "document": {"digest":"bacc03693d6fef3d2e6105609dd6f17a9e934ef32e8095484b91c7cc06537b98","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+  "document": {"digest":"a12d83b4992132dd42fd48fa2dfcb802bb059ef1536d6f043f1035c5770bc078","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
 
   "sources": [
     {"path":"packages/contracts/src/project-identity.ts","digest":"c81f85061a8223065edd232c39c98b972caae30d6f93b8ee919cc39294d44aee","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
     {"path":"src-server/routes/projects/project-contribution-routes.ts","digest":"3197f9606a69486373355696940b21ba7eb0b713d74c8622c23f07c7f52d56fe","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
     {"path":"src-server/services/projects/project-resource-resolver.ts","digest":"d9ec9daa0ae03f54b74f617192e24367f1d3a55efb9fe4290c5e1e63fc47fa40","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

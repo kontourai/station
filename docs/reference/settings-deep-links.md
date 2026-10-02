@@ -1,5 +1,10 @@
 # Settings deep links
 
+On phones, the **Settings section** picker lists every section and setup
+destination in named groups. On computers, the same destinations appear in
+the navigation rail. Both use the deep links below; leaving Settings for a
+setup destination still asks about unsaved changes.
+
 The Settings catalog assigns stable ids and deep links to its controls. A
 link opens the owning section and attempts to reveal the control. Platform
 restrictions and delayed rendering can prevent that reveal. This reference

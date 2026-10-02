@@ -4101,6 +4101,17 @@ export function configureRuntimeRoutes(
           references,
           binding,
         ),
+      releaseStagedAttachments: (principal, references, binding) =>
+        attachmentStaging.releaseBinding(
+          {
+            principalId: principal.id,
+            ...(currentTenantExecutionContext()
+              ? { tenantId: currentTenantExecutionContext()!.tenantId }
+              : {}),
+          },
+          references,
+          binding,
+        ),
       acceptStagedAttachments: (principal, references, binding) =>
         attachmentStaging.acceptBinding(
           {

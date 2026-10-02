@@ -408,6 +408,10 @@
   margin-bottom: 1.25rem;
 }
 
+.settings__mobile-section-picker {
+  display: none;
+}
+
 /* archive#4463: the scope-grouped nav (Station / Defaults / This
    device) used to wrap each group in its own `.settings__nav-group` flex row
    with an all-caps `.settings__nav-group-title` label sharing the tab row —
@@ -1197,6 +1201,24 @@
 
 /* ── Mobile touch targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .settings__section-nav {
+    display: none;
+  }
+
+  .settings__mobile-section-picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--k-space-2);
+    margin-bottom: var(--k-space-5);
+  }
+
+  .settings__search,
+  .settings
+    input:not([type="checkbox"]):not([type="color"]):not([type="hidden"]),
+  .settings select {
+    min-height: 44px;
+  }
+
   /* Single column: key, type, value, and remove each get the full row width so
      the key input no longer truncates (e.g. "AGENT_NAM" → "AGENT_NAME"). */
   .settings__var-row {

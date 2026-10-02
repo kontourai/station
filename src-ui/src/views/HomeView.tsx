@@ -143,22 +143,7 @@ export function HomeView({
           identity check (#1582 C4). The chapter's DIALOG is not a callout —
           it renders from the same component, above this stack's flow, and is
           unaffected by it. */}
-      <PageCalloutStack>
-        <FirstRunHomeChapter />
-        {/* Starter Work is a post-onboarding offer.  It reads the same durable
-            first-run decision as the chapter; a cached/default browser flag
-            cannot make a real Task offer appear before setup is complete. */}
-        {config?.firstRun?.status === 'completed' ? <StarterWorkCard /> : null}
-        {/* The developer starters are the same family — same offer shape, same
-            primitive — so they share the stack's rhythm rather than each
-            carrying spacing of their own. */}
-        {config?.firstRun?.status === 'completed' && developerToolsEnabled ? (
-          <>
-            <StarterInspectionCards />
-            <StarterScheduledCheckCard />
-          </>
-        ) : null}
-      </PageCalloutStack>
+
       {status?.state === 'granted' ? (
         <Suspense fallback={<SkeletonList count={1} label="Loading Home" />}>
           <HomeRolePane
@@ -175,6 +160,22 @@ export function HomeView({
       ) : (
         builtinHome
       )}
+      <PageCalloutStack>
+        <FirstRunHomeChapter intentFirst />
+        {/* Starter Work is a post-onboarding offer.  It reads the same durable
+            first-run decision as the chapter; a cached/default browser flag
+            cannot make a real Task offer appear before setup is complete. */}
+        {config?.firstRun?.status === 'completed' ? <StarterWorkCard /> : null}
+        {/* The developer starters are the same family — same offer shape, same
+            primitive — so they share the stack's rhythm rather than each
+            carrying spacing of their own. */}
+        {config?.firstRun?.status === 'completed' && developerToolsEnabled ? (
+          <>
+            <StarterInspectionCards />
+            <StarterScheduledCheckCard />
+          </>
+        ) : null}
+      </PageCalloutStack>
     </section>
   );
 }

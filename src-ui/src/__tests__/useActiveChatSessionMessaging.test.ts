@@ -742,6 +742,89 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(notice).not.toContain('Validation failed');
   });
 
+  // The route's own refusal body for an engine that cannot take the attached
+  // images (`orchestration.ts` dispatch catch + the forwarded
+  // `attachment_input_unsupported` code), thrown by the REAL fetcher. The
+  // generic fallback called it possibly "temporary" and offered Retry, which
+  // sends the same attachments into the same refusal.
+  it('an attachment refusal is not presented as transient: no Retry, a Remove attachments action', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'This engine did not advertise image attachment support.',
+          receipt: {
+            commandId: 'cmd-1',
+            commandType: 'sendTurn',
+            threadId: sessionId,
+            status: 'rejected',
+          },
+          receiptStatus: 'persisted',
+          code: 'attachment_input_unsupported',
+          retryable: false,
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .sendExecutionMessage('http://api.test', {} as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    expect(refusal).toMatchObject({ code: 'attachment_input_unsupported' });
+    activeChatsStore.updateChat(sessionId, {
+      attachments: [stagedAttachment],
+      attachmentStages: [stagedSnapshot],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'grok-build', undefined, 'look', [
+        stagedAttachment,
+      ]);
+    });
+
+    let chat = activeChatsStore.getSnapshot()[sessionId];
+    const notice = chat?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain(
+      "**This engine can't take these attachments**",
+    );
+    expect(notice?.content).toContain('Nothing was sent.');
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.action?.label).toBe('Remove attachments');
+    // The handshake answer the composer reads is re-read, not left cached.
+    expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
+    // A refused first send changes what the session list says (Draft ->
+    // first-send failure); the composer's model gate reads it from there.
+    expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
+    // The refused attachments came back to the composer with the draft...
+    expect(chat?.attachments).toEqual([stagedAttachment]);
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+    try {
+      await act(async () => {
+        await notice?.action?.handler();
+      });
+    } finally {
+      globalThis.fetch = previous;
+    }
+    // ...and the action takes them back off, leaving the text sendable.
+    chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.attachments).toEqual([]);
+    expect(chat?.attachmentStages).toEqual([]);
+    expect(chat?.input).toBe('look');
+  });
+
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
     activeChatsStore.updateChat(sessionId, {
       attachments: [stagedAttachment],

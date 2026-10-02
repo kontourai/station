@@ -845,49 +845,58 @@ describe('device pairing panels', () => {
     ).toBeNull();
   });
 
-  test('direct HTTP requests require consent and do not duplicate an in-flight request', async () => {
-    const pendingRequest = deferred<Response>();
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockReturnValueOnce(pendingRequest.promise);
-    render(
-      <JoinDevicePairingPanel
-        initialMode="direct"
-        originIsStation={false}
-        directEndpoint="http://100.64.0.21:3492"
-        onPaired={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-    const button = screen.getByRole('button', { name: 'Request access' });
-    fireEvent.click(button);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'Allow an unencrypted connection',
-      }),
-    );
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(
-      screen
-        .getByRole('button', { name: 'Sending request…' })
-        .hasAttribute('disabled'),
-    ).toBe(true);
-    await act(async () =>
-      pendingRequest.resolve(response({ error: 'rate_limited' }, 429)),
-    );
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'Too many access requests',
-    );
-    expect(
-      screen
-        .getByRole('button', { name: 'Try again' })
-        .hasAttribute('disabled'),
-    ).toBe(false);
-    localStorage.removeItem('station-http-development:http://100.64.0.21:3492');
-  });
+  test.each([
+    'http://100.64.0.21:3492',
+    'http://localhost:4591',
+    'http://127.example.test:4591',
+  ])(
+    'direct HTTP requests to %s require consent and do not duplicate an in-flight request',
+    async (endpoint) => {
+      const pendingRequest = deferred<Response>();
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockReturnValueOnce(pendingRequest.promise);
+      render(
+        <JoinDevicePairingPanel
+          initialMode="direct"
+          originIsStation={false}
+          directEndpoint={endpoint}
+          onPaired={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      const button = screen.getByRole('button', { name: 'Request access' });
+      fireEvent.click(button);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole('checkbox', {
+          name: 'Allow an unencrypted connection',
+        }),
+      );
+      fireEvent.click(button);
+      fireEvent.click(button);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(
+        screen
+          .getByRole('button', { name: 'Sending request…' })
+          .hasAttribute('disabled'),
+      ).toBe(true);
+      await act(async () =>
+        pendingRequest.resolve(response({ error: 'rate_limited' }, 429)),
+      );
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'Too many access requests',
+      );
+      expect(
+        screen
+          .getByRole('button', { name: 'Try again' })
+          .hasAttribute('disabled'),
+      ).toBe(false);
+      localStorage.removeItem(
+        'station-http-development:http://100.64.0.21:3492',
+      );
+    },
+  );
 
   test('native request-access explains an unreachable host and offers retry', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(

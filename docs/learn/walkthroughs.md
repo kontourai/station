@@ -52,6 +52,11 @@ recorded reduced selected-row hover contrast; [#2843](https://github.com/kontour
 tracks that usability work. The shared SplitPane stylesheet now preserves normal
 text colors over a selected-row tint and retains that treatment on hover. This
 capture alone does not measure hover contrast across every consuming view.
+Its connection headings and test explanation predate the newer intent-first
+wording and the disclosure before Create. The current form explains credential
+prerequisites and its immediate, potentially billable check before creating a
+connection; this older capture does not show that guidance. The recorded
+capture revision and sample-data limits remain explicit.
 
 ![The Models page with an example local connection selected.](media/connections-models.png)
 

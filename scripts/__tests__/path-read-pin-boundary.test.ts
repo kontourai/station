@@ -101,6 +101,12 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Read install.ps1 through the generator's exported path and the installer
+  // core it embeds from a temporary extraction (#2675 W1): computed paths the
+  // scanner cannot pin. The install.ps1 impact edge selects both, and their
+  // imports of the generator and verifier select them for source changes.
+  'scripts/__tests__/install-script-generated.test.ts',
+  'scripts/__tests__/release-manifest-vectors.test.ts',
   // Reads each workflow from a directory listing; the .github/workflows/**
   // impact edge selects it (#2922).
   'scripts/__tests__/ci-event-environment.test.ts',
@@ -520,6 +526,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
     'walks its own fixture root',
+  'scripts/__tests__/install-ps1.test.ts':
+    'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-script.test.ts':
     'walks only the temporary install roots it creates',
   'scripts/__tests__/path-read-pin-boundary.test.ts':

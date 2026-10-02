@@ -45,8 +45,8 @@ vi.mock('@kontourai/station-sdk/live-activity', () => ({
 }));
 // `RegionModelProvider` wraps the whole application, so `useShowSurface`
 // requires it; this harness mounts a fragment of that tree. The stub is the
-// assertion seam for the follow action, which must command the SAME surface
-// `LiveCollaboratorsSection`'s "View session" commands.
+// assertion seam for the follow action, which must command the Activity
+// surface the way every other session link does.
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
@@ -304,9 +304,10 @@ describe('ProjectSidebarFooter', () => {
     expect(reason?.textContent).toMatch(/membership admission/i);
   });
 
-  // Follow opens the worker's live session the same way Activity does:
-  // `LiveCollaboratorsSection`'s "View session" commands `useShowSurface` with
-  // the Activity surface id and a session intent. The assertion is on that
+  // Follow opens the worker's live session the way a session link does:
+  // `useShowSurface` with the Activity surface id and a session intent. (The
+  // Live collaborators section this once mirrored is gone, #2982; the test
+  // name keeps the phrase.) The assertion is on that
   // shared seam and the shared contract constant — not on a route string this
   // file could spell the same way while the product spelled it differently —
   // and the footer's own navigation must stay out of it.
