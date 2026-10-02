@@ -190,7 +190,7 @@ describe('DestinationRegistry', () => {
     ).toEqual({
       id: 'developer',
       group: 'this-station',
-      order: 10,
+      order: 100,
       label: 'Developer',
       route: '/developer',
     });

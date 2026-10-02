@@ -631,7 +631,6 @@ describe('ProjectSidebar panel order (#2059)', () => {
       'Registry',
       'Review',
       'Plugins',
-      'Schedule',
       'Developer',
       'Notifications',
       'Settings',
