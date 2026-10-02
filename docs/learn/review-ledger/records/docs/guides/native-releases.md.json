@@ -164,7 +164,7 @@
 
     {"path":"scripts/verify-windows-installer-upgrade.ps1","digest":"e7935481402cf99f16b2ad2489e07a51677c0878828a9e7a50fecc393e159754","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
     {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

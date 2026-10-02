@@ -14,7 +14,7 @@
   "sources": [
     {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+    {"path":"src-desktop/Cargo.toml","digest":"0d9f144551f4b9e6e7d85976c7da5cc22aee133f708b48ee38087d9966264105","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
     {"path":"src-desktop/capabilities/default.json","digest":"b6ce0ba74944574562d08ddd8f02698a222840af0581bf093c662a70f07c9ab1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -90,7 +90,7 @@
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/build.rs","digest":"b7d0312b9f3e16056edbe52c217dc8381f0aec8be854844e5fb603393726e7fc","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    {"path":"src-desktop/build.rs","digest":"28425e2f907fb0875014dccb6737d4bb98768f27a8c7a6f7d9e77b2a18cb0609","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
     {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 

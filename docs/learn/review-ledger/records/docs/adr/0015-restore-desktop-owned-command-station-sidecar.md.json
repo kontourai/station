@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/design/instance-registry.md","digest":"6478fdadd409526952d53a3ca9604ea0c9741a0411025c2faed3fdf02d5242bf","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"5bd8f2166eab7af6e9e8526f0e550dc5b0ebaa5da75d3becf6b98e0616a80d0f","revision":"7da1d75947a4cd3022a9d3c822b83db85b41cd79"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"153ad5eab5cac2503ca79442ae65806bde979576652f2ed89346374048e79ec9","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
     {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
 
