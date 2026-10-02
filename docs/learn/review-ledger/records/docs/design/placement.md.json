@@ -30,7 +30,7 @@
 
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"1fd514ce7f9c2c4d2d4ccca9df7050a9a0163027"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"11bb2e1e9615053b5dd1c8292617c68d43c2ccb407449174797028aaeb5eac3d","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
