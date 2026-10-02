@@ -170,16 +170,20 @@ exchange, every provider plan or Windows secure-store behavior.
 ## Saved Station addresses
 
 Tap the connection dot on a phone, or the connection name on desktop, to
-choose a Station. The current Station is checked; inactive Stations say
-**Not checked** until a reachability check has completed. Holding the phone's
-dot shows its saved name without switching or opening the manager.
+choose a Station. A checkmark identifies the current Station, whose status is
+live. The chooser does not probe inactive Stations; they say **Not checked**
+unless a saved access or connection error needs attention. Holding the phone's
+dot shows its saved name without switching or opening the chooser.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not
 switch the active connection. Switching respects unsaved-work decisions.
 Each address wraps on narrow screens so its port stays visible. The row's
 **More actions** menu provides **Copy address** and **Check reachability**.
-Already paired connections do not prompt for another access request.
+The manager uses the current Station's live status; inactive rows show
+**Not checked** until checked there. Connections with valid saved access do
+not prompt for another access request. A rejected or missing credential still
+offers the appropriate access remedy.
 
 Use an HTTPS address when connecting another device. An HTTP address requires
 **Allow an unencrypted connection** before requesting access, including a
