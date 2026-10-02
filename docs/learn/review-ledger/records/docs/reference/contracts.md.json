@@ -46,7 +46,7 @@
 
     {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"c16392bf949f09df95f9b80029678e88ee34516fa31eff347102c49151acf78e","revision":"56911ee1eada3cb56dcc1ff6a4c8edb3a566a38f"},
+    {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"39289764a99e5fd01e6a2ddc474b5dc1977a4b134ca217492357cf2ff1c6dfdd","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
     {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 

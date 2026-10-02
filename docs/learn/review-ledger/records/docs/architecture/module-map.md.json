@@ -48,7 +48,7 @@
 
     {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"c16392bf949f09df95f9b80029678e88ee34516fa31eff347102c49151acf78e","revision":"56911ee1eada3cb56dcc1ff6a4c8edb3a566a38f"},
+    {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"39289764a99e5fd01e6a2ddc474b5dc1977a4b134ca217492357cf2ff1c6dfdd","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
     {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
@@ -170,9 +170,9 @@
 
     {"path":"src-desktop/src/native_device_proof_key.rs","digest":"f209cb152047378666116d08bf220264b0a9ef569fbd0f5cde827e259ec0d5f6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-desktop/src/native_enrollment.rs","digest":"04694c9fc23781fec64cf1b5e620279bb5fabcc611d7850f6935421bfe6aa1f8","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-desktop/src/native_enrollment_host.rs","digest":"12baa4d38764a3b7b5df9c27186ef86ca13fc986ac6a10557be8c57b31db8e87","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
-    {"path":"src-desktop/src/native_enrollment_host.rs","digest":"ca235d0baf235c9c96132db105d0ac0260e2d610157a69faeb390edb011a54ff","revision":"56911ee1eada3cb56dcc1ff6a4c8edb3a566a38f"},
+    {"path":"src-desktop/src/native_enrollment.rs","digest":"04694c9fc23781fec64cf1b5e620279bb5fabcc611d7850f6935421bfe6aa1f8","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
     {"path":"src-desktop/src/native_proof_key_core.rs","digest":"f66b190b738f1e3fe0623e5c8140797cd413fcb0701d6f3004e3c652c7b60a59","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
@@ -506,7 +506,7 @@
 
     {"path":"src-server/services/identity/native-device-replay-store.ts","digest":"bed8a3bd397948ad7f908abdd34c3836421811d437ab4fc54b41b2cae697a9ac","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-server/services/identity/native-relay-enrollment-service.ts","digest":"9eb61e7573655cfa2a2ab48012e8f4c006646539f6585baa0d870ce24ef8510d","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    {"path":"src-server/services/identity/native-relay-enrollment-service.ts","digest":"761436ff824bcb4b6d251e18a89a26615944344165522c675c1d2c107133ca2e","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
     {"path":"src-server/services/infra/__tests__/resource-posture.test.ts","digest":"ec4b3c4fec816668459d11190fd7f0dc3d510847544ce67ba5684da450d54d21","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -850,10 +850,6 @@
 
     {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"4d332dc6786d1c1d3fad5a27572e992ab9615b5ddcd3839a4ed539ddfb3626d6","revision":"e512a39196d7df557d7de9ec15474a93aba570c2"},
-
-    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"df28b927137b9c9e1c92919fe88521bba7d8d18dbad454f42671d2f876036d1c","revision":"37271cfc0ef9c5356be5b49dd7e4b97337aabc8f"},
-
     {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts","digest":"1e387b759067cc0076ae7a46d2e0dc7948591cd200e48878ba72fe3bc426453b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts","digest":"cfaf202f379a51d5bbe0b5752a43f8eedb794b27273d18cb5034fccfd7c60807","revision":"63b38388826be9b989d3a94c88052e65c69b2d63"},
@@ -868,7 +864,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"86a0487a4a240d7c70d148b0095747c7e7321227651f6a2fa6ab3f5778cac946","revision":"02c129de8333d2fe937beeeb0cba61e58b5e08fa"},
+    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"75e71cf012abc1009f54aae156310288aaad625ea8ab61109a66126ffac64b44","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
     {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts","digest":"f10ac7b4278a67648f946bc05c717da27f9fa59fced4576e1d0df41944657e49","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -876,21 +872,21 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"e995793c410131706f29493905dbae8cb47d44eef28c0b6cb7c104f60484e8f5","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
+    {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"4d332dc6786d1c1d3fad5a27572e992ab9615b5ddcd3839a4ed539ddfb3626d6","revision":"e512a39196d7df557d7de9ec15474a93aba570c2"},
+
+    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"df28b927137b9c9e1c92919fe88521bba7d8d18dbad454f42671d2f876036d1c","revision":"37271cfc0ef9c5356be5b49dd7e4b97337aabc8f"},
+
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/settings/shortcutPreferences.ts","digest":"4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/HomeView.tsx","digest":"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f","revision":"c4e12e530c3346d3191a89e29cd504f2e2e475a7"},
-
-    {"path":"src-ui/src/views/LayoutView.tsx","digest":"751fb02ed2ff7a16a06234d39ca40299525d5a4b7e7511eb6d3b937fc92eedfc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
-
-    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
-
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
 
     {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/HomeView.tsx","digest":"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f","revision":"c4e12e530c3346d3191a89e29cd504f2e2e475a7"},
+
+    {"path":"src-ui/src/views/LayoutView.tsx","digest":"751fb02ed2ff7a16a06234d39ca40299525d5a4b7e7511eb6d3b937fc92eedfc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceAction.tsx","digest":"1edf298cb5a986218a8dbd8b14bcfaf1627fb15d5e811b457bf3c7ed28009f99","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -899,6 +895,10 @@
     {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/settings/utils.ts","digest":"662d78e4e5400976b8e0cd6a7751fd17d1c2b418e6bee1c3539a66327c5017a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
+
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
     {"path":"src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx","digest":"0e615373917ac6bcb0fd1c1038ab43e7e72e1bd12bea2890fcb4586008b1a80b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

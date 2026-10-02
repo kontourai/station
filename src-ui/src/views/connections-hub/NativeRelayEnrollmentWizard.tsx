@@ -376,6 +376,23 @@ export function NativeRelayEnrollmentWizard({
     onError: reportStepFailure,
   });
 
+  async function finishTerminalSetup() {
+    terminalRef.current = true;
+    setPhase('idle');
+    setCandidate(null);
+    setError(null);
+    setBeginDiagnostic(undefined);
+    setNotice(
+      'The previous request is closed. Request device access again to start a fresh setup.',
+    );
+    attemptStartedRef.current = false;
+    clientRef.current = null;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    onEnrollmentCancel();
+    await queryClient.invalidateQueries({ queryKey: recoveryKey });
+  }
+
   const cancelRecovered = useMutation({
     mutationFn: () => requireClient().cancel(),
     onSuccess: async (result) => {
@@ -384,20 +401,7 @@ export function NativeRelayEnrollmentWizard({
         result.state === 'expired' ||
         result.state === 'revoked'
       ) {
-        terminalRef.current = true;
-        setPhase('idle');
-        setCandidate(null);
-        setError(null);
-        setBeginDiagnostic(undefined);
-        setNotice(
-          'The previous request is closed. Request device access again to start a fresh setup.',
-        );
-        onEnrollmentCancel();
-        attemptStartedRef.current = false;
-        clientRef.current = null;
-        controllerRef.current?.abort();
-        controllerRef.current = null;
-        await queryClient.invalidateQueries({ queryKey: recoveryKey });
+        await finishTerminalSetup();
       } else {
         setError(
           'Station has not confirmed cancellation of this Device setup.',
@@ -449,9 +453,7 @@ export function NativeRelayEnrollmentWizard({
         setPhase('pending');
         setNotice('The Station operator has not completed approval yet.');
       } else {
-        setError(
-          'This enrollment is no longer pending. Start a new setup if needed.',
-        );
+        void finishTerminalSetup();
       }
     },
     onError: (cause) => {

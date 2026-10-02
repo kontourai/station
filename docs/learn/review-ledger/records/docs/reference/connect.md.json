@@ -28,19 +28,19 @@
 
     {"path":"packages/connect/src/__tests__/nativeEnrollmentExchange.test.ts","digest":"1bd177a3d89c9c6092c25d69735c27b51e00ce792bee263b6aa00848dbf7ee92","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
-    {"path":"packages/connect/src/core/ConnectionHealthCoordinator.ts","digest":"5dc1d75cc488ffafe720fc3dfad8787103042e3462d581c9806316151624c4b0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/core/ConnectionSupervisor.ts","digest":"8ea56424b38e7378a42fab63293340cb3882923c86255f1fabb9293b2655e1a6","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
     {"path":"packages/connect/src/core/connectionCandidates.ts","digest":"c87349cfa458c8f3429414f55e2b5722fe9be8b781097ed9efd503c5f71aa0ce","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/connectionFailureClassification.ts","digest":"d6bac764d63db91b5787dffb25e04a3dea4b0aa1951f29f9badfb8b77ec55a05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
+    {"path":"packages/connect/src/core/ConnectionHealthCoordinator.ts","digest":"5dc1d75cc488ffafe720fc3dfad8787103042e3462d581c9806316151624c4b0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
     {"path":"packages/connect/src/core/connectionIndicator.ts","digest":"1de49a5fcea32d061ed2b16b902281ceb813cfb9aa6a6acb9b18e1513a9e4541","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/connectionProfile.ts","digest":"210a68855cbdedde33a5923eef58a28b35ecbb1746f1c809e0837b4512e1ea66","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
+
+    {"path":"packages/connect/src/core/ConnectionStore.ts","digest":"3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/core/ConnectionSupervisor.ts","digest":"8ea56424b38e7378a42fab63293340cb3882923c86255f1fabb9293b2655e1a6","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/core/devicePairing.ts","digest":"1072b18524cd5e982906263d776f3aaf94818b14fea3f83220d40596e175f4ed","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -62,23 +62,23 @@
 
     {"path":"packages/connect/src/index.ts","digest":"cc849d431465dff7d0a98b8a06ef4a6a5efe65e645c31c96a2ce5e0deee14e80","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/connect/src/react/ConnectionManagerModal.tsx","digest":"3a9070497210084a55a1ac87e1f7aa80fd5d6297c77b609e923839b6394e4711","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
-
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"d5941fa27ac7bfd91003dbf7d23627e16daa64abd4caf0338e5008be40bd1778","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
-
-    {"path":"packages/connect/src/react/ConnectionStatusDot.tsx","digest":"de58cd56cdd4dbe4b2d25d0da31a793ccb1ed623a400c275ec882987a98eb5b5","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/react/ConnectionsContext.tsx","digest":"01252ac9f259e9bf636a39404b02bf1a2854b5ca78c3561d65419898f975a4d5","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
-
-    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"ec273d0275ca691780e9b5bbc9940bdfa56a462c68c1ed4c5ba2394bbfe05a31","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"packages/connect/src/react/QRScanner.tsx","digest":"5f8b7ab68bb1fde08e7903e5dd6e4f59220612635c79eac6690cbb972236b920","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
     {"path":"packages/connect/src/react/connection-manager-modal-utils.ts","digest":"4ffe29b184ca50123b2b7d1b8c0742b8bde3d7a4b6b0510cda1897cf4eddefb6","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"},
 
     {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"f655052a713a9135d2f976f6272eb23f2db570921801863d4d43963b3a37fe5c","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
+    {"path":"packages/connect/src/react/ConnectionManagerModal.tsx","digest":"3a9070497210084a55a1ac87e1f7aa80fd5d6297c77b609e923839b6394e4711","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"d5941fa27ac7bfd91003dbf7d23627e16daa64abd4caf0338e5008be40bd1778","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+
+    {"path":"packages/connect/src/react/ConnectionsContext.tsx","digest":"01252ac9f259e9bf636a39404b02bf1a2854b5ca78c3561d65419898f975a4d5","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
+
+    {"path":"packages/connect/src/react/ConnectionStatusDot.tsx","digest":"de58cd56cdd4dbe4b2d25d0da31a793ccb1ed623a400c275ec882987a98eb5b5","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"ec273d0275ca691780e9b5bbc9940bdfa56a462c68c1ed4c5ba2394bbfe05a31","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
     {"path":"packages/connect/src/react/pairingCompletion.ts","digest":"7c7f0fe0bd69f85de1e4328b2c97b6adcaae9f3ed89830ecf169e0269867f645","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/react/QRScanner.tsx","digest":"5f8b7ab68bb1fde08e7903e5dd6e4f59220612635c79eac6690cbb972236b920","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"packages/connect/src/react/useConnectionStatus.ts","digest":"76d85992d82de5725f968830e47263d70ae2cf11dc2dc295703ac40392793102","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -116,19 +116,19 @@
 
     {"path":"src-ui/src/lib/serverHealth.ts","digest":"3e98f09cd0321015f1511d66853409f26eab6667a54be0b38fe9c4c8e37188b2","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts","digest":"c8263fe8be467ac8204738d27bde470df25014e1cb07bc65189c326e6aa754ac","revision":"02c129de8333d2fe937beeeb0cba61e58b5e08fa"},
+    {"path":"src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts","digest":"958140708ba79105c2c2387b0acdc2bc8674a53dd79340e6650770ee5b0e980e","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
     {"path":"src-ui/src/platform/native/nativeApplicationSignalingBridge.ts","digest":"7111914934e5bdd2a236f497e695795402681ccd1ee4e7d9e54334c5a735574b","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"86a0487a4a240d7c70d148b0095747c7e7321227651f6a2fa6ab3f5778cac946","revision":"02c129de8333d2fe937beeeb0cba61e58b5e08fa"},
+    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"75e71cf012abc1009f54aae156310288aaad625ea8ab61109a66126ffac64b44","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
     {"path":"src-ui/src/platform/native/pairingTransport.ts","digest":"ff3b1d70df749c1ad0db5975df4f138f5ae897630a80d482c2828a623d405613","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"d5d2360ea1df6047239154ad8d646f65709c3c2052460bfd8c0c529a03ad8d0e","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"d5d2360ea1df6047239154ad8d646f65709c3c2052460bfd8c0c529a03ad8d0e","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"}
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"12cad193525503905c5202485ccee5cea44da06f127cfc7f6ecf615fad0e6640","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"}
   ],
 
   "checks": [

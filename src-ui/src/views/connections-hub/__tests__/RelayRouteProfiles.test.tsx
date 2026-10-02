@@ -1392,6 +1392,74 @@ describe('RelayRouteProfiles', () => {
     expect(screen.queryByText('Device configured')).toBeNull();
   });
 
+  test('sign-in failure exposes safe step diagnostics after Begin without secret text', async () => {
+    configureEnrollmentReadyRoute();
+    const original = mocks.enrollmentInvoke.getMockImplementation()!;
+    const trap = 'https://secret.invalid/?password=PRIVATE';
+    mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_enrollment_login_prepare')
+        throw captureNativeEnrollmentFailure(new Error(trap), 'host-prepare');
+      return original(command, args);
+    });
+    renderRoutes();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Request device access' }),
+    );
+    fireEvent.change(await screen.findByLabelText('Station account username'), {
+      target: { value: 'member' },
+    });
+    fireEvent.change(screen.getByLabelText('Station account password'), {
+      target: { value: 'private-password' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Sign in and request Device approval',
+      }),
+    );
+    await screen.findByRole('alert');
+    expect(screen.getByText(/Stage: host-prepare. Code: unknown/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain(trap);
+  });
+
+  test('signed terminal status after uncertain activation closes the request before new setup', async () => {
+    configureEnrollmentReadyRoute();
+    mocks.recoveryAttempts.push({
+      enrollmentHandle,
+      phase: 'activation-unknown',
+      profileRevision: 12,
+      expiresAt: Date.now() - 1,
+      registrationAvailable: true,
+      candidate: enrollmentCandidate,
+      transition: null,
+    });
+    const original = mocks.enrollmentInvoke.getMockImplementation()!;
+    mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_enrollment_status_accept') {
+        mocks.recoveryAttempts.length = 0;
+        return {
+          version: NATIVE_RELAY_ENROLLMENT_VERSION,
+          enrollmentHandle,
+          state: 'expired',
+        };
+      }
+      return original(command, args);
+    });
+    renderRoutes();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+      }),
+    );
+    await screen.findByRole('button', { name: 'Request device access' });
+    expect(
+      screen.queryByRole('button', { name: 'Check Device status' }),
+    ).toBeNull();
+    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+      'station_native_enrollment_cancel_prepare',
+      expect.anything(),
+    );
+  });
+
   test('expired saved setup offers cleanup and never account submission', async () => {
     configureEnrollmentReadyRoute();
     mocks.recoveryAttempts.push({
