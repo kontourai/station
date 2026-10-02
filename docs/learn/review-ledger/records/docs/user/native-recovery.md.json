@@ -28,7 +28,7 @@
 
     {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-desktop/src/startup_readiness.rs","digest":"77c26585b925bf67038df2ff3aea842c9ef0c4262914bbf957b2ca30f0332f82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -36,7 +36,7 @@
 
     {"path":"src-server/runtime/bootstrap/readiness-handshake.ts","digest":"321dc2ec9238434fb5b52e7e263c71b64546db0bc56292c164d73ab6fc6fd449","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
     {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

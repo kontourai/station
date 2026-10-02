@@ -108,9 +108,9 @@
 
     {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
 
-    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"223050ca10be2f4139e5ef70900f8184c4be95704dea435ba11b9bcb46275075","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
+    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"2d20c70fb3a0cb6690d377ea952a97c77aacb2162cf888ac2092a73f450fdc00","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
-    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"6064bbe2d77da5154cf3e39a33201982ad5592063ef921993b2cb18ec66afdc7","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
+    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"9012676f5874a8bd8c33a140764d6c83abeac50fdbdb667468fb5800a6216602","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceAction.tsx","digest":"1edf298cb5a986218a8dbd8b14bcfaf1627fb15d5e811b457bf3c7ed28009f99","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -12,7 +12,7 @@
   "document": {"digest":"202df09f6d5170449a1eac71ce2050060e0452b9a8e9695c2b145400ab03d3dc","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
   "sources": [
-    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
 
@@ -94,7 +94,7 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"94f81b48093080a0e80c3cb131a5fb568ca970b277209fb8a47ab560bd6fff25","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
