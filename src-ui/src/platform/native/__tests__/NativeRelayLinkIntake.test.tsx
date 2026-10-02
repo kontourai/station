@@ -514,6 +514,94 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
 });
 
 it.each([
+  'ambiguous',
+  'shape',
+  'profile',
+  'route',
+  'metadata',
+  'cleanup',
+  'unknown',
+] as const)(
+  'link review classifies status %s through the real adapter without redemption or raw leakage',
+  async (code) => {
+    const { profile, keyId } = await configureBoundFlow(true);
+    const trap = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    const ordinaryInvoke = host.invoke.getMockImplementation();
+    const metadata = {
+      route: {
+        brokerOrigin: route.brokerOrigin,
+        stationId: route.stationId,
+        enrollmentId: route.enrollmentId,
+        routingGeneration: 1,
+        grantId: 'abcdefghijklmnopqrstuv',
+      },
+      stationSigningKeyId: keyId,
+      stationSigningGeneration: 1,
+      expiresAt: Date.now() + 60_000,
+    };
+    host.invoke.mockImplementation(async (command, args) => {
+      if (command !== 'station_native_relay_grant_status')
+        return ordinaryInvoke?.(command, args);
+      if (code === 'unknown') throw new Error(trap);
+      const status = {
+        profileName: profile.name,
+        profileRevision: host.store?.revision,
+        stationId: route.stationId,
+        enrollmentId: route.enrollmentId,
+        grants: [] as unknown[],
+        cleanups: [] as unknown[],
+      };
+      if (code === 'ambiguous')
+        status.grants = [
+          { metadata, expired: false },
+          {
+            metadata: {
+              ...metadata,
+              route: {
+                ...metadata.route,
+                routingGeneration: 2,
+                grantId: 'zyxwvutsrqponmlkjihgfe',
+              },
+            },
+            expired: true,
+          },
+        ];
+      if (code === 'shape') return { ...status, credential: trap };
+      if (code === 'profile') status.profileName = trap;
+      if (code === 'route') status.stationId = trap;
+      if (code === 'metadata')
+        status.grants = [
+          { metadata: { ...metadata, credential: trap }, expired: false },
+        ];
+      if (code === 'cleanup') status.cleanups = [{ credential: trap }];
+      return status;
+    });
+    render(
+      <NativeRelayLinkIntake>
+        <ProtectedRoot />
+      </NativeRelayLinkIntake>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Continue to device approval',
+      }),
+    );
+    await screen.findByText(`Connection error: grant-status-${code}`);
+    expect(screen.getByText('Connection step: grant-status')).toBeTruthy();
+    expect(document.body.textContent).not.toContain(trap);
+    expect(screen.queryByText(/Connection invitation accepted/)).toBeNull();
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_relay_link_redeem' ||
+          command === 'station_native_enrollment_resume' ||
+          command === 'station_native_enrollment_begin_prepare',
+      ),
+    ).toBe(false);
+  },
+);
+
+it.each([
   [
     'station-owned',
     'station_native_pairing_link_take',
