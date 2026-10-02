@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"8825837df431d10e2b3459e0079467a523bf0d611be0cbcf88f29043548c3046","revision":"2d2041d2e37ac1e09e9094647767b6f676bf1b1c"},
+  "document": {"digest":"368b3c8d0ee8d0856531ef5d7cc3687d92598acc68eeb6913d3f771e8719bd16","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -372,9 +372,9 @@
 
     {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"278ebc12a146a4dd3ee1cbac399e389635f708042603f985029a3773b38a741c","revision":"2d2041d2e37ac1e09e9094647767b6f676bf1b1c"},
+    {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"5d88fe92ada9d77d12572dfb037aef01a6f339e856a3c1e21f965aa0da40f95c","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"4c01be558bf83b9b4154a3274e76a5c3d88555724b818e592d48bbefd318fcbe","revision":"2d2041d2e37ac1e09e9094647767b6f676bf1b1c"}
+    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"ecda631b77c9c819d9e83982a5aeaa24c6e889f59c6ea34cea26894233cf6d63","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"}
   ],
 
   "checks": [
