@@ -8989,6 +8989,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    would be a no-op dressed up as a mechanism. Together those two changes are
    what turn a 24px overflow into ~28px of title. */
 @media (max-width: 360px) {
+  .app-toolbar.app-toolbar,
+  .app-toolbar .app-toolbar__actions {
+    gap: 2px;
+  }
+
   .chat-dock__mobile-header {
     padding: var(--space-1) 8px;
   }
