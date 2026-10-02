@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { loadSelfHostedBrokerConnectorConfig } from '../src-server/runtime/bootstrap/self-hosted-connector-config.js';
 import { NativeSurfaceRegistry } from '../src-server/services/connections/native-surface-registry.js';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -30,6 +31,59 @@ function requireNewPrivateOutput(path: string): void {
     throw error;
   }
   throw new Error('native_invitation_output_exists');
+}
+
+function publishApprovedInvitationLink(
+  homeDir: string,
+  applicationOrigin: string,
+  invitation: SelfHostedBrokerNativeRouteInvitationV2,
+  outputPath: string,
+  devScheme?: string,
+): void {
+  let registry: NativeSurfaceRegistry | undefined;
+  try {
+    // Never create an approval store or approve a surface as a publishing side effect.
+    lstatSync(join(homeDir, 'security', 'native-surfaces.sqlite'));
+    registry = new NativeSurfaceRegistry(homeDir, invitation.scope.stationId);
+    const approved = registry
+      .approvedSurfaces()
+      .find(
+        (entry) =>
+          entry.scope.stationId === invitation.scope.stationId &&
+          entry.scope.enrollmentId === invitation.scope.enrollmentId &&
+          entry.scope.routingGeneration ===
+            invitation.scope.routingGeneration &&
+          entry.surface.kind === invitation.surface.kind &&
+          entry.surface.appIdentifier === invitation.surface.appIdentifier &&
+          entry.surface.channel === invitation.surface.channel &&
+          entry.surface.clientInstanceId ===
+            invitation.surface.clientInstanceId &&
+          entry.surface.keyThumbprint === invitation.surface.keyThumbprint,
+      );
+    if (!approved?.isCurrent())
+      throw new Error('native_invitation_surface_approval_required');
+    if (invitation.surface.channel !== 'dev' && devScheme)
+      throw new Error('native_invitation_dev_scheme_refused');
+    const link = encodeNativeRelayLink(
+      {
+        version: 'station-native-relay-link/v1',
+        kind: 'bound-invitation',
+        applicationOrigin: applicationOrigin,
+        invitation,
+      },
+      {
+        channel: invitation.surface.channel,
+        ...(devScheme ? { devScheme } : {}),
+      },
+    );
+    if (!approved.isCurrent())
+      throw new Error('native_invitation_surface_approval_changed');
+    writeFileSync(outputPath, `${link}\n`, { flag: 'wx', mode: 0o600 });
+  } catch {
+    throw new Error('native_invitation_link_refused_after_json_written');
+  } finally {
+    registry?.close();
+  }
 }
 
 /** Operator terminal only: public prepare file in, private invitation and optional bound link out. */
@@ -87,55 +141,14 @@ export async function writeNativeRelayInvitation(
     flag: 'wx',
     mode: 0o600,
   });
-  if (linkOutputPath) {
-    let registry: NativeSurfaceRegistry | undefined;
-    try {
-      // Never create an approval store or approve a surface as a publishing side effect.
-      lstatSync(join(homeDir!, 'security', 'native-surfaces.sqlite'));
-      registry = new NativeSurfaceRegistry(
-        homeDir!,
-        invitation.scope.stationId,
-      );
-      const approved = registry
-        .approvedSurfaces()
-        .find(
-          (entry) =>
-            entry.scope.stationId === invitation.scope.stationId &&
-            entry.scope.enrollmentId === invitation.scope.enrollmentId &&
-            entry.scope.routingGeneration ===
-              invitation.scope.routingGeneration &&
-            entry.surface.kind === invitation.surface.kind &&
-            entry.surface.appIdentifier === invitation.surface.appIdentifier &&
-            entry.surface.channel === invitation.surface.channel &&
-            entry.surface.clientInstanceId ===
-              invitation.surface.clientInstanceId &&
-            entry.surface.keyThumbprint === invitation.surface.keyThumbprint,
-        );
-      if (!approved?.isCurrent())
-        throw new Error('native_invitation_surface_approval_required');
-      if (invitation.surface.channel !== 'dev' && devScheme)
-        throw new Error('native_invitation_dev_scheme_refused');
-      const link = encodeNativeRelayLink(
-        {
-          version: 'station-native-relay-link/v1',
-          kind: 'bound-invitation',
-          applicationOrigin: factory.applicationOrigin,
-          invitation,
-        },
-        {
-          channel: invitation.surface.channel,
-          ...(devScheme ? { devScheme } : {}),
-        },
-      );
-      if (!approved.isCurrent())
-        throw new Error('native_invitation_surface_approval_changed');
-      writeFileSync(linkOutputPath, `${link}\n`, { flag: 'wx', mode: 0o600 });
-    } catch {
-      throw new Error('native_invitation_link_refused_after_json_written');
-    } finally {
-      registry?.close();
-    }
-  }
+  if (linkOutputPath)
+    publishApprovedInvitationLink(
+      homeDir!,
+      factory.applicationOrigin,
+      invitation,
+      linkOutputPath,
+      devScheme,
+    );
 }
 
 if (invokedDirectly(import.meta.url)) {

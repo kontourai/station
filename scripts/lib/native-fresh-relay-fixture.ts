@@ -310,7 +310,7 @@ function brokerOwnerSnapshot(plan: NativeFreshFixturePlan) {
   }
 }
 
-/** Read-only after normal broker init; no stale plan can spawn a connector. */
+/** Read-only pre-spawn ownership check; broker registration checks again after it. */
 export function assertNativeFreshBrokerLeaseCommitted(
   plan: NativeFreshFixturePlan,
 ): void {
