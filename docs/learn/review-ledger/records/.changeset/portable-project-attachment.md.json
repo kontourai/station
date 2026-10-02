@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/portable-project-attachment.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"df4b04b5798216c98ec6817ff7e9889c7a7998a0e4ec7e535ca9b57f78f096f9","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

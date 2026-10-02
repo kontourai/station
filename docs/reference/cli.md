@@ -1321,6 +1321,18 @@ every thread for `--agent`'s provider when `--thread` is omitted) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
+A request is pending when it has no `request.resolved`, was not
+[settled by its turn's abort](session-api.md#respondtorequest), and, when the
+session summary carries `openRequestIds`, is still listed there. Each row
+carries `requestEventId`, the `request.opened` event it was read from.
+`respond` looks the request up first and, for an approval or permission this
+Station still lists, sends that id as `expectedRequestEventId`, so the server
+answers the request that was listed and refuses one that changed. A question
+(a request carrying a questionnaire) is never bound this way, so the server
+still refuses to close one that was not inspected. A request the lookup does
+not find is posted without the id and the server decides; nothing is refused
+client-side.
+
 ```
 station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
@@ -1378,6 +1390,12 @@ history), `GET /api/orchestration/sessions/:threadId/flow-run`
 /api/orchestration/sessions/:threadId/builder-run` (`getSessionBuilderRun`,
 archive#189 S4), plus a separate fleet-routing receipt read. This does not
 continuously refresh every owner projection.
+
+The approvals pane lists a `request.opened` with no `request.resolved` that
+was not [settled by its turn's abort](session-api.md#respondtorequest), by the
+same shared rule the server applies, over the events this screen holds. A
+keypress decision on an approval or permission that is not a question is
+sent with the listed request's event id as `expectedRequestEventId`.
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent
@@ -2366,9 +2384,10 @@ station fresh --force --allow-default-home-clean
 
 ### `home verify`
 
-Run an integrity check over the SQLite stores this home owns
-(`data/orchestration.sqlite` and `scheduler/scheduler.sqlite`) and report each
-one. The stores are opened read-only, so this is safe to run while Station is
+Run an integrity check over `data/orchestration.sqlite` and
+`scheduler/scheduler.sqlite` and report each one. This command does not inspect
+the home's other authentication, membership, native replay or Knowledge stores.
+The stores are opened read-only, so this is safe to run while Station is
 up -- it is the only `home` action that does not require the home to be idle.
 
 ```
@@ -2401,7 +2420,11 @@ is covered by this command, not by that schedule.
 
 Create an offline, content-hashed backup of one Station home. Every Station
 using that home must be stopped. SQLite stores are checkpointed and integrity
-checked before copy for selected `*.sqlite` files; symlinks in included content,
+checked before copy for every included `*.sqlite` file, a database named by the
+[home store registry](../../packages/shared/src/station-home-store-registry.ts),
+or a file with an existing SQLite WAL. This includes
+`security/native-device-proof-replay.sqlite` and `knowledge-index/index.db`;
+WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level

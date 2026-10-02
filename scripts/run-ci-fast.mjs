@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
@@ -371,6 +372,9 @@ export function runCiFast({
     // `index === 0` names the selector; a statics-only lane has none.
     const index = selector ? position : position + 1;
     const iterationStartedAt = now();
+    // Name the step before it starts: a direct `node` step prints no npm
+    // header, and the reporter attributes a failure to the last boundary.
+    report(ciFastStepMarker(command, args));
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)

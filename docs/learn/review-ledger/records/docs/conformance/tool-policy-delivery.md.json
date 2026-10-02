@@ -1,0 +1,81 @@
+{
+  "path": "docs/conformance/tool-policy-delivery.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
+
+  "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
+
+  "document": {"digest":"eaf8811c2feade2dfa7377efde1e1395d6fde7361b8ed14c5e504cfc050b8957","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
+
+  "sources": [
+    {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"d118c809a928964381bd99c8fb18f9f0774497f59504b9639af3ae37874a34b2","revision":"8e353a6a1600fadd5df7f82941cfc289a66a686a"},
+
+    {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"b6e58833d00c3823cf7cc0410b757ec27b4ec1a65ef2d26b2efa37a76bac8fc3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"packages/shared/src/tool-request-preview.ts","digest":"eea1bd5a34c79fe429276d813748d1930fa66c2ee33f4c3d702fd64d6da4f731","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
+
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"b4ae3455f66b64898993b9c732c130502c3e86554e07e3dac9c2abd00d1a9560","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
+
+    {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b","revision":"17f96f535b5e1f8339d821a6b9cff9299f895b0e"},
+
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"a194c76e9d176303a57fb46953fb0c32b874994a9073888eba4a585de57d6b25","revision":"593ba7779013fc65c6136152fcfb948e1ba91ce9"},
+
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"d41be01dbad45c51d1acee14c2120e55ea7ef0a7101a9824590ff45a9bd76fc0","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
+
+    {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/agents/__tests__/pre-tool-policy.test.ts","digest":"049653b403ecca1bcc94c90431b8baa72f03d31b45213aa04c40867d229d0541","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
+
+    {"path":"src-server/runtime/agents/agent-hooks.ts","digest":"69d4f905ff37904fa95e1f6e6da4c8e30d5ef176eee7b1753173d0c6138e261a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
+    {"path":"src-server/services/approvals/approval-inbox.ts","digest":"86f6654861290a3c6a7cd303bfe9a339e2ee1275f1dc9fd67c23c0cab275bbba","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/services/orchestration/request-presentation.ts","digest":"6bde57de6020c50c9784630c585e0744a249e197c6f035fdb8fc0a9ed768aa31","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/components/badges/ApprovalModeChip.tsx","digest":"d74ef9adc51a198ae125997d3dea412a24af03f1e427e10c43c97d526c21cbab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/components/chat/ToolCallDisplay.tsx","digest":"230994803c6e56636bdf11aee4dc3417f9c7da83242c99a1c4a68b2fdd8184f7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","digest":"77417daeb5063994d160f5a7bc842e9bffe448258646e0a352c19875d03193bf","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"c0ebc61da5d9ee5d5a7e491730562c4a37136fc15f3eed785741384a943be112","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
+
+    {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"b2ad336b2a519684fb2c2e4759207610b250779c971ab2fc7330f7b03c11a611","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"b7561d3b1d39b4cd9ae541ef6048f7e9648a86ad"}
+  ],
+
+  "checks": [
+    "335 tests/5 files PASS,43.85s. Existing fixtures only; no provider dispatched.",
+
+    "Installed Agent SDK version 0.3.261; sdk.d.ts SHA256 59560e31f91e47ed93e7cbcaa846e3fc3c96d8dcc41ea36cda64de96c0c4edf4. Read settings-source defaults and bundled resolver; no dependency code executed.",
+
+    "Final four-document bytes:407 Markdown paths/anchors PASS;154 reference/example syntax fences PASS;git diff --check PASS. Veritas1790527733697:0 failures0 warnings. Three owned documentation-only commits; no runtime edits or external writes.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: claude-adapter.ts dropped the unused stdio `mintStationControlCallerToken` fallback and its test, and package.json/pnpm-lock removed only @kontourai/bearing and @kontourai/forage (Agent SDK still 0.3.261). The explicit mcpServers/strictMcpConfig, PreToolUse and delivery claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

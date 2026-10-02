@@ -111,10 +111,39 @@ export function verifyExpectedManifest(ring, envelope, keys, expectedPayload) {
     expectedChannel: assertRing(ring),
   });
   if (canonicalManifestJson(payload) !== canonicalManifestJson(expectedPayload))
-    throw new Error(
-      `manifest payload for ${String(payload.version)} is not the payload this run signed (${String(expectedPayload?.version)})`,
-    );
+    throw new ManifestMismatchError(payload.version, expectedPayload?.version);
   return payload;
+}
+
+/** A validly signed manifest whose payload is not the one this run signed. */
+export class ManifestMismatchError extends Error {
+  constructor(fetchedVersion, expectedVersion) {
+    super(
+      `manifest payload for ${String(fetchedVersion)} is not the payload this run signed (${String(expectedVersion)})`,
+    );
+    this.fetchedVersion = fetchedVersion;
+  }
+}
+
+/**
+ * True only for the one failure waiting can fix: a validly signed rolling
+ * manifest that is still an OLDER version than the one just published, i.e.
+ * the asset host serving the replaced bytes from cache. A bad signature, a
+ * wrong key or a newer or equal version is not staleness and fails at once.
+ */
+export function isStaleRollingManifest(ring, error, expectedPayload) {
+  if (!(error instanceof ManifestMismatchError)) return false;
+  try {
+    return (
+      compareRingVersions(
+        ring,
+        error.fetchedVersion,
+        expectedPayload?.version,
+      ) < 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -283,10 +312,17 @@ export async function verifyPublishedAssets(payload, options = {}) {
   }
 }
 
+const REVERIFY_ATTEMPTS = 30;
+const REVERIFY_DELAY_MS = 10_000;
+
 /**
- * Reads and verifies `location` against `keys` and `expected`. A remote read
- * retries a mismatch: a just-replaced rolling asset can briefly serve the
- * previous bytes.
+ * Reads and verifies `location` against `keys` and `expected`. A
+ * just-replaced rolling asset can serve the previous bytes for a while:
+ * GitHub's asset host cached the old manifest for longer than a minute after
+ * the replacement on 2026-09-30 (#3013), so a remote read retries a stale
+ * (older) manifest for up to REVERIFY_ATTEMPTS * REVERIFY_DELAY_MS
+ * (5 minutes). Any other failure, or staleness that outlasts that, fails at
+ * once.
  */
 export async function verifyManifestLocation(ring, location, keys, expected) {
   const remote = /^https:\/\//.test(location ?? '');
@@ -298,8 +334,13 @@ export async function verifyManifestLocation(ring, location, keys, expected) {
         payload: verifyExpectedManifest(ring, envelope, keys, expected),
       };
     } catch (error) {
-      if (!remote || attempt >= 10) throw error;
-      await sleep(6000);
+      if (
+        !remote ||
+        attempt >= REVERIFY_ATTEMPTS ||
+        !isStaleRollingManifest(ring, error, expected)
+      )
+        throw error;
+      await sleep(REVERIFY_DELAY_MS);
     }
   }
 }

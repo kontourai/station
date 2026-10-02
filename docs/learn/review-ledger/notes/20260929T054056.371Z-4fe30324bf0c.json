@@ -1,0 +1,9 @@
+{
+  "revision": "88464e1e39103095a2ecf1642a4ecd0a199d234a",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Source review through 285b42cae: learning-atlas.browser.test.ts now derives the expected review-status label from the module map's recorded state instead of assuming it is fresh; the README's browser-check list and its 'Review out of date' description remain accurate. Source review is separate from executed test evidence."},
+
+    {"path":"docs/learn/README.md","note":"Source review through 88464e1e3: the atlas browser test's state-derived status map gained an explicit index type for tsc; behaviour and the README's browser-check claims are unchanged. Source review is separate from executed test evidence."}
+  ]
+}

@@ -30,6 +30,7 @@ import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
 const showSurface = vi.hoisted(() => vi.fn());
+const showSurfacePage = vi.hoisted(() => vi.fn());
 // Mutable so the authority-switching test can move the mounted Home between
 // two same-origin authorities (and to none).
 const authorityRef = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
+  useShowSurfacePage: () => showSurfacePage,
 }));
 
 import { HomeView } from '../views/HomeView';
@@ -336,6 +338,7 @@ describe('HomeView', () => {
 
   beforeEach(() => {
     showSurface.mockClear();
+    showSurfacePage.mockClear();
     fixtures.sessions = [];
     fixtures.tasks = [];
     fixtures.chats = {};
@@ -608,7 +611,7 @@ describe('HomeView', () => {
   // #2310 (verifier finding): the partition routes a Draft ONLY to `drafts`,
   // so if Home stopped rendering that section the row would vanish from Home
   // with every other test green. Render it and find the row inside it.
-  test('Home lists a Draft under its own Drafts section, and not under Active now', () => {
+  test('Home lists a Draft under its own Drafts section, and not under a live lane', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;
     fixtures.defaultModelLabel = 'Model not reported';
@@ -647,9 +650,11 @@ describe('HomeView', () => {
     expect(
       within(drafts as HTMLElement).getByText('Never prompted title'),
     ).toBeTruthy();
-    const active = screen.getByRole('region', { name: /Active now/ });
-    expect(within(active).queryByText('Never prompted title')).toBeNull();
-    expect(within(active).getByText('Worked session title')).toBeTruthy();
+    // The worked session has no turn in flight: it is Idle, not Running.
+    const idle = screen.getByRole('region', { name: /^Idle/ });
+    expect(within(idle).queryByText('Never prompted title')).toBeNull();
+    expect(within(idle).getByText('Worked session title')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: /^Running/ })).toBeNull();
   });
 
   // #2312: a Draft is discarded by the SERVER (so every device agrees), from
@@ -888,7 +893,7 @@ describe('HomeView', () => {
     expect(screen.getByText('Write a message and begin')).toBeTruthy();
   });
 
-  test('separates Active now from terminal Recently finished work with counts and compact cwd metadata', () => {
+  test('separates Running from terminal Recently finished work with counts and compact cwd metadata', () => {
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -898,7 +903,7 @@ describe('HomeView', () => {
         lifecycleState: 'running',
         hasActiveTurn: true,
         displayTitle: 'Keep working',
-        cwd: '/Users/brian/dev/github/kontourai/station',
+        cwd: '/Users/me/dev/github/kontourai/station',
         createdAt: '2026-07-30T00:00:00Z',
         updatedAt: '2026-07-30T00:00:00Z',
         isLoaded: true,
@@ -923,7 +928,7 @@ describe('HomeView', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const active = screen.getByRole('region', { name: 'Active now (1)' });
+    const active = screen.getByRole('region', { name: 'Running (1)' });
     const recentlyFinished = screen.getByRole('region', {
       name: 'Recently finished (1)',
     });
@@ -947,7 +952,7 @@ describe('HomeView', () => {
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
@@ -976,7 +981,7 @@ describe('HomeView', () => {
       screen.getAllByText(/Agent unavailable · Model unavailable/).length,
     ).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
     fireEvent.click(
@@ -1186,7 +1191,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
           status: 'closed',
           lifecycleState: 'failed',
           displayTitle: 'Repair the settled failure',
-          cwd: '/Users/brian/dev/github/kontourai/station',
+          cwd: '/Users/me/dev/github/kontourai/station',
           createdAt: '2026-07-28T14:00:00Z',
           updatedAt: '2026-07-28T14:00:00Z',
           isLoaded: true,

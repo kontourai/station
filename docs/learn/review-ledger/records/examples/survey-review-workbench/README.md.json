@@ -1,0 +1,65 @@
+{
+  "path": "examples/survey-review-workbench/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full README claim review through actual server registrations and browser mount/persistence/projection callbacks, build/manifest and host trusted server admission. Corrected lazy dependency claim, optional event-count mismatch check versus replacement writes/concurrent save transaction, partial resolved-item projection and nonexistent-workspace fallback. Documented pending-save projection and component-state context-switch limits. Actual disposable route probe demonstrates omitted count can replace prior history and wrong count returns409.",
+
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
+
+  "document": {"digest":"d8551d4b9cfca89a35f9827dffff6b9c80bcff5af8f02e45e733b07a8b8b7efa","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"examples/survey-review-workbench/layout.json","digest":"6230565ffbf9028a391eec016d75b9dc21f5db5e58267db1df0f69f76b362d53","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/survey-review-workbench/package.json","digest":"9b99e36e35fe4d118746c5b52da95b586c3db2eec82dc8c0c7583ea50bc53c35","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/survey-review-workbench/plugin.json","digest":"604aa57fbeb23aa018b0ea7738728fb08b4eeabfa7c09691e4ba68d4c57f24f9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/survey-review-workbench/server/__tests__/plugin-server.test.ts","digest":"89380f6a7785f991d4622cd924ee8161883b50fb738b0412bd5a5cbc4d6ce658","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/survey-review-workbench/server/plugin.mjs","digest":"ce6fa4b48960641622ad1fd4fd6b69316cedac1095cc1aaa737c186cfde5d48b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/survey-review-workbench/src/index.tsx","digest":"e422447f45a5a2e73cbac32873368c3a3e14d79493248f9e99d680a05f64f7a5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
+    {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
+  ],
+
+  "checks": [
+    "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
+
+    "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
+
+    "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
+
+    "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
+
+    "Executed disposable actual Hono/register PUT probe: seed200, omitted count replaces prior events200, mismatched count409 preserves current events, matching count replacement200; final GET contains replacement. Receipt .kontourai/placement-example-continuation/survey-put-probe.json. No provider or personal home touched.",
+
+    "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: plugin-install-transaction.ts adds dependency/proposed-install staging options, which do not change the README's operator preview-then-consent install path, and pnpm-lock removed only bearing/forage; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

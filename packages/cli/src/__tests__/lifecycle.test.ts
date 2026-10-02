@@ -6371,8 +6371,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const tailscaleHeaders = {
       Host: 'station.example.ts.net',
       'Tailscale-Headers-Info': 'https://tailscale.com/s/serve-headers',
-      'Tailscale-User-Login': 'brian@example.test',
-      'Tailscale-User-Name': 'Brian',
+      'Tailscale-User-Login': 'casey@example.test',
+      'Tailscale-User-Name': 'Casey',
       'X-Station-Ingress-Identity': 'caller-spoof',
     };
     expect(await send(tailscaleHeaders)).toBe(200);
@@ -6392,8 +6392,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       JSON.parse(Buffer.from(String(verified), 'base64url').toString('utf8')),
     ).toEqual({
       provider: 'tailscale-serve',
-      login: 'brian@example.test',
-      displayName: 'Brian',
+      login: 'casey@example.test',
+      displayName: 'Casey',
     });
     expect(observed[1]?.['x-station-ingress-identity']).toBeUndefined();
     expect(observed).toHaveLength(2);
@@ -7796,7 +7796,9 @@ describe('lifecycle build + restart ergonomics', () => {
       socket.destroy = vi.fn();
       socket.setTimeout = vi.fn();
       queueMicrotask(() => {
-        now = 90_000;
+        // Each refused probe spends a whole base budget, so the wait walks
+        // through its bounded slow-boot extensions (#2964) and still gives up.
+        now += 90_000;
         socket.emit('error', new Error('seeded terminal refusal'));
       });
       return socket;
@@ -7831,6 +7833,14 @@ describe('lifecycle build + restart ergonomics', () => {
           uiPort: 5274,
         }),
       ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3243');
+      // start() hands the server child's liveness to the TCP waits (#2964):
+      // with it, the terminal port is probed again after the base deadline;
+      // without it, the first refused probe would be the only one.
+      // The mock declares no parameters, so its calls are read as unknowns.
+      const terminalProbes = (tcpConnect.mock.calls as unknown[][]).filter(
+        ([target]) => (target as { port?: number } | undefined)?.port === 3243,
+      );
+      expect(terminalProbes.length).toBeGreaterThan(1);
       expect(killProcessTree).toHaveBeenCalledWith(44001);
       expect(killProcessTree).toHaveBeenCalledWith(44002);
       expect(existsSync(getInstanceStatePath('terminal-not-ready'))).toBe(

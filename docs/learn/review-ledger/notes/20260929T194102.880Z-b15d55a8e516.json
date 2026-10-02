@@ -1,0 +1,7 @@
+{
+  "revision": "fb889a3ac805ab41a427ffd37ce25e3578e61a1d",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Re-checked the fold section against migrate-review-ledger.mjs after two fixes: folded checks are compared as sets (old-file text merges reordered them, which the positional comparison misreported on a real branch as 51 edited records), with an in-place edit carried only as a one-for-one replacement of a check ours still holds; and a conflicted media.json now requires --base before anything is written. The section's claims (names both-edited or removed checks, stops without writing on a field both sides changed) still match."}
+  ]
+}

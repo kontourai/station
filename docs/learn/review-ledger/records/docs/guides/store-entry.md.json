@@ -1,0 +1,165 @@
+{
+  "path": "docs/guides/store-entry.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed owner-setup, API key, workload identity, channel profile, upload/reconciliation and bounded group-assignment claims through declared workflows, pinned action inputs and primary provider documentation. Intended names and privacy/ads answers marked as owner decisions, not observed account facts.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration. Owner account/legal/privacy/age/ads declarations remain unverified decisions; no live store listing certified.",
+
+  "document": {"digest":"147cfd2465d9fa280eda3d75b7a7d5fc963bafe32d7593d196e4fdeb629e06e8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+  "sources": [
+    {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/internal-testflight.yml","digest":"b1d770e14eb25d9677b098ab1b08db09a3401f4a1aaf88fd1f908e16cdd9a4b4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/nightly-native-cohort.yml","digest":"316bd0d98f7370e8b795e28f5a202dcd3fa878f5685d19eda53e73f57b864aaf","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/publish-release.yml","digest":"23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+
+    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+
+    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".gitignore","digest":"a14e84f5b88d0d6fcd61e57cb71335e8b4400d53a35ae84048458a669ac05ccc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"config/channel-platform-matrix.json","digest":"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"config/release-platform-matrix.json","digest":"98c281ce785e766ee9d4b32f401e17ddffba02e5fdd2cdc9fc6d3ebedcf8e94b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"schemas/release-artifact-manifest.schema.json","digest":"6df370e06aeb670ea517f52580f76345f049ad7083b823b4f590563e1e2babf4","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+
+    {"path":"scripts/__tests__/ensure-ios-agent-activity-extension.test.ts","digest":"866e000cc1d4b2e62d6124bc0a8bf74e4014564b471602603ab7cecdf18c143b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/ios-exported-entitlements.test.ts","digest":"c90c77bff126bd526c575dd6524553097e6f514e2f0929bd12f3e2657425e0fc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/ios-store-signing-config.test.ts","digest":"ca2d9c0cd7aab6663e3ad0d38ace6563d3fb9c6bccfd2db8addb11407bbac50d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/native-update-feed.test.ts","digest":"11e779e2c9940210a8f94dfa9cfddfda4bf8f2bdf58d0118f5c64547bd1aa0b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/publish-mobile-feed-transaction.test.ts","digest":"6fe34e378cf37fa4fe2a6a3736706a59d62785a9b8cafc1c3c459d61cc32c60c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+
+    {"path":"scripts/app-store-connect-receipt.mjs","digest":"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/apply-android-release-signing.mjs","digest":"84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/check-ios-store-profile.mjs","digest":"7467a49dc8616e9472ab7b37fad9648b96e58fe7a0268e7261094dcb0eae7e5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ensure-ios-agent-activity-extension.mjs","digest":"8d6a311a638629b54b3ae592572197b8681f623510784bab2302d82eabd29a6d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-exported-entitlements.mjs","digest":"af64ec411d76e4d926967e10db8fbc9e7f7f3555f11f19aa1260918851239257","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-local-release-preflight.mjs","digest":"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-store-signing-config.mjs","digest":"6925f7a23762e4176dc170703fd59ed579840803e03a89f4d6ab0ad88fa17297","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-delivery-policy.mjs","digest":"ab0a2087750982e2158056aa86b413c683bcfe131187ea177c4ac3e3b61fe8aa","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-internal-authority.mjs","digest":"480c939736cba2acf4292b421283afbbc48a0334d807c73bdf5eda5276bd7ef2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-readiness.mjs","digest":"dadb2c4e200865e81384ff448c62ef3a577e0745e1b9572139c2eba3a4d0143c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/release-artifacts.mjs","digest":"671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+
+    {"path":"scripts/lib/release-variants.mjs","digest":"37971798872193d2eac0eefd67049401211254bb5b048f6b8257123909c5968e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/native-update-feed.mjs","digest":"5331b5766432d532131d71c0227f7d7cf2be1574fe1345c69cc6e4e8fc9b1f27","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/publish-mobile-feed-transaction.sh","digest":"e983e732ff706b8b2c7fbd4e13001331de7341c7aaed0d66656ddfc99cd7a34f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/release-artifacts.mjs","digest":"723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+
+    {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/version","digest":"28038cba2d9ec115028d011d4b7289218a794d7e4943a6fb33f148f2eede1152","revision":"bfe2de5ae881fa9221b2dd94360d003b996f0474"}
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): focused: PASS116tests7files2.03s: native-release-config, release-ring-workflow, nightly-cohort-decision, ios-testflight-readiness, app-store-connect-receipt, release-platform-matrix, documentation-foundations",
+
+    "Prior review receipt (not rerun here): matrix: PASS node scripts/release-platform-matrix.mjs; config validation only, no projection as live truth",
+
+    "Prior review receipt (not rerun here): actualAssemblyCli: FAIL exit1 readFileSync is not defined; expected finding, not fixed; no output/assets produced",
+
+    "Prior review receipt (not rerun here): veritas: PASS exit0/0failures/0warnings; proof:repo-governance/lint:check/verification-policy; protected hashes unchanged",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed generated channel/key blocks, Nightly public-manifest-only and coexistence admission, exact pin/channel checks, retained source-archive selector, final-location build and upgrade identity. This consumer is not the new per-platform prebuilt installer; docs preserve that limit.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Adds notificationServiceBundleId null for stable and exact Beta/Nightly NotificationService IDs. Mobile/setup docs now require both extensions and all three profiles; no current provider provisioning asserted.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Only frozen upstream delta adds guarded pinned pnpm JS bootstrap on Intel macOS and keeps pinned native setup elsewhere. Tagged native inventory/signing/publication claims unaffected; no hosted execution.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Reviewed new NotificationService secret/profile import, target generation/signing, exact extension count, embedded profile/entitlement audits and exported bytes. Mobile/setup corrected; icons and existing artifact/provider distinction retained.",
+
+    "Prior review receipt (not rerun here): Upstream source review: Only adds dist-portable-server generated directory; existing native/package artifact boundaries unchanged.",
+
+    "Prior review receipt (not rerun here): Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Prior review receipt (not rerun here): Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Prior review receipt (not rerun here): Added only a tracked documentation PNG exception; native capture/private artifact rules are unchanged.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Primary external documentation reviewed read-only on2026-09-27: Apple API keys https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/ ; Apple screenshot specifications https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/ ; Apple privacy https://developer.apple.com/app-store/user-privacy-and-data-use/ ; Google preview assets https://support.google.com/googleplay/android-developer/answer/9866151 ; Google categories https://support.google.com/googleplay/android-developer/answer/9859673 ; Google deployment-pipeline WIF https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines . No account query or mutation.",
+
+    "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
+
+    "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
+    "Integration source review through d1e0facc2: Update evidence now exercises the owning component; no physical update receipt inferred. Version/feed helpers are private; native update validation is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: install.sh gained the archive install, service restart and rollback path; the Nightly installer moved its signing-requirement check into the helper; package.json dropped bearing/forage; lib.rs removed notification_watch. The guide makes no claims about these store-publication inputs, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds the install.sh launcher handoff and stage-only mode. #2914 adds `print --` in install-macos.zsh, removes the validateUpdateConfig alias in favor of resolveNativeUpdateAuthority, and drops runBoundedFixture tests. None touches TestFlight/Play authority, secrets, tagging or the out-of-scope list; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

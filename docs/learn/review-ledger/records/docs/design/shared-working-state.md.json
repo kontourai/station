@@ -1,0 +1,39 @@
+{
+  "path": "docs/design/shared-working-state.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "document": {"digest":"1934cf0e1e341c669f57f475a1ae4ecd3a3077dd70720190a23070776f0d71b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"src-server/domain/__tests__/shared-working-state.test.ts","digest":"645f8af42ee712f770a63c50ba68117870d06c748134f046f8f6e0d10806f424","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/shared-working-state-editing.ts","digest":"6aa91555717974ec7fa40fadbe781eb0f0ec2be8739b212065a2182f9da01e18","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/shared-working-state.ts","digest":"d93d73bc2c9331933a64b5e2aa891cc87bbcbeb70f5578a4009331b2c89c36ad","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+
+    {"path":"src-server/services/orchestration/project-task-room-working-state.ts","digest":"08a0f3c3ce86080d5bffee5b50af42354c55d6fb3aa69e471793aba8b874c820","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed shared state ordering, resync, compaction, authority and editing adapter review; retained local sealSource is not called by the production controller.",
+
+    "Integration source review through e0314c727: shared-working-state.ts now documents that no production caller composes createSharedWorkingState() recovery and points to this record's 'Ordering and outcomes'. That section described adapter-owned recovery as current, and a grep confirmed only tests call it while the room runtime and workers construct the live-only SharedWorkingState. Added that disclosure. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 added read-only EventStore approval-decision and host-start-grantor queries, a conversation-title read, and an actor on latestApprovalModeDecision. Shared-state ordering, resync, compaction, authority and the retained sealSource are untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: the page itself dropped its paragraph on the deleted assertion-free shared-working-state-benchmark.test.ts (batch 59); event-store.ts only deleted the caller-less readChatTurn; claims corrected in-branch: the removed benchmark paragraph was the only claim affected. Source review only; no new executed evidence."
+  ]
+}

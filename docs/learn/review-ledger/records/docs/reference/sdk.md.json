@@ -1,0 +1,583 @@
+{
+  "path": "docs/reference/sdk.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
+
+  "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
+
+  "document": {"digest":"0b3c0d6b35771c0bcdbfa5b861112a85a0babdc042d8d4a3b69e29c4f7194db5","revision":"e696a023cb8eac902dcd45cffb81acf84e708f95"},
+
+  "sources": [
+    {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"examples/enterprise-layout/src/EnterpriseContext.tsx","digest":"089d24f961283386aa77e87085d66d18ed963d9d349a02eb149b464b1036a48c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/basis-pane/src/StationBasisPane.tsx","digest":"92d84a832150d68a8a98ed2cb4ea6d2f190be5da9d017b8df34c6add4b302a7f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/commands/cloud-target.ts","digest":"b0e28c9a4cdf50e53f48e0fc45ccbd1fa3f61611076ac7c57968e59a95757d94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/dev/http.ts","digest":"3997773f71f58676ec9bfe8ccde2e408554fca263a75d5a2912ac526ef7b553a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"packages/contracts/src/application-session.ts","digest":"46663ea304ab3e2b0d63ae3eff1500055e386d4601f0e2050c35e6abc2d5215e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/connection-recovery.ts","digest":"1bac2d14d557e109df4b1f28654f80f2cf83f712ee63995646d911f57f4a6dea","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+
+    {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/provider.ts","digest":"4385997b5f108761575c33e0aa5d53cfadab0b279221ef2405a982d6701a5e3d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/task-basis.ts","digest":"9345de0dd369e4e9d5fae71c38261983385662c314c0cdbf77f9596cdd3d7834","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
+
+    {"path":"packages/sdk/src/__tests__/application-session-native.test.ts","digest":"ec9fa4c51df95e0d6c96132779f6be8ea426aa6d165d6093de5a6ab15d776c4f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"packages/sdk/src/__tests__/client-fetchers-envelope-a3a.test.ts","digest":"f197499cb887454a12935189e115dd024a8b3d45e58c1b9ef9b11726b3394a56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","digest":"61262d2078428f6e2da4deeb8018e814a0f23b1c0d9b4b1c72f3422fc8ba8a59","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"packages/sdk/src/agentResolver.ts","digest":"7dff59fa6b40a9826fc8ebab998361fcc9c588e80f9f781b2b88acbd7722f426","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/answer-assessment-events.ts","digest":"a0f8cb14f7718d35bd4bef173a2e13e49777cf6784f4176d52c96d978d0e7c47","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/answer-basis.ts","digest":"0d3ad84834d5d2e415c38eaf35db15eb8045f5a4696bc79901fabd123750f104","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/api-core.ts","digest":"a48681c1b98cd1d44065eed3e94bccc1bee906ef27722d6ebf04d27130469bd4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/api-knowledge-utils.ts","digest":"51ac4128df2931f3be10e2d158c70afdfc5fd00fcea0ce28f7dcf2a84206d9fa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/api-knowledge.ts","digest":"59e7b042529004fd1193408591d1b41e902d9a42c9543f02430c3ca696ad23ca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/boot.ts","digest":"d8e66bcd58f9788052745d4ac31d0ff1a0f498e477adc5f1afc80099115534a4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/account-authentication.ts","digest":"7a1e7d854d7a40cc8a2478057fccc9de1f4761901559cf575eb9744bf66c1640","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/agents.ts","digest":"1670556a8a665c596e874bf1d7ebce2497e2497c74f20ccaa7a3cb9e92b9848c","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/answer-basis.ts","digest":"5fa74c20055b723ee78a3b935cf3faa528f2ff3f6f70b867de9a77eacda5d59c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/api-error-message.ts","digest":"478cd8ae933e2534071bea1a4633390b7487b7e663e953d244ff7cc9843c1471","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/application-session-native.ts","digest":"ff240974f061a8f3ee3a319fdf2b4eb83e043304ff966e80c4cdf5ed0bdfcecc","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"packages/sdk/src/client/application-session.ts","digest":"47e755613e8c9008336e854ce799b1411f44017b5250958cadd0401d16c2c501","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/authority-observation.ts","digest":"c9e1b95c05783dd3f7e60274f6ec066da3f12376baf1d3bc40fa67bfe4c0a794","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/checkpoint-restore.ts","digest":"01d7fab2e8edef57c5c622c305bd6479d173233fe27e61f4f85f831ea7664529","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"f7404988ec3cb8cd76a14b1126cbc27d87952901fa1218cd6670fa5745d054b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/conversation-pull-request-links.ts","digest":"1347875a4998101f49c9ae77fb6377e2b325e6c6f710b10f89c08c86e106baec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/conversations.ts","digest":"9a7ae77eaeaebc56e33e05339fdb90bc4d8d04f3ba8c360fc8487ba3f8c4cfa5","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/flow-gate-evaluations.ts","digest":"5790b6a82e9e2dd574e34922666ffc3bf577b8dc895dab3dfb8fc580c95d5d57","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/input-reply.ts","digest":"7bf648d6169a1648ab24287c2e61e3464b1fb51958158c9d418d4831023ed249","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/learning-source.ts","digest":"e7250cbdd1d308ca10b197663affe679702ec97c5672685e3fd38e1b6c3e88f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/local-accounts.ts","digest":"d5c3462a067e9a89b86d27ec791badd4e37f3fd27c08c58ed0957ee1d71f2d65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/orchestration.ts","digest":"7cede28541860714941e250eef7b326495fb6d15b85bf4cdddde9ef9de6efc0c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"packages/sdk/src/client/plugins.ts","digest":"02d4b43402fbb920707aa8222c525ef27e0c4d86479ecad270164ff8f0759ee7","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/project-access.ts","digest":"c8ff701ac95a14e3854d0a5afbcf13ab0c47ee1d674c5fc52b5eeff3b6013084","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/project-identity.ts","digest":"994c9dda32a7fccc85e9313362cc0ec6e3322b592a9a8c7cf31c651dab2eb18e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/project-shared-tasks.ts","digest":"e57fd853962ce6547f9d01979337bb107764720432047aff6fa045fd29489e1f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/pull-request-review.ts","digest":"041031116030811215c0edcc98bf8948fe5e112bf4c212c5fe287494b5bd7fc7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/quote-source.ts","digest":"0baf934bccd7b06e0569df5e4b1b9ffd150d3f8b0c0a6ba01d097a8d410ea5eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/relay-enrollment.ts","digest":"2724b990a62f6c0c53250fc0948e68f7244165aba00c7eb57e52625c0b1a6ea5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/request-inspection.ts","digest":"f900779183efbde61993a9c18d6e14f3dd4c037d2b6f9c53d5cc794a2badba92","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"packages/sdk/src/client/scheduler.ts","digest":"db883fb0678e85bf7f57ca1132b2b66ea96ce80a2e01ab757b1bc1f2b16a01ec","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/secret-bindings.ts","digest":"e259ebed0cac3ae7525a4d0a0c06a73e41fa30c01256e98210795c2b0f1c14ba","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/session-inventory.ts","digest":"3a94d2669c7c0cddd347b2a0f967047c06c13a225172d9db95990f3a9cef6729","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/session-outputs.ts","digest":"253e6089c70e9519b40f27a2434c9e58221cf9ca5fd59d298f2215970628b681","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/skills.ts","digest":"c020208fe6dcc3768c6363f49a3868491d2e888b6c666a7b0f22fd08a3e83cf1","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/task-basis.ts","digest":"d59ae33ebb339ac957884c7e42651d9e9539879d837e400f263cfc5c50978a81","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/task-outputs.ts","digest":"193416e83847a9ccb1d3bc276cca795d8244f8e448786a2fd733d527609db87c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"57fdf0a01a7e541af361869b5c73e15e8b54f978caa5596bc9881740f82b8696","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+
+    {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/task-user-input-references.ts","digest":"8f2841341585e8dc6c45bf5422ee71db950707eb2278da90785c928650e4ac24","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/client/unified-search.ts","digest":"6e32a53a89619cdf007fec90053823f37da3c37a6998b94e84648ccaffad4112","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/client/workspace-pane-host-actions.ts","digest":"3086511ff8291373970c2a3787255a33ec885acb5b2b6377123705cd2c300a17","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/components/AuthStatusBadge.tsx","digest":"6f28c806e25a047e2c31350200703707ed0585b0448f4dbed79721e3461e2177","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/components/AutoSelectModal.tsx","digest":"1bd1676991dbabffc2ed864dc12787b2c198120f22b100bbc28980e2a3d0b6f5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/components/Button.tsx","digest":"04dddb6942c46db2822d0fb7e2e42088190140fe33fe2c824fe441f51c8a9758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/components/LayoutHeader.tsx","digest":"e8fa75ca2b662a2b0befe9c660d4e2f264f387a9dccac7dce0a7734d9c1bca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/components/Loading.tsx","digest":"f7c78adf43e45cec73ed96ae5e910333a79dc669169691c1ee3e3f4258c5089c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/components/Pill.tsx","digest":"3f62701819da0c75dc75d1a3ededcc043363253de5f7c0a83bde76a3fb693a33","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/context/registry.ts","digest":"9f03edd17b3e2832418bb93e70e96f4f62ecc8fed3dddd35adbb6e9ccebb079e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/context/types.ts","digest":"f860ebae7b1896d55504f51a3ffb4aab05824c686654223728922bbd555d8c35","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/conversation-open.ts","digest":"dee14d48b1b057eeb0669eced970e28b870361f25f4aac91c7f295a5161a6ac1","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/core/ListenerManager.ts","digest":"c57b0cbe2b1bc8ab059ef58a82a34087124acd89ad62bf6f62aa6062d5f6fcac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/device-code-login.ts","digest":"b5c22efa94fb3234e6b97aedaf0fa174bd8c6987451fb6c0cdfba978bfc11091","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+
+    {"path":"packages/sdk/src/flow-gate-evaluations.ts","digest":"49b4e953db4d7e575a7746731ef04254ef31f808e6cb53b55ae3772d9d0b660c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/hooks/context.ts","digest":"7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/hooks/knowledge.ts","digest":"b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/host-contexts.ts","digest":"a72220a429a289ab65568feda763883b22536558ac4e073120d26b06399783fd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/index.ts","digest":"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625","revision":"7576509655a6bbef0ef61d5f4645722922b8ec43"},
+
+    {"path":"packages/sdk/src/layout/context.tsx","digest":"0a3e962f8bc141d067f387441e93d8f36c442bde102ea1e63eeccafbfd996f27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/layoutProviders.ts","digest":"300cc7af67743a8f4bebf0f86c84f045f0c26f0a4bfe5498e321eb01a254ab75","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/notifications/index.ts","digest":"772618144da2ebcb3ed91b011964e1054df3925be5fdffa6c79124f7e932a380","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/project-access.ts","digest":"78fc5d4067332207b4463df8c44c70ee510d0e0dfbf6ae4f157f4c51bff7527d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+
+    {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"161c2036c67cee1ad73353aec04ca5dd82e2d38dca8d080352b9283e1f1a7fe8","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"packages/sdk/src/query-domains/chatRuntimeCoding.ts","digest":"8e4e9edcf70f9a46b8a47d1920a218ca6283f16b4e25495c850b02e2cf281b0d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/chatRuntimeConversations.ts","digest":"d551717fd5bdd3e04d737064dbe04b6ca27aafc771ebdee1c19247b0488fe9b4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+
+    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"fbf01bc51c67e72cd3fbb7b66dfe280c24fb7629462e5b15da8779887e08abd3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/notificationPreferences.ts","digest":"4b74b25b261140eba8424c6b4ab633b694ecb9310efc0f8308307d5509e222b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/query-domains/personalLayouts.ts","digest":"38ad023ce9763f78e6eed239ab427689ce1fccbebc4b13eba380a6810cad0f5f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/plugin-mutations.ts","digest":"d2fecca0b4c9388707645946a07398fd4618d74833b205dee8a173c0399cb992","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/plugin-queries.ts","digest":"5bb324a2ce553ff8be0b034ef6296c5f74e2b79b22f393c35d0369ce6c1d99e1","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/query-domains/projectData.ts","digest":"abbc2681e46b64e1f204eb5cbb09da581cc67fd2197d5eadd5d4748b8f794571","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/systemRuntime.ts","digest":"9f3f5d5506f0236b8b6e387c1658c0c9e0ca6d4e4031263c3e579177b1657fd1","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
+
+    {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"162ec5e3b295d947cfcc37b8a942a86c294f855bb9b43ab072db01129477e7a4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/query-domains/taskGraph.ts","digest":"f10a3274579e455eecc3828ec9f11b826703916ee06b1d2859db413b9321901f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+
+    {"path":"packages/sdk/src/query-domains/workspace.ts","digest":"ee6d243c02c72b0339d1606309f090edfaa6029b00fddfab1cb228da07ccecc3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/workspaceConnections.ts","digest":"bf666f7dcffd5a14133194b599ce9472dab1ce686a054d855a3f20f4ea7c34e0","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"packages/sdk/src/query-domains/workspacePaneHostActions.ts","digest":"9746eed3bf2ad3f615af8afcaaf78421768de6359277d967d77622a1d4ce6a67","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"6d054cbb50d2e7c97f1a69464c9277d831e7fcafb6090c490d209e792166f7a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/query-domains/workspaceWorkflows.ts","digest":"82fa04ec2c2389aa11a4046923f91290aaa9a88d0cfad47f9dc54ad1f59fdf7e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/sdk/src/request-inspection.ts","digest":"f0bdebc85d3cf08d0d5d4e8b9b47192783885c3447897d331f3b987dc12b229a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/session-inventory.ts","digest":"c61a8ee7b0bf2547e3a1284aa763090dee7bce15c4b5f7fdf5e217b5b1e7a573","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/system-update-status-parser.ts","digest":"47c3084e930396b7ff263f62f081b744ea11aa9ed7da29580e3ae72b81010b1d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/task-basis.ts","digest":"835a6d58666f695f00fbfc26b9bdf55afe481a66c4a2ad69233f3ddaa1f962f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/task-tool-results.ts","digest":"62bc778329183b7aa6cac3c74a55a75e126f96bfa9a5d879a8cebdbe294c310d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/telemetry.ts","digest":"3c8c299e6d0a3d9cdfeaea99b34c5d5ae3399c025ba96188819cf75f682f5b2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/types/index.ts","digest":"7434f26a7b430524b5fac4ba7fae99c809e9505804e11f5005660ed58900a886","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/unified-search.ts","digest":"51492c10d4b9ca9e533e80bc19424ef41f64ba5a05b07d816345b319e2e96408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/voice/session-manager.ts","digest":"057b5c1b6c209986cd1ce528b79c1eea914a6b244adb8c6c344179b1c0a76bee","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/voice/session-registry.ts","digest":"c98c5a59aa639bd2043f21bbedbe727892ce37231ad9682c14553bd21e9f247c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/voice/session-types.ts","digest":"784fb8c67c69309b9ddfce77679c5f85a2a19f91b9f404b9094803ebb98d8e46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/voice/testing.ts","digest":"4154754898f267811098f3f746a49a6a689803260c36004a46651566e1c9253f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/voice/types.ts","digest":"dfd4391d896aab895738f531a6fb50be606e4ea4e27751806c9e90a3c83d3b41","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/knowledge-root-identity.ts","digest":"8c1dbadc429909b9b50dd25c273fb0dcdbddac3886adb49402b53e0ba96f3d9c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/station-home-archive.ts","digest":"2d857da29eb1de501523692cb04839be37b3375b354456fe5b676ae53ef38294","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+
+    {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/knowledge-store/adapters/shared/file-transactions.ts","digest":"5505e0eb47ae0cc4eeefa829efa474a70ac0de4a438fd0f28d7e1855cf591c36","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/knowledge-store/knowledge-source-observation-policy.ts","digest":"d4cb2a7bae52db410ea472b7a936c944503253b59037f7f1bf55caa28e16cbff","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"816a95380f960a7d06c9ffd37744d8d9f2d710aebb75a14cdc5f5e6e5149be17","revision":"11d74764719f6778a58dc7b4fa83a32af49c7c25"},
+
+    {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/invoke-global.ts","digest":"798593a5e1cc7636321286b28214428cfe927eb467bd4744169a6f83ee9a044f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/invoke.ts","digest":"55fdb13e6bb43918ab53fd268ee4fb05b7f48974d3c49686a5a651130813a818","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/knowledge/knowledge-source-routes.ts","digest":"0534e5e64bc316e9637e2892d321daa77323d7c1d0bc389a8cc82f829c10fc67","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/feedback.ts","digest":"d9cf6c2f6c6d906f839710a4344fcad7cf50c062f39dc071fb2f52b7eea9ee97","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/operations/notifications.ts","digest":"4d0add85259d3edb2deee0c0929891851ebccc980416b6c693b0b002cc081651","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+
+    {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/orchestration/workspace-pane-host-actions.ts","digest":"9cc22e24b04ae9ac07dcdedf4702081bc21ca6986a54fa909eb336d5801b33b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-install-routes.ts","digest":"b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/coding.ts","digest":"4360b6eceddadfbec486bc83a4d0f6d2cb2d8abf4b0d530b22bea65e96e97e32","revision":"2c5b089d9b6afeeaf43d9f9145be15571310e78b"},
+
+    {"path":"src-server/routes/projects/project-identity-routes.ts","digest":"6abd1b5f996e52b18192683a5450eca3ecf287b3716ac16a73d8c3613103dcb5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/project-membership-routes.ts","digest":"f36f3f868773bba2ee5604e2bb4a4725cf33cf39f6af90fe06b72aab806aca21","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/projects/project-shared-tasks.ts","digest":"88db69ca402777109e190b7e43e4f38c382136173392e765752f2f27d9c1a0dd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/pull-requests/conversation-pull-request-links.ts","digest":"72d275224d9239e6f73f55018058beb81cb41a7589e3e57507a9ce777455173e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/schemas/schema-definitions/system.ts","digest":"9f497c14512bbf71baab528fb9fd185763b11c24b65017bb3be0ced0a543d3c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/search.ts","digest":"30d472237a6e43c789f21c4b45446f6e1dc0e1ed75d5d075fe4e1677e5459d2b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/application-session-routes.ts","digest":"757cba2b71a472030ed65add072db04fb2ccfca48b590198d65da5c3b384ffa2","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/routes/system/local-account-administration-routes.ts","digest":"514f8d230e57aefef058c989d9afd5362b4d0db60af62b80dd28d72581be09ca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/conversation/native-execution-workspace.ts","digest":"96f7a7abce65f311682b087af1904e9b9ce8fffe960fb93f3d60c1ecd6aaad19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/conversation/native-foreground-invocation.ts","digest":"c23b66f0a8a18c8be6a9d5c2213c08305bada3552d2a75f2e2d2a9b898c04aea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/frameworks/voltagent-hono-runtime.ts","digest":"63f800fc71f40f71a2ac9e6fd36539e2c2e86243c5c08128473677ef5bf109d3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+
+    {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/tools/control-tool-failure.ts","digest":"b85f168956dee565a26796399656d01e272d77c977ec93bfc678add73ca39f7e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+
+    {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"252a314587f773a6215329b59c6044a9d34c3bd49cbbae33cef1ed02d5655d88","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
+
+    {"path":"src-server/services/evidence/answer-assessment-module.ts","digest":"95d113224b308b1ce152239d30a8cf87b0727a4f211c80d2cdc6ead6b916d133","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"src-server/services/feedback/feedback-analysis.ts","digest":"33a1e63e26814d97cbe3def823504ee5659cf48b8b16d91d8629d8bd1ea04836","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/feedback/feedback-service.ts","digest":"197b46eb7ae7e221283e0f5c0c638247065340e74f2de48e6930455814b353e0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/identity/application-session-service.ts","digest":"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+
+    {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/conversation-open-resolver.ts","digest":"58648fa42a44086ff148f1b35f21c32e4f28e8560c7ca600433e72c159654799","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/foreground-invocation-admission.ts","digest":"a951b45737fe532d44c0349e096748104744f466281fb3adad0c8b4b7852be36","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/isolated-session-transcript-search.ts","digest":"b4583c148fa3069baeb59b4cc80f91e3e2a3dcb5cbfacf0a745757a0abf6de09","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
+
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+
+    {"path":"src-server/services/orchestration/request-inspection.ts","digest":"1adaf32f260c35b8f4e599a01e5db9a9c4f8526ff20a4228db55022df3e9445c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-server/services/orchestration/run-projection.ts","digest":"aa85a3e0831f81286e77598fe2498d27751b497fab9e824e7d38b4d08fc82dac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/session-query-module.ts","digest":"0b17b642ff8dcdb358d967236abf4d9b19097d58f5631b927cbd1b1cb437c56f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/transcript-search-queries.ts","digest":"230ce0667d882f151f105fa3eacf624f3622aff31134b50e4e10af3ddc141311","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-catalog-installation.ts","digest":"4663e57bee8360c76be9b0e5f20daddce153e11103045627d8b8c55df58a9363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+
+    {"path":"src-server/services/plugins/workspace-pane-host-actions.ts","digest":"75590eb71c83be080b9f8b7fb080bc6276c18202b48f91f80cda8eff461c9474","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/workspace-pane-host-admission.ts","digest":"e7cb42a0b3b5cd8d41f5f5ef20e8d32334ae3871cb2aca771b5f32f0e7b7f05d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/file-tree-service.ts","digest":"28b1592d7a918bd907cfab035244bb38ae01111aeafaf22035da4330a21dcb65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/project-identity-service.ts","digest":"df3d163952c50c2c244119f1eb0fc390931dffb682c074bf1a12900cb2b6d6ab","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/project-membership-service.ts","digest":"1d35bde19ff70f213d3b0db162489980c2f7fd957481156c3ac1b2907dc58af5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/project-service.ts","digest":"3006dd5084e859e0b2d921ae9124893cdfd4afa69bb29e087a5099c242b3ffb4","revision":"13f10612b09f7a79e6f2c6a568ce108bc661972d"},
+
+    {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"7c655627f32e3048e82228592a1b81542e86acd44167e8d4b625cd64ebc10af2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-basis-module.ts","digest":"b706c3c53cf0c6e23e33de129bf982494906caabdec00b1c08ebbbfb5adf6953","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-basis-runtime-composition.ts","digest":"30d249908c502f0d1ff933f441dbc0cb9ce67939e26580a15181f9c323b2bbc0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-tool-result-reference-read-adapter.ts","digest":"a04a8f7d2fd028ff6400f062e542c013da2fcbd89edad0cfbba3f57ad05c7874","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/search/isolated-transcript-search.ts","digest":"d0e8ab0bb7b6caacee44982532383b23fd7e1d3c68eb1b0b72e869d45be1b982","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/search/runtime-search.ts","digest":"f6e765285c599e388daff140f2fd717c61843788ba0f43979eda9fdedf33c87c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/search/unified-search-service.ts","digest":"9962e58299f905df0fe481de2c5a34586a4fa3c48c2d4203d424fd6abe9b2283","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-shared.ts","digest":"1cda615bd82a88dfe4dcde495613c6d1cd87f19d7971853ba2c084baf525a372","revision":"0ecfebfd6dae38541cab804dccb075c2a77dede5"},
+
+    {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/attention/NeedsInputReply.tsx","digest":"ab0b8da0cf2a028f663b3ec521d1e5888636123168b3c3b9cba5aad5c9a122cc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"b9d8d43057e6a311366de908504c8d9f806cc78828c72be2b3ac7805a2e5a157","revision":"74141966c510f72845b72b7b4c8d2a2128079034"},
+
+    {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat/CheckpointRestoreButton.tsx","digest":"a17fed2fc8f712386a4eb64756b500c32a1a712721c65b3f5dab1ee0ea033bab","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/chat/QuoteSourceLink.tsx","digest":"14b2b534af47415c4b5a102dca20ee7bf42c800963d1ff01306e48a088c00106","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"f63a554477e86361ac8977b153449a5be400cda1b0d53d3bb78067289041c196","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
+
+    {"path":"src-ui/src/components/EnvironmentPicker.tsx","digest":"3b9e4c1fb8f7763b5429b3f881af81679c666a982f4f486a48f20110a8680290","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/search/WorkspaceSearchPalette.tsx","digest":"a4da9be6036a79df95e09258757ff682c1dd40e47661c0f31fbb27c24992f61e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/AuthorityQueryContext.tsx","digest":"f62bda5353e068d89a300e57fa9fa6d359516aefce3e3f8b61530d72bdfd5ade","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/chat-drafts-store.ts","digest":"3deb5d4be2f52c92fdc0601fd95ce7f7757329731f0e0876d0bc54ff45c39bdd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/MessageContextContext.tsx","digest":"dec7401b0386c41e767b5a142087624f28ad709f309b6103cf834a9341a4ff4d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/ProjectsContext.tsx","digest":"4cae39c1ceba25cb5a50ae5d43f19e0b8783dc685b82b1edb854f4d0c13b6f18","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/contexts/VoiceProviderContext.tsx","digest":"d6edf8a1c73c48fb42d859cdd86f242e270b7cdbab67c9f506d53f1599f7b7e4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/core/layoutProviders.ts","digest":"208b58e6d5ffb1f5e57112ae67f00b0d25a0e08010f6ca3724f4335a322fcb74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"ba834cfbb80f42b1742554455e2159f790f0149dba41039d68c6c91a1b5ff478","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useConnectedServerUpdateContext.ts","digest":"e6a192da8badae2e46073b05e957c2b8e896f4131e66cc101006b1f0597f60c7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useServerCapabilities.ts","digest":"31bb78d7241677e1d91ddf23b848f9dd9e43f6dd412bbf7537721faf8173a04c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useServerEvents.ts","digest":"6288bb72ce5a3f87626a5966cf6917dbe9ae46ac5c504a9bdd2cc14054dbcb07","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/hooks/useSlashCommands.ts","digest":"276269722bf1dc3dbeb3eb54e448ae80d8823af151f021f40c0bd95e69516e61","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/lib/authorityNamespace.ts","digest":"3438aceff1f23919eb461899fd30af7a93a157469d68bb05c639112cef733b3f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/lib/queryPersistence.ts","digest":"b6c8a7052c126e5452bb319e82bfcb1179413379941a32765468e2b1041ec62d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
+
+    {"path":"src-ui/src/platform/PlatformSessionGate.tsx","digest":"35d3e16ce939595075ebf514e56bcfc26b1152f1076d1d4c153c248a3b0b1f4f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/utils/answer-quotes.ts","digest":"416cddd2a19213ed2d37bb5f413b44a27e4fc5cdbcc4d3fbaeddcc22f32ec45c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/CredentialProfileLoginProfiles.tsx","digest":"07ed17665765fac384ff9a87492de2e80648702031e162e337f11ff31cf717eb","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/settings/CoreUpdateCheck.tsx","digest":"741884aa974710daf98a46aa0f7cb7990b71847b52f748467ee584db96766471","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/settings/SourceInstallerDisclosure.tsx","digest":"7ac7cf24380328627ffc7ae6d58a74182823b32597e74f3d6e20491b396acea3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx","digest":"fea4ba195d5618d81b20820ca4075c1220d13ac9ba4c71db011c6f12861dff54","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"616f25c83b780930f4297acd840a549a63a547189f83d6be087aae925d40dbc6","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"packages/contracts/src/engine-accounts.ts","digest":"170485efee245dbd2ed77123202f070f32291b0d539208c9706d1e330fb60895","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"}
+  ],
+
+  "checks": [
+    "Full original document text read; exact inspected and remaining scope retained in HANDOFF.md. Documentation-only change.",
+
+    "Real PluginWorkspacePaneSDKBoundary to SDKAdapter to SDKProvider fixture: 9 tests, exit 0, 4.52s; controlled surrounding providers and no network. Confirms observed default-host gaps, not desired feature support.",
+
+    "Focused existing checks: 91 tests across ConnectionStore, useConnectionStatus, integration-copy parsers and Agent resolver; 4 files, exit 0, 2.64s.",
+
+    "First-plugin guide manifest and entrypoint extracted verbatim: actual schema parser and buildPlugin production/dev controls exit 0; no dependency install or Station installation/activation.",
+
+    "153 TS/TSX/JS/JSON fences parse, exit 0; syntax only. Initial 8 SDK pseudo-signature/multiple-JSX parse failures were corrected or explicitly marked text; retained original failure receipt.",
+
+    "Local paths and rendered anchors validated in396 Markdown files, exit0. Repository/public hygiene and public contract examples exit0; public checks apply only to10 admitted documents, not semantic certification of these5 references.",
+
+    "Frozen staged-document readiness exit0,0 failures/0 warnings, veritas-1790478448046. Commit bdbb325a0c2b735e8b522f4bbcade27fecc46fe7 contains exactly the5 owned Markdown files; worktree clean.",
+
+    "Continuation:64tests across7SDK component/voice/context files, exit0,5.31s;4temporary mounted caller/mock-HTTP observations, exit0,5.75s. The two observed defects are not desired-feature passes.",
+
+    "Continuation:153fences syntax pass; local paths/anchors396documents pass; exactly2docs committed, no runtime changes.",
+
+    "Continuation 2026-09-27: Connect supervisor/health/pairing/proof/security-service/scope-editor 127 tests in 6 files pass (6.22s). SDK/CLI/checkpoint/feedback/telemetry 223 tests in 10 files pass (14.18s); tests use controlled fixtures, not production secrets or providers.",
+
+    "Continuation 2026-09-27: 153 fences pass syntax parsing; local paths and rendered anchors pass in 396 Markdown files; readiness veritas-1790515051946: 0 failures, 0 warnings. Exactly two Markdown files committed, no runtime or shared-ledger change.",
+
+    "Exact-reader continuation:149 tests/10 files passed (37.77s): SDK learning/request/input/quote/cloud, source routes+record owner, orchestration request routes, learning dialog and quote serializer. Controlled fixtures, not deployed/native/provider proof.",
+
+    "Long-delay probe at afe2f0ac3: baseline134 tests passed; temporary actual-service probe2 passed asserting observed native-overflow defect/recovery; exact probe bytes retained and removed, runtime source untouched; restored134 tests passed. Known fixture TimeoutOverflowWarning retained. Parent filed#2810.",
+
+    "Exact-reader continuation:153 fence syntax and396 local links/anchors passed; readiness veritas-1790516099945 0failures0warnings. Exactly2Markdown files committed, no runtime/protected/shared-ledger change.",
+
+    "Frozen upstream0bc65b9f0 merged locally; all14 changed previously recorded owner files inspected with explicit delta dispositions before digest refresh. Connect README browser identity/selfHostedBrowser additions inspected separately; no merge commit is proposed for cherry-pick.",
+
+    "Frozen-source checks:267 tests/13 files passed(18.20s),39 MCP-page/Connect-relay-consumer tests passed(1.62s),154 TS/TSX/JS/JSON fences parse,407 Markdown local paths/anchors pass. Veritas1790516770624:0failures0warnings. Fixtures do not establish live provider or physical/native/relay delivery.",
+
+    "SDK group A:185 tests/17files passed(41.06s),154 fenced examples parse,407Markdown links/anchors pass; Veritas1790517578845 passes0failures0warnings. Source/controlled fixtures, not live provider or physical-device outcomes.",
+
+    "SDK group B:102 tests/13files passed(98.71s),154 fence syntax checks and407 Markdown links/anchors pass; Veritas1790518157186 passes0failures0warnings. Controlled fixture evidence only; no provider/native/registry installation executed.",
+
+    "SDK group C:152 tests/13 files pass(28.90s),154 fence parses and407 Markdown link/anchor checks pass; Veritas1790518592815 passes0failures0warnings. Controlled service/client/UI fixtures only, no external provider/native or update installation.",
+
+    "SDK group D:184 tests/12files passed(13.12s), including actual named-invoke/plugin refusal route fixtures, knowledge helper, coding mentions, connections, query and invalidation behavior. Expected corrupt-grants fixture logs retained; no live external services.",
+
+    "Final SDK source-symbol inventory:175 unique documented API headings across55 public TypeScript entries; only two explicitly marked historical ACP APIs absent. Static compiler symbol resolution only, no type diagnostics/execution.154 code fences parse and407Markdown paths/anchors pass; duplicate Layout query prose removed with old anchor retained. Veritas1790519927188:0failures0warnings.",
+
+    "Reviewed optional descriptor-bound read limits, growth refusal and propagation through commit revalidation. Existing unlimited callers retain their contract; adapter filesystem mutations now remain inside staged publication.",
+
+    "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
+
+    "Reviewed integration deltas: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. packages/sdk/src/client/plugins.ts: Reviewed actual refusal paths and revised constructor: collection/recovery errors preserve status, code, details and Retry-After; unreadable successful replies remain protocol failures. SDK reference updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Execution errors retain observed HTTP/envelope fields; opaque intermediary bodies are not typed terminal Station refusals. Successful dispatch/receipt semantics and explicit indeterminate outcomes remain. Input-reply HTTP refusals retain status/code/retry metadata under a generic message; protected route words/details remain withheld. Protected reference errors retain generic messages and typed refusal metadata; local failures use status 0 rather than inventing an HTTP response. Protected Task-result reads retain opaque generic errors with supplied status/code/retry metadata; canonical content and read authority are unchanged. Refusal display uses user-facing error text; successful reply behavior and authority are unchanged. Opaque proxy/error pages are not terminal Station refusals; uncertain queued sends remain queued. Stored reasons use the formatter, but not every ephemeral notice strips schema keys. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Read the changed document in context; its purpose and prior evidence limits remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d1e0facc2: JSON extraction helper is private; SDK-visible analysis behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Required merge-queue recovery through 421517851: Reviewed native-v1 client challenge/exchange/headers, trust rechecks, exact credential serialization and request proof binding. Corrected signer factory overstatement: the public ApplicationSessionSigner facade also accepts host custody; custody is not attested by its shape.. Changed inputs reviewed: docs/reference/sdk.md, packages/sdk/package.json, src-server/routes/system/application-session-routes.ts, src-server/services/identity/application-session-service.ts, packages/sdk/src/client/application-session-native.ts, packages/contracts/src/application-session.ts, packages/sdk/src/__tests__/application-session-native.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: #2840 added `gitMetadata?: 'excluded'` to PluginInstallConsent and the install consent schema. Preview now reports it for a source an open install proposal names, and install refuses with 409 `consent.reason: \"git-metadata\"` when a proposed source's consent omits it. Corrected the preview description and the install consent example, which would have hit that 409 for proposed sources, and documented the echo requirement. bearing/forage lockfile removal does not affect SDK claims. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 changed dispatchOrchestrationCommand. A coded refusal is now built as ChatHttpError(StationHttpError{code, details}, isStationEnvelope(body)), where before it was the positional (status, message, code) form, which dropped `details`. It also widened apiErrorMessage's `details` parameter type to `unknown` with no change in behavior, and changed internals the SDK reference does not document: the task-dispatch/coding refusal bodies, runtime-initialize's grantor check, the confinement grantor and revocation reset in orchestration-service and task-graph-service, and the UI refusal card in useChatInput/useActiveChatSessionMessaging. The Refused requests section's statement that orchestration fetchers keep the refusal fields (status, code, details), and the StationHttpError field list, are now matched more closely by this path. The provider.ts change only adds a reserved metadata key. usePairedDevicesQuery and useSendMessage ('can queue or refuse work') are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864's plugin-install-routes.ts reports and requires gitMetadata: excluded both for an open-proposal source and for one Station previously installed without its git metadata (recorded in plugin-source-staging.json). Corrected the install consent paragraph and the usePluginPreviewMutation description, which covered only the open-proposal case. The mutate example already echoes preview.gitMetadata. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 removes the ambient boot helpers fetchBootPayload, seedBootPayload and fetchAndSeedBootPayload from packages/sdk/src/boot.ts, and makes the matching comment edits in client/agents.ts and cli/src/dev/http.ts. Main also rewrote the boot paragraph in this doc; the merge kept the branch's version (around line 859). That version already says the boot module is internal and not in the package export map, names only fetchBootPayloadAt and seedBootPayloadGuarded (both still exported), and no longer mentions the removed ambient helper, so the merged text is consistent and has no duplicate. cf43e14d0 adds recognizeCredential, so a live but unadmitted credential now gets 403 insufficient_scope instead of 401. usePairedDevicesQuery still says an authorization failure is a query error, and the knowledge-route 401/403 split is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c added approvalAcknowledgement 'in-process' to StationAgentAdapter, and conversationOpenPatch now also clears unacknowledgedDecisions alongside the other local approval state. That is consistent with the doc's statement that predecessor local approval state is not carried over; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

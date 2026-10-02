@@ -80,6 +80,7 @@ const navigationMocks = vi.hoisted(() => ({
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
+  useShowSurfacePage: () => showSurfaceStub,
 }));
 
 // The host authority is mutable so the scope-switching test below can move
@@ -243,7 +244,7 @@ const projectFixture: ProjectConfig = {
   name: 'Demo Project',
   icon: 'D',
   description: 'Demo project description',
-  workingDirectory: '/Users/brian/dev/demo',
+  workingDirectory: '/Users/me/dev/demo',
   defaultModel: 'openai:gpt-5',
   agents: [agentId('codex')],
   createdAt: '2026-07-07T12:00:00.000Z',

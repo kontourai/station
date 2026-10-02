@@ -3,32 +3,51 @@ import {
   type OrchestrationSessionSummary,
   useOrchestrationCommandReceiptsQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useAgents } from '../../contexts/AgentsContext';
+import { openChatsStore } from '../../contexts/open-chats-store';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useMutableSessionDetailState } from '../../hooks/useMutableSessionDetailState';
 import {
   clientOriginDetail,
   clientOriginSummary,
+  clientOriginSurfaceLabel,
 } from '../../utils/clientOrigin';
 import { errorAgentDraft } from '../../utils/errorAgentDraft';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import {
   builderRunIdentityLabel,
   builderRunMatchLabel,
+  humanizeId,
   linkedFlowStateLabel,
+  sessionProjectLabel,
   sidecarWriteProvenance,
 } from '../../utils/sessionDisplay';
-import { latestTurnOutputText } from '../../utils/sessionFinalOutput';
 import { Button } from '../Button';
-import { MessageContent } from '../chat/message-bubble/MessageContent';
+import { DelegationLauncher } from '../chat-dock/DelegationLauncher';
 import { WorkflowStatusLineList } from '../flow/WorkflowStatusLine';
 import { LazyBoundary } from '../LazyBoundary';
+import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
 import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
 import { SessionDetailErrors } from './SessionDetailErrors';
 import { SessionDetailHeader } from './SessionDetailHeader';
+import { SessionTranscript } from './SessionTranscript';
+import {
+  isPeerDelegationRecord,
+  PEER_TRANSCRIPT_ELSEWHERE,
+  sessionAgentLabel,
+  sessionChatOpenTarget,
+} from './sessionDetailPresentation';
+import './SessionDetail.css';
 
 const loadConversationPullRequestLinks = () =>
   import('../pull-requests/ConversationPullRequestLinks').then((module) => ({
@@ -53,10 +72,15 @@ export type SessionEvidenceReveal = {
 /**
  * The mutable (station-owned, still-live-or-terminal) session detail page.
  * State/query/mutation wiring lives in `useMutableSessionDetailState`
- * (archive#1204); this component owns only the render tree, composed
- * from the header/errors/attention/diagnostics sections plus the
- * task-context, live-request, and compose blocks that don't warrant their
- * own file yet.
+ * (archive#1204); this component owns only the render tree.
+ *
+ * Reading order, top to bottom: the header (what this is, its state, Open in
+ * chat / Stop… / ⋯); what needs you (the one failure card, attention items);
+ * the conversation itself (read-only, live while a turn streams); then a
+ * collapsed Details disclosure holding the evidence rows, the session id,
+ * linked pull requests and the raw event log. The live request card and the
+ * reply composer stay pinned below the scroll region so they are reachable
+ * without scrolling, including on a phone with the keyboard open.
  */
 export function MutableSessionDetail({
   apiBase,
@@ -66,6 +90,7 @@ export function MutableSessionDetail({
   connected,
   visualViewport,
   evidenceReveal,
+  historyNotices,
 }: {
   apiBase: string;
   session: OrchestrationSessionSummary;
@@ -74,6 +99,8 @@ export function MutableSessionDetail({
   connected: boolean;
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
   evidenceReveal?: SessionEvidenceReveal | null;
+  /** History-read notices, rendered at the head of the conversation. */
+  historyNotices?: ReactNode;
 }) {
   const {
     input,
@@ -86,7 +113,6 @@ export function MutableSessionDetail({
     pendingRequestPresentation,
     isStreaming,
     isStopped,
-    isFailed,
     sessionUnanswerable,
     sessionUnanswerableNotice,
     rows,
@@ -99,6 +125,10 @@ export function MutableSessionDetail({
     visibleAttentionItems,
     hideGenericCompose,
     failureText,
+    failureNote,
+    acknowledgeFailure,
+    acknowledgeFailurePending,
+    acknowledgeFailureError,
     copySessionId,
     canSend,
     linkedFlowRun,
@@ -114,13 +144,31 @@ export function MutableSessionDetail({
   });
 
   const threadId = session.threadId;
+  const agentLabel = sessionAgentLabel(session, useAgents());
+  // Open in chat goes through the shared open-chat focus (archive#1297), the
+  // seam Home and the project page use: the chat dock rehydrates the real
+  // conversation. Absent when there is no chat to rehydrate.
+  // A delegated task running on a PAIRED Station: this Station only records
+  // its lifecycle. The stored agent slug and conversation id are the PEER's,
+  // so opening, stopping, replying or delegating from here would act on a
+  // local id that names nothing (or something else). None are offered; the
+  // detail says where the transcript lives instead.
+  const isPeerRecord = isPeerDelegationRecord(session);
+  const chatOpenTarget = isPeerRecord ? null : sessionChatOpenTarget(session);
+  const openInChat = chatOpenTarget
+    ? () => openChatsStore.focus(chatOpenTarget)
+    : undefined;
 
-  // The evidence region: the context list below holds the receipts-backed
-  // "Last user action" row (plus linked flow/builder runs), and the
-  // diagnostics log sits directly under it in the same scroll region — so
-  // scrolling the list's start into view presents both.
+  // The evidence region lives inside the collapsed Details disclosure. A
+  // reveal therefore OPENS the disclosure first — scrolling to, or focusing,
+  // content inside a closed <details> lands on nothing — then scrolls the
+  // region's start into view and focuses it. The linked pull requests and the
+  // event log sit directly under it in the same disclosure.
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const evidenceRegionRef = useRef<HTMLDListElement | null>(null);
   const revealedEvidenceTokenRef = useRef<number | null>(null);
+  const transcriptSettledRef = useRef(false);
+  const revealAwaitsTranscriptRef = useRef(false);
   useEffect(() => {
     if (!evidenceReveal || evidenceReveal.threadId !== threadId) return;
     if (revealedEvidenceTokenRef.current === evidenceReveal.token) return;
@@ -130,6 +178,9 @@ export function MutableSessionDetail({
     revealedEvidenceTokenRef.current = evidenceReveal.token;
     const region = evidenceRegionRef.current;
     if (!region) return;
+    // Uncontrolled on purpose: React never writes `open`, so opening it here
+    // is synchronous and the reader's own later toggles are left alone.
+    if (detailsRef.current) detailsRef.current.open = true;
     // Same shape as `revealHomeRegion` (views/home/home-reveal.ts): a plain
     // positioned scroll — jsdom implements none of it, hence the guard —
     // then focus, so a keyboard or screen-reader user lands IN the region
@@ -138,7 +189,65 @@ export function MutableSessionDetail({
       region.scrollIntoView({ block: 'start' });
     }
     region.focus({ preventScroll: true });
+    // The conversation above is usually still being read when a reveal lands
+    // on mount. When it arrives the content above grows, and a WebView with
+    // no scroll anchoring (WKWebView) pushes the region off-screen. Re-assert
+    // the scroll ONCE when that read settles — never the focus again.
+    revealAwaitsTranscriptRef.current = !transcriptSettledRef.current;
   }, [evidenceReveal, threadId]);
+  const stopFollowingRevealRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopFollowingRevealRef.current?.(), []);
+  const onTranscriptSettledChange = useCallback((settled: boolean) => {
+    transcriptSettledRef.current = settled;
+    if (!settled || !revealAwaitsTranscriptRef.current) return;
+    revealAwaitsTranscriptRef.current = false;
+    const region = evidenceRegionRef.current;
+    if (!region || typeof region.scrollIntoView !== 'function') return;
+    region.scrollIntoView({ block: 'start' });
+    // Rendered markdown and tool rows load lazily and can grow the
+    // conversation again just after it settles. For at most one second, and
+    // only until the reader scrolls, drags, touches or types, follow that growth —
+    // scroll only, never focus. Bounded on purpose: after that the reader
+    // owns the scroll position.
+    const transcript = region
+      .closest('.sessions-detail__scroll')
+      ?.querySelector('[data-testid="session-transcript"]');
+    const scroller = region.closest('.sessions-detail__scroll');
+    if (!transcript || !scroller || typeof ResizeObserver === 'undefined')
+      return;
+    stopFollowingRevealRef.current?.();
+    const observer = new ResizeObserver(() =>
+      region.scrollIntoView({ block: 'start' }),
+    );
+    // The reader taking over: wheel, touch or a scrollbar drag (pointerdown)
+    // on the scroll region, or any key anywhere in the document.
+    const scrollerMoves = ['wheel', 'touchstart', 'pointerdown'] as const;
+    const stop = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      for (const type of scrollerMoves)
+        scroller.removeEventListener(type, stop);
+      document.removeEventListener('keydown', stop, true);
+      if (stopFollowingRevealRef.current === stop)
+        stopFollowingRevealRef.current = null;
+    };
+    const timer = setTimeout(stop, 1_000);
+    for (const type of scrollerMoves)
+      scroller.addEventListener(type, stop, { passive: true });
+    document.addEventListener('keydown', stop, true);
+    observer.observe(transcript);
+    stopFollowingRevealRef.current = stop;
+  }, []);
+
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [delegating, setDelegating] = useState(false);
+  const canStop = !isPeerRecord && !isStopped && isStreaming;
+  // The turn ended while the confirmation was open: there is nothing left to
+  // stop, so the question is withdrawn rather than answered against a turn
+  // that already finished.
+  useEffect(() => {
+    if (confirmStop && !canStop && !stopTask.isPending) setConfirmStop(false);
+  }, [confirmStop, canStop, stopTask.isPending]);
 
   const receipts = useOrchestrationCommandReceiptsQuery(threadId, {
     enabled: threadId.length > 0,
@@ -164,10 +273,41 @@ export function MutableSessionDetail({
       ? relativeTimeAgo(lastUserActionAtMs, Date.now())
       : null;
 
-  // #765 D6: the task's actual final output, shown as the primary block —
-  // metadata tiles used to lead while the answer hid behind the collapsed
-  // event details.
-  const finalOutput = useMemo(() => latestTurnOutputText(events), [events]);
+  // "Started from": the first recorded command origin, surface only. An
+  // absent origin leaves the clause out; it is never printed as "unknown".
+  const startedFrom = clientOriginSurfaceLabel(
+    receipts.data?.find((receipt) => receipt.clientOrigin !== undefined)
+      ?.clientOrigin,
+  );
+  const createdAtMs = Date.parse(session.createdAt);
+  const meta = [
+    agentLabel,
+    // `reportedModel ?? effectiveModel ?? model` (archive#1249): the engine's
+    // own report first; `model` alone is empty for a session started on an
+    // agent's default model.
+    session.reportedModel ?? session.effectiveModel ?? session.model,
+    sessionProjectLabel(session),
+    startedFrom ? `from ${startedFrom}` : null,
+    Number.isFinite(createdAtMs)
+      ? `started ${relativeTimeAgo(createdAtMs, Date.now())}`
+      : null,
+  ];
+
+  const parentTaskId = session.delegation?.taskId ?? threadId;
+  const delegationProjectSlug =
+    session.delegation?.projectSlug ?? session.projectSlug;
+  const menuActions = [
+    { key: 'copy-id', label: 'Copy session ID', onSelect: copySessionId },
+    ...(isDelegated && !isPeerRecord
+      ? [
+          {
+            key: 'delegate',
+            label: 'Delegate subtask',
+            onSelect: () => setDelegating(true),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <section
@@ -178,15 +318,14 @@ export function MutableSessionDetail({
       <SessionDetailHeader
         session={session}
         title={title}
-        threadId={threadId}
-        eventCount={events.length}
-        isFailed={isFailed}
+        meta={meta}
         isStopped={isStopped}
-        isStreaming={isStreaming}
+        isStreaming={canStop}
         connected={connected}
         stopTaskPending={stopTask.isPending}
-        onStopTask={() => stopTask.mutate()}
-        onCopySessionId={copySessionId}
+        onRequestStop={() => setConfirmStop(true)}
+        onOpenInChat={openInChat}
+        menuActions={menuActions}
       />
 
       {/* archive#3305: one scroll region for everything between the pinned
@@ -195,21 +334,13 @@ export function MutableSessionDetail({
           section that grew (error stacks, multiple attention cards, the
           context grid) was clipped with no way to reach it. */}
       <div className="sessions-detail__scroll">
-        <LazyBoundary
-          load={loadConversationPullRequestLinks}
-          // The durable conversation, not this Session's own thread: a
-          // successor Session (after a context reset or a handoff) is not a
-          // conversation id, and the links belong to the conversation.
-          componentProps={{
-            conversationId: session.conversationId ?? threadId,
-          }}
-          pending={
-            <SkeletonBlock label="Reading linked pull requests" count={1} />
-          }
-        />
         <SessionDetailErrors
           failureText={failureText}
-          stopTaskError={stopTask.error}
+          failureNote={failureNote}
+          onDismissFailure={acknowledgeFailure}
+          dismissFailurePending={acknowledgeFailurePending}
+          dismissFailureError={acknowledgeFailureError}
+          stopTaskError={confirmStop ? null : stopTask.error}
           sendTurnError={sendTurn.error}
           respondError={respond.error}
           onDraftSendError={
@@ -237,220 +368,266 @@ export function MutableSessionDetail({
           errorMessage={attentionErrorMessage}
           onRetry={attentionRefetch}
           items={visibleAttentionItems}
+          answerHere={!isPeerRecord}
         />
 
-        {/* #765 D6: the session's final answer leads; events stay collapsed
-            below. Same visual treatment as the read-only transcript's
-            assistant messages (AttachedSessionDetail). Suppressed mid-turn:
-            a superseded answer must not present as THE result while a newer
-            one is still streaming. */}
-        {finalOutput !== null && !isStreaming && (
-          <article
-            className="sessions-detail__transcript-message sessions-detail__result"
-            data-testid="session-final-output"
+        {isPeerRecord ? (
+          <p
+            className="sessions-detail__peer-note"
+            data-testid="session-peer-transcript-note"
           >
-            <p className="sessions-detail__transcript-role">Result</p>
-            <MessageContent
-              contentParts={[{ type: 'text', content: finalOutput }]}
-              textContent=""
-              chatFontSize={14}
-              showReasoning={false}
-              showToolDetails={false}
-              isStreamingMessage={false}
-            />
-          </article>
+            {PEER_TRANSCRIPT_ELSEWHERE}
+          </p>
+        ) : (
+          <SessionTranscript
+            apiBase={apiBase}
+            session={session}
+            agentLabel={agentLabel}
+            isStreaming={isStreaming}
+            failureShownAbove={Boolean(failureText)}
+            notices={historyNotices}
+            onSettledChange={onTranscriptSettledChange}
+          />
         )}
 
-        <dl
-          className="sessions-detail__context"
-          aria-label="Task context"
-          ref={evidenceRegionRef}
-          tabIndex={-1}
-          data-testid="session-evidence-region"
+        <details
+          ref={detailsRef}
+          className="sessions-detail__disclosure"
+          data-testid="session-details-disclosure"
         >
-          <div className="sessions-detail__context-item">
-            <dt>Last user action</dt>
-            <dd
-              title={
-                latestOrigin ? clientOriginDetail(latestOrigin) : undefined
-              }
+          <summary>Details</summary>
+          <div className="sessions-detail__disclosure-body">
+            <p className="sessions-detail__session-id">
+              <span>Session ID</span>
+              <code>{threadId}</code>
+              <Button variant="secondary" onClick={copySessionId}>
+                Copy ID
+              </Button>
+            </p>
+            <dl
+              className="sessions-detail__context"
+              aria-label="Task context"
+              ref={evidenceRegionRef}
+              tabIndex={-1}
+              data-testid="session-evidence-region"
             >
-              {lastUserAction}
-              {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
-            </dd>
-          </div>
-          {rows.map((row) => (
-            <div className="sessions-detail__context-item" key={row.label}>
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
-          {linkedFlowRun && (
-            <div className="sessions-detail__context-item" key="linked-flow">
-              <dt>Linked Flow</dt>
-              <dd>
-                <strong>
-                  {flowRunDisplayIdentity(linkedFlowRun.definitionId)}
-                </strong>
-                <p className="sessions-detail__workflow-hint">
-                  {linkedFlowStateLabel(linkedFlowRun.run.state)}
-                  {linkedFlowRun.run.openGates.length > 0
-                    ? ` · gates: ${linkedFlowRun.run.openGates.map((gate) => gate.id).join(', ')}`
-                    : ''}
-                </p>
-              </dd>
-            </div>
-          )}
-          {/* archive#189. Its own row, always — never merged into "Linked
-            Flow" above and never suppressed by it. They are two different
-            runs with independent lifecycles, and a session routinely has one
-            and not the other; one combined figure is how a permanently
-            stalled delivery run came to read as builder progress. No
-            freshness is claimed: `flow_run` carries no currency stamp
-            upstream, so the row says where the values came from and stops. */}
-          {builderRun && (
-            <div className="sessions-detail__context-item">
-              <dt>Builder run</dt>
-              <dd>
-                <strong>{builderRun.taskSlug ?? 'Unavailable'}</strong>
-                <p className="sessions-detail__workflow-hint">
-                  {builderRunMatchLabel(builderRun.matchKind)} ·{' '}
-                  {builderRunIdentityLabel(builderRun.identityStatus)}
-                </p>
-                {builderRun.flowRun ? (
-                  <p className="sessions-detail__workflow-hint">
-                    {flowRunDisplayIdentity(builderRun.flowRun.definition_id)} ·{' '}
-                    {builderRun.flowRun.current_step} ·{' '}
-                    {builderRun.flowRun.status}
-                    {builderRun.flowRun.open_gate_ids.length > 0
-                      ? ` · gates: ${builderRun.flowRun.open_gate_ids.join(', ')}`
-                      : ''}
-                    {sidecarWriteProvenance(builderRun.sidecarUpdatedAt)}
-                  </p>
-                ) : (
-                  /* Only for a sidecar that was actually READ. A binding whose
-                   sidecar could not be opened is a broken binding, not a run
-                   that has yet to publish, and saying otherwise would assert
-                   a currency nobody has — directly above the true reason. */
-                  builderRun.taskSlug &&
-                  !builderRun.taskSidecarUnreadable && (
+              <div className="sessions-detail__context-item">
+                <dt>Last user action</dt>
+                <dd
+                  title={
+                    latestOrigin ? clientOriginDetail(latestOrigin) : undefined
+                  }
+                >
+                  {lastUserAction}
+                  {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
+                </dd>
+              </div>
+              {rows.map((row) => (
+                <div className="sessions-detail__context-item" key={row.label}>
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+              {linkedFlowRun && (
+                <div
+                  className="sessions-detail__context-item"
+                  key="linked-flow"
+                >
+                  <dt>Linked Flow</dt>
+                  <dd>
+                    <strong>
+                      {flowRunDisplayIdentity(linkedFlowRun.definitionId)}
+                    </strong>
                     <p className="sessions-detail__workflow-hint">
-                      No run has been published for this task yet.
+                      {linkedFlowStateLabel(linkedFlowRun.run.state)}
+                      {linkedFlowRun.run.openGates.length > 0
+                        ? ` · gates: ${linkedFlowRun.run.openGates.map((gate) => gate.id).join(', ')}`
+                        : ''}
                     </p>
-                  )
-                )}
-                {builderRun.reason && (
-                  <p className="sessions-detail__workflow-hint">
-                    {builderRun.reason}
-                  </p>
-                )}
-              </dd>
-            </div>
-          )}
-          {!linkedFlowRun && workflowEntries.length > 0 && (
-            <div className="sessions-detail__context-item" key="workflow">
-              <dt>Project workflows</dt>
-              <dd>
-                <p className="sessions-detail__workflow-hint">
-                  Not linked to this session — active flow-agents tasks in this
-                  project workspace.
-                </p>
-                <WorkflowStatusLineList
-                  entries={workflowEntries}
-                  moreCount={workflowMoreCount}
-                />
-              </dd>
-            </div>
-          )}
-        </dl>
+                  </dd>
+                </div>
+              )}
+              {/* archive#189. Its own row, always — never merged into "Linked
+                Flow" above and never suppressed by it. They are two different
+                runs with independent lifecycles, and a session routinely has
+                one and not the other; one combined figure is how a
+                permanently stalled delivery run came to read as builder
+                progress. No freshness is claimed: `flow_run` carries no
+                currency stamp upstream, so the row says where the values came
+                from and stops. */}
+              {builderRun && (
+                <div className="sessions-detail__context-item">
+                  <dt>Builder run</dt>
+                  <dd>
+                    <strong>{builderRun.taskSlug ?? 'Unavailable'}</strong>
+                    <p className="sessions-detail__workflow-hint">
+                      {builderRunMatchLabel(builderRun.matchKind)} ·{' '}
+                      {builderRunIdentityLabel(builderRun.identityStatus)}
+                    </p>
+                    {builderRun.flowRun ? (
+                      <p className="sessions-detail__workflow-hint">
+                        {flowRunDisplayIdentity(
+                          builderRun.flowRun.definition_id,
+                        )}{' '}
+                        · {builderRun.flowRun.current_step} ·{' '}
+                        {builderRun.flowRun.status}
+                        {builderRun.flowRun.open_gate_ids.length > 0
+                          ? ` · gates: ${builderRun.flowRun.open_gate_ids.join(', ')}`
+                          : ''}
+                        {sidecarWriteProvenance(builderRun.sidecarUpdatedAt)}
+                      </p>
+                    ) : (
+                      /* Only for a sidecar that was actually READ. A binding
+                       whose sidecar could not be opened is a broken binding,
+                       not a run that has yet to publish, and saying otherwise
+                       would assert a currency nobody has — directly above the
+                       true reason. */
+                      builderRun.taskSlug &&
+                      !builderRun.taskSidecarUnreadable && (
+                        <p className="sessions-detail__workflow-hint">
+                          No run has been published for this task yet.
+                        </p>
+                      )
+                    )}
+                    {builderRun.reason && (
+                      <p className="sessions-detail__workflow-hint">
+                        {builderRun.reason}
+                      </p>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {!linkedFlowRun && workflowEntries.length > 0 && (
+                <div className="sessions-detail__context-item" key="workflow">
+                  <dt>Project workflows</dt>
+                  <dd>
+                    <p className="sessions-detail__workflow-hint">
+                      Not linked to this session — active flow-agents tasks in
+                      this project workspace.
+                    </p>
+                    <WorkflowStatusLineList
+                      entries={workflowEntries}
+                      moreCount={workflowMoreCount}
+                    />
+                  </dd>
+                </div>
+              )}
+            </dl>
 
-        <SessionDetailDiagnostics
-          eventCount={events.length}
-          entries={diagnosticsLog}
-        />
+            <LazyBoundary
+              load={loadConversationPullRequestLinks}
+              // The durable conversation, not this Session's own thread: a
+              // successor Session (after a context reset or a handoff) is not
+              // a conversation id, and the links belong to the conversation.
+              componentProps={{
+                conversationId: session.conversationId ?? threadId,
+                linkFormCollapsed: true,
+              }}
+              pending={
+                <SkeletonBlock label="Reading linked pull requests" count={1} />
+              }
+            />
+
+            <SessionDetailDiagnostics
+              eventCount={events.length}
+              entries={diagnosticsLog}
+            />
+          </div>
+        </details>
       </div>
 
-      {/* (archive#1170): guarded on !isStopped like Stop task
-          and the live indicator above — a session that crashes mid-request
-          must not leave Approve/Decline clickable against a dead session.
-          Stopped (`completed`/`failed`/`canceled`), not terminal
-          (station#3244): the composer below reappears on a retryable failed
-          session, but this card kept #1170's behavior. Disclosed tension,
-          not resolved here: the server's own answerability model
-          (`open-requests.ts`, `canSessionLifecycleStateResume`) holds that a
-          request open when a session FAILED is still pertinent — the retry
-          re-enters `running` directly — so hiding this card on `failed` can
-          hide an answerable request. A `pendingReview` approval survives as
-          an attention item (station#1548), but a bare in-turn request does
-          not. Aligning this gate with the resume predicate is a deliberate
-          product call for its own issue, exactly as #3213 treated #3244. */}
-      {!isStopped && pendingRequest && pendingRequestPresentation && (
-        <div className="sessions-detail__request" data-testid="session-request">
-          <div className="sessions-detail__request-copy">
-            <span className="sessions-detail__request-label">
-              {pendingRequestPresentation.label}
-            </span>
-            <strong>{pendingRequest.title}</strong>
-          </div>
-          {/* archive#1781: the card RENDERS for an unanswerable session —
+      {/* (archive#1170): guarded on !isStopped like Stop and the connection
+          note above — a session that crashes mid-request must not leave
+          Approve/Decline clickable against a dead session. Stopped
+          (`completed`/`failed`/`canceled`), not terminal (station#3244): the
+          composer below reappears on a retryable failed session, but this
+          card kept #1170's behavior. Disclosed tension, not resolved here:
+          the server's own answerability model (`open-requests.ts`,
+          `canSessionLifecycleStateResume`) holds that a request open when a
+          session FAILED is still pertinent — the retry re-enters `running`
+          directly — so hiding this card on `failed` can hide an answerable
+          request. A `pendingReview` approval survives as an attention item
+          (station#1548), but a bare in-turn request does not. Aligning this
+          gate with the resume predicate is a deliberate product call for its
+          own issue, exactly as #3213 treated #3244.
+
+          Pinned outside the scroll region rather than at the top of it: it is
+          the one decision the session is blocked on, and it must stay
+          reachable above an open keyboard without scrolling. */}
+      {!isPeerRecord &&
+        !isStopped &&
+        pendingRequest &&
+        pendingRequestPresentation && (
+          <div
+            className="sessions-detail__request"
+            data-testid="session-request"
+          >
+            <div className="sessions-detail__request-copy">
+              <span className="sessions-detail__request-label">
+                {pendingRequestPresentation.label}
+              </span>
+              <strong>{pendingRequest.title}</strong>
+            </div>
+            {/* archive#1781: the card RENDERS for an unanswerable session —
               deleting it would be the silent filtering ADR 0012 forbids, and
               the request really is still open. What it must not do is offer
               Approve/Deny that dispatch into nothing, so the buttons are
               disabled and the observation that disabled them is named. */}
-          {sessionUnanswerableNotice && (
-            <p
-              id="session-request-answerability-note"
-              className="sessions-detail__request-note"
-              data-testid="session-request-answerability"
-            >
-              {sessionUnanswerableNotice}
-            </p>
-          )}
-          <div className="sessions-detail__request-actions">
-            <Button
-              variant="primary"
-              disabled={respond.isPending || sessionUnanswerable}
-              aria-describedby={
-                sessionUnanswerable
-                  ? 'session-request-answerability-note'
-                  : undefined
-              }
-              onClick={() => respond.mutate('accept')}
-            >
-              {pendingRequestPresentation.accept}
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={respond.isPending || sessionUnanswerable}
-              aria-describedby={
-                sessionUnanswerable
-                  ? 'session-request-answerability-note'
-                  : undefined
-              }
-              onClick={() => respond.mutate('decline')}
-            >
-              {pendingRequestPresentation.decline}
-            </Button>
+            {sessionUnanswerableNotice && (
+              <p
+                id="session-request-answerability-note"
+                className="sessions-detail__request-note"
+                data-testid="session-request-answerability"
+              >
+                {sessionUnanswerableNotice}
+              </p>
+            )}
+            <div className="sessions-detail__request-actions">
+              <Button
+                variant="primary"
+                disabled={respond.isPending || sessionUnanswerable}
+                aria-describedby={
+                  sessionUnanswerable
+                    ? 'session-request-answerability-note'
+                    : undefined
+                }
+                onClick={() => respond.mutate('accept')}
+              >
+                {pendingRequestPresentation.accept}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={respond.isPending || sessionUnanswerable}
+                aria-describedby={
+                  sessionUnanswerable
+                    ? 'session-request-answerability-note'
+                    : undefined
+                }
+                onClick={() => respond.mutate('decline')}
+              >
+                {pendingRequestPresentation.decline}
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {!hideGenericCompose && (
+      {!hideGenericCompose && !isPeerRecord && (
         <>
           <div className="sessions-detail__compose">
             <textarea
               className="sessions-detail__input"
               placeholder={
-                isStreaming
-                  ? 'Session is mid-turn — wait for it to finish…'
-                  : isDelegated
-                    ? 'Add a follow-up for this task…'
-                    : 'Send input to this session…'
+                isDelegated
+                  ? 'Add a follow-up for this task…'
+                  : `Reply to ${agentLabel}…`
               }
               aria-label={
                 isDelegated
                   ? 'Continue delegated task'
                   : 'Send input to session'
+              }
+              aria-describedby={
+                isStreaming ? 'session-compose-turn-note' : undefined
               }
               value={input}
               disabled={isStreaming}
@@ -461,17 +638,65 @@ export function MutableSessionDetail({
               disabled={!canSend}
               onClick={() => sendTurn.mutate()}
             >
-              {isDelegated ? 'Continue' : 'Send'}
+              Send
             </Button>
           </div>
-          {/* Honest limit: there is no mid-turn steering server-side
-              (SDK-blocked); input lands as the next turn once the current
-              one settles. */}
-          <p className="sessions-detail__note">
-            Turn-based: messages are delivered between turns, not injected
-            mid-stream.
-          </p>
+          {/* Honest limit: there is no mid-turn steering here, and this
+              composer is disabled while a turn runs. Said only then. */}
+          {isStreaming && (
+            <p id="session-compose-turn-note" className="sessions-detail__note">
+              You can reply when the current turn finishes.
+            </p>
+          )}
         </>
+      )}
+
+      <ConfirmModal
+        isOpen={confirmStop}
+        title="Stop this task?"
+        message="Station interrupts the turn that is running now. The session stays open, so you can send it another message afterward."
+        confirmLabel="Stop task"
+        cancelLabel="Keep running"
+        variant="danger"
+        role="alertdialog"
+        pending={stopTask.isPending}
+        error={
+          stopTask.error
+            ? stopTask.error instanceof Error
+              ? stopTask.error.message
+              : 'Unable to stop this task'
+            : null
+        }
+        onCancel={() => setConfirmStop(false)}
+        confirmDisabled={!canStop}
+        onConfirm={() => {
+          if (!canStop) return;
+          stopTask.mutate(undefined, {
+            onSuccess: () => setConfirmStop(false),
+          });
+        }}
+      />
+
+      {isDelegated && !isPeerRecord && (
+        <DelegationLauncher
+          isOpen={delegating}
+          apiBase={apiBase}
+          projectSlug={delegationProjectSlug}
+          projectName={
+            delegationProjectSlug ? humanizeId(delegationProjectSlug) : null
+          }
+          currentAgentId={
+            session.delegation?.targetId ?? session.assignedAgentSlug
+          }
+          currentModel={session.model}
+          parentTaskId={parentTaskId}
+          parentTaskLabel={humanizeId(parentTaskId)}
+          onClose={() => setDelegating(false)}
+          onDelegated={() => {
+            setDelegating(false);
+            onTaskChanged();
+          }}
+        />
       )}
     </section>
   );

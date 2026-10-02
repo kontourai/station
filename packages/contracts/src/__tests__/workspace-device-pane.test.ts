@@ -48,8 +48,8 @@ describe('the Device pane descriptor (#1969)', () => {
    * The requirement-free half of the acceptance, at the only layer that can
    * carry it here: a `WorkspacePaneDescriptor` has NO `requirements` field
    * at all — host capabilities live on the server's
-   * `WorkspacePaneAvailabilityInput`, which is where Browser Preview declares
-   * `local-browser-preview` and where
+   * `WorkspacePaneAvailabilityInput`, which is where the retired `1.0`
+   * Browser Preview declared `local-browser-preview` and where
    * `workspace-pane-known-declarations.test.ts` asserts Device declares
    * nothing. What the descriptor owns is the MODE, and giving the default
    * mode a `contextRequirement` reds this test. The exact-key assertion is

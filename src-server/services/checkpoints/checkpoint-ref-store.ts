@@ -1,8 +1,17 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  opendir,
+  rename,
+  rm,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  CHECKPOINT_REF_ROOT,
   checkpointRefName,
   checkpointRefPath,
   enumerateThreadCheckpointRefs,
@@ -10,7 +19,15 @@ import {
   removeThreadCheckpointRefs,
 } from '@kontourai/station-shared/checkpoints';
 import { execGit, killGitProcessTree, spawnGit } from '../../utils/git-exec.js';
-import { checkRepositoryConfig } from '../projects/git-repository-config.js';
+import {
+  openRepositorySnapshot,
+  ProjectRepositoryRefusedError,
+  requireProjectRepository,
+} from '../projects/git-read-repository.js';
+import {
+  judgeRepositoryConfigEntries,
+  type RepositoryConfigEntry,
+} from '../projects/git-repository-config.js';
 
 /**
  * Workspace checkpoint ref store (archive#2802, slice 1).
@@ -149,23 +166,240 @@ function isTimeoutError(error: unknown): boolean {
   );
 }
 
-async function resolveCommonGitDir(
-  repoRoot: string,
-  timeoutMs: number = CHECKPOINT_GIT_TIMEOUT_MS,
-): Promise<string> {
-  // archive#2802 M2: this sits on capture's post-ref-write cleanup path and
-  // on every read path, so it must be bounded like its siblings. The
-  // conditions that make a capture fail after the ref write (a wedged clean
-  // filter, a hung network mount, a held index lock) are the same ones that
-  // hang this call — and an unbounded hang here wedges the thread's tail
-  // forever with no record written.
-  const { stdout } = await execGit(
-    ['rev-parse', '--path-format=absolute', '--git-common-dir'],
-    { cwd: repoRoot, encoding: 'utf-8', timeout: timeoutMs },
+/**
+ * Runs `build` with git writing every NEW object into a directory Station
+ * owns (`GIT_OBJECT_DIRECTORY`, reading the repository's through the
+ * alternate), and moves them into the repository's object store only once
+ * the repository is still the one that was checked. Without it, `add -A`,
+ * `write-tree` and `commit-tree` write through the snapshot's `objects`
+ * link for as long as they run, and a `.git` swapped for a link to another
+ * repository meanwhile put the Project's files into THAT repository's
+ * object store (measured: 43 objects over 80 captures under a flipping
+ * link). Now only the move itself goes through the path, after the check,
+ * and git is then asked for the objects without the quarantine, so a move
+ * that did not land fails the operation rather than leaving a ref dangling.
+ */
+export async function withQuarantinedObjects<T>(
+  repository: CheckpointRepository,
+  build: (env: NodeJS.ProcessEnv) => Promise<T>,
+): Promise<T> {
+  const quarantine = await mkdtemp(
+    join(tmpdir(), 'station-checkpoint-objects-'),
   );
-  const dir = stdout.trim();
-  if (!dir) throw new Error('git rev-parse --git-common-dir returned no path');
-  return dir;
+  try {
+    const built = await build({
+      GIT_OBJECT_DIRECTORY: quarantine,
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: join(repository.commonDir, 'objects'),
+    });
+    if (!(await repository.stillOwn())) {
+      throw new Error('the repository changed while it was captured');
+    }
+    const store = join(repository.commonDir, 'objects');
+    for await (const fanOut of await opendir(quarantine)) {
+      if (!fanOut.isDirectory() || !/^[0-9a-f]{2}$/.test(fanOut.name)) continue;
+      const bucket = join(store, fanOut.name);
+      await mkdir(bucket, { recursive: true });
+      for await (const object of await opendir(join(quarantine, fanOut.name))) {
+        if (!object.isFile()) continue;
+        const target = join(bucket, object.name);
+        if (existsSync(target)) continue;
+        // As git writes one: whole under a temporary name, then renamed.
+        const staged = `${target}.station-${process.pid}`;
+        await copyFile(join(quarantine, fanOut.name, object.name), staged);
+        await rename(staged, target);
+      }
+    }
+    return built;
+  } finally {
+    await rm(quarantine, { recursive: true, force: true }).catch(() => {
+      // Best-effort; a survivor is inert.
+    });
+  }
+}
+
+/** What a checkpoint operation runs git with: a snapshot of the folder's
+ * own repository (`git-read-repository.ts`). */
+export interface CheckpointRepository {
+  /** The work tree's root, symlink-resolved. */
+  top: string;
+  /** The repository's per-worktree git directory, symlink-resolved. */
+  gitDir: string;
+  /** The repository's common directory, symlink-resolved. */
+  commonDir: string;
+  /** `--git-dir=<snapshot> --work-tree=<top>`. */
+  repoArgs: string[];
+  config: RepositoryConfigEntry[];
+  /**
+   * Creates the checkpoint directories in the repository when they are
+   * missing and makes them writable through the snapshot. Only a capture
+   * that is about to write its ref asks.
+   */
+  linkCheckpointDirectories: () => Promise<void>;
+  /**
+   * Still the folder's own repository, and the same files as when it was
+   * checked (whatever their times): asked immediately before anything is
+   * written or removed.
+   */
+  stillOwn: () => Promise<boolean>;
+}
+
+export class CheckpointRepositoryRefused extends Error {
+  constructor(
+    readonly reason: 'not_a_git_repository' | 'repository_config_refused',
+    detail: string,
+  ) {
+    super(detail);
+  }
+}
+
+/**
+ * The directories checkpoints live in, relative to the common directory:
+ * the pseudo-refs and their reflogs. git reaches them through the snapshot.
+ */
+const CHECKPOINT_DIRECTORIES = [
+  CHECKPOINT_REF_ROOT,
+  join('logs', CHECKPOINT_REF_ROOT),
+];
+
+/**
+ * Runs `run` with a snapshot of `repoDir`'s OWN repository.
+ *
+ * `repoDir` is a Project's folder, which is member-writable: a `.git` file
+ * there can name any repository on this computer, a `commondir` can name
+ * any common directory, and a capture writes objects and a ref into
+ * whichever one git finds. So the repository is resolved and checked once
+ * (`requireProjectRepository`), and every git call runs against a git
+ * directory Station owns: the repository's config as it was judged (so a
+ * clean or smudge filter written into `.git/config` afterwards does not
+ * exist for this operation), its HEAD, and its objects, refs and
+ * checkpoint directories linked back. Nothing here lets git discover a
+ * repository from the folder again.
+ */
+export async function withCheckpointRepository<T>(
+  repoDir: string,
+  options: { timeoutMs: number },
+  run: (repository: CheckpointRepository) => Promise<T>,
+): Promise<T> {
+  let repository: Awaited<ReturnType<typeof requireProjectRepository>>;
+  try {
+    repository = await requireProjectRepository(repoDir, repoDir);
+  } catch (error) {
+    if (!(error instanceof ProjectRepositoryRefusedError)) throw error;
+    throw new CheckpointRepositoryRefused(
+      'not_a_git_repository',
+      error.message,
+    );
+  }
+  // A thread's refs are removed with `rm`, which goes through a linked
+  // folder to wherever it leads. git never links these.
+  for (const directory of ['logs', ...CHECKPOINT_DIRECTORIES]) {
+    const stats = await lstat(join(repository.commonDir, directory)).catch(
+      () => null,
+    );
+    if (stats && !stats.isDirectory()) {
+      throw new CheckpointRepositoryRefused(
+        'not_a_git_repository',
+        `.git/${directory} is not an ordinary folder`,
+      );
+    }
+  }
+  const opened = await openRepositorySnapshot(repository, {
+    timeoutMs: options.timeoutMs,
+  });
+  if (!opened.ok) {
+    throw new CheckpointRepositoryRefused(
+      opened.state === 'config-refused'
+        ? 'repository_config_refused'
+        : 'not_a_git_repository',
+      opened.state === 'config-refused'
+        ? `repository config sets ${opened.keys.join(', ')}`
+        : opened.state === 'refused'
+          ? opened.reason
+          : "git could not read the repository's configuration",
+    );
+  }
+  try {
+    // What is already there is readable through the snapshot.
+    await opened.snapshot.link(CHECKPOINT_DIRECTORIES, false);
+    return await run({
+      linkCheckpointDirectories: () =>
+        opened.snapshot.link(CHECKPOINT_DIRECTORIES, true),
+      top: repository.top,
+      gitDir: repository.gitDir,
+      commonDir: repository.commonDir,
+      repoArgs: opened.snapshot.repoArgs,
+      config: opened.snapshot.config,
+      stillOwn: async () => {
+        try {
+          const again = await requireProjectRepository(repoDir, repoDir);
+          return (
+            again.gitDir === repository.gitDir &&
+            again.commonDir === repository.commonDir &&
+            (await repository.sameIdentity())
+          );
+        } catch {
+          return false;
+        }
+      },
+    });
+  } finally {
+    await opened.snapshot.dispose();
+  }
+}
+
+/**
+ * A thread's ref and reflog folders must be ordinary folders before
+ * anything under them is listed or removed: `rm` follows a linked FOLDER
+ * on the way to the file it removes.
+ */
+async function threadDirectoriesAreOrdinary(
+  commonDir: string,
+  threadId: string,
+): Promise<boolean> {
+  for (const directory of CHECKPOINT_DIRECTORIES) {
+    const stats = await lstat(join(commonDir, directory, threadId)).catch(
+      () => null,
+    );
+    if (stats && !stats.isDirectory()) return false;
+  }
+  return true;
+}
+
+/**
+ * After `add -A`, puts every submodule entry of the index back to what HEAD
+ * records (or removes it when HEAD has none). `add` records a nested
+ * repository's HEAD commit as a submodule entry, and a nested `.git` file
+ * can name any repository on this computer: its commit id would be stored
+ * in the checkpoint. A nested repository's files are not captured either
+ * way.
+ */
+export async function dropNestedRepositoryChanges(
+  git: (
+    args: string[],
+    options?: { input?: string },
+  ) => Promise<{ stdout: string }>,
+): Promise<void> {
+  const staged = (await git(['ls-files', '-s', '-z'])).stdout
+    .split('\0')
+    .filter((line) => line.startsWith('160000 '))
+    .map((line) => line.slice(line.indexOf('\t') + 1));
+  if (staged.length === 0) return;
+  const recorded = new Map<string, string>();
+  for (const line of (await git(['ls-tree', '-r', '-z', 'HEAD'])).stdout.split(
+    '\0',
+  )) {
+    const match = /^160000 commit ([0-9a-f]+)\t([\s\S]+)$/.exec(line);
+    if (match) recorded.set(match[2], match[1]);
+  }
+  const zero = '0'.repeat(40);
+  await git(['update-index', '-z', '--index-info'], {
+    input: staged
+      .map((path) => {
+        const sha = recorded.get(path);
+        return sha ? `160000 ${sha}\t${path}\0` : `0 ${zero}\t${path}\0`;
+      })
+      .join(''),
+  });
 }
 
 export class CheckpointRefStore {
@@ -197,23 +431,12 @@ export class CheckpointRefStore {
         detail: 'threadId/checkpointId is not a safe ref segment',
       };
     }
-
-    let repoRoot: string;
     try {
-      const inside = await execGit(['rev-parse', '--is-inside-work-tree'], {
-        cwd: input.repoDir,
-        encoding: 'utf-8',
-        timeout: this.gitTimeoutMs,
-      });
-      if (inside.stdout.trim() !== 'true') {
-        return { status: 'degraded', reason: 'not_a_git_repository' };
-      }
-      const toplevel = await execGit(['rev-parse', '--show-toplevel'], {
-        cwd: input.repoDir,
-        encoding: 'utf-8',
-        timeout: this.gitTimeoutMs,
-      });
-      repoRoot = toplevel.stdout.trim();
+      return await withCheckpointRepository(
+        input.repoDir,
+        { timeoutMs: this.gitTimeoutMs },
+        (repository) => this.captureIn(repository, ref, input),
+      );
     } catch (error) {
       if (isTimeoutError(error)) {
         return {
@@ -222,29 +445,32 @@ export class CheckpointRefStore {
           detail: gitErrorMessage(error),
         };
       }
-      // `git rev-parse` in a non-git directory exits non-zero with
-      // "not a git repository" on stderr — the typed shape callers get for
-      // a directory that is not inside any work tree.
+      // A folder that is not in a repository, or whose repository is not
+      // its own, has no checkpoints.
       return {
         status: 'degraded',
-        reason: 'not_a_git_repository',
+        reason:
+          error instanceof CheckpointRepositoryRefused
+            ? error.reason
+            : 'not_a_git_repository',
         detail: gitErrorMessage(error),
       };
     }
+  }
 
-    const gitOpts = {
-      cwd: repoRoot,
-      encoding: 'utf-8' as const,
-      timeout: this.gitTimeoutMs,
-    };
-
+  private async captureIn(
+    repository: CheckpointRepository,
+    ref: string,
+    input: CheckpointRefStoreCaptureInput,
+  ): Promise<CheckpointCaptureResult> {
+    const repoRoot = repository.top;
     // #2410: `add -A` below runs a clean filter the repository's own config
     // defines, as the operator, with nobody having clicked anything. The
     // runner cannot switch a per-file filter off, so such a repository gets
     // no checkpoints, by the same rule the coding routes apply before
-    // `status` and `diff` (`git-repository-config.ts`). Checked on every
-    // capture, not once: the config can change between turns.
-    const config = await checkRepositoryConfig(repoRoot, 'read');
+    // `status` and `diff` (`git-repository-config.ts`). Judged on every
+    // capture, and judged on the very config git then runs with.
+    const config = judgeRepositoryConfigEntries(repository.config, 'read');
     if (!config.ok) {
       return {
         status: 'degraded',
@@ -260,7 +486,7 @@ export class CheckpointRefStore {
     }
 
     try {
-      await this.assertHeadSnapshotable(repoRoot);
+      await this.assertHeadSnapshotable(repository);
     } catch (error) {
       if (isTimeoutError(error)) {
         return {
@@ -284,10 +510,10 @@ export class CheckpointRefStore {
     let refWritten = false;
     try {
       const indexFile = join(tempDir, 'index');
-      // Only GIT_INDEX_FILE (plus the fixed ident) is injected; GIT_DIR and
-      // GIT_WORK_TREE stay scrubbed by execGit's env so git keeps discovering
-      // the repository from `cwd`, never from an inherited variable.
-      const env = {
+      // GIT_INDEX_FILE (plus the fixed ident) is injected; the repository
+      // is named by `--git-dir`/`--work-tree`, never discovered and never
+      // taken from an inherited variable.
+      const ident = {
         GIT_INDEX_FILE: indexFile,
         GIT_AUTHOR_NAME: CHECKPOINT_IDENT.name,
         GIT_AUTHOR_EMAIL: CHECKPOINT_IDENT.email,
@@ -296,15 +522,17 @@ export class CheckpointRefStore {
         GIT_COMMITTER_EMAIL: CHECKPOINT_IDENT.email,
         GIT_COMMITTER_DATE: capturedAt,
       };
-      const captureOpts = { ...gitOpts, env };
+      const gitWith =
+        (env: NodeJS.ProcessEnv) =>
+        (args: string[], options: { input?: string } = {}) =>
+          execGit([...repository.repoArgs, ...args], {
+            cwd: repoRoot,
+            encoding: 'utf-8' as const,
+            timeout: this.gitTimeoutMs,
+            env: { ...ident, ...env },
+            ...options,
+          });
 
-      // Seed the temp index with HEAD so the snapshot starts from the
-      // committed state, then `add -A` folds in working-tree modifications,
-      // deletions, and untracked-but-not-ignored files. Ignored files stay
-      // excluded because `add` respects the repository's ignore rules.
-      await execGit(['read-tree', 'HEAD'], captureOpts);
-      await execGit(['add', '-A'], captureOpts);
-      const tree = (await execGit(['write-tree'], captureOpts)).stdout.trim();
       // The commit message is the durable, self-describing record: ref
       // name, boundary phase, turnId, and the exact capturedAt timestamp
       // (git author dates are second-granular — the trailer is what
@@ -316,42 +544,67 @@ export class CheckpointRefStore {
         `phase=${input.kind}`,
         `captured-at=${capturedAt}`,
       ].join('\n');
-      const commit = (
-        await execGit(
-          ['commit-tree', tree, '-p', 'HEAD', '-m', message],
-          captureOpts,
-        )
-      ).stdout.trim();
+      // Every object is built in quarantine and moved into the repository
+      // afterwards, once it is still the one that was checked.
+      const { tree, commit } = await withQuarantinedObjects(
+        repository,
+        async (quarantine) => {
+          const git = gitWith(quarantine);
+          // Seed the temp index with HEAD so the snapshot starts from the
+          // committed state, then `add -A` folds in working-tree
+          // modifications, deletions, and untracked-but-not-ignored files.
+          // Ignored files stay excluded because `add` respects the
+          // repository's ignore rules.
+          await git(['read-tree', 'HEAD']);
+          await git(['add', '-A']);
+          await dropNestedRepositoryChanges(git);
+          const tree = (await git(['write-tree'])).stdout.trim();
+          const commit = (
+            await git(['commit-tree', tree, '-p', 'HEAD', '-m', message])
+          ).stdout.trim();
+          return { tree, commit };
+        },
+      );
+      // From here git reads the repository's own object store, so the ref
+      // is only written, and only read back, if the objects landed there.
+      const git = gitWith({});
 
+      // The ref is about to be written through the links into the
+      // repository. It must still be the repository that was checked (the
+      // objects just written changed its times, so identity is what is
+      // compared). A `.git` swapped in the moment between this and git
+      // opening the path is still followed.
+      if (!(await repository.stillOwn())) {
+        throw new Error('the repository changed while it was captured');
+      }
+      await repository.linkCheckpointDirectories();
       // The only mutation of repository refs in the whole capture: one
       // atomic update-ref creating the hidden pseudo-ref, with a reflog so
       // the commit stays reachable for git's reachability walk. The reflog
       // message carries the turnId too — `git reflog
       // STATION_CHECKPOINTS/<t>/<c>` then answers "which turn" without
       // reading the commit.
-      await execGit(
-        [
-          'update-ref',
-          '--create-reflog',
-          ref,
-          commit,
-          '-m',
-          `${input.kind} turn=${input.turnId}`,
-        ],
-        captureOpts,
-      );
+      await git([
+        'update-ref',
+        '--create-reflog',
+        ref,
+        commit,
+        '-m',
+        `${input.kind} turn=${input.turnId}`,
+      ]);
       refWritten = true;
 
       // Read back through the ref (not the local `commit` variable) so a
       // store that somehow wrote a different value reports capture_failed
       // instead of success.
-      const readBack = (
-        await execGit(['rev-parse', ref], captureOpts)
-      ).stdout.trim();
+      const readBack = (await git(['rev-parse', ref])).stdout.trim();
       if (readBack !== commit) {
         throw new Error(
           `checkpoint ref ${ref} read back ${readBack}, expected ${commit}`,
         );
+      }
+      if (!(await repository.stillOwn())) {
+        throw new Error('the repository changed while it was captured');
       }
 
       return {
@@ -368,9 +621,16 @@ export class CheckpointRefStore {
       // A ref that was already written must not survive a failed capture:
       // pinned by its reflog, it would be invisible, unattributable `.git`
       // growth with no index record saying it exists.
-      if (refWritten) {
+      if (
+        refWritten &&
+        (await repository.stillOwn()) &&
+        (await threadDirectoriesAreOrdinary(
+          repository.commonDir,
+          input.threadId,
+        ))
+      ) {
         await removeThreadCheckpointRefs(
-          await resolveCommonGitDir(repoRoot, this.gitTimeoutMs),
+          repository.commonDir,
           input.threadId,
         ).catch(() => {
           // Best-effort: the degraded record below still tells the truth.
@@ -393,63 +653,50 @@ export class CheckpointRefStore {
     threadId: string;
     checkpointId: string;
   }): Promise<ReadCheckpointResult> {
-    const ref = checkpointRefName(input.threadId, input.checkpointId);
-    if (!ref) return { status: 'missing' };
     try {
-      const commit = (
-        await execGit(['rev-parse', '--verify', ref], {
-          cwd: input.repoDir,
-          encoding: 'utf-8',
-          timeout: this.gitTimeoutMs,
-        })
-      ).stdout.trim();
-      const meta = await execGit(['show', '-s', '--format=%T%n%B', commit], {
-        cwd: input.repoDir,
+      return await withCheckpointRepository(
+        input.repoDir,
+        { timeoutMs: this.gitTimeoutMs },
+        (repository) =>
+          this.readCheckpointIn(repository, input.threadId, input.checkpointId),
+      );
+    } catch {
+      return { status: 'missing' };
+    }
+  }
+
+  private async readCheckpointIn(
+    repository: CheckpointRepository,
+    threadId: string,
+    checkpointId: string,
+  ): Promise<ReadCheckpointResult> {
+    const ref = checkpointRefName(threadId, checkpointId);
+    if (!ref) return { status: 'missing' };
+    const git = (args: string[]) =>
+      execGit([...repository.repoArgs, ...args], {
+        cwd: repository.top,
         encoding: 'utf-8',
         timeout: this.gitTimeoutMs,
       });
+    try {
+      const commit = (await git(['rev-parse', '--verify', ref])).stdout.trim();
+      const meta = await git(['show', '-s', '--format=%T%n%B', commit]);
       const [treeSha, ...bodyLines] = meta.stdout.trim().split('\n');
       const body = bodyLines.join('\n');
       // captured-at trailer first (exact, millisecond-precise — L1);
       // %aI second-granularity is only the fallback for a foreign commit.
       const trailer = /captured-at=(\S+)/.exec(body)?.[1];
-      let repoRoot = input.repoDir;
-      try {
-        repoRoot = (
-          await execGit(['rev-parse', '--show-toplevel'], {
-            cwd: input.repoDir,
-            encoding: 'utf-8',
-            timeout: this.gitTimeoutMs,
-          })
-        ).stdout.trim();
-      } catch {
-        // keep the caller-provided directory as the best-known root
-      }
-      if (trailer) {
-        return {
-          status: 'ok',
-          checkpoint: {
-            checkpointId: input.checkpointId,
-            commitSha: commit,
-            treeSha,
-            repoRoot: repoRoot || input.repoDir,
-            capturedAt: trailer,
-          },
-        };
-      }
-      const iso = await execGit(['show', '-s', '--format=%aI', commit], {
-        cwd: input.repoDir,
-        encoding: 'utf-8',
-        timeout: this.gitTimeoutMs,
-      });
+      const capturedAt =
+        trailer ??
+        (await git(['show', '-s', '--format=%aI', commit])).stdout.trim();
       return {
         status: 'ok',
         checkpoint: {
-          checkpointId: input.checkpointId,
+          checkpointId,
           commitSha: commit,
           treeSha,
-          repoRoot: repoRoot || input.repoDir,
-          capturedAt: iso.stdout.trim(),
+          repoRoot: repository.top,
+          capturedAt,
         },
       };
     } catch {
@@ -457,16 +704,23 @@ export class CheckpointRefStore {
       // rev-parse failing on the ref itself is `missing`; the ref resolving
       // but `show` failing means the object was pruned (see file header).
       try {
-        await execGit(['rev-parse', '--verify', ref], {
-          cwd: input.repoDir,
-          encoding: 'utf-8',
-          timeout: this.gitTimeoutMs,
-        });
+        await git(['rev-parse', '--verify', ref]);
         return { status: 'object_pruned' };
       } catch {
         return { status: 'missing' };
       }
     }
+  }
+
+  /** A thread's checkpoint ids, from its ordinary ref folder. */
+  private async threadCheckpointIds(
+    repository: CheckpointRepository,
+    threadId: string,
+  ): Promise<string[]> {
+    if (!(await threadDirectoriesAreOrdinary(repository.commonDir, threadId))) {
+      throw new Error('checkpoint refs for this thread are not a folder');
+    }
+    return enumerateThreadCheckpointRefs(repository.commonDir, threadId);
   }
 
   /** All checkpoints recorded for a thread, oldest first. */
@@ -476,29 +730,31 @@ export class CheckpointRefStore {
   }): Promise<CapturedCheckpoint[]> {
     if (!isSafeCheckpointRefSegment(input.threadId)) return [];
     try {
-      const commonDir = await resolveCommonGitDir(
+      return await withCheckpointRepository(
         input.repoDir,
-        this.gitTimeoutMs,
+        { timeoutMs: this.gitTimeoutMs },
+        async (repository) => {
+          const checkpoints: CapturedCheckpoint[] = [];
+          for (const checkpointId of await this.threadCheckpointIds(
+            repository,
+            input.threadId,
+          )) {
+            const read = await this.readCheckpointIn(
+              repository,
+              input.threadId,
+              checkpointId,
+            );
+            if (read.status === 'ok' && read.checkpoint) {
+              checkpoints.push(read.checkpoint);
+            }
+          }
+          // Full-precision capturedAt (the trailer) makes this a stable
+          // ordering even for a baseline/settle pair inside one second.
+          return checkpoints.sort((a, b) =>
+            a.capturedAt.localeCompare(b.capturedAt),
+          );
+        },
       );
-      const ids = await enumerateThreadCheckpointRefs(
-        commonDir,
-        input.threadId,
-      );
-      const checkpoints: CapturedCheckpoint[] = [];
-      for (const checkpointId of ids) {
-        const read = await this.readCheckpoint({
-          repoDir: input.repoDir,
-          threadId: input.threadId,
-          checkpointId,
-        });
-        if (read.status === 'ok' && read.checkpoint) {
-          checkpoints.push(read.checkpoint);
-        }
-      }
-      // Full-precision capturedAt (the trailer) makes this a stable
-      // ordering even for a baseline/settle pair inside one second.
-      checkpoints.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
-      return checkpoints;
     } catch {
       return [];
     }
@@ -512,24 +768,66 @@ export class CheckpointRefStore {
     if (!isSafeCheckpointRefSegment(input.threadId)) {
       throw new Error('invalid checkpoint thread id');
     }
-    const commonDir = await resolveCommonGitDir(
+    return withCheckpointRepository(
       input.repoDir,
-      this.gitTimeoutMs,
+      { timeoutMs: this.gitTimeoutMs },
+      async (repository) => {
+        const checkpoints: CapturedCheckpoint[] = [];
+        for (const checkpointId of await this.threadCheckpointIds(
+          repository,
+          input.threadId,
+        )) {
+          const read = await this.readCheckpointIn(
+            repository,
+            input.threadId,
+            checkpointId,
+          );
+          if (read.status !== 'ok' || !read.checkpoint) {
+            throw new Error(`checkpoint ${checkpointId} is not readable`);
+          }
+          checkpoints.push(read.checkpoint);
+        }
+        return checkpoints.sort((a, b) =>
+          a.capturedAt.localeCompare(b.capturedAt),
+        );
+      },
     );
-    const ids = await enumerateThreadCheckpointRefs(commonDir, input.threadId);
-    const checkpoints: CapturedCheckpoint[] = [];
-    for (const checkpointId of ids) {
-      const read = await this.readCheckpoint({
-        repoDir: input.repoDir,
-        threadId: input.threadId,
-        checkpointId,
-      });
-      if (read.status !== 'ok' || !read.checkpoint) {
-        throw new Error(`checkpoint ${checkpointId} is not readable`);
-      }
-      checkpoints.push(read.checkpoint);
-    }
-    return checkpoints.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+  }
+
+  /**
+   * Removes one checkpoint's ref and reflog from the folder's OWN
+   * repository. These are `rm` calls on paths under the common directory,
+   * so the common directory is the one that was checked (never one a
+   * `commondir` file names from outside), the thread's folders must be
+   * ordinary folders, and the repository must still be the same files
+   * immediately before anything is removed.
+   */
+  private async removeCheckpoint(
+    repoDir: string,
+    threadId: string,
+    ref: string,
+  ): Promise<'deleted' | 'missing'> {
+    return withCheckpointRepository(
+      repoDir,
+      { timeoutMs: this.gitTimeoutMs },
+      async (repository) => {
+        const { commonDir } = repository;
+        if (
+          !(await threadDirectoriesAreOrdinary(commonDir, threadId)) ||
+          !(await repository.stillOwn())
+        ) {
+          throw new Error('checkpoint refs for this thread are not a folder');
+        }
+        const refPath = checkpointRefPath(commonDir, ref);
+        const present = existsSync(refPath);
+        // Also when the ref is already gone: complete a prior crash between
+        // pseudo-ref and reflog unlink, so an undiscoverable reflog cannot
+        // keep the checkpoint object pinned.
+        if (present) await rm(refPath);
+        await rm(join(commonDir, 'logs', ref), { force: true });
+        return present ? 'deleted' : 'missing';
+      },
+    );
   }
 
   /** Retention variant: deletion failures remain distinguishable from missing. */
@@ -540,20 +838,7 @@ export class CheckpointRefStore {
   }): Promise<'deleted' | 'missing'> {
     const ref = checkpointRefName(input.threadId, input.checkpointId);
     if (!ref) throw new Error('invalid checkpoint ref');
-    const commonDir = await resolveCommonGitDir(
-      input.repoDir,
-      this.gitTimeoutMs,
-    );
-    const refPath = checkpointRefPath(commonDir, ref);
-    if (!existsSync(refPath)) {
-      // Complete a prior crash between pseudo-ref and reflog unlink so an
-      // undiscoverable reflog cannot keep the checkpoint object pinned.
-      await rm(join(commonDir, 'logs', ref), { force: true });
-      return 'missing';
-    }
-    await rm(refPath);
-    await rm(join(commonDir, 'logs', ref), { force: true });
-    return 'deleted';
+    return this.removeCheckpoint(input.repoDir, input.threadId, ref);
   }
 
   async deleteCheckpoint(input: {
@@ -564,15 +849,7 @@ export class CheckpointRefStore {
     const ref = checkpointRefName(input.threadId, input.checkpointId);
     if (!ref) return 'missing';
     try {
-      const commonDir = await resolveCommonGitDir(
-        input.repoDir,
-        this.gitTimeoutMs,
-      );
-      const refPath = checkpointRefPath(commonDir, ref);
-      if (!existsSync(refPath)) return 'missing';
-      await rm(refPath, { force: true });
-      await rm(join(commonDir, 'logs', ref), { force: true });
-      return 'deleted';
+      return await this.removeCheckpoint(input.repoDir, input.threadId, ref);
     } catch {
       return 'missing';
     }
@@ -590,11 +867,25 @@ export class CheckpointRefStore {
   }): Promise<number> {
     if (!isSafeCheckpointRefSegment(input.threadId)) return 0;
     try {
-      const commonDir = await resolveCommonGitDir(
+      return await withCheckpointRepository(
         input.repoDir,
-        this.gitTimeoutMs,
+        { timeoutMs: this.gitTimeoutMs },
+        async (repository) => {
+          if (
+            !(await threadDirectoriesAreOrdinary(
+              repository.commonDir,
+              input.threadId,
+            )) ||
+            !(await repository.stillOwn())
+          ) {
+            return 0;
+          }
+          return removeThreadCheckpointRefs(
+            repository.commonDir,
+            input.threadId,
+          );
+        },
       );
-      return await removeThreadCheckpointRefs(commonDir, input.threadId);
     } catch {
       return 0;
     }
@@ -623,55 +914,59 @@ export class CheckpointRefStore {
       verdicts.set(entry.checkpointId, 'missing');
     }
     try {
-      const commonDir = await resolveCommonGitDir(
+      await withCheckpointRepository(
         input.repoDir,
-        this.gitTimeoutMs,
+        { timeoutMs: this.gitTimeoutMs },
+        async (repository) => {
+          const present = new Set(
+            await this.threadCheckpointIds(repository, input.threadId),
+          );
+          const toCheck = input.checkpoints.filter((entry) =>
+            present.has(entry.checkpointId),
+          );
+          if (toCheck.length === 0) return;
+          // `execGit` is promisified `execFile`, which — unlike
+          // `execFileSync` — has NO `input` option here: `cat-file
+          // --batch-check` would wait on a stdin that never closes until
+          // the timeout SIGTERMs it, and every live checkpoint would then
+          // be reported `missing`. Drive stdin explicitly through
+          // `spawnGit`.
+          const stdout = await batchCheckObjects(
+            repository,
+            toCheck.map((entry) => entry.commitSha),
+            this.gitTimeoutMs,
+          );
+          // A failed batch is NOT evidence of absence. Returning here
+          // leaves the pre-seeded `missing` verdicts in place; overwriting
+          // them below would report `object_pruned` — a definite claim
+          // about git state derived from having observed nothing, which is
+          // the exact defect this annotation exists to prevent
+          // (archive#2802 M3).
+          if (stdout === null) return;
+          const existing = new Set(
+            stdout
+              .split('\n')
+              .map((line) => line.trim().split(/\s+/))
+              .filter(
+                (parts) =>
+                  parts.length === 2 &&
+                  parts[0].length > 0 &&
+                  parts[1] !== 'missing',
+              )
+              .map((parts) => parts[0]),
+          );
+          for (const entry of toCheck) {
+            verdicts.set(
+              entry.checkpointId,
+              existing.has(entry.commitSha) ? 'ok' : 'object_pruned',
+            );
+          }
+        },
       );
-      const present = new Set(
-        await enumerateThreadCheckpointRefs(commonDir, input.threadId),
-      );
-      const toCheck = input.checkpoints.filter((entry) =>
-        present.has(entry.checkpointId),
-      );
-      if (toCheck.length === 0) return verdicts;
-      // `execGit` is promisified `execFile`, which — unlike `execFileSync` —
-      // has NO `input` option: passing one is silently ignored, so
-      // `cat-file --batch-check` would wait on a stdin that never closes
-      // until the timeout SIGTERMs it, and every live checkpoint would then
-      // be reported `missing`. Drive stdin explicitly through `spawnGit`.
-      const stdout = await batchCheckObjects(
-        input.repoDir,
-        toCheck.map((entry) => entry.commitSha),
-        this.gitTimeoutMs,
-      );
-      // A failed batch is NOT evidence of absence. Returning here leaves the
-      // pre-seeded `missing` verdicts in place; overwriting them below would
-      // report `object_pruned` — a definite claim about git state derived
-      // from having observed nothing, which is the exact defect this
-      // annotation exists to prevent (archive#2802 M3).
-      if (stdout === null) return verdicts;
-      const existing = new Set(
-        stdout
-          .split('\n')
-          .map((line) => line.trim().split(/\s+/))
-          .filter(
-            (parts) =>
-              parts.length === 2 &&
-              parts[0].length > 0 &&
-              parts[1] !== 'missing',
-          )
-          .map((parts) => parts[0]),
-      );
-      for (const entry of toCheck) {
-        verdicts.set(
-          entry.checkpointId,
-          existing.has(entry.commitSha) ? 'ok' : 'object_pruned',
-        );
-      }
     } catch {
-      // The repository is unreachable (unmounted, deleted): leave the
-      // pre-set `missing` verdicts — the caller surfaces them as
-      // unverified rather than intact.
+      // The repository is unreachable (unmounted, deleted) or is not the
+      // folder's own: leave the pre-set `missing` verdicts — the caller
+      // surfaces them as unverified rather than intact.
     }
     return verdicts;
   }
@@ -686,46 +981,34 @@ export class CheckpointRefStore {
    * because a checkpoint whose parentage cannot name a branch makes later
    * diff/restore slices reason about an anchor users do not recognize.
    *
-   * The rebase probe is worktree-aware: `git rev-parse --git-path
-   * rebase-merge` resolves to `<common>/worktrees/<name>/rebase-merge` in a
-   * linked worktree and `<common>/rebase-merge` in the primary — probing
-   * the common dir directly misreads BOTH directions (a main-checkout
-   * rebase would block all ~100 sibling worktrees; a genuine linked-worktree
-   * rebase would be misreported as detached_head).
+   * The rebase probe is worktree-aware: the state lives in the worktree's
+   * OWN git directory (`<common>/worktrees/<name>/rebase-merge` in a linked
+   * worktree, `<common>/rebase-merge` in the primary) — probing the common
+   * dir directly misreads BOTH directions (a main-checkout rebase would
+   * block all ~100 sibling worktrees; a genuine linked-worktree rebase
+   * would be misreported as detached_head).
    */
-  private async assertHeadSnapshotable(repoRoot: string): Promise<void> {
-    try {
-      await execGit(['rev-parse', '--verify', '--quiet', 'HEAD'], {
-        cwd: repoRoot,
+  private async assertHeadSnapshotable(
+    repository: CheckpointRepository,
+  ): Promise<void> {
+    const git = (args: string[]) =>
+      execGit([...repository.repoArgs, ...args], {
+        cwd: repository.top,
         encoding: 'utf-8',
         timeout: this.gitTimeoutMs,
       });
+    try {
+      await git(['rev-parse', '--verify', '--quiet', 'HEAD']);
     } catch {
       throw new CheckpointHeadStateError('unborn_head');
     }
     for (const state of ['rebase-merge', 'rebase-apply']) {
-      const path = (
-        await execGit(
-          ['rev-parse', '--path-format=absolute', '--git-path', state],
-          {
-            cwd: repoRoot,
-            encoding: 'utf-8',
-            timeout: this.gitTimeoutMs,
-          },
-        )
-      ).stdout.trim();
-      // --git-path is a path COMPUTATION (it answers where the state WOULD
-      // live for THIS worktree); existence is checked here.
-      if (path && existsSync(path)) {
+      if (existsSync(join(repository.gitDir, state))) {
         throw new CheckpointHeadStateError('rebase_in_progress');
       }
     }
     try {
-      await execGit(['symbolic-ref', '--quiet', 'HEAD'], {
-        cwd: repoRoot,
-        encoding: 'utf-8',
-        timeout: this.gitTimeoutMs,
-      });
+      await git(['symbolic-ref', '--quiet', 'HEAD']);
     } catch {
       throw new CheckpointHeadStateError('detached_head');
     }
@@ -753,14 +1036,18 @@ class CheckpointHeadStateError extends Error {
  * batch that never ran is a claim nothing computed.
  */
 async function batchCheckObjects(
-  repoDir: string,
+  repository: CheckpointRepository,
   shas: string[],
   timeoutMs: number,
 ): Promise<string | null> {
   return await new Promise<string | null>((resolve) => {
     const child = spawnGit(
-      ['cat-file', '--batch-check=%(objectname) %(objecttype)'],
-      { cwd: repoDir, stdio: ['pipe', 'pipe', 'ignore'] },
+      [
+        ...repository.repoArgs,
+        'cat-file',
+        '--batch-check=%(objectname) %(objecttype)',
+      ],
+      { cwd: repository.top, stdio: ['pipe', 'pipe', 'ignore'] },
     );
     let out = '';
     let settled = false;

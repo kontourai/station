@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/native-key-candidate-courier.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"7af7169c8bf941a09b23bdf6ef21f985a1eefe4f8c9991dc4552e462a98fa130","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

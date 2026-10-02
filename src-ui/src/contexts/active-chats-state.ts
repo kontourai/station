@@ -12,6 +12,7 @@ import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-even
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
@@ -111,6 +112,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** #2915: see `MessagePart.approvalSessionGrant`. */
+  approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -513,6 +516,17 @@ export type ChatUIState = {
   defaultModelSource?: EffectiveModelSource;
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
+  /**
+   * #3071: the turn each request in `pendingApprovals` names
+   * (`request.opened.turnId`), for the requests that name one. It is what
+   * the shared settle rule (`requestIdsSettledByTurnAbort`) reads when a
+   * turn ends by abort or cancellation: a request naming that turn is
+   * settled with no `request.resolved`, one naming no turn is kept. A
+   * request learned from a snapshot's `openRequestIds` has no entry; a live
+   * abort cannot settle what it cannot name, so that request stays until a
+   * `request.resolved`, the next snapshot, or the server refusing its answer.
+   */
+  pendingApprovalTurnIds?: Record<string, string>;
   /**
    * #2880: recorded decisions the engine has reported NOT acknowledged
    * (`request.delivery` `unacknowledged`). A later `acknowledged` for the

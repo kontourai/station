@@ -21,6 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -40,9 +41,21 @@ import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
-import type {
-  PreToolPolicyDecision,
-  StagedPreToolPolicyEvaluator,
+import {
+  harnessAnswerTexts,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import {
+  sessionGrantPermissionUpdates,
+  type ToolRequestGrantInput,
+  type ToolRequestSessionGrant,
+  toolRequestIsPlainCall,
+  toolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
+import {
+  delegatedApprovalDenial,
+  type PreToolPolicyDecision,
+  type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
@@ -104,8 +117,12 @@ import {
 import {
   type ClaudeActiveTask,
   type ClaudeMessageState,
+  claudeAskFlags,
+  claudeRequestDisplayText,
+  claudeSandboxNetworkTitle,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
+  reportClaudePermissionMode,
   settleUnresolvedClaudeToolCalls,
   withdrawnSubagentPermissionResult,
 } from './claude-adapter-events.js';
@@ -157,6 +174,7 @@ import {
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
+import { claudeQuestionnaire } from './harness-questions.js';
 
 type PendingRequest = {
   resolve: (result: PermissionResult) => void;
@@ -165,6 +183,13 @@ type PendingRequest = {
   toolName: string;
   /** The SDK agent id when a subagent, not the main thread, asked (#2316). */
   agentId?: string;
+  /**
+   * What a session answer grants (#2915, #2916). The same computation decides
+   * whether the approval surfaces offer it.
+   */
+  sessionGrant: ToolRequestSessionGrant;
+  questionnaire?: HarnessQuestionnaire;
+  eventId: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -585,11 +610,19 @@ type ClaudeSessionRecord = {
   childWork?: ClaudeChildWorkState;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
-  /** Tracks the live SDK permission mode so sendTurn only calls
-   * `setPermissionMode` when the resolved approvalMode actually changes.
-   * `undefined` until Station sent a mode or the engine's `system/init`
-   * reported one (station#1950: omit-the-knob inherits Claude settings). */
+  /** The engine's live permission mode, as Station last sent it or the
+   * engine reported it (`system/init`, a `status` mode change, a forwarded
+   * `setMode`). `undefined` until one of those (station#1950:
+   * omit-the-knob inherits Claude settings). Turn metadata reports it. */
   currentPermissionMode?: PermissionMode;
+  /**
+   * #2915/#2916: the mode Station last REQUESTED (at spawn or through
+   * `setPermissionMode`), kept apart from `currentPermissionMode`, which
+   * follows the engine's own reports. A turn applies the posture only when
+   * it differs from this request, never merely because the engine moved
+   * (into plan mode, say): only the plan's review ends plan mode.
+   */
+  requestedPermissionMode?: PermissionMode;
   /**
    * Whether this live process was spawned with
    * `allowDangerouslySkipPermissions: true` — the SDK requires that flag be
@@ -893,6 +926,18 @@ function serverDelegation(
 }
 
 function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
+  // #2933: a tool-level grant (the agent's `tools.autoApprove`) is decided
+  // from the tool name alone, before the engine has checked the call. A hook
+  // `allow` would skip the engine's working-directory check outright, so an
+  // autoApproved Read outside the session's directories would run unasked
+  // (Claude Code 2.1.278, as 2.1.261 before it, re-checks only deny rules,
+  // ask rules, safety checks and user-interaction tools after a hook allow). Express no opinion
+  // instead: the engine allows what it allows itself and asks `canUseTool`
+  // for the rest, where the same patterns answer plain calls and every
+  // escalation or plan exit reaches a person.
+  if (decision.behavior === 'allow' && decision.toolGrant) {
+    return { continue: true };
+  }
   if (decision.behavior === 'allow') {
     return {
       continue: true,
@@ -1356,6 +1401,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       lastSessionState: 'idle',
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
+      requestedPermissionMode: permissionMode,
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
@@ -1568,7 +1614,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.bypassRefusalWarned = false;
     if (
       targetPermissionMode &&
-      targetPermissionMode !== record.currentPermissionMode
+      targetPermissionMode !== record.requestedPermissionMode
     ) {
       if (
         targetPermissionMode === 'bypassPermissions' &&
@@ -1603,8 +1649,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           });
         }
       } else {
-        await record.query.setPermissionMode(targetPermissionMode);
-        record.currentPermissionMode = targetPermissionMode;
+        // The engine may already run in it (a forwarded acceptEdits the
+        // server then recorded as Auto); the request is recorded either way.
+        if (targetPermissionMode !== record.currentPermissionMode) {
+          await record.query.setPermissionMode(targetPermissionMode);
+          record.currentPermissionMode = targetPermissionMode;
+        }
+        record.requestedPermissionMode = targetPermissionMode;
       }
     }
 
@@ -1894,6 +1945,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // confirms what happened; a second Stop must not clear the first one's
     // still-pending receipt either.
     await record.query.interrupt();
+    // #3071: the SDK can ask for one more permission while that interrupt is
+    // in flight. Whatever was raised in the gap is settled before the abort
+    // by the same rule as above, a subagent's included: every reader of the
+    // transcript retires every approval on `turn.aborted`
+    // (`approvalRetiredBy`), so a request left pending here would be live
+    // with no surface showing it. A background subagent that survives the
+    // stop loses that one call and asks again.
+    this.cancelPendingRequests(record, threadId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -2011,6 +2070,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
@@ -2018,17 +2078,64 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       throw new Error(`Unknown Claude permission request: ${requestId}`);
     }
 
+    if (pending.questionnaire) {
+      if (
+        context?.expectedRequestEventId !== pending.eventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      if (decision === 'accept') {
+        const answers = validateHarnessQuestionAnswers(
+          pending.questionnaire,
+          context?.answers,
+        );
+        const claudeAnswers = Object.fromEntries(
+          pending.questionnaire.questions.map((question) => [
+            question.prompt,
+            harnessAnswerTexts(question, answers).join(', '),
+          ]),
+        );
+        pending.toolInput = { ...pending.toolInput, answers: claudeAnswers };
+      } else if (context?.answers !== undefined)
+        throw new Error('A declined question cannot carry answers.');
+    } else if (context?.answers !== undefined)
+      throw new Error('This request does not accept question answers.');
     record.pendingRequests.delete(requestId);
-    if (decision === 'acceptForSession') {
+    const grant = pending.sessionGrant;
+    // #2916 / #2915: where no session grant is offered (a plan exit, or an
+    // escalation with no directory to forward), the answer is for this one
+    // call: nothing is minted and no suggestion is forwarded.
+    const effectiveDecision =
+      decision === 'acceptForSession' && grant === 'none' ? 'accept' : decision;
+    // #2915: only a tool grant mints a Station tool grant. An edit-mode grant
+    // forwards the engine's acceptEdits mode change alone, and a folder grant
+    // its directory suggestions alone (the approved directory is then the
+    // engine's state); neither mints anything.
+    if (effectiveDecision === 'acceptForSession' && grant === 'tool') {
       record.approvedTools.add(pending.toolName);
     }
-    pending.resolve(
-      mapClaudeDecisionToPermissionResult(
-        decision,
-        pending.toolInput,
-        pending.suggestions,
-      ),
+    const result = mapClaudeDecisionToPermissionResult(
+      effectiveDecision,
+      pending.toolInput,
+      pending.suggestions &&
+        sessionGrantPermissionUpdates(grant, pending.suggestions),
     );
+    // #2915: a forwarded mode change is Station's own request and now the
+    // engine's mode. Both records follow it, so a turn whose posture differs
+    // (Auto was not recorded, or Ask was picked since) sends that posture.
+    if (result.behavior === 'allow') {
+      for (const update of result.updatedPermissions ?? []) {
+        if (update.type !== 'setMode') continue;
+        record.requestedPermissionMode = update.mode;
+        reportClaudePermissionMode(
+          record,
+          update.mode,
+          (event) => this.publish(event),
+          this.provider,
+        );
+      }
+    }
+    pending.resolve(result);
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -2680,6 +2787,35 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
       canUseTool: async (toolName, toolInput, options) => {
+        const questionnaire =
+          toolName === 'AskUserQuestion'
+            ? claudeQuestionnaire(toolInput)
+            : null;
+        if (toolName === 'AskUserQuestion' && !questionnaire)
+          return {
+            behavior: 'deny',
+            message: 'This question format is not supported.',
+          };
+
+        const record = this.requireSession(input.threadId);
+        // #2932: the engine's ask flags. Agent SDK 0.3.278 forwards
+        // suppressAlwaysAllowRule and defaultToNo; requiresUserInteraction is
+        // read when an SDK forwards it.
+        const askFlags = claudeAskFlags(options);
+        // #2932: the reason is sanitised once, and that one value is both
+        // matched here and published, so the surfaces compute the same
+        // grant. Sanitising leaves the plain-text literals unchanged.
+        const decisionReason = claudeRequestDisplayText(options.decisionReason);
+        const request: ToolRequestGrantInput = {
+          toolName,
+          suggestions: options.suggestions,
+          blockedPath: options.blockedPath,
+          matchedAskRule: options.matchedAskRule,
+          permissionMode: record.currentPermissionMode,
+          toolInput,
+          decisionReason,
+          ...askFlags,
+        };
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
         // `tools.autoApprove` via `isAutoApproved` (agent-hooks.ts,
@@ -2690,7 +2826,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // `mcp__<server>__<tool>` tool name into the same `<server>_<tool>`
         // shape Station-engine patterns are authored against, so e.g.
         // `station-control_*` matches `mcp__station-control__list_agents`.
+        // #2933: a pattern covers plain calls to the tool, never a request
+        // that reaches beyond it (a path outside the session's directories,
+        // a directory widening, a rule-forced ask, a read or edit safety
+        // check) or a plan exit: those always reach a person, even for `*`.
+        // #2932 adds a sandbox override, a sandbox network-host ask, the
+        // engine's literal escalation reasons and its ask flags.
         if (
+          !questionnaire &&
+          toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
             input.agent?.autoApprove,
@@ -2703,27 +2847,63 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
-        const record = this.requireSession(input.threadId);
         // Tool-level session grant: "Allow Bash for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.
         // Checked after agent autoApprove (authored policy stays first) and
         // before publishing, so granted tools never re-prompt. Denies are
         // never cached here — only `acceptForSession` populates the set.
-        if (record.approvedTools.has(toolName)) {
+        // #2915: the grant covers calls to the tool, never a request that
+        // reaches beyond it (a path outside the session's directories, a
+        // directory widening, a rule-forced ask): that one always prompts.
+        // #2932: nor a sandbox network ask, whose grant is 'none': the
+        // engine remembers each allowed host itself, so each new host asks.
+        const sessionGrant = toolRequestSessionGrant(request);
+        if (
+          !questionnaire &&
+          record.approvedTools.has(toolName) &&
+          sessionGrant === 'tool'
+        ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
+        // #2933: a delegated child that may not grant approvals reaches here
+        // when the engine asks after the staged evaluator did not deny the
+        // call: a tool-level grant let it past (an autoApprove match is no
+        // hook allow) and it escalates or exits plan mode; a real hook allow
+        // (for example the approval guardian's) was followed by an engine
+        // safety check or a user-interaction tool's ask; or no hook ran at
+        // all (no resolved agent, or no `resolvePreToolPolicy`). Nobody can
+        // answer the child's request, so deny it fail-fast with the
+        // evaluator's own denial rather than wait on a prompt.
+        if (serverDelegation(input.metadata)?.denyApprovals) {
+          const { denial } = delegatedApprovalDenial(toolName, 'external');
+          return { behavior: 'deny', message: denial.reason };
+        }
         const requestId = crypto.randomUUID();
+        const eventId = crypto.randomUUID();
         this.publish({
-          eventId: crypto.randomUUID(),
+          eventId,
           provider: this.provider,
           threadId: input.threadId,
           createdAt: new Date().toISOString(),
+          // #3071: names the turn only for a request the turn ITSELF is
+          // waiting on (the main thread's). A turn's abort settles the
+          // requests that name it, for every reader of the log. A subagent's
+          // request names no turn: a background subagent can outlive the
+          // turn, a stop included, so the turn's abort must not close it.
+          ...(!options.agentID && record.activeTurnId
+            ? { turnId: record.activeTurnId }
+            : {}),
           requestId,
           method: 'request.opened',
           requestType: 'approval',
-          title: options.title ?? `Allow ${toolName}`,
-          description: options.description,
+          title: questionnaire
+            ? 'The agent has questions for you'
+            : (options.title ??
+              claudeSandboxNetworkTitle(toolName, toolInput) ??
+              `Allow ${toolName}`),
+          description: claudeRequestDisplayText(options.description),
           payload: {
+            ...(questionnaire ? { questionnaire } : {}),
             toolName,
             // #2316: the SDK's id for this exact tool_use block — the same id
             // `tool.started` carries as `toolCallId` — so the transcript binds
@@ -2734,6 +2914,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             blockedPath: options.blockedPath,
             displayName: options.displayName,
             suggestions: options.suggestions,
+            // #2915: surfaces compute the session grant they offer from this
+            // payload, as the adapter does from the same fields.
+            ...(options.matchedAskRule
+              ? { matchedAskRule: options.matchedAskRule }
+              : {}),
+            // #2932: the escalation signals the grant reads besides the
+            // input; the sanitised reason text the adapter matched.
+            ...(decisionReason !== undefined ? { decisionReason } : {}),
+            ...askFlags,
+            ...(record.currentPermissionMode
+              ? { permissionMode: record.currentPermissionMode }
+              : {}),
             // Subagent tool calls (Agent tool workers) come through this same
             // callback, so their approvals already propagate to Station; the
             // SDK's agent id is the only signal that the request belongs to
@@ -2749,6 +2941,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolInput,
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
+            sessionGrant,
+            eventId,
+            ...(questionnaire ? { questionnaire } : {}),
           });
           // #2316: the SDK aborts this callback when the call it gates is
           // abandoned; the request is then settled, never left answerable.

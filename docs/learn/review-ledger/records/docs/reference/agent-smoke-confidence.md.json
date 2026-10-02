@@ -1,0 +1,73 @@
+{
+  "path": "docs/reference/agent-smoke-confidence.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
+
+  "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
+
+  "document": {"digest":"2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+  "sources": [
+    {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+
+    {"path":"scripts/station-agent-smoke.mjs","digest":"b3632d2947ae62ea4d1a14912a2de70e3935ee7d3acbca9c02d68ca49cbd01b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/services/connections/connection-readiness-evidence.ts","digest":"ef862329790c4a2f477162da8f4f64ccf974c46ebc54aeb66125b13895c2bd99","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/services/connections/connection-service.ts","digest":"e22391e56913365aeaf9318e7435fe6444ca24223492bdf45a5e5d208079406a","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/services/connections/connection-smoke-evidence-store.ts","digest":"68f09d520822631e1854a5ccc13d6f8b9d08654bc2ced26eb8438d19c458a52f","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-server/services/orchestration/connection-smoke.ts","digest":"2f6a3b7b282139b711a6b1aa82614ca2dc97f9536727343eb7485fc3ab5dc383","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"6433a2150e6308c6c3121af9c5beffdab52786e43723288790af24a41fdf630f","revision":"429c70d487f02c105a523de55b2f02f498520703"},
+
+    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/index.css","digest":"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889","revision":"28ee475ceed3623c147d918bcd6c30d99a49bc00"},
+
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+
+    {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"}
+  ],
+
+  "checks": [
+    "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
+
+    "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+
+    "Formatter-only change; parsed media metadata is identical.",
+
+    "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+
+    "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

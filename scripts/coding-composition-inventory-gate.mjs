@@ -108,6 +108,15 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/CodingInspectorPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingLayout.css': 'presentation',
+    // The Coding layout's navigation stack (#928 coding stack): the Chat page
+    // and the chromeless pane host's drill-ins under one breadcrumb and icon
+    // rail. Part of the built-in host, like `ProjectLayoutRenderer.tsx`: it
+    // places Chat and the host's panes, and grants and executes nothing.
+    'src-ui/src/components/coding-layout/CodingWorkbench.tsx': 'aggregate-host',
+    'src-ui/src/components/coding-layout/CodingWorkbench.css': 'presentation',
+    // The page the URL names (`?pane=` of the Coding host, or none): the
+    // stack's own derivation, reading only the navigation store.
+    'src-ui/src/components/coding-layout/codingStackPage.ts': 'aggregate-host',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':

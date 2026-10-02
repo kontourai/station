@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/self-hosted-broker-scope.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"e78653dfdd7459731e9cd44e955bada2f1115865e8c27084389a1acb1e015893","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

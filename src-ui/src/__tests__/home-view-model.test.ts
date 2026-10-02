@@ -1100,7 +1100,7 @@ describe('orchestration display identity', () => {
           provider: 'codex',
           status: 'ready',
           displayTitle: 'Ship the Home history fix',
-          cwd: '/Users/brian/dev/github/kontourai/station-worktrees/ui-chat-project-affordances',
+          cwd: '/Users/me/dev/github/kontourai/station-worktrees/ui-chat-project-affordances',
           createdAt: '2026-07-30T00:00:00Z',
           updatedAt: '2026-07-30T00:00:00Z',
           isLoaded: true,
@@ -2296,5 +2296,63 @@ describe('a continuation child whose start failed', () => {
     expect(row?.projectSlug).toBe('kontour-ai');
     expect(row?.model).toBe('gpt-6-sol');
     expect(row?.modelLabel).toBe('gpt-6-sol');
+  });
+});
+
+describe('an untitled open chat takes its session name before "<Agent> Chat"', () => {
+  // The chat store's title is not persisted across reloads, so a rehydrated
+  // chat has none. Its correlated session carries the server's
+  // `displayTitle` (the first thing the person asked), which is the name
+  // Activity and Home already list that session under.
+  const threadId = 'station:thread-open-chat-title';
+  const session: OrchestrationSessionSummary = {
+    threadId,
+    provider: 'station',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'completed',
+    createdAt: '2026-09-28T10:00:00Z',
+    updatedAt: '2026-09-28T10:05:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 4,
+    hasActiveTurn: false,
+    displayTitle: 'Review the release notes',
+  };
+  const untitled = createDefaultChatState(
+    // A rehydrated chat: the store did not keep its title.
+    { agentSlug: 'reviewer', agentName: 'Code Reviewer', title: '' },
+    10,
+  );
+
+  test('uses the correlated session displayTitle when the chat has no title', () => {
+    const [row] = buildActiveChatTaskItems({
+      chats: { [threadId]: untitled },
+      agents: [],
+      sessions: [session],
+    });
+    expect(row?.title).toBe('Review the release notes');
+  });
+
+  test('keeps the chat title when it has one', () => {
+    const [row] = buildActiveChatTaskItems({
+      chats: { [threadId]: { ...untitled, title: 'My own name' } },
+      agents: [],
+      sessions: [session],
+    });
+    expect(row?.title).toBe('My own name');
+  });
+
+  // `sessionTitle`'s own fallbacks ("Station session") say less than the
+  // agent-named one, so a session with no displayTitle does not replace it.
+  test('falls back to "<Agent> Chat" when the session has no displayTitle', () => {
+    const { displayTitle: _omit, ...unnamed } = session;
+    const [row] = buildActiveChatTaskItems({
+      chats: { [threadId]: untitled },
+      agents: [],
+      sessions: [unnamed],
+    });
+    expect(row?.title).toBe('Code Reviewer Chat');
   });
 });

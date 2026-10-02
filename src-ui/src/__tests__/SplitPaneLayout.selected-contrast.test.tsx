@@ -1,0 +1,426 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * The selected list row's text clears WCAG AA in every theme and channel.
+ *
+ * The row used to be a SOLID accent fill painted with --text-on-accent. The
+ * layout only owns the row's name and subtitle; everything a consumer renders
+ * inside them keeps its own colour, chosen for the panel. Measured with axe in
+ * the running Activity list: 1.17:1 (light) and 1.38:1 (dark) for the status
+ * line on the fill.
+ *
+ * jsdom computes no cascade, so — following
+ * `SplitPaneLayout.railName.overflow.test.tsx` — this renders the real
+ * `SplitPaneLayout` with real consumer row content, puts that markup into a
+ * real Chromium page carrying the cascade-resolved `index.css` plus the
+ * co-located stylesheets those rows import, and runs axe-core's own
+ * `color-contrast` rule over the selected rows only.
+ *
+ * Row content, and why each is here:
+ * - Agents: the real `buildAgentsViewItems` rows (engine chip + readiness
+ *   pill badges, tone-coloured).
+ * - Activity: a row in the shape `SessionsView` renders today —
+ *   `.activity-row-meta` with the real `StatusGlyph`, its state word, a
+ *   failure detail and the agent/project/origin segments — plus the trailing
+ *   time and the row-actions trigger. SessionsView's own row builder is not
+ *   exported, so this is a fixture of its markup, not a call into it.
+ * - A plain name + subtitle row, the shape the other consumers use.
+ *
+ * Anti-inert guards: each page asserts the selected rows exist and that axe
+ * PASSED colour-contrast on text inside them (so a renamed class or a rule
+ * axe could not evaluate is a failure, not a silent green), and that nothing
+ * was left `incomplete` except symbol-only status glyphs, which 1.4.3 (text)
+ * does not cover. Glyph non-text contrast is NOT measured here.
+ */
+
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from '@playwright/test';
+import { cleanup, render } from '@testing-library/react';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../tests/helpers/css-cascade-fixture';
+
+vi.mock('../contexts/NavigationContext', () => {
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
+vi.mock('../hooks/useIsMobile', () => ({
+  useIsMobile: () => false,
+  MOBILE_MEDIA_QUERY: '(max-width: 768px)',
+}));
+
+import { AgentIcon } from '../components/icons/AgentIcon';
+import { SplitPaneLayout } from '../components/SplitPaneLayout';
+import { StatusGlyph } from '../components/status/StatusGlyph';
+import type { AgentData } from '../contexts/AgentsContext';
+import { buildAgentsViewItems } from '../views/agent-editor/agentsViewHelpers';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, '../../../');
+const requireFromHere = createRequire(import.meta.url);
+const AXE_PATH = requireFromHere.resolve('axe-core/axe.min.js');
+
+const CSS_PATHS = [
+  resolve(HERE, '../index.css'),
+  resolve(HERE, '../components/SplitPaneLayout.css'),
+  resolve(HERE, '../components/AgentReadinessCell.css'),
+  resolve(HERE, '../components/badges/EngineChip.css'),
+  resolve(HERE, '../components/status/StatusGlyph.css'),
+  resolve(HERE, '../views/activity/ActivityRowMenu.css'),
+  resolve(HERE, '../views/SessionsView.css'),
+];
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(() => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  })),
+});
+
+const AGENTS = [
+  {
+    slug: 'station',
+    name: 'Station',
+    engineId: 'station',
+    engineDisplayName: 'Station',
+    provenance: { origin: 'builtin' },
+  },
+  {
+    slug: 'reviewer',
+    name: 'Code Reviewer',
+    engineId: 'codex',
+    engineDisplayName: 'Codex',
+    provenance: { origin: 'builtin' },
+    available: false,
+    unavailableReason: 'no enabled LLM provider connection is configured.',
+    unavailableFix: { kind: 'models' },
+  },
+] as unknown as AgentData[];
+
+function railMarkup(
+  items: Parameters<typeof SplitPaneLayout>[0]['items'],
+  selectedId: string,
+): string {
+  const { container, unmount } = render(
+    <SplitPaneLayout
+      label="fixture"
+      title="Fixture"
+      items={items}
+      selectedId={selectedId}
+      onSelect={() => {}}
+      onSearch={() => {}}
+    >
+      <div>detail</div>
+    </SplitPaneLayout>,
+  );
+  const left = container.querySelector('.split-pane__left');
+  if (!left) throw new Error('the rail did not render');
+  const html = left.outerHTML;
+  unmount();
+  return html;
+}
+
+function fixtureRails(): string[] {
+  const agentItems = buildAgentsViewItems(
+    AGENTS,
+    { onChat: () => {}, onFix: () => {} },
+    { readinessKnown: true },
+  );
+  const sessionRow = (
+    id: string,
+    state: 'Running' | 'Failed' | 'Completed' | 'Needs attention',
+  ) => ({
+    id,
+    name: `SLOW refactor the chart module (${state})`,
+    // The avatar SessionsView renders. In this fixture it contributes no
+    // text: its brand mark is lazy and has not loaded when the markup is
+    // captured, so the tile is empty (#3093).
+    icon: <AgentIcon agent={AGENTS[1]} size="small" />,
+    // Kept short on purpose: the row clamps this line to two, and text the
+    // clamp clips is text axe cannot judge. It must fit under any platform's
+    // fallback font, so the audit measures every node on every runner.
+    subtitle: (
+      <span className="activity-row-meta">
+        <span className="activity-row-meta__state">
+          <StatusGlyph state={state} /> <span>{state}</span>
+        </span>
+        {' · '}
+        <span className="activity-row-meta__detail">HTTP 500</span>
+        {' · '}
+        <span data-segment="agent">Reviewer</span>
+      </span>
+    ),
+    trailing: (
+      <div className="activity-row__actions responsive-surface-actions">
+        <time className="activity-row__time" aria-hidden="true">
+          1m ago
+        </time>
+        <button
+          type="button"
+          className="activity-row-menu__trigger"
+          aria-label="More actions"
+        >
+          <span aria-hidden="true">⋯</span>
+        </button>
+      </div>
+    ),
+    group: { id: 'run', label: 'Run · 3 delegated sessions' },
+  });
+  const sessionItems = [
+    sessionRow('running', 'Running'),
+    sessionRow('failed', 'Failed'),
+    sessionRow('completed', 'Completed'),
+    sessionRow('attention', 'Needs attention'),
+  ];
+  const plainItems = [
+    {
+      id: 'plain',
+      name: 'A skill',
+      subtitle: 'Workspace · 3 files',
+      // Text that sets no colour of its own, so it inherits the row's: the
+      // one node here that measures `.split-pane__item--selected`'s `color`,
+      // and the one a scan taken mid-transition gets wrong (#3074).
+      icon: <span>SK</span>,
+    },
+    { id: 'other', name: 'Another skill', subtitle: 'Registry' },
+  ];
+  return [
+    ...agentItems.map((item) => railMarkup(agentItems, item.id)),
+    ...sessionItems.map((item) => railMarkup(sessionItems, item.id)),
+    railMarkup(plainItems, 'plain'),
+  ];
+}
+
+function fixtureHtml(rails: string[]): string {
+  const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
+  assertNoImportsSurvive(css);
+  return `<!doctype html>
+<html>
+  <head><style>${css}</style></head>
+  <body style="margin:0;background:var(--bg-primary);color:var(--text-primary)">
+    ${rails
+      .map(
+        (rail) =>
+          `<div class="split-pane" style="display:flex;width:900px;height:auto"><div style="width:320px;display:flex">${rail}</div></div>`,
+      )
+      .join('\n')}
+  </body>
+</html>`;
+}
+
+/** Every theme × channel the app ships a distinct accent for. */
+const PRESETS: Array<{ theme: 'light' | 'dark'; channel: string }> = [
+  'release',
+  'beta',
+  'nightly',
+  'dev',
+].flatMap((channel) =>
+  (['light', 'dark'] as const).map((theme) => ({ theme, channel })),
+);
+
+const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
+
+describe.skipIf(!chromiumAvailable)(
+  'a selected split-pane row keeps AA text contrast',
+  () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+    let html: string;
+
+    beforeAll(async () => {
+      browser = await chromium.launch();
+      html = fixtureHtml(fixtureRails());
+    });
+    afterAll(async () => {
+      await browser?.close();
+    });
+    afterEach(() => cleanup());
+
+    async function audit(
+      preset: (typeof PRESETS)[number],
+      hover: boolean,
+    ): Promise<{
+      selectedRows: number;
+      passedPerRow: number[];
+      violations: string[];
+      incomplete: string[];
+    }> {
+      const page = await browser.newPage({
+        viewport: { width: 1000, height: 2400 },
+      });
+      try {
+        await page.setContent(html);
+        // Loaded before the preset is stamped, so that the settle wait below
+        // is all that separates the stamp from the scan.
+        await page.addScriptTag({ path: AXE_PATH });
+        await page.evaluate(({ theme, channel }) => {
+          const root = document.documentElement;
+          root.setAttribute('data-theme', theme);
+          if (channel === 'dev') root.classList.add('is-dev-build');
+          else if (channel !== 'release')
+            root.setAttribute('data-app-channel', channel);
+        }, preset);
+        const selectedRows = await page
+          .locator('.split-pane__item--selected')
+          .count();
+        if (hover) {
+          // One hovered selected row per audit is enough to prove the hover
+          // rule keeps the selected treatment; axe reads the live state.
+          await page.locator('.split-pane__item--selected').nth(3).hover();
+        }
+        // The page parses unstamped (dark defaults), so stamping the preset
+        // starts the rows' own `transition: color`, and the hover starts
+        // their `background` one. Scanned before those end, axe reads the
+        // previous theme's text colour, or a blend, on the new surface
+        // (#3074). Measure the settled state: wait for everything the page
+        // is running to finish, except a looping animation, which never does
+        // (the rule `tests/helpers/accessibility.ts` uses).
+        await page.evaluate(async () => {
+          for (;;) {
+            const running = document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  animation.effect?.getTiming().iterations !== Infinity,
+              );
+            if (running.length === 0) return;
+            await Promise.allSettled(
+              running.map((animation) => animation.finished),
+            );
+          }
+        });
+        const result = await page.evaluate(async () => {
+          const axe = (
+            window as unknown as {
+              axe: {
+                run: (
+                  context: unknown,
+                  options: unknown,
+                ) => Promise<{
+                  violations: Array<{
+                    nodes: Array<{ target: string[]; failureSummary?: string }>;
+                  }>;
+                  incomplete: Array<{
+                    nodes: Array<{ target: string[]; failureSummary?: string }>;
+                  }>;
+                  passes: Array<{ nodes: Array<{ target: string[] }> }>;
+                }>;
+              };
+            }
+          ).axe;
+          const run = await axe.run(
+            { include: [['.split-pane__item--selected']] },
+            { runOnly: { type: 'rule', values: ['color-contrast'] } },
+          );
+          const describe = (
+            groups: Array<{
+              nodes: Array<{ target: string[]; failureSummary?: string }>;
+            }>,
+          ) =>
+            groups.flatMap((group) =>
+              group.nodes.map(
+                (node) =>
+                  `${node.target.join(' ')}: ${node.failureSummary ?? ''}`,
+              ),
+            );
+          return {
+            violations: describe(run.violations),
+            // A StatusGlyph is a symbol (●, ✓, ×) with an aria-label; axe
+            // files symbol-only text as "incomplete" because 1.4.3 does not
+            // apply to it — under either wording, and the one-character
+            // wording only for a status glyph. Anything else it could not
+            // decide is a failure here.
+            incomplete: describe(run.incomplete).filter(
+              (entry) =>
+                !/contains only non-text characters/.test(entry) &&
+                !(
+                  /\.status-glyph/.test(entry) &&
+                  /content is too short to determine/.test(entry)
+                ),
+            ),
+            // Passes counted per selected row, not in total: a total lets
+            // well-covered rows hide one axe rated nothing in.
+            passedPerRow: Array.from(
+              document.querySelectorAll('.split-pane__item--selected'),
+              (row) =>
+                run.passes
+                  .flatMap((group) => group.nodes)
+                  .filter((node) =>
+                    row.contains(document.querySelector(node.target[0])),
+                  ).length,
+            ),
+          };
+        });
+        return {
+          selectedRows,
+          passedPerRow: result.passedPerRow,
+          violations: result.violations,
+          incomplete: result.incomplete,
+        };
+      } finally {
+        await page.close();
+      }
+    }
+
+    test.each(PRESETS)(
+      '$channel channel, $theme theme: every text node in a selected row is AA',
+      async (preset) => {
+        const { selectedRows, passedPerRow, violations, incomplete } =
+          await audit(preset, false);
+        // 2 Agents rails + 4 Activity rails + 1 plain rail.
+        expect(selectedRows).toBe(7);
+        // Violations first, so a contrast regression reports the contrast.
+        expect(violations).toEqual([]);
+        expect(incomplete).toEqual([]);
+        expect(passedPerRow).toHaveLength(selectedRows);
+        // Every row has at least a name and a second text node (subtitle or
+        // badge); a row with fewer passes is one axe was not looking at.
+        expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
+      },
+    );
+
+    test.each(PRESETS.filter((preset) => preset.channel === 'release'))(
+      'release channel, $theme theme: a hovered selected row stays AA',
+      async (preset) => {
+        const { passedPerRow, violations, incomplete } = await audit(
+          preset,
+          true,
+        );
+        expect(violations).toEqual([]);
+        expect(incomplete).toEqual([]);
+        expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
+      },
+    );
+  },
+);
+
+test.skipIf(chromiumAvailable)(
+  'SplitPaneLayout selected-row contrast — Chromium not installed, cannot verify',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so this could ' +
+        'not be measured — a missing precondition, not a passing check. ' +
+        'Install it with `npm run install:playwright` and re-run.',
+    );
+  },
+);

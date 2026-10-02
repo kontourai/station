@@ -26,6 +26,7 @@ import {
   assertNotRegressing as ringAssertNotRegressing,
   assertPayloadIdentity as ringAssertPayloadIdentity,
   createDryRunKeys as ringCreateDryRunKeys,
+  isStaleRollingManifest as ringIsStaleRollingManifest,
   publicationLocations as ringPublicationLocations,
   verifyExpectedManifest as ringVerifyExpectedManifest,
   verifyManifestLocation,
@@ -36,6 +37,7 @@ import { PUBLIC_MANIFEST_POINTERS } from './lib/public-release-locations.mjs';
 export {
   checkArchives,
   fetchBytes,
+  ManifestMismatchError,
   PORTABLE_LAUNCHER_PROTOCOL,
   verifyPublishedAssets,
 } from './lib/portable-publication.mjs';
@@ -108,6 +110,11 @@ export function createDryRunKeys() {
  */
 export function verifyExpectedManifest(envelope, keys, expectedPayload) {
   return ringVerifyExpectedManifest(RING, envelope, keys, expectedPayload);
+}
+
+/** True only for a validly signed rolling manifest older than `expectedPayload`. */
+export function isStaleRollingManifest(error, expectedPayload) {
+  return ringIsStaleRollingManifest(RING, error, expectedPayload);
 }
 
 /**

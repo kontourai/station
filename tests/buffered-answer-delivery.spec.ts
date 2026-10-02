@@ -166,6 +166,11 @@ test.describe('buffered answer delivery (#585)', () => {
       fullPage: true,
     });
     await page.setViewportSize({ width: 1280, height: 720 });
+    // Back on a wide screen the Coding layout's centre takes Chat and the
+    // phone's dock unmounts (#928 coding stack): let that settle, or
+    // `openChatRegion` reads the dock that is about to vanish.
+    await expect(page.locator('#chat-workspace-pane')).toBeVisible();
+    await expect(page.locator('#chat-dock')).toHaveCount(0);
     await openChatRegion(page);
     await expect(transcript).toBeVisible();
 

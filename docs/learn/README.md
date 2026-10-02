@@ -8,7 +8,7 @@ module descriptions come from the existing [module map](../architecture/module-m
 ## Review status
 
 Each document has a visible review note. The
-[review ledger](review-ledger.json) distinguishes current explanations, dated
+[review ledger](review-ledger/) distinguishes current explanations, dated
 history, design, policy, release notes, generated records, and fixtures.
 Classification describes the document's purpose; it is not verification of its
 runtime claims. Unlisted documents remain unreviewed.
@@ -70,25 +70,29 @@ diagram source cannot enable executable click actions.
 ## Screenshots and walkthroughs
 
 Selected application captures appear beside the relevant explanation. Each
-caption names the scenario, its evidence limits and the capture/review revisions.
+caption names the scenario, its evidence limits, the capture revision and the
+revisions at which its sources were reviewed.
 A browser running sample fixtures is not a live provider or physical-device test.
 Open a screenshot for full size; videos have ordinary playback controls and do
 not autoplay. Keep a written explanation of the steps alongside a video.
 
 `media.json` admits tracked PNG screenshots and WebM recordings under
-`docs/learn/media/`. It records the asset digest, source dependencies and owning
-documents. The builder uses local immutable URLs, preserves original capture
-provenance, and warns when supporting code has changed. The check refuses a
-stale capture when the current change touched it, its sources or its manifest
-entry. Unlisted or remote images remain links and are not fetched inline.
+`docs/learn/media/`. It records the asset digest, capture revision, evidence and
+owning documents. Each capture's source dependencies, their reviewed revisions
+and its review notes live in the review ledger under `captures/`, so reviewing
+a capture does not rewrite `media.json`. The builder uses local immutable URLs,
+preserves original capture provenance, and warns when supporting code has
+changed. The check refuses a stale capture when the current change touched it,
+its sources, its manifest entry or its capture review. Unlisted or remote
+images remain links and are not fetched inline.
 
 When adding a capture, inspect it for private data, record the actual fixture or
 service used, and add its asset and source dependencies to each owning document's
 review record. This connects UI changes to the impact/catch-up report. Re-capture
 when behavior or presentation changes; if a reviewed code delta leaves the image
-accurate, retain its capture revision and record the new review revision and
-source hashes with `npm run docs:review:record -- docs/learn/media/<file> --note
-"<what you checked>"`. The note is kept in the capture's `reviewNotes`. The
+accurate, retain its capture revision and record the new source hashes and
+revisions with `npm run docs:review:record -- docs/learn/media/<file> --note
+"<what you checked>"`. The note is added to the ledger's notes files. The
 command refuses a capture whose image bytes changed. Never relabel old media as
 a new capture.
 
@@ -132,7 +136,8 @@ the original observation and a link to the fix.
 Use `npm run docs:impact -- <changed-paths...>` before an edit and
 `npm run docs:impact -- --catch-up --json` to find accumulated review work.
 The report links changed sources to their documented owners, distinguishes a
-page's last edit from its reviewed source revision, and exposes unmapped changes.
+page's last edit from the revision at which each changed input was reviewed,
+and exposes unmapped changes.
 See [incremental maintenance](../guides/documentation.md#find-affected-documentation-and-catch-up)
 for the comparison baseline and limits.
 

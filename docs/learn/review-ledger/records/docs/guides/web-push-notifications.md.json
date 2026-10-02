@@ -1,0 +1,111 @@
+{
+  "path": "docs/guides/web-push-notifications.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide and diagram reviewed against registration, device audience, persistence, focus/escalation, payload/TTL, revocation, worker navigation, SDK and Settings callers. Independent delta accepted all thirteen correction groups.",
+
+  "limits": "Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification.",
+
+  "document": {"digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+  "sources": [
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"5c113e440ff60d70cf1904f8e53c681d465c39211de98f948c3d9996c42a2a61","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/contracts/src/notification-preferences.ts","digest":"913dd3f26b26c67550aaae1914c4c8cbe850b2866d70ae40c322b62523bb9be1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"packages/sdk/src/query-domains/chatRuntimeDevice.ts","digest":"e1ea740a8a6dc885f3903da467405c06653eb7b7b9c3f04410e168231fbd88b3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/shared/src/notification-priority.ts","digest":"41d3450a809d556134efb3b0dccd3fb95d2b4e97fcc0f9e3ea6e2c0d2d725d5d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/routes/operations/push-routes.ts","digest":"1b96c2a1b23e7e62f76128d76c34fcae082164607c3c467e8c3a9473dc3a6d97","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/__tests__/push-routes.test.ts","digest":"34161d95fccd98dfbb36f4f1768617742ef8c2a1e3b5136011933e5cbbf294c9","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+
+    {"path":"src-server/runtime/routes/client-stream-presence.ts","digest":"31fc6913762780cb0b8659c3868e38a8099a3ad15c706e12ca4d0c024e8c256d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/notification-delivery-wiring.ts","digest":"0a8ff32b11d5ee01d0045dfa0e9bbfae54e23989cd5844f95e0109c28cc92c53","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+
+    {"path":"src-server/services/notifications/agent-activity-eligibility.ts","digest":"a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/delivery/__tests__/router.test.ts","digest":"d22c5584b553342aa355d86396bfa4f256bfecf59f141dfa4ffd9e5c6f3d4b05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/delivery/audience-resolver.ts","digest":"c0b19965d541c8711daf9d48d9236d620ebabe70ab81ffb788d90b7159424de5","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/delivery/policy.ts","digest":"1d7434b43590db1f6e9a1584488f1178f0eab8b9e58d3d1c6d6ddc7e0e6a9d3a","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/notifications/delivery/router.ts","digest":"01db4ba364cacbeee699f055b69d3f73744ab00e235be0c7d8e27f24c3154d84","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/notification-deep-link.ts","digest":"312e64717d27730ac201e38cca173fa2fe8f0f319067f26b5dfa249831a2b74b","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/push-payload-composer.ts","digest":"2fd22bb51fcaf58c223a0c0799d51742787e406d125e021ef06adb22405c80ad","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/vapid-key-service.ts","digest":"f53821b148a8c93b0fe34559cc6429431648c2e049f9fae5d3edd941a4255091","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/web-push-channel.ts","digest":"693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/notifications/web-push-service.ts","digest":"8029e96b806624cdbbb2a3d12bcbd285dee94b8e4cfbdd9ecc06a77138c10e05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/ssh/client-connection-presence.ts","digest":"b325fd2ef3e349d46d9dadec9631eef93cb6d895bd3a483cd823ca588b1d793d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/public/sw.js","digest":"411d96698a8c13cd73c04887dfbcababc5de8b82a3ed0909ab3d3cdcae0cc263","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","digest":"f02dc51bf465c713e76ca921057246f923f8c20798e78079a44d286d322d41fc","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/hooks/useFeatureSettings.ts","digest":"97b65c542aadec23d2ec6dc926e4912adfc96852fed1694a0dd5f59134d7b56d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/hooks/useServerEvents.ts","digest":"6288bb72ce5a3f87626a5966cf6917dbe9ae46ac5c504a9bdd2cc14054dbcb07","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/views/settings/PairingSection.tsx","digest":"e1a62de74a2dfc8b032b358b1ca6b7f29322c182b8619507bf3a5e0882d7324c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/views/settings/VoiceFeaturesSection.tsx","digest":"a1f688fa7b6256ecdeb6b28c9f0d25324ce815fdbcd0697ac60925a16b2e48cf","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+  ],
+
+  "checks": [
+    "55 tests across three focused notification files passed on unchanged implementation bytes.",
+
+    "Actual-channel synthetic replacement/gone-response probe caught stale cleanup (#2753).",
+
+    "Independent full-guide delta accepted, including browser/native channel distinction.",
+
+    "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged. Tenant execution dimensions now validate closed vocabularies at runtime and use invalid for foreign values. Instrument declaration count remains309; regenerated declaration source hashes/line links, not emitted metric evidence.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Reviewed source changes: Added optional server-clock now to delivery feed. Native feed age compares server timestamps; browser Web Push and existing preference settings remain separate. Removed the unused all-quiet helper. Deleted the obsolete helper paragraph; current push composition and delivery tiers are unchanged.",
+
+    "Removed the unused all-quiet helper. Deleted the obsolete helper paragraph; current push composition and delivery tiers are unchanged.",
+
+    "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through d72f79b08: #2904 made PairedDevicesPanel read the revoke and scope-change responses into a FullAccessRevocationNotice. The runtime-routes revoke route still revokes the device and disconnects its presence; it now adds the full-access reset report to its response. device-pairing-service gained only deviceHoldsScope. Push subscription storage, clearing on revoke, audience selection and the step-6 revoke checklist are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a runtime-http branch that answers 403 insufficient_scope, not 401, for a credential that recognizeCredential accepts and route admission refuses. Its motivating case is ordinary devices reading /api/pairing/devices. An unrecognized credential still gets 401 authentication_required, as the guide says 'the outer credential gate can reject earlier' with. The guide already routes 'other authorization/rate-limit failures' to their own diagnosis. It does not claim that the SDK maps a 403 insufficient_scope, and the SDK's two mapped combinations are unchanged. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}
