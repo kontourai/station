@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
+  "document": {"digest":"1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
