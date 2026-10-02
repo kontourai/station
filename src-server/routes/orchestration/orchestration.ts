@@ -540,7 +540,12 @@ export const delegateTaskSchema = z.object({
       context: z
         .object({
           version: z.literal(TASK_ROOM_CONTEXT_VERSION),
-          digest: z.string().regex(/^[0-9a-f]{64}$/),
+          // 64 hex chars; the explicit .max() keeps the bound machine-visible
+          // to the seam walker (regex length is not).
+          digest: z
+            .string()
+            .max(64)
+            .regex(/^[0-9a-f]{64}$/),
         })
         .strict()
         .optional(),
