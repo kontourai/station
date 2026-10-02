@@ -69,12 +69,13 @@ codes, with no response bodies or raw error text. The adapter still rejects
 multiple grants and foreign or malformed metadata; it never chooses a grant
 to make qualification proceed.
 
-When a linked invitation encounters multiple saved grants, **Reset connection
-invitation** first opens a management-only preview for the same saved route and
-installation. Operational status still refuses multiple grants. A second,
-explicit confirmation quarantines the matching routing records under the
-profile revision; it does not redeem the invitation or alter Station trust,
-Device approval or account state.
+When a linked invitation encounters multiple saved grants, **Review saved
+connection access** opens a management-only preview for the same saved route
+and installation. **Remove saved access** is the explicit confirmation.
+Technical routing details stay collapsed until opened. Operational status still
+refuses multiple grants. Confirmation quarantines the matching routing records
+under the profile revision; it does not redeem the invitation or alter Station
+trust, Device approval, account sign-in or shared Project access.
 
 Cleanup first attempts normal individual retirement. For an older generation
 only, the native host may authenticate a superseded-scope observation with the

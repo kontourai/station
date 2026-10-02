@@ -496,13 +496,14 @@ application authority. Equal/future generations, missing history, expired
 clocks, unsupported endpoints and all failed requests remain ineligible for
 this basis. Host cleanup must persist its distinct scope-observation basis and
 retain exact owner/profile/vault fences before removing old local custody.
-The linked native review exposes an explicit **Reset connection invitation**
-preview and confirmation. Management metadata can list multiple matching grants,
-while operational status continues to refuse ambiguity. The host retains the
-pending invitation without consuming it, attempts normal self-retirement first,
-and journals a separate older-scope basis before exact local cleanup. Failed
-observation or storage keeps truthful pending status. Station trust, Device and
-account authority remain separate; installed qualification is described in
+The linked native review exposes **Review saved connection access**, followed by
+an explicit **Remove saved access** confirmation. Management metadata can list
+multiple matching grants, while operational status continues to refuse
+ambiguity. The host retains the pending invitation without consuming it,
+attempts normal self-retirement first, and journals a separate older-scope basis
+before exact local cleanup. Failed observation or storage keeps truthful
+pending status. This cleanup does not change Station trust, Device approval,
+account sign-in or shared Project access; installed qualification is described in
 [native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
 The broker route tests establish HTTP, proof and SQLite behavior; they do not
 establish an installed native shell or public broker deployment.

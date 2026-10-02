@@ -54,7 +54,7 @@ function enrollmentFailureCopy(cause: unknown): string {
     cause.message === 'native_enrollment_recovery_required'
   )
     return 'A previous device setup needs attention. Resume it before starting another.';
-  return 'Device setup couldn’t be confirmed. Keep this screen open and ask the Station owner for help.';
+  return 'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station owner what to do next.';
 }
 
 function reportEnrollmentFailure(

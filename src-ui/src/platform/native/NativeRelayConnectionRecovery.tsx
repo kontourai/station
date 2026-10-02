@@ -44,21 +44,24 @@ export function NativeRelayConnectionRecovery({
     <section aria-label="Connection invitation recovery">
       {!preview.data ? (
         <Button pending={preview.isPending} onClick={() => preview.mutate()}>
-          Reset connection invitation
+          Review saved connection access
         </Button>
       ) : !result ? (
         <>
-          <h3>Remove saved routing access?</h3>
+          <h3>Remove saved connection access?</h3>
           <p>
-            This removes connection invitations saved for this Station on this
-            device. Review the saved invitations before confirming.
+            Station found multiple saved connection records for this route on
+            this device. Review them before removing them. This only removes
+            saved connection access for this Station from this device. It does
+            not change trust in this Station, approval for this device, your
+            account sign-in, or shared Project access.
           </p>
           <p>
-            Saved invitations: {preview.data.state.grants.length}. Pending
-            cleanup: {preview.data.state.cleanups.length}.
+            Saved records: {preview.data.state.grants.length}. Cleanup still
+            needed: {preview.data.state.cleanups.length}.
           </p>
           <details>
-            <summary>Saved invitation details</summary>
+            <summary>Technical details</summary>
             <ul>
               {preview.data.state.grants.map(({ metadata, expired }) => (
                 <li
@@ -75,19 +78,19 @@ export function NativeRelayConnectionRecovery({
             disabled={busy}
             onClick={() => reset.mutate()}
           >
-            Reset connection invitation
+            Remove saved access
           </Button>
         </>
       ) : (
         <p role="status">
           {pending
-            ? 'Connection cleanup is still pending. Ask the Station owner for help before continuing.'
-            : 'Saved routing invitations removed. Device approval and sign-in are separate steps.'}
+            ? 'Some saved connection access could not be cleared yet. Keep this screen open and ask the Station owner for help before continuing.'
+            : 'Saved connection access removed. You can continue with device approval. Account sign-in and shared Project access are separate steps.'}
         </p>
       )}
       {result && result.outcomes.length > 0 ? (
         <details>
-          <summary>Cleanup details</summary>
+          <summary>Cleanup status details</summary>
           <ul>
             {result.outcomes.map((entry) => (
               <li
@@ -111,8 +114,8 @@ export function NativeRelayConnectionRecovery({
       ) : null}
       {preview.isError || reset.isError ? (
         <p role="alert">
-          Station could not verify connection cleanup. Ask the Station owner for
-          help before continuing.
+          Station couldn’t confirm that saved connection access was cleared. Ask
+          the Station owner for help before continuing.
         </p>
       ) : null}
     </section>

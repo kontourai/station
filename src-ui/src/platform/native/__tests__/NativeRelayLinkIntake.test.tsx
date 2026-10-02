@@ -625,13 +625,23 @@ it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
     );
     await screen.findByText('Connection error: grant-status-ambiguous');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Reset connection invitation' }),
+      screen.getByRole('button', { name: 'Review saved connection access' }),
     );
     if (outcome === 'unsafe-preview') {
-      await screen.findByText(/Station could not verify connection cleanup/);
+      await screen.findByText(
+        /Station couldn’t confirm that saved connection access was cleared/,
+      );
     } else {
-      await screen.findByText('Remove saved routing access?');
-      expect(screen.getByText(/Saved invitations: 2/)).toBeTruthy();
+      await screen.findByText('Remove saved connection access?');
+      expect(
+        screen.getByText(/Saved records: 2\. Cleanup still needed: 0/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/does not change trust in this Station/),
+      ).toBeTruthy();
+      const technicalDetails = screen.getByText('Technical details')
+        .parentElement as HTMLDetailsElement;
+      expect(technicalDetails.open).toBe(false);
       expect(
         host.invoke.mock.calls.some(
           ([command]) => command === 'station_native_relay_link_recovery_reset',
@@ -639,14 +649,14 @@ it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
       ).toBe(false);
       if (outcome === 'changed' && host.store) host.store.revision++;
       fireEvent.click(
-        screen.getByRole('button', { name: 'Reset connection invitation' }),
+        screen.getByRole('button', { name: 'Remove saved access' }),
       );
       await screen.findByText(
         outcome === 'changed'
-          ? /Station could not verify connection cleanup/
+          ? /Station couldn’t confirm that saved connection access was cleared/
           : outcome === 'pending'
-            ? /Connection cleanup is still pending/
-            : /Saved routing invitations removed/,
+            ? /Some saved connection access could not be cleared yet/
+            : /Saved connection access removed/,
       );
     }
     const resets = host.invoke.mock.calls.filter(

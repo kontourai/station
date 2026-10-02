@@ -2,7 +2,10 @@
 
 import { defaultStorage } from '@kontourai/station-connect';
 import type { NativeVerifiedPeerSignaling } from '@kontourai/station-connect/native-application';
-import type { NativeEnrollmentOpenedPeer } from '@kontourai/station-connect/native-enrollment';
+import {
+  captureNativeEnrollmentFailure,
+  type NativeEnrollmentOpenedPeer,
+} from '@kontourai/station-connect/native-enrollment';
 import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import {
   emptyStationProfileStore,
@@ -1185,6 +1188,33 @@ describe('RelayRouteProfiles', () => {
         ([command]) => command === 'station_native_enrollment_begin_prepare',
       ),
     ).toHaveLength(1);
+  });
+
+  test('peer-open failure gives a plain next step and keeps stage details collapsed', async () => {
+    configureEnrollmentReadyRoute();
+    const trap = 'transport timed out at https://secret.invalid/?token=SECRET';
+    mocks.openVerifiedPeer.mockRejectedValue(
+      captureNativeEnrollmentFailure(new Error(trap), 'peer-open'),
+    );
+    renderRoutes();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Request device access' }),
+    );
+
+    expect(
+      await screen.findByText(
+        'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station owner what to do next.',
+      ),
+    ).toBeTruthy();
+    const troubleshooting = screen.getByText('Device setup troubleshooting')
+      .parentElement as HTMLDetailsElement;
+    expect(troubleshooting.open).toBe(false);
+    expect(document.body.textContent).not.toContain(trap);
+    fireEvent.click(screen.getByText('Device setup troubleshooting'));
+    expect(troubleshooting.textContent).toContain(
+      'Stage: peer-open. Code: unknown.',
+    );
   });
 
   test('requires explicit resume selection and runs begin only for the selected saved attempt', async () => {
