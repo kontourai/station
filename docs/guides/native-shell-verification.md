@@ -502,6 +502,22 @@ through [the Station manager entry](../../src-ui/src/components/OnboardingGate.t
 observed UI entry still performed no fresh enrollment or public application
 operation. It is not a physical iPhone, signed Nightly or release receipt.
 
+An October 2, 2026 G8 simulator observation, retained privately outside this
+repository, used source revision
+`8353059dbd904be879c9cc3369e7f484188a1971`, app identifier
+`io.kontourai.station.dev.instance`, iOS 26.5 and executable SHA-256
+`62b580335a449b5481673924de1b4180190c8c8ae4174528e9b7e68486030fc3`. The
+first bound invitation expired during preview and failed closed without a
+cleanup claim. A second invitation showed two saved grants; after explicit
+confirmation the host established the older-scope basis for generations 2 and
+3, completed local cleanup, and then accepted that same invitation through to
+the separate Device-approval step. The later request to access the Device
+failed at peer-open with safe code `unknown`, before account sign-in, Device
+approval or a Project-member read. This verifies the recovery and routing
+handoff only on that exact simulator build. The UI wording has since changed,
+so this receipt does not verify the current button copy. Physical iOS, Nightly,
+Device peer-open, account continuation and Project access remain **NOT_VERIFIED**.
+
 The separate `public-fixture-registration-renewal-receipt.json` records normal
 isolated Station source `d8dd1a41494a9ffbfe42d6f994b3f7f30cc132d4`, public broker
 registration at lease revision 1, subsequent renewal at revision 15, and actual
