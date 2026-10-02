@@ -1,0 +1,9 @@
+{
+  "revision": "7347e4d6a82a18eb1e49973b976025e20486ae27",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-record after merging main: docs/reference/api.md took main session/task-room documentation while this branch own shared-work-results changes were reviewed on the branch; the integrating-station and api reference claims were re-checked against the merged bytes."},
+
+    {"path":"docs/reference/api.md","note":"Re-record after merging main: docs/reference/api.md took main session/task-room documentation while this branch own shared-work-results changes were reviewed on the branch; the integrating-station and api reference claims were re-checked against the merged bytes."}
+  ]
+}
