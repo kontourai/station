@@ -70,14 +70,16 @@ test('fresh fixture prepares a genuine unpaired Station and refuses private-plan
   ).toHaveProperty('credential');
 });
 
-async function completedBrokerFixture(withdraw = true) {
+async function completedBrokerFixture(withdraw = true, expired = false) {
   const root = makeTempDir('native-successor-');
   const directory = join(root, 'first');
   const prior = await prepareNativeFreshFixture(directory, revision);
   const databasePath = join(root, 'broker.sqlite');
-  const broker = new SelfHostedBrokerService(databasePath);
+  let now = Date.now() - (expired ? 61_000 : 0);
+  const broker = new SelfHostedBrokerService(databasePath, () => now);
   const bundle = createBrokerCredentialBundle();
   broker.provision(prior.scope, 60_000, bundle);
+  if (expired) now = Date.now();
   if (withdraw) broker.withdraw(prior.scope, bundle.connector);
   const write = (name: string, value: unknown) =>
     writeFileSync(join(directory, name), JSON.stringify(value), {
@@ -115,6 +117,125 @@ async function completedBrokerFixture(withdraw = true) {
   });
   return { root, directory, prior, broker, bundle, write };
 }
+
+function fixtureCli(...args: string[]) {
+  return spawnSync(
+    process.execPath,
+    ['--import', 'tsx', 'scripts/native-fresh-relay-fixture.ts', ...args],
+    {
+      cwd: resolve(import.meta.dirname, '../..'),
+      windowsHide: true,
+      timeout: 30_000,
+      encoding: 'utf8',
+      maxBuffer: 65536,
+    },
+  );
+}
+
+test('explicit cleanup recovery observes expired owner withdrawal and permits only a freshly checked successor without rewriting failure evidence', async () => {
+  const f = await completedBrokerFixture(false, true);
+  try {
+    const priorPath = join(f.directory, 'plan.json');
+    const cleanup = JSON.parse(
+      readFileSync(join(f.directory, 'cleanup.json'), 'utf8'),
+    );
+    f.write('cleanup.json', { ...cleanup, brokerCleanupConfirmed: false });
+    const original = readFileSync(join(f.directory, 'cleanup.json'));
+    expect(fixtureCli('confirm-recovered-cleanup', priorPath, '1').status).toBe(
+      1,
+    );
+    expect(() => f.broker.register(f.prior.scope, f.bundle.connector)).toThrow(
+      'broker_credential_refused',
+    );
+    f.broker.withdraw(f.prior.scope, f.bundle.connector);
+    const confirmed = fixtureCli('confirm-recovered-cleanup', priorPath, '1');
+    expect({ status: confirmed.status, error: confirmed.error?.name }).toEqual({
+      status: 0,
+      error: undefined,
+    });
+    const recoveryPath = join(f.directory, 'recovered-cleanup.json');
+    const recovery = readNativeFreshPrivateJson(recoveryPath) as {
+      runId: string;
+      scope: typeof f.prior.scope;
+      withdrawnAt: number;
+    };
+    expect(recovery.runId).toBe(f.prior.runId);
+    expect(recovery.scope).toEqual(f.prior.scope);
+    expect(recovery.withdrawnAt).toBeGreaterThan(0);
+    expect(readFileSync(join(f.directory, 'cleanup.json'))).toEqual(original);
+    expect(fixtureCli('confirm-recovered-cleanup', priorPath, '1').status).toBe(
+      1,
+    );
+    const successorDirectory = join(f.root, 'second');
+    expect(
+      fixtureCli('prepare-successor', priorPath, successorDirectory, '1')
+        .status,
+    ).toBe(0);
+    const successor = loadNativeFreshFixturePlan(
+      join(successorDirectory, 'plan.json'),
+    );
+    expect(successor.scope.routingGeneration).toBe(2);
+    expect(() => assertNativeFreshBrokerLeaseCommitted(successor)).toThrow();
+    expect(readFileSync(join(f.directory, 'cleanup.json'))).toEqual(original);
+
+    for (const invalid of [
+      { ...recovery, runId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+      { ...recovery, scope: { ...recovery.scope, routingGeneration: 2 } },
+      { ...recovery, withdrawnAt: 1 },
+      { ...recovery, credentialsSha256: 'b'.repeat(64) },
+      { ...recovery, extra: true },
+    ]) {
+      f.write('recovered-cleanup.json', invalid);
+      await expect(
+        prepareNativeFreshFixtureSuccessor(
+          priorPath,
+          join(f.root, 'refused'),
+          1,
+          revision,
+        ),
+      ).rejects.toThrow();
+    }
+    f.write('recovered-cleanup.json', recovery);
+    chmodSync(recoveryPath, 0o644);
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'public'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_private_file_required');
+    chmodSync(recoveryPath, 0o600);
+    const owner = JSON.parse(
+      readFileSync(join(f.directory, 'runtime-owner.json'), 'utf8'),
+    );
+    f.write('runtime-owner.json', { ...owner, pid: process.pid });
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'live'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_prior_process_live');
+    f.write('runtime-owner.json', owner);
+    f.broker.provision(
+      { ...f.prior.scope, routingGeneration: 2 },
+      60_000,
+      createBrokerCredentialBundle(),
+    );
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'newer'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_broker_generation_changed');
+  } finally {
+    f.broker.close();
+  }
+});
 
 test('operator successor retains the genuine Station home and trust, provisions exact generation two, and fences old cleanup and newer owners', async () => {
   const f = await completedBrokerFixture();
