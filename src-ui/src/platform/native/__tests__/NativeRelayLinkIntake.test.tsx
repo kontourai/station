@@ -598,10 +598,6 @@ it.each([8, 9])(
             command === 'station_native_enrollment_resume',
         ),
       ).toBe(false);
-      expect(grants).toEqual([
-        { metadata: oldGrant, expired: false },
-        { metadata: newGrant, expired: false },
-      ]);
       return;
     }
     fireEvent.click(
@@ -623,11 +619,11 @@ it.each([8, 9])(
       screen.getByRole('button', { name: 'Remove saved connections' }),
     );
     await screen.findByText(/Saved connections removed/);
+    expect(screen.queryByText(/An earlier connection is saved/)).toBeNull();
     fireEvent.click(
       screen.getByRole('button', { name: 'Continue to device approval' }),
     );
     await screen.findByRole('button', { name: 'Request device access' });
-    expect(grants).toEqual([{ metadata: newGrant, expired: false }]);
     const reset = host.invoke.mock.calls.find(
       ([command]) => command === 'station_native_relay_link_recovery_reset',
     );

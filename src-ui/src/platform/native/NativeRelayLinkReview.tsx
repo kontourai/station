@@ -121,6 +121,10 @@ function Review({
   const [error, setError] = useState<string | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [cleanupPending, setCleanupPending] = useState(false);
+  const updateCleanupPending = useCallback((pending: boolean) => {
+    setCleanupPending(pending);
+    if (!pending) setError(null);
+  }, []);
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
@@ -369,7 +373,7 @@ function Review({
               expectedUpdatedAt: profile.updatedAt,
             }}
             onBusyChange={setRecoveryBusy}
-            onPendingChange={setCleanupPending}
+            onPendingChange={updateCleanupPending}
           />
         ) : null}
         {error && connectionFailure ? (
