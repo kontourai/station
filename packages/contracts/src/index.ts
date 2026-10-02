@@ -70,6 +70,7 @@ export * from './session-attention.js';
 export * from './session-lifecycle.js';
 export * from './session-output-declaration.js';
 export * from './session-outputs.js';
+export * from './skill-experience.js';
 export * from './spatial-board.js';
 export * from './starter-work.js';
 export * from './station-profile.js';
