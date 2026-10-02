@@ -99,7 +99,8 @@ If device setup encounters ambiguity after redemption, its fixed diagnostic is
 owner-issued invitation for review and cleanup. A consumed invitation cannot
 be reused as cleanup authority. Same-generation custody is not automatically
 removed. Qualify the single-old-grant turnover, preview, explicit confirmation,
-pending status, restart recovery and replacement preservation in the installed shell before claiming this journey.
+pending status, restart recovery and replacement preservation in the installed
+shell before claiming this journey.
 
 ## Native request queue pressure
 

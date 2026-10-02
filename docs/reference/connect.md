@@ -53,6 +53,10 @@ failures before client construction: route status, saved-route currentness and
 Station trust have distinct fixed stages. Host resume refusals retain their
 existing fixed code at the `recovery` boundary; no protocol call is repeated to
 obtain diagnostics.
+Multiple saved routing grants report the fixed
+`native_enrollment_saved_connections_ambiguous` code at `route-status`. The UI
+directs the user to a fresh owner-issued invitation for explicit connection
+review and cleanup; it does not select or remove a grant automatically.
 
 These fields identify the local failing boundary, not a verified server cause.
 `peer-open` includes binding, ICE and peer admission; a missing HTTP status does

@@ -328,8 +328,8 @@ Before redeeming a linked invitation, Station checks saved grants for the same
 route and installation. If even one belongs to an earlier routing generation,
 it keeps the invitation unconsumed and asks you to review the old connection.
 The same review is available for multiple saved grants or pending cleanup.
-**Review saved connections** opens a preview. **Remove saved connections** confirms the
-cleanup. Technical routing details appear only when expanded. The host first
+**Review saved connections** opens a preview. **Remove saved connections**
+confirms the cleanup. Technical routing details appear only when expanded. The host first
 tries to retire each broker grant and clears eligible local records only after
 cleanup is established. This does not change Station
 trust, Device approval, account sign-in or shared Project access. For an older
@@ -342,8 +342,9 @@ for a new owner-issued setup invitation; use that invitation’s review and
 confirmation before retrying the saved setup check. Diagnostic details report
 `native_enrollment_saved_connections_ambiguous` without raw host errors. A
 same-generation saved connection does not trigger older-generation cleanup.
-Operational status continues to refuse multiple grants until cleanup resolves; it never chooses one silently. This native journey
-still needs installed-shell qualification, as described in
+Operational status continues to refuse multiple grants until cleanup resolves;
+it never chooses one silently. This native journey still needs installed-shell
+qualification, as described in
 [native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
 
 For a native signing-key approval, select the saved broker route and choose
