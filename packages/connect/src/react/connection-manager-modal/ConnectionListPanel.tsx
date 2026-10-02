@@ -489,16 +489,18 @@ function ConnectionRow({
                 >
                   Check reachability
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    closeActions();
-                    onRequestAccess(connection);
-                  }}
-                >
-                  Reconnect
-                </button>
+                {connection.id === activeConnectionId && !isInjected && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      closeActions();
+                      onRequestAccess(connection);
+                    }}
+                  >
+                    Reconnect
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"

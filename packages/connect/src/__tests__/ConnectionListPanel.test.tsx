@@ -336,6 +336,21 @@ describe('ConnectionListPanel', () => {
     expect(requestAccess).toHaveBeenCalledExactlyOnceWith(connection);
   });
 
+  it('requires switching before reconnecting an inactive Station', () => {
+    const requestAccess = vi.fn();
+    const select = vi.fn();
+    renderPanel(select, {
+      activeConnectionId: 'other',
+      onRequestAccess: requestAccess,
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More actions for Station One' }),
+    );
+    expect(screen.queryByRole('menuitem', { name: 'Reconnect' })).toBeNull();
+    expect(requestAccess).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it('does not offer an access request for an already usable connection', () => {
     renderPanel();
     expect(
