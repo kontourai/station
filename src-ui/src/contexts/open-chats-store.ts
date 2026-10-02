@@ -211,6 +211,45 @@ export function useOpenWorkChats(
   );
 }
 
+/**
+ * What the inbox derivation (`useInboxWorkItems`) reads from the open
+ * chats, from ONE store subscription: the chat items, and which execution
+ * each conversation is on now (the tie-breaker `mergeHomeWorkItems` takes,
+ * from the same chat records the dock's derived sessions carried it on).
+ */
+export function useOpenChatInbox(
+  agents: AgentSummary[],
+  sessions: OrchestrationSessionSummary[] = [],
+  resolveModelLabel?: ResolveModelLabel,
+): {
+  items: HomeWorkItem[];
+  currentSessionIdByConversation: ReadonlyMap<string, string>;
+} {
+  const chats = useSyncExternalStore(
+    openChatsStore.subscribe,
+    openChatsStore.getSnapshot,
+    openChatsStore.getSnapshot,
+  );
+  return useMemo(
+    () => ({
+      items: buildActiveChatTaskItems({
+        chats,
+        agents,
+        sessions,
+        ...(resolveModelLabel ? { resolveModelLabel } : {}),
+      }),
+      currentSessionIdByConversation: new Map(
+        Object.values(chats).flatMap((chat) =>
+          chat.conversationId && chat.currentSessionId
+            ? [[chat.conversationId, chat.currentSessionId] as const]
+            : [],
+        ),
+      ),
+    }),
+    [agents, chats, sessions, resolveModelLabel],
+  );
+}
+
 export function useOpenChats(
   agents: AgentSummary[],
   sessions: OrchestrationSessionSummary[] = [],

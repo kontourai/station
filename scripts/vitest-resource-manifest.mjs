@@ -1012,6 +1012,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Owns Chromium to measure the legacy action-row wrap and touch-target
   // floor against the real index.css cascade at a phone viewport.
   'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
+  // #3043: owns Chromium to measure the shared inbox row's height before
+  // and during hover, and its action targets at desktop and phone viewports.
+  'src-ui/src/components/inbox-row/__tests__/InboxRow.geometry.test.tsx',
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',

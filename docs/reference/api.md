@@ -2572,6 +2572,17 @@ selected profile's provider quota. Omit the reference to inspect the connection'
 default account. This token-backed read requires `access:manage`; an engine-login
 grant alone does not admit it. The result is either normalized quota windows,
 plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Both variants can include optional `metadata`: Codex identity/credits/model and
+reset-credit facts, Claude extra usage/spending/weekly breakdown/limit annotations, and bounded response-shape `capture`
+(source, credential storage kind, unmapped/excluded field paths, truncation). Windows optionally carry
+`durationSeconds`, `resetAfterSeconds`, `allowed`, `limitReached`, `model` and
+`meteredFeature`. Raw response values for unmapped fields are never returned;
+full quota metadata is not persisted; only bounded allowance observations are retained. See the [capture inventory](../guides/connections.md#sign-an-engine-profile-in-from-a-device)
+for scope and live-verification limits.
+
+The optional `history` contains bounded hourly allowance observations for the
+selected profile. `status: unavailable` reports persistence failure without
+making the live limits unreadable. Full metadata and identity remain live only.
 
 `GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
 an existing saved profile and `engine:login` or a verified operator. No default
@@ -2580,6 +2591,12 @@ POST `{code}` relays a Claude browser code to its CLI stdin. GET projects status
 DELETE cancels. The server checks current authority before private work and
 publication. Credentials and private CLI output are never returned. Refused
 starts return a safe reason, with Codex outcomes when available.
+
+
+`GET /api/analytics/usage-rollup?provider=codex&credentialProfileRef=<ref>` filters
+attributed account receipts before aggregation. An empty `credentialProfileRef`
+selects the default profile; omitting it includes all accounts. An engine filter
+is required. Older/source-home usage without `accountKey` remains unattributed.
 
 `GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
 for engine activity. Filtering precedes folding and pagination, while coverage
