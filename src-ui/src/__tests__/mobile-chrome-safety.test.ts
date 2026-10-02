@@ -558,14 +558,14 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
     return [...block.matchAll(pattern)].map((match) => match[1]);
   }
 
-  it('keeps the compact active Station label visible on mobile', () => {
-    // The short healthy label identifies the active saved profile. The full
-    // state/name spans remain desktop-only; action states keep their remedy
-    // in the accessible name and connection sheet.
+  it('keeps connection text out of the dot-only mobile header', () => {
+    // Runtime name and gesture behavior are exercised by HeaderActions and
+    // the narrow gallery; this guards the stylesheet's text suppression.
     const block = shellMobileBlock(chatCss);
     for (const part of [
       '.app-toolbar__conn-name',
       '.app-toolbar__conn-state',
+      '.app-toolbar__conn-label',
     ]) {
       const bodies = blockRulesFor(block, part);
       expect(
@@ -576,19 +576,16 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
         expect(body).toMatch(/display:\s*none/);
       }
     }
-    expect(blockRulesFor(block, '.app-toolbar__conn-label')).toHaveLength(0);
   });
 
-  it('holds the labeled chip to its reserved width and the 44px touch-target floor', () => {
-    // The healthy name has its own reserved width while the shared icon
-    // button floor keeps the control touchable in every state.
+  it('keeps the status-dot control at the 44px touch-target floor', () => {
     const block = shellMobileBlock(chatCss);
     const [floor] = ruleBodies(block, '\n  .app-toolbar__icon-btn');
     expect(floor, 'the mobile icon-btn floor must stay').toBeDefined();
     expect(floor).toMatch(/min-width:\s*44px/);
     expect(floor).toMatch(/min-height:\s*44px/);
     const [connection] = blockRulesFor(block, '.app-toolbar__conn');
-    expect(connection).toMatch(/width:\s*136px/);
+    expect(connection).toMatch(/width:\s*44px/);
 
     const headerActions = read('components/header/HeaderActions.tsx');
     expect(headerActions).toMatch(
