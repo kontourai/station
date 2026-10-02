@@ -2611,7 +2611,7 @@
     transparent
   );
   animation: tool-call-reflection var(--motion-status-breathe)
-    var(--ease-linear) infinite;
+    var(--ease-linear) infinite both;
 }
 
 @keyframes tool-call-reflection {
